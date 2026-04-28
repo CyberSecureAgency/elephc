@@ -35,13 +35,11 @@ fn test_class_class_parent_inside_child() {
 }
 
 #[test]
-fn test_class_class_static_resolves_to_lexical_class() {
-    // v1: static::class is treated as self::class. Documented limitation —
-    // true LSB (returning "Child" when called as Child::name()) is a follow-up.
+fn test_class_class_static_uses_late_static_binding() {
     let out = compile_and_run(
-        "<?php\nclass C {\n    public static function name() { return static::class; }\n}\necho C::name();\n",
+        "<?php\nclass Base {\n    public static function name() { return static::class; }\n}\nclass Child extends Base {}\necho Child::name();\n",
     );
-    assert_eq!(out, "C");
+    assert_eq!(out, "Child");
 }
 
 #[test]
@@ -63,12 +61,11 @@ fn test_new_self_returns_instance_of_lexical_class() {
 }
 
 #[test]
-fn test_new_static_returns_instance_of_lexical_class() {
-    // v1: new static() falls back to new self() (lexical class). Documented limitation.
+fn test_new_static_returns_instance_of_called_class() {
     let out = compile_and_run(
-        "<?php\nclass Box {\n    public string $label = \"hi\";\n    public static function make(): Box { return new static(); }\n}\n$b = Box::make();\necho $b->label;\n",
+        "<?php\nclass Base {\n    public static function make(): Base { return new static(); }\n    public function name(): string { return self::class; }\n}\nclass Child extends Base {\n    public function name(): string { return self::class; }\n}\n$b = Child::make();\necho $b->name();\n",
     );
-    assert_eq!(out, "hi");
+    assert_eq!(out, "Child");
 }
 
 #[test]
