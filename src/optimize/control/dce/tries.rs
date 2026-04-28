@@ -1,6 +1,7 @@
 use super::*;
 use super::guards::clear_guards_for_name;
 use super::state::GuardState;
+use super::tail::append_tail_to_fallthrough_path;
 use super::writes::{invalidated_guards_for_finally_paths, invalidated_guards_for_throw_paths};
 
 pub(super) fn dce_try_stmt(
@@ -153,4 +154,3 @@ pub(super) fn dce_try_stmt_with_tail(
     }
     stmts
 }
-

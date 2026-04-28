@@ -9,6 +9,7 @@ use super::guards::{
     scalar_guard_value,
 };
 use super::state::{GuardState, TailSinkTarget};
+use super::tail::sink_tail_into_terminal_path;
 
 fn classify_switch_patterns_for_exact_scalar(
     subject_value: &ScalarValue,
@@ -431,4 +432,3 @@ pub(super) fn dce_switch_stmt_with_tail(
 
     dce_switch_stmt(subject, cases, default, span, guards)
 }
-
