@@ -354,6 +354,7 @@ Proper type system for PHP compatibility.
 - [x] Error-control operator `@` backed by a suppressible runtime warning channel and exception-safe suppression-depth restoration
 - [x] Runtime-value compatibility pass for `strpos()` / `strrpos()` / `array_search()` / `file_get_contents()` false-return conventions and `define()` boolean duplicate behavior
 - [x] PHP array union operator `+` for indexed+indexed and associative+associative arrays, preserving left-side duplicate keys and associative insertion order
+- [x] PHP-compatible associative array key normalization for integer keys and numeric-string keys across literals, reads/writes, `foreach`, `array_keys()`, `array_search()`, `array_key_exists()`, `array_flip()`, `json_encode()`, and associative array union
 
 ## v0.20.x — Shared and static libraries (C ABI)
 
@@ -410,7 +411,6 @@ Features that are feasible but complex. Not currently planned for any specific v
 | Mixed nullsafe/member chains | Medium | Match PHP's full chain semantics for forms that mix `?->` and `->`, such as `$a?->b->c`. Current support handles nullsafe hops written explicitly with `?->` and short-circuits each nullsafe receiver. |
 | Full PHP list destructuring | Medium | Extend `[$a, $b] = ...` beyond plain variables and indexed RHS values to cover skipped entries, nested patterns, and associative-key destructuring. |
 | Heterogeneous indexed arrays | Medium | Allow mixed payloads in indexed arrays instead of requiring homogeneous indexed values. This would complete PHP array-union edge cases such as non-empty indexed arrays whose missing right-side numeric keys have a different value type. |
-| Full PHP array-key coercion | Medium | Normalize integer and numeric-string keys across associative literals, reads/writes, `array_flip()`, array union, and key-oriented built-ins. The current hash runtime is string-keyed, so string-key associative arrays are the supported path. |
 | Multi-level `break` / `continue` | Low | Parse and lower numeric depths such as `break 2;` and `continue 2;` through nested loop/switch/finally exits. |
 | Named-argument parity for built-ins, extern calls, and spread | Medium | Extend call validation/lowering so named arguments work outside user-defined calls and interact correctly with spread arguments. |
 | Captured closures as callback values | Medium | Forward hidden `use (...)` capture environments through callback-style built-ins such as `array_map`, `array_filter`, and `call_user_func`. |

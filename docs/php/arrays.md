@@ -34,6 +34,17 @@ $map["age"] = "30";      // add new key
 
 Associative arrays use a hash table runtime. If later values do not match the first value type, the checker widens to internal `mixed` runtime shape.
 
+Keys follow PHP's array-key normalization for integer and string keys. Integer keys remain integers, numeric strings such as `"1"` normalize to the integer key `1`, and strings with leading zeroes such as `"01"` remain string keys. This applies to literals, reads and writes, `foreach`, `array_keys()`, `array_search()`, `array_key_exists()`, `array_flip()`, JSON object keys, and associative array union.
+
+```php
+<?php
+$map = [1 => "one", "2" => "two", "02" => "leading"];
+
+echo $map["1"];  // one
+echo $map[2];    // two
+echo $map["02"]; // leading
+```
+
 ## Array union
 
 `+` between arrays follows PHP union semantics: keys from the left operand win, and only keys that are missing from the left are copied from the right.
@@ -89,7 +100,7 @@ echo $matrix[0][1];    // 2
 | `array_keys()` | `array_keys($arr): array` | Returns the array keys |
 | `array_values()` | `array_values($arr): array` | Returns copy of values |
 | `array_key_exists()` | `array_key_exists($key, $arr): bool` | Check if key exists |
-| `array_search()` | `array_search($needle, $arr): int\|string\|false` | Search for value, returning an integer index for indexed arrays, the first matching string key for associative arrays, or `false` if not found |
+| `array_search()` | `array_search($needle, $arr): int\|string\|false` | Search for value, returning an integer index for indexed arrays, the first matching associative-array key, or `false` if not found |
 | `array_slice()` | `array_slice($arr, $offset [, $length]): array` | Extract a slice |
 | `array_splice()` | `array_splice($arr, $offset [, $length]): array` | Remove/replace part |
 | `array_chunk()` | `array_chunk($arr, $size): array` | Split into chunks |
@@ -105,7 +116,7 @@ echo $matrix[0][1];    // 2
 | `array_intersect_key()` | `array_intersect_key($arr1, $arr2): array` | Keys in both |
 | `array_unique()` | `array_unique($arr): array` | Remove duplicates |
 | `array_reverse()` | `array_reverse($arr): array` | Reverse order |
-| `array_flip()` | `array_flip($arr): array` | Exchange keys and values |
+| `array_flip()` | `array_flip($arr): array` | Exchange keys and values, normalizing integer and numeric-string result keys |
 | `array_shift()` | `array_shift($arr): mixed` | Remove and return first |
 | `array_unshift()` | `array_unshift($arr, $value): int` | Prepend element |
 | `array_sum()` | `array_sum($arr): int\|float` | Sum of values |
@@ -139,5 +150,4 @@ echo $matrix[0][1];    // 2
 
 ## Limitations
 - Indexed arrays are homogeneous (except object elements may widen to shared parent class)
-- Associative arrays are currently string-keyed; full PHP integer-key and numeric-string key coercion is tracked in `ROADMAP.md`
 - Array union is supported for indexed+indexed and associative+associative operands; mixed indexed/associative union and heterogeneous indexed-array union are tracked in `ROADMAP.md`
