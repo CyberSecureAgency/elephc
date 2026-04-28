@@ -31,8 +31,8 @@ pub(super) fn emit_cast(
                 PhpType::Str => {
                     abi::emit_call_label(emitter, "__rt_atoi");                 // parse the current string result into the active integer result register
                 }
-                PhpType::Array(_) | PhpType::AssocArray { .. } => {
-                    emitter.instruction("ldr x0, [x0]");                        // load array length from header (first field)
+                PhpType::Array(_) | PhpType::AssocArray { .. } | PhpType::Iterable => {
+                    emitter.instruction("ldr x0, [x0]");                        // load array/hash container length from header (first field; iterable hash kind shares this layout)
                 }
                 PhpType::Mixed | PhpType::Union(_) => {
                     abi::emit_call_label(emitter, "__rt_mixed_cast_int");       // cast the boxed mixed payload to int through the target-aware helper
@@ -67,13 +67,14 @@ pub(super) fn emit_cast(
                 }
                 PhpType::Array(_)
                 | PhpType::AssocArray { .. }
+                | PhpType::Iterable
                 | PhpType::Callable
                 | PhpType::Object(_)
                 | PhpType::Buffer(_)
                 | PhpType::Packed(_)
                 | PhpType::Pointer(_) => {
                     abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), 0);
-                    abi::emit_int_result_to_float_result(emitter);              // convert to 0.0 double
+                    abi::emit_int_result_to_float_result(emitter);              // convert to 0.0 double (iterable joins the array group for elephc cast semantics)
                 }
             }
             PhpType::Float
@@ -358,13 +359,14 @@ pub(super) fn emit_strict_compare(
             }
             PhpType::Array(_)
             | PhpType::AssocArray { .. }
+            | PhpType::Iterable
             | PhpType::Callable
             | PhpType::Object(_)
             | PhpType::Buffer(_)
             | PhpType::Packed(_)
             | PhpType::Pointer(_) => {
                 let left_reg = abi::symbol_scratch_reg(emitter);
-                abi::emit_pop_reg(emitter, left_reg);                           // pop the saved left array/callable/object pointer from the temporary comparison stack
+                abi::emit_pop_reg(emitter, left_reg);                           // pop the saved left array/callable/object/iterable pointer from the temporary comparison stack
                 emitter.instruction(&format!("cmp {}, {}", left_reg, abi::int_result_reg(emitter))); // compare the two pointers for reference equality
                 match emitter.target.arch {
                     crate::codegen::platform::Arch::AArch64 => {

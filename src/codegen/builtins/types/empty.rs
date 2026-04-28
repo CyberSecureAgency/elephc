@@ -71,7 +71,7 @@ pub fn emit(
                 }
             }
         }
-        PhpType::Mixed | PhpType::Union(_) => {
+        PhpType::Mixed | PhpType::Union(_) | PhpType::Iterable => {
             // -- mixed values use PHP empty() semantics for the boxed payload --
             abi::emit_call_label(emitter, "__rt_mixed_is_empty");               // inspect the boxed payload instead of the mixed box pointer through the target-aware runtime helper
         }

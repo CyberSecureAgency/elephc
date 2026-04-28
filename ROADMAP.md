@@ -364,6 +364,7 @@ Proper type system for PHP compatibility.
 - [x] PHP 7.4 numeric separators (`1_000_000`, `0xFF_FF`, `0b1010_1010`, `0o7_7_7`, `1_000.5`, `1e1_0`) across decimal, hex, octal, binary, and float literals
 - [x] Trailing-character validation on numeric literals (rejects `0o78`, `078`, `0xfg`, `0b12`, `1_`, `1__0` at lex time instead of silently splitting tokens)
 - [x] Support for `never` return type
+- [x] `iterable` pseudo-type runtime parity — `foreach` over hash-backed iterables, `echo`, `gettype()`, `var_dump()`, `===`, scalar casts (`(int)`, `(float)`, `(string)`, `(bool)`), and the `is_iterable()` builtin all dispatch through the heap-kind tag instead of routing through `__rt_mixed_*` helpers; indexed-array iterables abort with a runtime fatal because per-element type metadata is not yet propagated through the iterable boundary
 
 ## v0.20.x — Shared and static libraries (C ABI)
 
@@ -434,6 +435,7 @@ Features that are feasible but complex. Not currently planned for any specific v
 | Runtime-order-aware include_once / require_once | Medium | Add runtime guards for `include_once` / `require_once` inside functions, methods, loops, and conditional branches so skipped files match PHP execution order rather than only compile-time traversal order. |
 | PHP resource type compatibility | Medium | Model resources separately from integers so file handles and future extension handles can more closely match PHP behavior. |
 | Runtime-value compatibility polishing v2 | Medium | Continue with PHP's uninitialized typed-property state, integer overflow promotion, broader loose-comparison semantics, and future warning/notice sites as they are added. |
+| `iterable` runtime parity v2 | Medium | Support `foreach` over **indexed-array** iterables by propagating per-element type metadata through the iterable boundary (e.g., a runtime element-type tag in the indexed-array header) so the loop knows how to read each element. Also model the PHP `Traversable` interface so user-defined classes can be iterated through `iterable`. Hash-backed iterables and scalar/echo/gettype/var_dump operations are already wired through `__rt_heap_kind`. |
 | String-capable FFI callbacks | Medium | Allow C callback signatures that pass or return strings once ownership and temporary C-string lifetimes are modeled safely across callback boundaries. |
 | Generators / `yield` | High | Requires compile-time state machine transformation: every yield point becomes a switch case, all locals promoted to heap-allocated generator object. Edge cases with yield inside try/catch/finally are significant. |
 | `yield from` delegation | High | Depends on generators. Forwards iteration to an inner generator, propagating values and return. |
