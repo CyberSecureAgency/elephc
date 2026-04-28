@@ -14,7 +14,7 @@ pub fn emit(
     data: &mut DataSection,
 ) -> Option<PhpType> {
     emitter.comment("substr()");
-    emit_expr(&args[0], emitter, ctx, data);
+    super::args::emit_string_arg(&args[0], emitter, ctx, data);
     let neg_done = ctx.next_label("substr_neg_done");
     let len_done = ctx.next_label("substr_len_done");
     match emitter.target.arch {
