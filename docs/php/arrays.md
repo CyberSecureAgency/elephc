@@ -139,4 +139,5 @@ echo $matrix[0][1];    // 2
 
 ## Limitations
 - Indexed arrays are homogeneous (except object elements may widen to shared parent class)
+- Associative arrays are currently string-keyed; full PHP integer-key and numeric-string key coercion is tracked in `ROADMAP.md`
 - Array union is supported for indexed+indexed and associative+associative operands; mixed indexed/associative union and heterogeneous indexed-array union are tracked in `ROADMAP.md`
