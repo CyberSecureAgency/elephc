@@ -1,7 +1,7 @@
 use crate::errors::CompileError;
 use crate::names::Name;
 use crate::parser::ast::{BinOp, Expr, ExprKind, Stmt, TypeExpr};
-use crate::types::{PhpType, TypeEnv};
+use crate::types::{merge_array_key_types, PhpType, TypeEnv};
 
 use super::super::Checker;
 use super::syntactic::infer_return_type_syntactic;
@@ -35,7 +35,31 @@ impl Checker {
                 }
                 Ok(PhpType::Float)
             }
-            BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod => {
+            BinOp::Add => {
+                if is_array_like_type(&lt) || is_array_like_type(&rt) {
+                    return self.infer_array_union_type(&lt, &rt, left, right, expr);
+                }
+                let lt_ok = matches!(
+                    lt,
+                    PhpType::Int | PhpType::Float | PhpType::Bool | PhpType::Void
+                ) || self.is_union_with_mixed_int_dispatch(&lt);
+                let rt_ok = matches!(
+                    rt,
+                    PhpType::Int | PhpType::Float | PhpType::Bool | PhpType::Void
+                ) || self.is_union_with_mixed_int_dispatch(&rt);
+                if !lt_ok || !rt_ok {
+                    return Err(CompileError::new(
+                        expr.span,
+                        "Arithmetic operators require numeric operands",
+                    ));
+                }
+                if lt == PhpType::Float || rt == PhpType::Float {
+                    Ok(PhpType::Float)
+                } else {
+                    Ok(PhpType::Int)
+                }
+            }
+            BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod => {
                 let lt_ok = matches!(
                     lt,
                     PhpType::Int | PhpType::Float | PhpType::Bool | PhpType::Void
@@ -129,6 +153,59 @@ impl Checker {
                     Ok(lt)
                 }
             }
+        }
+    }
+
+    fn infer_array_union_type(
+        &self,
+        lt: &PhpType,
+        rt: &PhpType,
+        left: &Expr,
+        right: &Expr,
+        expr: &Expr,
+    ) -> Result<PhpType, CompileError> {
+        match (lt, rt) {
+            (PhpType::Array(left_elem), PhpType::Array(right_elem)) => {
+                if is_empty_indexed_array_literal(left) {
+                    return Ok(PhpType::Array(right_elem.clone()));
+                }
+                if is_empty_indexed_array_literal(right) {
+                    return Ok(PhpType::Array(left_elem.clone()));
+                }
+                self.merge_array_element_type(left_elem, right_elem)
+                    .map(|elem| PhpType::Array(Box::new(elem)))
+                    .ok_or_else(|| {
+                        CompileError::new(
+                            expr.span,
+                            "Array union requires compatible indexed array element types",
+                        )
+                    })
+            }
+            (
+                PhpType::AssocArray {
+                    key: left_key,
+                    value: left_value,
+                },
+                PhpType::AssocArray {
+                    key: right_key,
+                    value: right_value,
+                },
+            ) => {
+                let key = self
+                    .merge_array_element_type(left_key, right_key)
+                    .unwrap_or_else(|| merge_array_key_types(*left_key.clone(), *right_key.clone()));
+                let value = self
+                    .merge_array_element_type(left_value, right_value)
+                    .unwrap_or(PhpType::Mixed);
+                Ok(PhpType::AssocArray {
+                    key: Box::new(key),
+                    value: Box::new(value),
+                })
+            }
+            _ => Err(CompileError::new(
+                expr.span,
+                "Array union requires both operands to be arrays of the same kind",
+            )),
         }
     }
 
@@ -379,4 +456,12 @@ impl Checker {
         }
         Ok(PhpType::Int) // fallback for unknown callables
     }
+}
+
+fn is_array_like_type(ty: &PhpType) -> bool {
+    matches!(ty, PhpType::Array(_) | PhpType::AssocArray { .. })
+}
+
+fn is_empty_indexed_array_literal(expr: &Expr) -> bool {
+    matches!(&expr.kind, ExprKind::ArrayLiteral(elems) if elems.is_empty())
 }

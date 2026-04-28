@@ -9,7 +9,7 @@ sidebar:
 
 | Operator | Example | Notes |
 |---|---|---|
-| `+` | `$a + $b` | Addition |
+| `+` | `$a + $b` | Numeric addition, or PHP array union when both operands are arrays |
 | `-` | `$a - $b` | Subtraction |
 | `*` | `$a * $b` | Multiplication |
 | `/` | `$a / $b` | Division (always returns float) |

@@ -14,6 +14,14 @@ echo "Moved to: " . $user["city"] . "\n";
 $user["age"] = "30";
 echo "Age: " . $user["age"] . "\n";
 
+// PHP key normalization: "1" and 1 are the same key, but "01" stays a string key
+$codes = [1 => "one", "2" => "two", "01" => "leading"];
+$codes["1"] = "ONE";
+echo "Code 1: " . $codes[1] . "\n";
+echo "Code 2: " . $codes["2"] . "\n";
+echo "Code 01: " . $codes["01"] . "\n";
+echo "Codes JSON: " . json_encode($codes) . "\n";
+
 // Iterate with key => value
 echo "\nAll fields:\n";
 foreach ($user as $key => $value) {
@@ -70,6 +78,15 @@ for ($i = 0; $i < $n; $i++) {
     }
 }
 echo "\n";
+
+// PHP array union: duplicate keys keep the left value
+$defaults = ["theme" => "light", "lang" => "en"];
+$overrides = ["lang" => "it", "timezone" => "Europe/Rome"];
+$settings = $defaults + $overrides;
+echo "\nSettings union:\n";
+foreach ($settings as $key => $value) {
+    echo "  " . $key . " = " . $value . "\n";
+}
 
 // Mixed-value associative arrays keep a runtime tag per entry
 $profile = ["name" => "Alice", "age" => 30, "active" => true, "note" => null];

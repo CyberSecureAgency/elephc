@@ -326,8 +326,8 @@ Starting at offset +40, each slot is 64 bytes:
 | Field | Description |
 |---|---|
 | `occupied` | 0 = empty, 1 = occupied, 2 = tombstone (deleted) |
-| `key_ptr` | Pointer to key string bytes |
-| `key_len` | Key string length |
+| `key_ptr` | String key pointer, or the integer key payload when `key_len == -1` |
+| `key_len` | String key length, or `-1` sentinel for integer keys |
 | `value_lo` | Value (integer) or value pointer (string) |
 | `value_hi` | String length (for string values), unused for single-word payloads |
 | `value_tag` | Authoritative per-entry runtime tag used by lookup, iteration, JSON, search, and GC |
@@ -336,7 +336,7 @@ Starting at offset +40, each slot is 64 bytes:
 
 ### Hashing and collision resolution
 
-Keys are hashed with **FNV-1a** (fast, good distribution for short strings). Collisions are resolved by **linear probing** — if slot `hash % capacity` is occupied, try `(hash + 1) % capacity`, and so on.
+String keys are normalized before lookup or insertion: PHP integer-form numeric strings become integer keys, while leading-zero strings such as `"01"` remain string keys. String keys are hashed with **FNV-1a** (fast, good distribution for short strings); integer keys use a scalar integer mix. Collisions are resolved by **linear probing** — if slot `hash % capacity` is occupied, try `(hash + 1) % capacity`, and so on.
 
 Entry address: `base + 40 + (slot_index × 64)`
 

@@ -158,7 +158,7 @@ Each routine follows the same pattern — inputs in registers, output in standar
 
 ## Array routines
 
-**Source:** `src/codegen/runtime/arrays/` (104 files)
+**Source:** `src/codegen/runtime/arrays/` (110 files)
 
 ### Core allocation
 
@@ -204,13 +204,16 @@ Common copy-producing array/hash routines now also have dedicated `_refcounted` 
 | Routine | What it does | Input | Output |
 |---|---|---|---|
 | `__rt_hash_fnv1a` | FNV-1a hash of string | `x1`/`x2` = string | `x0` = hash |
+| `__rt_hash_normalize_key` | Normalize PHP string array keys, converting integer-form numeric strings to integer keys | `x1`/`x2` = string key | `x1`/`x2` = normalized key |
+| `__rt_hash_key_hash` | Hash a normalized int/string array key | `x1`/`x2` = normalized key | `x0` = hash |
+| `__rt_hash_key_eq` | Compare normalized int/string array keys | `x1`/`x2`, `x3`/`x4` = keys | `x0` = equal flag |
 | `__rt_hash_new` | Create hash table | `x0` = capacity, `x1` = coarse value-type summary | `x0` = hash ptr |
 | `__rt_hash_clone_shallow` | Clone hash storage for copy-on-write splitting, re-persisting keys and retaining nested heap values as needed | `x0` = hash | `x0` = new hash |
 | `__rt_hash_ensure_unique` | Split a shared hash table before mutation | `x0` = hash | `x0` = unique hash |
 | `__rt_hash_grow` | Double hash table capacity, rehash all entries | `x0` = hash | `x0` = new hash |
-| `__rt_hash_set` | Insert/update (grows at 75% load) | `x0`=hash, `x1`/`x2`=key, `x3`/`x4`=value, `x5`=value_tag | `x0` = hash |
-| `__rt_hash_insert_owned` | Reinsert an already-owned key/value pair during hash growth | `x0`=hash, `x1`/`x2`=key, `x3`/`x4`=value, `x5`=value_tag | `x0` = hash |
-| `__rt_hash_get` | Look up value by key | `x0`=hash, `x1`/`x2`=key | `x0`=found, `x1`=val_lo, `x2`=val_hi, `x3`=value_tag |
+| `__rt_hash_set` | Insert/update (grows at 75% load) | `x0`=hash, `x1`/`x2`=normalized key, `x3`/`x4`=value, `x5`=value_tag | `x0` = hash |
+| `__rt_hash_insert_owned` | Reinsert an already-owned key/value pair during hash growth | `x0`=hash, `x1`/`x2`=normalized key, `x3`/`x4`=value, `x5`=value_tag | `x0` = hash |
+| `__rt_hash_get` | Look up value by key | `x0`=hash, `x1`/`x2`=normalized key | `x0`=found, `x1`=val_lo, `x2`=val_hi, `x3`=value_tag |
 | `__rt_hash_iter_next` | Iterate to next entry in insertion order | `x0`=hash, `x1`=cursor | `x0`=next cursor, `x1`/`x2`=key, `x3`/`x4`=value, `x5`=value_tag |
 | `__rt_hash_count` | Count occupied entries | `x0`=hash | `x0`=count |
 | `__rt_hash_free_deep` | Free a hash table plus owned keys and nested heap-backed values | `x0`=hash | — |
@@ -236,7 +239,8 @@ See [Memory Model](memory-model.md) for the hash table memory layout.
 | `__rt_array_unique` | Remove duplicate values |
 | `__rt_array_diff` / `__rt_array_intersect` | Set difference/intersection by value |
 | `__rt_array_diff_key` / `__rt_array_intersect_key` | Set operations by key |
-| `__rt_array_flip` | Swap keys and values → AssocArray |
+| `__rt_array_flip` | Swap indexed integer values into associative-array keys |
+| `__rt_array_flip_string` | Swap indexed string values into associative-array keys, normalizing numeric-string keys |
 | `__rt_array_combine` | Combine key array + value array → AssocArray |
 | `__rt_array_fill` / `__rt_array_fill_keys` | Create filled arrays |
 | `__rt_array_chunk` / `__rt_array_pad` | Chunk/pad arrays |

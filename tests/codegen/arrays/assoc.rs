@@ -49,6 +49,123 @@ echo $m["key"];
 }
 
 #[test]
+fn test_assoc_array_integer_and_numeric_string_keys() {
+    let out = compile_and_run(
+        r#"<?php
+$m = [1 => "one", "2" => "two", "01" => "leading"];
+echo $m[1] . "|" . $m["1"] . "|" . $m[2] . "|" . $m["01"];
+"#,
+    );
+    assert_eq!(out, "one|one|two|leading");
+}
+
+#[test]
+fn test_assoc_array_numeric_string_key_boundaries() {
+    let out = compile_and_run(
+        r#"<?php
+$m = [
+    "0" => "zero",
+    "00" => "double-zero",
+    "-1" => "negative",
+    "-0" => "negative-zero",
+    "9223372036854775807" => "max",
+    "9223372036854775808" => "overflow",
+    "-9223372036854775808" => "min",
+    "-9223372036854775809" => "underflow",
+];
+echo $m[0] . "|" . $m["00"] . "|" . $m[-1] . "|" . $m["-0"] . "|";
+echo $m[PHP_INT_MAX] . "|" . $m["9223372036854775808"] . "|";
+echo $m[PHP_INT_MIN] . "|" . $m["-9223372036854775809"];
+"#,
+    );
+    assert_eq!(
+        out,
+        "zero|double-zero|negative|negative-zero|max|overflow|min|underflow"
+    );
+}
+
+#[test]
+fn test_assoc_array_numeric_string_assignment_updates_integer_key() {
+    let out = compile_and_run(
+        r#"<?php
+$m = [1 => "left"];
+$m["1"] = "right";
+$m["01"] = "leading";
+echo count($m) . ":" . $m[1] . ":" . $m["01"];
+"#,
+    );
+    assert_eq!(out, "2:right:leading");
+}
+
+#[test]
+fn test_assoc_array_union_keeps_left_duplicate_keys() {
+    let out = compile_and_run(
+        r#"<?php
+$left = ["a" => "left", "b" => "keep"];
+$right = ["a" => "right", "c" => "new"];
+$result = $left + $right;
+echo count($result) . ":";
+foreach ($result as $k => $v) {
+    echo $k . "=" . $v . " ";
+}
+"#,
+    );
+    assert_eq!(out, "3:a=left b=keep c=new ");
+}
+
+#[test]
+fn test_assoc_array_union_normalizes_numeric_string_duplicates() {
+    let out = compile_and_run(
+        r#"<?php
+$left = [1 => "left"];
+$right = ["1" => "right", 2 => "new"];
+$result = $left + $right;
+echo count($result) . ":" . $result[1] . ":" . $result[2];
+"#,
+    );
+    assert_eq!(out, "2:left:new");
+}
+
+#[test]
+fn test_assoc_array_union_int_values() {
+    let out = compile_and_run(
+        r#"<?php
+$left = ["a" => 1, "b" => 2];
+$right = ["b" => 99, "c" => 3];
+$result = $left + $right;
+echo $result["a"] + $result["b"] + $result["c"];
+"#,
+    );
+    assert_eq!(out, "6");
+}
+
+#[test]
+fn test_assoc_array_union_with_assoc_builtin_operands() {
+    let out = compile_and_run(
+        r#"<?php
+$left = array_fill_keys(["a", "b"], 1);
+$right = array_combine(["b", "c"], [99, 3]);
+$result = $left + $right;
+echo $result["a"] + $result["b"] + $result["c"];
+"#,
+    );
+    assert_eq!(out, "5");
+}
+
+#[test]
+fn test_assoc_array_union_with_key_filter_builtin_operand() {
+    let out = compile_and_run(
+        r#"<?php
+$left = array_diff_key(["a" => 1, "b" => 2], ["a" => 0]);
+$right = ["b" => 99, "c" => 3];
+$result = $left + $right;
+echo $result["b"] + $result["c"];
+"#,
+    );
+    assert_eq!(out, "5");
+}
+
+#[test]
 fn test_assoc_foreach_key_value() {
     let out = compile_and_run(
         r#"<?php
@@ -59,6 +176,19 @@ foreach ($m as $k => $v) {
 "#,
     );
     assert_eq!(out, "a=1 b=2 ");
+}
+
+#[test]
+fn test_assoc_foreach_mixed_integer_and_string_keys() {
+    let out = compile_and_run(
+        r#"<?php
+$m = [1 => "a", "02" => "b"];
+foreach ($m as $k => $v) {
+    echo $k . "=" . $v . ";";
+}
+"#,
+    );
+    assert_eq!(out, "1=a;02=b;");
 }
 
 #[test]
@@ -226,4 +356,3 @@ echo match($x) {
     );
     assert_eq!(out, "unknown");
 }
-

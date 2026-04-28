@@ -1,4 +1,5 @@
 mod addslashes;
+mod args;
 mod base64_decode;
 mod base64_encode;
 mod bin2hex;

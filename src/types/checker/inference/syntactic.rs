@@ -1,5 +1,5 @@
 use crate::parser::ast::{BinOp, CastType, Expr, ExprKind, Stmt, StmtKind};
-use crate::types::PhpType;
+use crate::types::{merge_array_key_types, normalized_array_key_type, PhpType};
 
 /// Infer a function's return type by scanning its body for Return statements.
 /// This is a syntactic/heuristic check — no full type inference.
@@ -116,6 +116,41 @@ pub(crate) fn wider_type_syntactic(a: &PhpType, b: &PhpType) -> PhpType {
     a.clone()
 }
 
+fn array_union_type_syntactic(a: &PhpType, b: &PhpType) -> Option<PhpType> {
+    match (a, b) {
+        (PhpType::Array(left), PhpType::Array(right)) if left == right => {
+            Some(PhpType::Array(left.clone()))
+        }
+        (
+            PhpType::AssocArray {
+                key: left_key,
+                value: left_value,
+            },
+            PhpType::AssocArray {
+                key: right_key,
+                value: right_value,
+            },
+        ) => {
+            let key = if left_key == right_key {
+                left_key.clone()
+            } else {
+                Box::new(PhpType::Mixed)
+            };
+            let value = if left_value == right_value {
+                left_value.clone()
+            } else {
+                Box::new(PhpType::Mixed)
+            };
+            Some(PhpType::AssocArray { key, value })
+        }
+        _ => None,
+    }
+}
+
+fn is_empty_indexed_array_literal(expr: &Expr) -> bool {
+    matches!(&expr.kind, ExprKind::ArrayLiteral(elems) if elems.is_empty())
+}
+
 pub fn infer_expr_type_syntactic(expr: &Expr) -> PhpType {
     match &expr.kind {
         ExprKind::StringLiteral(_) => PhpType::Str,
@@ -221,14 +256,17 @@ pub fn infer_expr_type_syntactic(expr: &Expr) -> PhpType {
         ExprKind::ArrayLiteralAssoc(entries) => {
             let mut key_ty = entries
                 .first()
-                .map(|(key, _)| infer_expr_type_syntactic(key))
+                .map(|(key, _)| normalized_array_key_type(key, infer_expr_type_syntactic(key)))
                 .unwrap_or(PhpType::Mixed);
             let mut value_ty = entries
                 .first()
                 .map(|(_, value)| infer_expr_type_syntactic(value))
                 .unwrap_or(PhpType::Mixed);
             for (key, value) in entries.iter().skip(1) {
-                key_ty = wider_type_syntactic(&key_ty, &infer_expr_type_syntactic(key));
+                key_ty = merge_array_key_types(
+                    key_ty,
+                    normalized_array_key_type(key, infer_expr_type_syntactic(key)),
+                );
                 value_ty = wider_type_syntactic(&value_ty, &infer_expr_type_syntactic(value));
             }
             PhpType::AssocArray {
@@ -241,7 +279,26 @@ pub fn infer_expr_type_syntactic(expr: &Expr) -> PhpType {
         ExprKind::This => PhpType::Object(String::new()),
         ExprKind::PtrCast { target_type, .. } => PhpType::Pointer(Some(target_type.clone())),
         ExprKind::BinaryOp { left, op, right } => match op {
-            BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Mod => {
+            BinOp::Add => {
+                let lt = infer_expr_type_syntactic(left);
+                let rt = infer_expr_type_syntactic(right);
+                if matches!((&lt, &rt), (PhpType::Array(_), PhpType::Array(_)))
+                    && is_empty_indexed_array_literal(left)
+                {
+                    rt
+                } else if matches!((&lt, &rt), (PhpType::Array(_), PhpType::Array(_)))
+                    && is_empty_indexed_array_literal(right)
+                {
+                    lt
+                } else if let Some(ty) = array_union_type_syntactic(&lt, &rt) {
+                    ty
+                } else if lt == PhpType::Float || rt == PhpType::Float {
+                    PhpType::Float
+                } else {
+                    PhpType::Int
+                }
+            }
+            BinOp::Sub | BinOp::Mul | BinOp::Mod => {
                 let lt = infer_expr_type_syntactic(left);
                 let rt = infer_expr_type_syntactic(right);
                 if lt == PhpType::Float || rt == PhpType::Float {

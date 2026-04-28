@@ -123,8 +123,8 @@ fn emit_array_clone_shallow_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("push r13");                                            // preserve r13 because the clone helper uses it for the source capacity across nested helper calls
     emitter.instruction("push r14");                                            // preserve r14 because the clone helper uses it for the source element size across nested helper calls
     emitter.instruction("push r15");                                            // preserve r15 because the clone helper uses it for the packed heap-kind metadata across nested helper calls
-    emitter.instruction("sub rsp, 16");                                         // reserve aligned spill slots for the saved source array pointer and cloned array pointer
-    emitter.instruction("mov QWORD PTR [rbp - 8], rdi");                        // preserve the source indexed-array pointer across the clone helper control flow
+    emitter.instruction("sub rsp, 32");                                         // reserve aligned spill slots below the saved callee-saved registers
+    emitter.instruction("mov QWORD PTR [rbp - 40], rdi");                       // preserve the source indexed-array pointer across the clone helper control flow
     emitter.instruction("mov r12, QWORD PTR [rdi]");                            // load the source indexed-array logical length before allocating the clone
     emitter.instruction("mov r13, QWORD PTR [rdi + 8]");                        // load the source indexed-array capacity before allocating the clone
     emitter.instruction("mov r14, QWORD PTR [rdi + 16]");                       // load the source indexed-array element size so the clone keeps the same slot width
@@ -132,14 +132,14 @@ fn emit_array_clone_shallow_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov rdi, r13");                                        // pass the source indexed-array capacity to the shared array allocator helper
     emitter.instruction("mov rsi, r14");                                        // pass the source indexed-array element size to the shared array allocator helper
     emitter.instruction("call __rt_array_new");                                 // allocate a fresh indexed-array backing store for the clone
-    emitter.instruction("mov QWORD PTR [rbp - 16], rax");                       // preserve the cloned indexed-array pointer across payload copy and ownership fixups
+    emitter.instruction("mov QWORD PTR [rbp - 48], rax");                       // preserve the cloned indexed-array pointer across payload copy and ownership fixups
     emitter.instruction("mov r11, QWORD PTR [rax - 8]");                        // snapshot the freshly allocated clone header so the x86_64 heap marker survives the metadata rewrite
     emitter.instruction("and r11, -65536");                                     // keep the high x86_64 heap-marker bits while clearing the low container-kind payload lane
     emitter.instruction("and r15, 0xffff");                                     // preserve only the stable indexed-array kind, value_type, and copy-on-write metadata bits
     emitter.instruction("or r11, r15");                                         // combine the fresh clone header marker bits with the stable source container-kind payload bits
     emitter.instruction("mov QWORD PTR [rax - 8], r11");                        // stamp the cloned indexed-array with the preserved container metadata without losing the x86_64 heap marker
     emitter.instruction("mov QWORD PTR [rax], r12");                            // restore the source logical length on the cloned indexed-array header
-    emitter.instruction("mov rsi, QWORD PTR [rbp - 8]");                        // reload the source indexed-array pointer before copying its live payload region
+    emitter.instruction("mov rsi, QWORD PTR [rbp - 40]");                       // reload the source indexed-array pointer before copying its live payload region
     emitter.instruction("lea rsi, [rsi + 24]");                                 // advance to the source indexed-array payload base
     emitter.instruction("lea rdi, [rax + 24]");                                 // advance to the cloned indexed-array payload base
     emitter.instruction("mov rcx, r12");                                        // seed the payload byte-count computation from the source logical length
@@ -169,38 +169,81 @@ fn emit_array_clone_shallow_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("je __rt_array_clone_shallow_refs");                    // retain every live child pointer for boxed mixed payloads
     emitter.instruction("jmp __rt_array_clone_shallow_done");                   // scalar and float payloads are already correct after the shallow byte copy
     emitter.label("__rt_array_clone_shallow_strings");
-    emitter.instruction("xor r10d, r10d");                                      // start the cloned string-slot fixup loop from the first live indexed-array slot
+    emitter.instruction("mov QWORD PTR [rbp - 56], 0");                         // start the cloned string-slot fixup loop from the first live indexed-array slot
     emitter.label("__rt_array_clone_shallow_strings_loop");
+    emitter.instruction("mov r10, QWORD PTR [rbp - 56]");                       // reload the current cloned string-slot index after any nested helper call
     emitter.instruction("cmp r10, r12");                                        // have we duplicated every live string payload owned by the cloned indexed array?
     emitter.instruction("jae __rt_array_clone_shallow_done");                   // finish once every live string slot now owns a persisted payload copy
     emitter.instruction("mov r11, r10");                                        // copy the current string-slot index before scaling it into a 16-byte payload offset
     emitter.instruction("shl r11, 4");                                          // convert the logical string-slot index into the byte offset of the 16-byte payload slot
-    emitter.instruction("mov r8, QWORD PTR [rbp - 16]");                        // reload the cloned indexed-array pointer before addressing the current string slot
+    emitter.instruction("mov r8, QWORD PTR [rbp - 48]");                        // reload the cloned indexed-array pointer before addressing the current string slot
     emitter.instruction("lea r11, [r8 + r11 + 24]");                            // compute the address of the current cloned string slot inside the indexed-array payload region
     emitter.instruction("mov rax, QWORD PTR [r11]");                            // load the shallow-copied string pointer that still aliases the source indexed array
     emitter.instruction("mov rdx, QWORD PTR [r11 + 8]");                        // load the shallow-copied string length for the current cloned string slot
     emitter.instruction("call __rt_str_persist");                               // duplicate the string payload so the cloned indexed-array slot owns an independent persisted copy
+    emitter.instruction("mov r10, QWORD PTR [rbp - 56]");                       // restore the string-slot index after str_persist clobbered caller-saved registers
+    emitter.instruction("mov r11, r10");                                        // copy the restored index before recomputing the destination string-slot address
+    emitter.instruction("shl r11, 4");                                          // convert the restored index into the 16-byte cloned string-slot offset
+    emitter.instruction("mov r8, QWORD PTR [rbp - 48]");                        // reload the cloned indexed-array pointer after str_persist returned
+    emitter.instruction("lea r11, [r8 + r11 + 24]");                            // recompute the cloned string slot because r11 is caller-saved
     emitter.instruction("mov QWORD PTR [r11], rax");                            // install the newly persisted string pointer back into the cloned indexed-array slot
     emitter.instruction("mov QWORD PTR [r11 + 8], rdx");                        // install the preserved string length back into the cloned indexed-array slot
     emitter.instruction("add r10, 1");                                          // advance to the next live cloned string slot that still needs a persisted payload copy
+    emitter.instruction("mov QWORD PTR [rbp - 56], r10");                       // persist the next string-slot index across the following helper call
     emitter.instruction("jmp __rt_array_clone_shallow_strings_loop");           // continue duplicating the live string payloads owned by the cloned indexed array
     emitter.label("__rt_array_clone_shallow_refs");
-    emitter.instruction("xor r10d, r10d");                                      // start the cloned child-pointer retain loop from the first live indexed-array slot
+    emitter.instruction("mov QWORD PTR [rbp - 56], 0");                         // start the cloned child-pointer retain loop from the first live indexed-array slot
     emitter.label("__rt_array_clone_shallow_refs_loop");
+    emitter.instruction("mov r10, QWORD PTR [rbp - 56]");                       // reload the current child-pointer slot index after any nested retain call
     emitter.instruction("cmp r10, r12");                                        // have we retained every live child pointer owned by the cloned indexed array?
     emitter.instruction("jae __rt_array_clone_shallow_done");                   // finish once every live child pointer has been retained for the cloned owner
-    emitter.instruction("mov r8, QWORD PTR [rbp - 16]");                        // reload the cloned indexed-array pointer before addressing the current child slot
+    emitter.instruction("mov r8, QWORD PTR [rbp - 48]");                        // reload the cloned indexed-array pointer before addressing the current child slot
     emitter.instruction("mov rax, QWORD PTR [r8 + r10 * 8 + 24]");              // load the shallow-copied child pointer from the current cloned indexed-array slot
     emitter.instruction("call __rt_incref");                                    // retain the shared child pointer so the cloned indexed-array owner has its own reference
+    emitter.instruction("mov r10, QWORD PTR [rbp - 56]");                       // restore the child slot index after incref clobbered caller-saved registers
     emitter.instruction("add r10, 1");                                          // advance to the next live child-pointer slot in the cloned indexed-array payload
+    emitter.instruction("mov QWORD PTR [rbp - 56], r10");                       // persist the next child slot index across the following retain call
     emitter.instruction("jmp __rt_array_clone_shallow_refs_loop");              // continue retaining live child pointers for the cloned indexed array
     emitter.label("__rt_array_clone_shallow_done");
-    emitter.instruction("mov rax, QWORD PTR [rbp - 16]");                       // return the cloned indexed-array pointer in the x86_64 integer result register
-    emitter.instruction("add rsp, 16");                                         // release the spill slots used to preserve the source and cloned indexed-array pointers
+    emitter.instruction("mov rax, QWORD PTR [rbp - 48]");                       // return the cloned indexed-array pointer in the x86_64 integer result register
+    emitter.instruction("add rsp, 32");                                         // release the spill slots used below the saved callee-saved registers
     emitter.instruction("pop r15");                                             // restore r15 after using it for packed heap-kind metadata across nested helper calls
     emitter.instruction("pop r14");                                             // restore r14 after using it for the indexed-array element size across nested helper calls
     emitter.instruction("pop r13");                                             // restore r13 after using it for the indexed-array capacity across nested helper calls
     emitter.instruction("pop r12");                                             // restore r12 after using it for the indexed-array logical length across nested helper calls
     emitter.instruction("pop rbp");                                             // restore the caller frame pointer before returning the cloned indexed array
     emitter.instruction("ret");                                                 // return to the caller with rax holding the cloned indexed-array pointer
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::codegen::emit::Emitter;
+    use crate::codegen::platform::{Arch, Platform, Target};
+
+    use super::*;
+
+    #[test]
+    fn test_x86_clone_frame_keeps_locals_below_saved_callee_registers() {
+        let mut emitter = Emitter::new(Target::new(Platform::Linux, Arch::X86_64));
+        emit_array_clone_shallow(&mut emitter);
+        let asm = emitter.output();
+
+        assert!(asm.contains("sub rsp, 32\n"));
+        assert!(asm.contains("mov QWORD PTR [rbp - 40], rdi\n"));
+        assert!(asm.contains("mov QWORD PTR [rbp - 48], rax\n"));
+        assert!(!asm.contains("mov QWORD PTR [rbp - 8], rdi\n"));
+        assert!(!asm.contains("mov QWORD PTR [rbp - 16], rax\n"));
+    }
+
+    #[test]
+    fn test_x86_clone_string_fixup_recomputes_slot_after_persist() {
+        let mut emitter = Emitter::new(Target::new(Platform::Linux, Arch::X86_64));
+        emit_array_clone_shallow(&mut emitter);
+        let asm = emitter.output();
+
+        assert!(asm.contains("mov QWORD PTR [rbp - 56], 0\n"));
+        assert!(asm.contains("call __rt_str_persist\n    mov r10, QWORD PTR [rbp - 56]\n"));
+        assert!(asm.contains("mov r8, QWORD PTR [rbp - 48]\n    lea r11, [r8 + r11 + 24]\n"));
+        assert!(asm.contains("call __rt_incref\n    mov r10, QWORD PTR [rbp - 56]\n"));
+    }
 }

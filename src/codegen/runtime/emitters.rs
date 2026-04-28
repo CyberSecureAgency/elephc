@@ -123,11 +123,15 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter) {
     arrays::emit_array_push_int(emitter);
     arrays::emit_array_push_refcounted(emitter);
     arrays::emit_array_push_str(emitter);
+    arrays::emit_array_union(emitter);
     arrays::emit_random_u32(emitter);
     arrays::emit_random_uniform(emitter);
     arrays::emit_sort_int(emitter, false);
     arrays::emit_sort_int(emitter, true);
     arrays::emit_hash_fnv1a(emitter);
+    arrays::emit_hash_key_hash(emitter);
+    arrays::emit_hash_key_eq(emitter);
+    arrays::emit_hash_normalize_key(emitter);
     arrays::emit_hash_clone_shallow(emitter);
     arrays::emit_hash_ensure_unique(emitter);
     arrays::emit_hash_new(emitter);
@@ -137,6 +141,7 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter) {
     arrays::emit_hash_insert_owned(emitter);
     arrays::emit_hash_get(emitter);
     arrays::emit_hash_iter(emitter);
+    arrays::emit_hash_union(emitter);
     arrays::emit_hash_count(emitter);
     arrays::emit_hash_free_deep(emitter);
     arrays::emit_array_key_exists(emitter);
@@ -165,6 +170,7 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter) {
     arrays::emit_array_intersect(emitter);
     arrays::emit_array_intersect_refcounted(emitter);
     arrays::emit_array_flip(emitter);
+    arrays::emit_array_flip_string(emitter);
     arrays::emit_array_combine(emitter);
     arrays::emit_array_combine_refcounted(emitter);
     arrays::emit_array_fill_keys(emitter);

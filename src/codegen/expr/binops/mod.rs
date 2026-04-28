@@ -4,12 +4,14 @@ use super::super::emit::Emitter;
 use super::{emit_null_coalesce, emit_strict_compare, BinOp, Expr, PhpType};
 
 mod arithmetic;
+mod array_union;
 mod comparison;
 mod target;
 
 use arithmetic::{
     emit_concat_binop, emit_logical_binop, emit_numeric_binop, emit_pow_binop,
 };
+use array_union::{emit_array_union_binop, is_array_union_candidate};
 use comparison::{emit_loose_equality_binop, emit_order_compare_binop, emit_spaceship_binop};
 
 pub(super) fn emit_binop(
@@ -25,6 +27,9 @@ pub(super) fn emit_binop(
             emit_logical_binop(left, op, right, emitter, ctx, data)
         }
         BinOp::Pow => emit_pow_binop(left, right, emitter, ctx, data),
+        BinOp::Add if is_array_union_candidate(left, right, ctx) => {
+            emit_array_union_binop(left, right, emitter, ctx, data)
+        }
         BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod => {
             emit_numeric_binop(left, op, right, emitter, ctx, data)
         }

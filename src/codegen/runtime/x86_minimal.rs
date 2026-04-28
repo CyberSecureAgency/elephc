@@ -100,6 +100,7 @@ pub(super) fn emit_runtime_linux_x86_64_minimal(emitter: &mut Emitter) {
     arrays::emit_array_push_int(emitter);
     arrays::emit_array_push_refcounted(emitter);
     arrays::emit_array_push_str(emitter);
+    arrays::emit_array_union(emitter);
     arrays::emit_array_merge_into(emitter);
     arrays::emit_array_merge_into_refcounted(emitter);
     arrays::emit_range(emitter);
@@ -126,6 +127,7 @@ pub(super) fn emit_runtime_linux_x86_64_minimal(emitter: &mut Emitter) {
     arrays::emit_array_combine(emitter);
     arrays::emit_array_combine_refcounted(emitter);
     arrays::emit_array_flip(emitter);
+    arrays::emit_array_flip_string(emitter);
     arrays::emit_array_unshift(emitter);
     arrays::emit_array_unique(emitter);
     arrays::emit_array_unique_refcounted(emitter);
@@ -137,6 +139,9 @@ pub(super) fn emit_runtime_linux_x86_64_minimal(emitter: &mut Emitter) {
     arrays::emit_array_walk(emitter);
     arrays::emit_usort(emitter);
     arrays::emit_hash_fnv1a(emitter);
+    arrays::emit_hash_key_hash(emitter);
+    arrays::emit_hash_key_eq(emitter);
+    arrays::emit_hash_normalize_key(emitter);
     arrays::emit_hash_new(emitter);
     arrays::emit_hash_insert_owned(emitter);
     arrays::emit_hash_clone_shallow(emitter);
@@ -145,6 +150,7 @@ pub(super) fn emit_runtime_linux_x86_64_minimal(emitter: &mut Emitter) {
     arrays::emit_hash_set(emitter);
     arrays::emit_hash_get(emitter);
     arrays::emit_hash_iter(emitter);
+    arrays::emit_hash_union(emitter);
     arrays::emit_array_fill_keys(emitter);
     arrays::emit_array_fill_keys_refcounted(emitter);
     arrays::emit_decref_array(emitter);
@@ -283,6 +289,7 @@ mod tests {
         assert!(asm.contains("__rt_array_push_int:\n"));
         assert!(asm.contains("__rt_array_push_refcounted:\n"));
         assert!(asm.contains("__rt_array_push_str:\n"));
+        assert!(asm.contains("__rt_array_union:\n"));
         assert!(asm.contains("__rt_array_merge_into:\n"));
         assert!(asm.contains("__rt_array_merge_into_refcounted:\n"));
         assert!(asm.contains("__rt_range:\n"));
@@ -312,6 +319,7 @@ mod tests {
         assert!(asm.contains("__rt_hash_new:\n"));
         assert!(asm.contains("__rt_hash_set:\n"));
         assert!(asm.contains("__rt_hash_get:\n"));
+        assert!(asm.contains("__rt_hash_union:\n"));
         assert!(asm.contains("__rt_array_fill_keys:\n"));
         assert!(asm.contains("__rt_array_fill_keys_refcounted:\n"));
         assert!(asm.contains("__rt_array_column:\n"));
