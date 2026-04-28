@@ -231,10 +231,11 @@ pub(super) fn check_builtin(
                     "array_search() second argument must be array",
                 ));
             }
-            if matches!(arr_ty, PhpType::AssocArray { .. }) {
-                Ok(Some(PhpType::Union(vec![PhpType::Str, PhpType::Bool])))
-            } else {
-                Ok(Some(PhpType::Union(vec![PhpType::Int, PhpType::Bool])))
+            match arr_ty {
+                PhpType::AssocArray { key, .. } => {
+                    Ok(Some(checker.normalize_union_type(vec![*key, PhpType::Bool])))
+                }
+                _ => Ok(Some(PhpType::Union(vec![PhpType::Int, PhpType::Bool]))),
             }
         }
         "array_merge" | "array_diff" | "array_intersect" | "array_diff_key"

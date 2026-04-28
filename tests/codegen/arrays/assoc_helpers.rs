@@ -64,6 +64,21 @@ echo array_search("Bob", $m);
 }
 
 #[test]
+fn test_assoc_array_search_integer_key_matches_declared_union_return() {
+    let out = compile_and_run(
+        r#"<?php
+function find_key(): int|bool {
+    $m = [10 => "Alice", 20 => "Bob"];
+    return array_search("Alice", $m);
+}
+
+echo find_key();
+"#,
+    );
+    assert_eq!(out, "10");
+}
+
+#[test]
 fn test_assoc_array_search_not_found_is_strict_false() {
     let out = compile_and_run(
         r#"<?php
