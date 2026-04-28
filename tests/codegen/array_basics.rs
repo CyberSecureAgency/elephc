@@ -82,6 +82,12 @@ fn test_array_assign() {
 }
 
 #[test]
+fn test_array_compound_assign() {
+    let out = compile_and_run("<?php $a = [1, 2, 3]; $a[1] += 40; $a[2] *= 10; echo $a[1] . \"|\" . $a[2];");
+    assert_eq!(out, "42|30");
+}
+
+#[test]
 fn test_array_assign_into_empty_array_updates_length() {
     let out = compile_and_run(r#"<?php $a = []; $a[0] = 7; echo count($a) . "|" . $a[0];"#);
     assert_eq!(out, "1|7");
