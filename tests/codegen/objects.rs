@@ -1342,6 +1342,31 @@ echo $u->name();
 }
 
 #[test]
+fn test_readonly_property_null_coalesce_assignment_keeps_initialized_value() {
+    let out = compile_and_run(
+        r#"<?php
+class Box {
+    public readonly int $value;
+
+    public function __construct() {
+        $this->value = 7;
+    }
+}
+
+function fallback() {
+    echo "fallback";
+    return 9;
+}
+
+$box = new Box();
+$box->value ??= fallback();
+echo $box->value;
+"#,
+    );
+    assert_eq!(out, "7");
+}
+
+#[test]
 fn test_constructor_promoted_readonly_property() {
     let out = compile_and_run(
         r#"<?php
