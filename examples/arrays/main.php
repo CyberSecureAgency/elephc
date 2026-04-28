@@ -85,6 +85,14 @@ foreach ($unique as $value) {
 }
 echo "\n";
 
+// PHP array union: left numeric keys win, missing right keys are appended
+$union = [10, 20] + [99, 88, 77];
+echo "Union: ";
+foreach ($union as $value) {
+    echo $value . " ";
+}
+echo "\n";
+
 // List unpacking
 [$first, $second] = [$numbers[0], $numbers[1]];
 echo "First two: " . $first . ", " . $second . "\n";

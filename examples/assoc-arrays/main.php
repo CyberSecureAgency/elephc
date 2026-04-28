@@ -71,6 +71,15 @@ for ($i = 0; $i < $n; $i++) {
 }
 echo "\n";
 
+// PHP array union: duplicate keys keep the left value
+$defaults = ["theme" => "light", "lang" => "en"];
+$overrides = ["lang" => "it", "timezone" => "Europe/Rome"];
+$settings = $defaults + $overrides;
+echo "\nSettings union:\n";
+foreach ($settings as $key => $value) {
+    echo "  " . $key . " = " . $value . "\n";
+}
+
 // Mixed-value associative arrays keep a runtime tag per entry
 $profile = ["name" => "Alice", "age" => 30, "active" => true, "note" => null];
 echo "\nMixed profile:\n";

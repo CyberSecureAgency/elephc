@@ -34,6 +34,30 @@ $map["age"] = "30";      // add new key
 
 Associative arrays use a hash table runtime. If later values do not match the first value type, the checker widens to internal `mixed` runtime shape.
 
+## Array union
+
+`+` between arrays follows PHP union semantics: keys from the left operand win, and only keys that are missing from the left are copied from the right.
+
+```php
+<?php
+$left = ["a" => "left", "b" => "keep"];
+$right = ["a" => "right", "c" => "new"];
+$result = $left + $right;
+
+echo $result["a"]; // left
+echo $result["c"]; // new
+```
+
+For indexed arrays, numeric keys are preserved. In elephc's dense indexed-array representation, this means the left side keeps indexes `0..count($left)-1`, and only the right suffix with higher numeric indexes is appended.
+
+```php
+<?php
+$result = [10, 20] + [99, 88, 77];
+echo $result[0]; // 10
+echo $result[1]; // 20
+echo $result[2]; // 77
+```
+
 ## Copy-on-write semantics
 Arrays are shared until modified, matching PHP's by-value behavior:
 ```php
@@ -114,5 +138,5 @@ echo $matrix[0][1];    // 2
 **Not supported by design:** `compact()`, `extract()` require runtime variable-name tables and are listed in the roadmap's "Will not implement" section.
 
 ## Limitations
-- No array union operator (`+`)
 - Indexed arrays are homogeneous (except object elements may widen to shared parent class)
+- Array union is supported for indexed+indexed and associative+associative operands; mixed indexed/associative union and heterogeneous indexed-array union are tracked in `ROADMAP.md`
