@@ -46,6 +46,41 @@ fn wider_of(a: &PhpType, b: &PhpType) -> PhpType {
     a.clone()
 }
 
+fn array_union_type(a: &PhpType, b: &PhpType) -> Option<PhpType> {
+    match (a, b) {
+        (PhpType::Array(left), PhpType::Array(right)) if left == right => {
+            Some(PhpType::Array(left.clone()))
+        }
+        (
+            PhpType::AssocArray {
+                key: left_key,
+                value: left_value,
+            },
+            PhpType::AssocArray {
+                key: right_key,
+                value: right_value,
+            },
+        ) => {
+            let key = if left_key == right_key {
+                left_key.clone()
+            } else {
+                Box::new(PhpType::Mixed)
+            };
+            let value = if left_value == right_value {
+                left_value.clone()
+            } else {
+                Box::new(PhpType::Mixed)
+            };
+            Some(PhpType::AssocArray { key, value })
+        }
+        _ => None,
+    }
+}
+
+fn is_empty_indexed_array_literal(expr: &Expr) -> bool {
+    matches!(&expr.kind, ExprKind::ArrayLiteral(elems) if elems.is_empty())
+}
+
 fn resolve_buffer_element_type(type_expr: &TypeExpr, ctx: &Context) -> PhpType {
     match type_expr {
         TypeExpr::Int => PhpType::Int,
@@ -173,6 +208,27 @@ pub(super) fn infer_local_type(
             };
             PhpType::Array(Box::new(elem_ty))
         }
+        ExprKind::ArrayLiteralAssoc(pairs) => {
+            let key_ty = match pairs.first().map(|(key, _)| &key.kind) {
+                Some(ExprKind::IntLiteral(_)) => PhpType::Int,
+                _ => PhpType::Str,
+            };
+            let mut value_ty = pairs
+                .first()
+                .map(|(_, value)| infer_local_type(value, sig, ctx))
+                .unwrap_or(PhpType::Mixed);
+            for (_, value) in pairs.iter().skip(1) {
+                let next_ty = infer_local_type(value, sig, ctx);
+                if next_ty != value_ty {
+                    value_ty = PhpType::Mixed;
+                    break;
+                }
+            }
+            PhpType::AssocArray {
+                key: Box::new(key_ty),
+                value: Box::new(value_ty),
+            }
+        }
         ExprKind::ArrayAccess { array, .. } => match infer_local_type(array, sig, ctx) {
             PhpType::Str => PhpType::Str,
             PhpType::Array(t) => *t,
@@ -240,7 +296,26 @@ pub(super) fn infer_local_type(
                     wider_of(&lt, &rt)
                 }
                 BinOp::Div | BinOp::Pow => PhpType::Float,
-                BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Mod => {
+                BinOp::Add => {
+                    let lt = infer_local_type(left, sig, ctx);
+                    let rt = infer_local_type(right, sig, ctx);
+                    if matches!((&lt, &rt), (PhpType::Array(_), PhpType::Array(_)))
+                        && is_empty_indexed_array_literal(left)
+                    {
+                        rt
+                    } else if matches!((&lt, &rt), (PhpType::Array(_), PhpType::Array(_)))
+                        && is_empty_indexed_array_literal(right)
+                    {
+                        lt
+                    } else if let Some(ty) = array_union_type(&lt, &rt) {
+                        ty
+                    } else if lt == PhpType::Float || rt == PhpType::Float {
+                        PhpType::Float
+                    } else {
+                        PhpType::Int
+                    }
+                }
+                BinOp::Sub | BinOp::Mul | BinOp::Mod => {
                     let lt = infer_local_type(left, sig, ctx);
                     let rt = infer_local_type(right, sig, ctx);
                     if lt == PhpType::Float || rt == PhpType::Float {
