@@ -58,6 +58,18 @@ expect_builtin_arity_error!(
 );
 
 expect_builtin_arity_error!(
+    test_error_tan_wrong_args,
+    "<?php tan();",
+    "tan() takes exactly 1 argument"
+);
+
+expect_builtin_arity_error!(
+    test_error_atan_wrong_args,
+    "<?php atan();",
+    "atan() takes exactly 1 argument"
+);
+
+expect_builtin_arity_error!(
     test_error_sinh_wrong_args,
     "<?php sinh();",
     "sinh() takes exactly 1 argument"

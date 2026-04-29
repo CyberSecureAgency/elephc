@@ -135,7 +135,7 @@ The type checker computes the type of every expression:
 
 ### Function calls
 
-Built-in functions have hardcoded type signatures (see below). User-defined functions, methods, constructors, closures, and arrow functions can also carry declared parameter and return type hints. Named arguments are normalized against the declared parameter list before the usual argument-count and type checks run.
+Built-in functions have hardcoded type signatures (see below). User-defined functions, methods, and constructors can carry declared parameter and return type hints. Closures and arrow functions currently carry declared parameter hints, while their return type is inferred from the body or expression because closure / arrow return annotations are not represented in the AST yet. Named arguments are normalized against the declared parameter list before the usual argument-count and type checks run.
 
 ## Built-in function signatures
 
@@ -191,6 +191,7 @@ pub struct FunctionSig {
     pub params: Vec<(String, PhpType)>,
     pub defaults: Vec<Option<Expr>>,
     pub return_type: PhpType,
+    pub declared_return: bool,        // whether return_type came from an explicit return hint
     pub ref_params: Vec<bool>,         // which parameters are pass-by-reference (&$param)
     pub declared_params: Vec<bool>,    // whether each parameter came from an explicit type hint
     pub variadic: Option<String>,      // variadic parameter name (...$args), if any
@@ -199,6 +200,7 @@ pub struct FunctionSig {
 
 - `ref_params` tracks which parameters use `&` (pass by reference). The codegen passes the stack address of the argument instead of its value.
 - `declared_params` lets later phases distinguish explicit PHP type hints from inferred/defaulted parameter types.
+- `declared_return` lets later phases distinguish explicit PHP return hints from inferred return types.
 - `variadic` holds the name of the variadic parameter (e.g., `$args` in `function foo(...$args)`). Extra arguments beyond the regular parameters are collected into an array.
 
 This information is then used when checking calls to that function.
