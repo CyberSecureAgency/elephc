@@ -380,7 +380,3 @@ The binary runs directly on the CPU. There is no PHP interpreter or VM at runtim
                     ▼ CPU
     "big\n"
 ```
-
----
-
-Next: [The Lexer →](the-lexer.md)

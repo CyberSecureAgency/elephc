@@ -133,6 +133,7 @@ pub struct Context {
     pub activation_frame_base_offset: Option<usize>,
     pub pending_action_offset: Option<usize>,
     pub pending_target_offset: Option<usize>,
+    pub nested_concat_offset_offset: Option<usize>,
     pub pending_return_value_offset: Option<usize>,
     pub try_slot_offsets: Vec<usize>,
     pub next_try_slot_idx: usize,
@@ -144,7 +145,8 @@ Each variable has a `VarInfo`:
 
 ```rust
 pub struct VarInfo {
-    pub ty: PhpType,                  // Int, Float, Str, etc.
+    pub ty: PhpType,                  // current runtime storage type
+    pub static_ty: PhpType,           // declared/static type retained for checks and calls
     pub stack_offset: usize,          // offset from frame pointer (x29)
     pub ownership: HeapOwnership,     // NonHeap / Owned / Borrowed / MaybeOwned
     pub epilogue_cleanup_safe: bool,  // false for locals populated through still-ambiguous control-flow/alias paths
@@ -1047,7 +1049,3 @@ The x86_64 runtime is no longer limited to the earlier `malloc` / `free` bootstr
 The same minimal x86_64 runtime now also carries the first string-search / compare slice: `__rt_strpos`, `__rt_strrpos`, `__rt_strcmp`, `__rt_strcasecmp`, `__rt_str_starts_with`, `__rt_str_ends_with`, `__rt_strtolower`, `__rt_strrev`, `__rt_wordwrap`, `__rt_str_split`, `__rt_str_pad`, `__rt_str_replace`, `__rt_str_ireplace`, `__rt_substr_replace`, `__rt_sprintf`, `__rt_number_format`, and `__rt_sscanf`, with the matching builtin lowering for `strpos()`, `strrpos()`, `strcmp()`, `strcasecmp()`, `str_contains()`, `str_starts_with()`, `str_ends_with()`, `strstr()`, `ord()`, `substr()`, `substr_replace()`, `strtolower()`, `strrev()`, `wordwrap()`, `str_split()`, `str_pad()`, `str_replace()`, `str_ireplace()`, `sprintf()`, `printf()`, `number_format()`, and `sscanf()`. That keeps this family on the SysV ABI path instead of falling back to ARM64-only `stp`/`ldp` lowering, and the same ABI conversion helpers now also cover `settype()` when it rewrites locals across `int` / `float` / `string` / `bool` on Linux x86_64.
 
 The remaining inline array/string accessors are on that same path now too: x86_64 string indexing via `ArrayAccess` (`$str[$i]`, including negative offsets) and statement-side indexed-array list unpacking no longer emit raw AArch64 `ldr` / `stp` snippets. They now restore temporaries through the shared ABI helpers and use native SysV register pairs / stack slots instead.
-
----
-
-Next: [The Runtime →](the-runtime.md)

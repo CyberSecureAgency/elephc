@@ -409,6 +409,7 @@ Statement parsing is simpler — after `parse()` has peeled off top-level `exter
 | `Static` | Static variable declaration (`static $count = 0;`) |
 | `[` | List unpacking (`[$a, $b] = expr;`) |
 | `Identifier` + `(` | Expression statement (function call) |
+| Internal lowering, no source token | `Synthetic` statement sequence used for temporary-backed lowering of effectful compound assignment targets |
 
 ### Assignment parsing
 
@@ -454,7 +455,3 @@ The parser's output — `Program` (which is `Vec<Stmt>`) — first feeds into pe
 ```
 [(Token, Span), ...] → Parser → Program (Vec<Stmt>) → MagicConstants → Conditional → Resolver → NameResolver → Type Checker
 ```
-
----
-
-Next: [The Type Checker →](the-type-checker.md)

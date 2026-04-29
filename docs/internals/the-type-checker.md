@@ -5,7 +5,7 @@ sidebar:
   order: 5
 ---
 
-**Source:** `src/types/` — `mod.rs`, `traits.rs`, `checker/mod.rs`, `checker/builtins/`, `checker/functions.rs`
+**Source:** `src/types/` — `mod.rs`, `traits.rs`, `checker/driver.rs`, `checker/mod.rs`, `checker/builtins/`, `checker/functions.rs`, `checker/functions/`, `checker/inference/`, `checker/stmt_check/`, `checker/type_compat/`, `checker/schema/`, `warnings/`
 
 PHP is dynamically typed — variables can change type at runtime. But elephc compiles to native code where every value must have a known size and location. The type checker bridges this gap by **inferring types at compile time**.
 
@@ -376,7 +376,3 @@ substr("hello");
 ```
 
 Each error includes the exact line and column, thanks to the `Span` carried through from the [lexer](the-lexer.md).
-
----
-
-Next: [The Code Generator →](the-codegen.md)

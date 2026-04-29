@@ -282,7 +282,3 @@ The lexer's output — `Vec<(Token, Span)>` — is the input to the [parser](the
 ```
 Source text → Lexer → [(Token, Span), (Token, Span), ...] → Parser
 ```
-
----
-
-Next: [The Parser →](the-parser.md)

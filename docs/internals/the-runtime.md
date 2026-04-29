@@ -252,7 +252,9 @@ See [Memory Model](memory-model.md) for the hash table memory layout.
 | `__rt_range` | Generate integer range array |
 | `__rt_shuffle` / `__rt_array_rand` | Randomize order / pick random |
 | `__rt_random_u32` / `__rt_random_uniform` | Target-aware random primitives used by `rand()`, `random_int()`, `shuffle()`, and `array_rand()` |
-| `__rt_asort` / `__rt_ksort` / `__rt_natsort` | Sort preserving keys |
+| `__rt_asort` / `__rt_arsort` | Sort by value while preserving keys, ascending or descending |
+| `__rt_ksort` / `__rt_krsort` | Sort by key, ascending or descending |
+| `__rt_natsort` / `__rt_natcasesort` | Natural-order sort, case-sensitive or case-insensitive |
 | `__rt_array_map` | Apply callback to each int element, return new array |
 | `__rt_array_map_str` | Apply callback to each string element, return new array |
 | `__rt_array_filter` | Filter elements where callback returns truthy |
@@ -375,6 +377,9 @@ These routines handle file and filesystem operations through target-aware libc/s
 | `__rt_file_put_contents` | Write string to file (create/truncate) |
 | `__rt_file` | Read file into array of lines |
 | `__rt_stat` | Get file metadata (size, timestamps) |
+| `__rt_file_exists` / `__rt_is_file` / `__rt_is_dir` | Existence and path-type checks backed by `stat()` |
+| `__rt_is_readable` / `__rt_is_writable` | Access checks backed by `access()` |
+| `__rt_filesize` / `__rt_filemtime` | File size and modification timestamp from stat metadata |
 | `__rt_unlink` / `__rt_mkdir` / `__rt_rmdir` / `__rt_chdir` | Filesystem path operations via libc/syscalls |
 | `__rt_rename` / `__rt_copy` | Two-path filesystem helpers using dual C-string scratch buffers |
 | `__rt_getcwd` | Get current working directory |
