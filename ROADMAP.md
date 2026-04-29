@@ -344,6 +344,7 @@ Proper type system for PHP compatibility.
 - [ ] Guard reasoning v2 for dead-code elimination — broader range reasoning and multi-variable facts beyond current strict-scalar, boolean, loose-comparison, and safe relational-complement guards
 - [ ] Exception-aware DCE v2 — exact thrown-type / handler reachability, nested try rethrow modeling, and less conservative finally-path invalidation
 - [ ] Control-flow normalization v2 — broader canonicalization of nested block/control shells before CFG-aware optimization passes
+- [ ] Runtime routine dead stripping — include or link only runtime helpers reachable from the generated program instead of carrying the whole target runtime slice
 - [ ] Register allocation (reduce stack spills)
 - [ ] Inline small functions
 - [ ] Tail-call optimization
@@ -415,6 +416,7 @@ Features that are feasible but complex. Not currently planned for any specific v
 | Mixed nullsafe/member chains | Medium | Match PHP's full chain semantics for forms that mix `?->` and `->`, such as `$a?->b->c`. Current support handles nullsafe hops written explicitly with `?->` and short-circuits each nullsafe receiver. |
 | Full PHP list destructuring | Medium | Extend `[$a, $b] = ...` beyond plain variables and indexed RHS values to cover skipped entries, nested patterns, and associative-key destructuring. |
 | Heterogeneous indexed arrays | Medium | Allow mixed payloads in indexed arrays instead of requiring homogeneous indexed values. This would complete PHP array-union edge cases such as non-empty indexed arrays whose missing right-side numeric keys have a different value type. |
+| Mixed indexed/associative array union | Medium | Model `array + array` cases where one operand is represented as an indexed array and the other as an associative hash, preserving PHP's shared int/string key space and left-key precedence. |
 | Multi-level `break` / `continue` | Low | Parse and lower numeric depths such as `break 2;` and `continue 2;` through nested loop/switch/finally exits. |
 | Named-argument parity for built-ins, extern calls, and spread | Medium | Extend call validation/lowering so named arguments work outside user-defined calls and interact correctly with spread arguments. |
 | Captured closures as callback values | Medium | Forward hidden `use (...)` capture environments through callback-style built-ins such as `array_map`, `array_filter`, and `call_user_func`. |
