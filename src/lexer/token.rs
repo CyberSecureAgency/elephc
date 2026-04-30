@@ -112,6 +112,7 @@ pub enum Token {
     This,           // $this
     Extern,         // extern
     Packed,         // packed
+    Yield,          // yield (also: `yield from` — `from` parsed contextually)
 
     // Operators
     Assign,         // =

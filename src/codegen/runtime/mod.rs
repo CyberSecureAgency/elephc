@@ -16,6 +16,7 @@ mod diagnostics;
 mod emitters;
 mod exceptions;
 mod fibers;
+pub(crate) mod generators;
 mod io;
 mod pointers;
 mod strings;

@@ -214,6 +214,11 @@ pub(super) fn walk_expr<P: Pass>(expr: Expr, pass: &mut P) -> Expr {
             receiver,
             args: args.into_iter().map(|a| walk_expr(a, pass)).collect(),
         },
+        ExprKind::Yield { key, value } => ExprKind::Yield {
+            key: key.map(|k| Box::new(walk_expr(*k, pass))),
+            value: value.map(|v| Box::new(walk_expr(*v, pass))),
+        },
+        ExprKind::YieldFrom(inner) => ExprKind::YieldFrom(Box::new(walk_expr(*inner, pass))),
     };
     Expr { kind, span }
 }

@@ -306,6 +306,8 @@ fn collect_assignment_target_dependencies(expr: &Expr, dependencies: &mut HashSe
         | ExprKind::BufferNew { .. }
         | ExprKind::ClassConstant { .. }
         | ExprKind::NewScopedObject { .. }
+        | ExprKind::Yield { .. }
+        | ExprKind::YieldFrom(_)
         | ExprKind::MagicConstant(_) => {}
     }
 }
@@ -430,6 +432,8 @@ fn expr_may_write_dependency(expr: &Expr, dependencies: &HashSet<String>) -> boo
         | ExprKind::FirstClassCallable(_)
         | ExprKind::This
         | ExprKind::ClassConstant { .. }
+        | ExprKind::Yield { .. }
+        | ExprKind::YieldFrom(_)
         | ExprKind::MagicConstant(_) => false,
     }
 }

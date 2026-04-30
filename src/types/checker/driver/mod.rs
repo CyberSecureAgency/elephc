@@ -20,10 +20,11 @@ use super::builtin_types::{
     inject_builtin_throwables, patch_builtin_exception_signatures,
     patch_builtin_fiber_signatures, patch_magic_method_signatures, InterfaceDeclInfo,
 };
-use super::builtin_iterators::inject_builtin_iterators;
+use super::builtin_iterators::{inject_builtin_iterators, patch_builtin_generator_signatures};
 use super::schema::{
     build_class_info_recursive, build_enum_info, build_interface_info_recursive,
 };
+use super::yield_validation::validate_yield_contexts;
 use super::Checker;
 
 mod externs;
@@ -37,6 +38,8 @@ pub(super) fn check_types_impl(
 ) -> Result<(Checker, TypeEnv), CompileError> {
     let mut checker = Checker::new(target_platform);
     let mut errors = Vec::new();
+
+    errors.extend(validate_yield_contexts(program));
 
     checker.collect_function_decls(program, &mut errors);
 
@@ -151,6 +154,7 @@ pub(super) fn check_types_impl(
     }
     patch_builtin_exception_signatures(&mut checker);
     patch_builtin_fiber_signatures(&mut checker);
+    patch_builtin_generator_signatures(&mut checker);
     patch_magic_method_signatures(&mut checker);
 
     checker.prescan_extern_decls(program, &mut errors);

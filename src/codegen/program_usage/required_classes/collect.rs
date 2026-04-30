@@ -364,6 +364,15 @@ fn collect_required_class_names_in_expr(expr: &Expr, names: &mut HashSet<String>
         | ExprKind::ConstRef(_)
         | ExprKind::EnumCase { .. }
         | ExprKind::This => {}
+        ExprKind::Yield { key, value } => {
+            if let Some(k) = key {
+                collect_required_class_names_in_expr(k, names);
+            }
+            if let Some(v) = value {
+                collect_required_class_names_in_expr(v, names);
+            }
+        }
+        ExprKind::YieldFrom(inner) => collect_required_class_names_in_expr(inner, names),
         ExprKind::MagicConstant(_) => {
             unreachable!("MagicConstant must be lowered before codegen analysis")
         }

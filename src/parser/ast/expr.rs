@@ -169,6 +169,11 @@ pub enum ExprKind {
         args: Vec<Expr>,
     },
     MagicConstant(MagicConstant),
+    Yield {
+        key: Option<Box<Expr>>,
+        value: Option<Box<Expr>>,
+    },
+    YieldFrom(Box<Expr>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]

@@ -160,6 +160,17 @@ pub(super) fn discover_expr(
         | ExprKind::This
         | ExprKind::ClassConstant { .. }
         | ExprKind::MagicConstant(_) => {}
+        ExprKind::Yield { key, value } => {
+            if let Some(k) = key {
+                discover_expr(k, base_dir, loaded_paths, include_chain, state, output)?;
+            }
+            if let Some(v) = value {
+                discover_expr(v, base_dir, loaded_paths, include_chain, state, output)?;
+            }
+        }
+        ExprKind::YieldFrom(inner) => {
+            discover_expr(inner, base_dir, loaded_paths, include_chain, state, output)?;
+        }
     }
     Ok(())
 }

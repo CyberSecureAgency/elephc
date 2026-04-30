@@ -282,6 +282,19 @@ pub(super) fn expr_effect(expr: &Expr) -> Effect {
         ExprKind::NewScopedObject { args, .. } => combine_effects(args.iter().map(expr_effect))
             .with_side_effects()
             .with_may_throw(),
+        ExprKind::Yield { key, value } => {
+            let mut e = Effect::PURE.with_side_effects().with_may_throw();
+            if let Some(k) = key {
+                e = e.combine(expr_effect(k));
+            }
+            if let Some(v) = value {
+                e = e.combine(expr_effect(v));
+            }
+            e
+        }
+        ExprKind::YieldFrom(inner) => expr_effect(inner)
+            .with_side_effects()
+            .with_may_throw(),
         ExprKind::MagicConstant(_) => {
             unreachable!("MagicConstant must be lowered before optimizer passes")
         }

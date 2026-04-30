@@ -206,6 +206,11 @@ pub(crate) fn prune_expr(expr: Expr) -> Expr {
             receiver,
             args: args.into_iter().map(prune_expr).collect(),
         },
+        ExprKind::Yield { key, value } => ExprKind::Yield {
+            key: key.map(|k| Box::new(prune_expr(*k))),
+            value: value.map(|v| Box::new(prune_expr(*v))),
+        },
+        ExprKind::YieldFrom(inner) => ExprKind::YieldFrom(Box::new(prune_expr(*inner))),
         ExprKind::MagicConstant(_) => {
             unreachable!("MagicConstant must be lowered before optimizer passes")
         }

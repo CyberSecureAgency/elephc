@@ -13,6 +13,7 @@ use super::buffers;
 use super::diagnostics;
 use super::exceptions;
 use super::fibers;
+use super::generators;
 use super::io;
 use super::pointers;
 use super::strings;
@@ -120,6 +121,10 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter) {
     exceptions::emit_exception_matches(emitter);
     exceptions::emit_throw_current(emitter);
     exceptions::emit_rethrow_current(emitter);
+
+    // Generator runtime helpers (currently stubs that panic until the
+    // state-machine codegen lands).
+    generators::emit_generator_runtime(emitter);
 
     // Array runtime functions
     arrays::emit_heap_alloc(emitter);

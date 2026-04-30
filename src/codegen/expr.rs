@@ -249,6 +249,9 @@ pub fn emit_expr(
         ExprKind::NewScopedObject { receiver, args } => {
             objects::emit_new_scoped_object(receiver, args, emitter, ctx, data)
         }
+        ExprKind::Yield { .. } | ExprKind::YieldFrom(_) => {
+            unreachable!("yield expressions must be lowered by the generator-function codegen path")
+        }
         ExprKind::MagicConstant(_) => {
             unreachable!("MagicConstant must be lowered before codegen")
         }

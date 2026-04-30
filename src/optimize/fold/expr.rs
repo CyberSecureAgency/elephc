@@ -296,6 +296,11 @@ pub(in crate::optimize) fn fold_expr(expr: Expr) -> Expr {
             receiver,
             args: args.into_iter().map(fold_expr).collect(),
         },
+        ExprKind::Yield { key, value } => ExprKind::Yield {
+            key: key.map(|k| Box::new(fold_expr(*k))),
+            value: value.map(|v| Box::new(fold_expr(*v))),
+        },
+        ExprKind::YieldFrom(inner) => ExprKind::YieldFrom(Box::new(fold_expr(*inner))),
         ExprKind::MagicConstant(_) => {
             unreachable!("MagicConstant must be lowered before optimizer passes")
         }

@@ -210,6 +210,13 @@ impl Checker {
             ExprKind::NewScopedObject { args, .. } => {
                 args.iter().any(Self::expr_contains_method_call)
             }
+            ExprKind::Yield { key, value } => {
+                key.as_ref().is_some_and(|k| Self::expr_contains_method_call(k))
+                    || value
+                        .as_ref()
+                        .is_some_and(|v| Self::expr_contains_method_call(v))
+            }
+            ExprKind::YieldFrom(inner) => Self::expr_contains_method_call(inner),
             ExprKind::MagicConstant(_) => {
                 unreachable!("MagicConstant must be lowered before type checking")
             }

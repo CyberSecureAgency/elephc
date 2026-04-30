@@ -391,6 +391,7 @@ product mode. This is also the series that delivered the Fibers MVP.
 - [x] Full PHP list destructuring — skipped entries, nested patterns, associative-key destructuring, and non-local destructuring targets where PHP permits them
 - [x] Named-argument parity for built-ins, extern calls, and spread — extend validation/lowering outside user-defined calls and handle spread interactions
 - [x] Fibers MVP — `Fiber` and `FiberError` built-in classes, `start()` / `resume()` / `suspend()` / `throw()` / `getReturn()`, state predicates, `Fiber::getCurrent()`, closure captures, uncaught-exception propagation through the caller, guarded per-fiber `mmap` stacks, and context switching on ARM64 plus Linux x86_64
+- [x] Generators / `yield` MVP — `Generator` built-in class with `yield`, `yield $k => $v`, `yield from <array_literal | generator_call | $local>`, `Generator::send()`, `Generator::throw()`, `Generator::getReturn()`, terminal `return <expr>`, state-machine codegen lowering each yield point into a switch case backed by a heap-allocated `GeneratorFrame`, and yield-context validation that rejects `yield` outside functions or inside `try`/`catch`/`finally`
 - [x] Full first-class callable targets — support `static::method(...)` and `$object->method(...)` in addition to function, `ClassName::`, `self::`, and `parent::` targets
 - [x] Captured closures as callback values — forward hidden `use (...)` environments through callback-style built-ins such as `array_map`, `array_filter`, and `call_user_func`
 
@@ -493,8 +494,7 @@ post-1.0 use cases.
 |---|---|---|
 | Buffer ergonomics v2 | Medium | Consider dynamic resize/push/pop, `foreach`, array conversion, and automatic cleanup for `buffer<T>` while keeping the hot-path POD contract explicit. |
 | String-capable FFI callbacks | Medium | Allow C callback signatures that pass or return strings once ownership and temporary C-string lifetimes are modeled safely across callback boundaries. |
-| Generators / `yield` | High | Requires compile-time state machine transformation: every yield point becomes a switch case, all locals promoted to heap-allocated generator object. Edge cases with yield inside try/catch/finally are significant. |
-| `yield from` delegation | High | Depends on generators. Forwards iteration to an inner generator, propagating values and return. |
+| Generator parity v2 | Medium | MVP delivered in v0.20.x for ARM64. Remaining parity work: `yield` inside `try`/`catch`/`finally`, dynamic `yield from` arrays beyond the compile-time `int` literal form, full PHP body grammar inside generator functions (string locals across arbitrary control flow, exception propagation through `Generator::throw` to caller's finally), Linux x86_64 codegen for generator resume frames, and PHP-exact `Generator` interface inheritance with `Iterator`. See `docs/php/generators.md`. |
 | Fiber parity v2 | Medium | MVP delivered in v0.20.x for ARM64 and Linux x86_64. Remaining parity work: arithmetic auto-unboxing on `mixed` payloads received from `suspend()`, true variadic `start(...$args)` beyond seven args, dynamic callback targets, by-reference callback start parameters, configurable stack sizing, and PHP-exact `FiberError` hierarchy. See `docs/php/fibers.md`. |
 | Conditional include class-like variants | High | Keep class/interface/trait/enum duplicate detection strict for now. Supporting branch-selected class-like declarations would require runtime class metadata/layout dispatch, while modern PHP can avoid the ambiguity with namespaces. |
 
