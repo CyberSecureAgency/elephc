@@ -155,6 +155,30 @@ fn test_iterable_string_cast_is_array_literal() {
 }
 
 #[test]
+fn test_iterable_numeric_casts_follow_php_array_truthiness() {
+    let out = compile_and_run(
+        "<?php
+        function as_int(iterable $items): int {
+            return (int)$items;
+        }
+        function as_float(iterable $items): float {
+            return (float)$items;
+        }
+        echo as_int([]);
+        echo '|';
+        echo as_int([10, 20]);
+        echo '|';
+        echo as_int(['a' => 1]);
+        echo '|';
+        echo as_float([]);
+        echo '|';
+        echo as_float([10, 20]);
+        ",
+    );
+    assert_eq!(out, "0|1|1|0|1");
+}
+
+#[test]
 fn test_is_iterable_compile_time_predicates() {
     let out = compile_and_run(
         "<?php
