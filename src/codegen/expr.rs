@@ -5,7 +5,7 @@ mod coerce;
 mod compare;
 mod diagnostics;
 mod helpers;
-mod objects;
+pub(crate) mod objects;
 mod ownership;
 mod scalars;
 mod ternary;

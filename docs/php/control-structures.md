@@ -69,6 +69,35 @@ foreach ($map as $key => $value) {
 }
 ```
 
+`foreach` also accepts any object that implements the built-in `Iterator`
+interface (`current`, `key`, `next`, `valid`, `rewind`) or the
+`IteratorAggregate` interface (`getIterator(): Iterator`):
+
+```php
+<?php
+class Range implements Iterator {
+    private int $current;
+    private int $end;
+    public function __construct(int $start, int $end) {
+        $this->current = $start;
+        $this->end = $end;
+    }
+    public function rewind(): void {}
+    public function valid(): bool { return $this->current < $this->end; }
+    public function current(): mixed { return $this->current; }
+    public function key(): mixed { return $this->current; }
+    public function next(): void { $this->current = $this->current + 1; }
+}
+
+foreach (new Range(0, 5) as $i) {
+    echo $i;
+}
+```
+
+The loop calls `rewind()` once, then on each iteration: `valid()` to test
+continuation, `current()` and `key()` to bind the loop variables, and
+`next()` after the body. Method dispatch goes through the regular vtable.
+
 ## break / continue
 
 ```php

@@ -20,7 +20,7 @@ use prep::{
     resolve_instance_method_dispatch,
 };
 
-pub(super) fn emit_dispatch_instance_method(
+pub(crate) fn emit_dispatch_instance_method(
     class_name: &str,
     method: &str,
     emitter: &mut Emitter,

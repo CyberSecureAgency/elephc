@@ -1,5 +1,6 @@
 mod assoc;
 mod indexed;
+mod iterator;
 
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
@@ -37,6 +38,20 @@ pub(super) fn emit_foreach_stmt(
                 &loop_cont,
                 &*key.clone(),
                 &*value.clone(),
+                emitter,
+                ctx,
+                data,
+            );
+        }
+        PhpType::Object(class_name) => {
+            iterator::emit_iterator_foreach(
+                class_name,
+                key_var,
+                value_var,
+                body,
+                &loop_start,
+                &loop_end,
+                &loop_cont,
                 emitter,
                 ctx,
                 data,

@@ -1,6 +1,6 @@
 mod access;
 mod allocation;
-mod dispatch;
+pub(crate) mod dispatch;
 mod instanceof;
 mod nullsafe;
 mod static_properties;

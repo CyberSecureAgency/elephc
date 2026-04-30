@@ -175,3 +175,29 @@ mod callables;
 mod never;
 #[path = "error_tests/misc.rs"]
 mod misc;
+
+// --- Iterator-related errors ---
+
+#[test]
+fn test_error_foreach_over_object_not_implementing_iterator() {
+    expect_error(
+        "<?php class Plain { public int $x = 1; } foreach (new Plain() as $v) { echo $v; }",
+        "foreach over object requires Plain to implement Iterator",
+    );
+}
+
+#[test]
+fn test_error_iterator_cannot_be_redeclared() {
+    expect_error(
+        "<?php interface Iterator { public function current(): mixed; }",
+        "Cannot redeclare built-in interface: Iterator",
+    );
+}
+
+#[test]
+fn test_error_iterator_aggregate_cannot_be_redeclared() {
+    expect_error(
+        "<?php interface IteratorAggregate { public function getIterator(): Iterator; }",
+        "Cannot redeclare built-in interface: IteratorAggregate",
+    );
+}
