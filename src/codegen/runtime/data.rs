@@ -88,6 +88,12 @@ pub(crate) fn emit_runtime_data_fixed(heap_size: usize) -> String {
     }
     out.push('\n');
 
+    out.push_str(".globl _dirname_dot\n_dirname_dot:\n    .ascii \".\"\n");
+    out.push_str(".globl _dirname_slash\n_dirname_slash:\n    .ascii \"/\"\n");
+    out.push_str(".globl _pathinfo_key_dirname\n_pathinfo_key_dirname:\n    .ascii \"dirname\"\n");
+    out.push_str(".globl _pathinfo_key_basename\n_pathinfo_key_basename:\n    .ascii \"basename\"\n");
+    out.push_str(".globl _pathinfo_key_extension\n_pathinfo_key_extension:\n    .ascii \"extension\"\n");
+    out.push_str(".globl _pathinfo_key_filename\n_pathinfo_key_filename:\n    .ascii \"filename\"\n");
     out.push_str(".globl _pcre_space\n_pcre_space:\n    .ascii \"[[:space:]]\"\n");
     out.push_str(".globl _pcre_digit\n_pcre_digit:\n    .ascii \"[[:digit:]]\"\n");
     out.push_str(".globl _pcre_word\n_pcre_word:\n    .ascii \"[[:alnum:]_]\"\n");

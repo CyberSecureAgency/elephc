@@ -159,6 +159,11 @@ impl Checker {
     fn new(target_platform: Platform) -> Self {
         let mut constants = HashMap::new();
         constants.insert("PHP_OS".to_string(), PhpType::Str);
+        constants.insert("PATHINFO_DIRNAME".to_string(), PhpType::Int);
+        constants.insert("PATHINFO_BASENAME".to_string(), PhpType::Int);
+        constants.insert("PATHINFO_EXTENSION".to_string(), PhpType::Int);
+        constants.insert("PATHINFO_FILENAME".to_string(), PhpType::Int);
+        constants.insert("PATHINFO_ALL".to_string(), PhpType::Int);
 
         Self {
             target_platform,

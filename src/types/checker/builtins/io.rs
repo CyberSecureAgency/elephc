@@ -227,6 +227,57 @@ pub(super) fn check_builtin(
             }
             Ok(Some(PhpType::Int))
         }
+        "basename" => {
+            if args.is_empty() || args.len() > 2 {
+                return Err(CompileError::new(span, "basename() takes 1 or 2 arguments"));
+            }
+            for arg in args {
+                checker.infer_type(arg, env)?;
+            }
+            Ok(Some(PhpType::Str))
+        }
+        "dirname" => {
+            if args.len() != 1 {
+                return Err(CompileError::new(span, "dirname() takes exactly 1 argument"));
+            }
+            checker.infer_type(&args[0], env)?;
+            Ok(Some(PhpType::Str))
+        }
+        "fnmatch" => {
+            if args.len() != 2 {
+                return Err(CompileError::new(span, "fnmatch() takes exactly 2 arguments"));
+            }
+            for arg in args {
+                checker.infer_type(arg, env)?;
+            }
+            Ok(Some(PhpType::Bool))
+        }
+        "realpath" => {
+            if args.len() != 1 {
+                return Err(CompileError::new(span, "realpath() takes exactly 1 argument"));
+            }
+            checker.infer_type(&args[0], env)?;
+            Ok(Some(PhpType::Union(vec![PhpType::Str, PhpType::Bool])))
+        }
+        "pathinfo" => {
+            if args.is_empty() || args.len() > 2 {
+                return Err(CompileError::new(
+                    span,
+                    "pathinfo() takes 1 or 2 arguments",
+                ));
+            }
+            for arg in args {
+                checker.infer_type(arg, env)?;
+            }
+            if args.len() == 1 {
+                Ok(Some(PhpType::AssocArray {
+                    key: Box::new(PhpType::Str),
+                    value: Box::new(PhpType::Str),
+                }))
+            } else {
+                Ok(Some(PhpType::Str))
+            }
+        }
         _ => Ok(None),
     }
 }

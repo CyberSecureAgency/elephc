@@ -1,9 +1,12 @@
+mod basename;
 mod chdir;
 mod copy;
+mod dirname;
 mod fclose;
 mod feof;
 mod fgetcsv;
 mod fgets;
+mod fnmatch;
 mod file;
 mod file_exists;
 mod file_get_contents;
@@ -23,8 +26,10 @@ mod is_file;
 mod is_readable;
 mod is_writable;
 mod mkdir;
+mod pathinfo;
 mod print_r;
 mod readline;
+mod realpath;
 mod rename;
 mod rewind;
 mod rmdir;
@@ -83,6 +88,11 @@ pub fn emit(
         "sys_get_temp_dir" => sys_get_temp_dir::emit(name, args, emitter, ctx, data),
         "fgetcsv" => fgetcsv::emit(name, args, emitter, ctx, data),
         "fputcsv" => fputcsv::emit(name, args, emitter, ctx, data),
+        "basename" => basename::emit(name, args, emitter, ctx, data),
+        "dirname" => dirname::emit(name, args, emitter, ctx, data),
+        "fnmatch" => fnmatch::emit(name, args, emitter, ctx, data),
+        "realpath" => realpath::emit(name, args, emitter, ctx, data),
+        "pathinfo" => pathinfo::emit(name, args, emitter, ctx, data),
         _ => None,
     }
 }
