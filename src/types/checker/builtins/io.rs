@@ -133,7 +133,8 @@ pub(super) fn check_builtin(
             checker.infer_type(&args[0], env)?;
             Ok(Some(PhpType::Array(Box::new(PhpType::Str))))
         }
-        "file_exists" | "is_file" | "is_dir" | "is_readable" | "is_writable" => {
+        "file_exists" | "is_file" | "is_dir" | "is_readable" | "is_writable"
+        | "is_writeable" | "is_executable" | "is_link" => {
             if args.len() != 1 {
                 return Err(CompileError::new(
                     span,
@@ -143,7 +144,8 @@ pub(super) fn check_builtin(
             checker.infer_type(&args[0], env)?;
             Ok(Some(PhpType::Bool))
         }
-        "filesize" | "filemtime" => {
+        "filesize" | "filemtime" | "fileatime" | "filectime" | "fileperms"
+        | "fileowner" | "filegroup" | "fileinode" => {
             if args.len() != 1 {
                 return Err(CompileError::new(
                     span,
@@ -152,6 +154,41 @@ pub(super) fn check_builtin(
             }
             checker.infer_type(&args[0], env)?;
             Ok(Some(PhpType::Int))
+        }
+        "filetype" => {
+            if args.len() != 1 {
+                return Err(CompileError::new(span, "filetype() takes exactly 1 argument"));
+            }
+            checker.infer_type(&args[0], env)?;
+            Ok(Some(PhpType::Str))
+        }
+        "clearstatcache" => {
+            // PHP signature is `clearstatcache(bool $clear_realpath_cache = false, string $filename = ""): void`.
+            // elephc has no stat cache, so we accept up to 2 args and treat the
+            // call as a no-op without inspecting them.
+            if args.len() > 2 {
+                return Err(CompileError::new(
+                    span,
+                    "clearstatcache() takes at most 2 arguments",
+                ));
+            }
+            for arg in args {
+                checker.infer_type(arg, env)?;
+            }
+            Ok(Some(PhpType::Void))
+        }
+        "stat" | "lstat" | "fstat" => {
+            if args.len() != 1 {
+                return Err(CompileError::new(
+                    span,
+                    &format!("{}() takes exactly 1 argument", name),
+                ));
+            }
+            checker.infer_type(&args[0], env)?;
+            Ok(Some(PhpType::AssocArray {
+                key: Box::new(PhpType::Mixed),
+                value: Box::new(PhpType::Int),
+            }))
         }
         "copy" | "rename" => {
             if args.len() != 2 {

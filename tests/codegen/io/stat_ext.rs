@@ -1,0 +1,237 @@
+use super::*;
+
+#[test]
+fn test_fileperms_known_file() {
+    let (out, dir) = compile_and_run_in_dir(
+        r#"<?php
+file_put_contents("perms.txt", "hi");
+$perms = fileperms("perms.txt");
+echo ($perms & 0xF000) === 0x8000 ? "regular" : "other";
+"#,
+    );
+    assert_eq!(out, "regular");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_fileowner_returns_uid() {
+    let (out, dir) = compile_and_run_in_dir(
+        r#"<?php
+file_put_contents("ownr.txt", "");
+$uid = fileowner("ownr.txt");
+echo $uid >= 0 ? "ok" : "neg";
+"#,
+    );
+    assert_eq!(out, "ok");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_filegroup_returns_gid() {
+    let (out, dir) = compile_and_run_in_dir(
+        r#"<?php
+file_put_contents("grp.txt", "");
+$gid = filegroup("grp.txt");
+echo $gid >= 0 ? "ok" : "neg";
+"#,
+    );
+    assert_eq!(out, "ok");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_fileinode_nonzero() {
+    let (out, dir) = compile_and_run_in_dir(
+        r#"<?php
+file_put_contents("ino.txt", "");
+echo fileinode("ino.txt") > 0 ? "ok" : "zero";
+"#,
+    );
+    assert_eq!(out, "ok");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_fileatime_nonzero() {
+    let (out, dir) = compile_and_run_in_dir(
+        r#"<?php
+file_put_contents("atime.txt", "");
+echo fileatime("atime.txt") > 0 ? "ok" : "zero";
+"#,
+    );
+    assert_eq!(out, "ok");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_filectime_nonzero() {
+    let (out, dir) = compile_and_run_in_dir(
+        r#"<?php
+file_put_contents("ctime.txt", "");
+echo filectime("ctime.txt") > 0 ? "ok" : "zero";
+"#,
+    );
+    assert_eq!(out, "ok");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_filetype_regular_file() {
+    let (out, dir) = compile_and_run_in_dir(
+        r#"<?php
+file_put_contents("ft.txt", "");
+echo filetype("ft.txt");
+"#,
+    );
+    assert_eq!(out, "file");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_filetype_directory() {
+    let (out, dir) = compile_and_run_in_dir(
+        r#"<?php
+mkdir("mydir");
+echo filetype("mydir");
+rmdir("mydir");
+"#,
+    );
+    assert_eq!(out, "dir");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_filetype_unknown_for_missing() {
+    let out = compile_and_run(
+        r#"<?php echo filetype("/nonexistent/path/xyz");"#,
+    );
+    assert_eq!(out, "unknown");
+}
+
+#[test]
+fn test_is_executable_true_for_self() {
+    // /bin/sh is executable on every POSIX target we ship for.
+    let out = compile_and_run(
+        r#"<?php echo is_executable("/bin/sh") ? "y" : "n";"#,
+    );
+    assert_eq!(out, "y");
+}
+
+#[test]
+fn test_is_executable_false_for_text() {
+    let (out, dir) = compile_and_run_in_dir(
+        r#"<?php
+file_put_contents("plain.txt", "data");
+echo is_executable("plain.txt") ? "y" : "n";
+"#,
+    );
+    assert_eq!(out, "n");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_is_link_false_for_regular_file() {
+    let (out, dir) = compile_and_run_in_dir(
+        r#"<?php
+file_put_contents("plain.txt", "");
+echo is_link("plain.txt") ? "y" : "n";
+"#,
+    );
+    assert_eq!(out, "n");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_is_writeable_alias_of_is_writable() {
+    let (out, dir) = compile_and_run_in_dir(
+        r#"<?php
+file_put_contents("wr.txt", "");
+echo is_writeable("wr.txt") ? "y" : "n";
+"#,
+    );
+    assert_eq!(out, "y");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_clearstatcache_no_op_no_args() {
+    let out = compile_and_run(r#"<?php clearstatcache(); echo "ok";"#);
+    assert_eq!(out, "ok");
+}
+
+#[test]
+fn test_clearstatcache_no_op_with_args() {
+    let out = compile_and_run(
+        r#"<?php clearstatcache(true, "foo.txt"); echo "ok";"#,
+    );
+    assert_eq!(out, "ok");
+}
+
+#[test]
+fn test_stat_array_has_expected_keys() {
+    let (out, dir) = compile_and_run_in_dir(
+        r#"<?php
+file_put_contents("metadata.txt", "hello");
+$info = stat("metadata.txt");
+echo $info["size"] . "|" . ($info["mode"] & 0xF000) . "|" . ($info[7] === $info["size"] ? "match" : "differ");
+"#,
+    );
+    assert_eq!(out, format!("5|{}|match", 0x8000));
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_stat_array_size_matches_filesize() {
+    let (out, dir) = compile_and_run_in_dir(
+        r#"<?php
+file_put_contents("seven.txt", "1234567");
+$info = stat("seven.txt");
+echo $info["size"] === filesize("seven.txt") ? "ok" : "differ";
+"#,
+    );
+    assert_eq!(out, "ok");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_stat_array_mtime_matches_filemtime() {
+    let (out, dir) = compile_and_run_in_dir(
+        r#"<?php
+file_put_contents("mt.txt", "");
+$info = stat("mt.txt");
+echo $info["mtime"] === filemtime("mt.txt") ? "ok" : "differ";
+"#,
+    );
+    assert_eq!(out, "ok");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_lstat_array_for_regular_file_matches_stat() {
+    let (out, dir) = compile_and_run_in_dir(
+        r#"<?php
+file_put_contents("plain.txt", "abc");
+$st = stat("plain.txt");
+$lst = lstat("plain.txt");
+echo $st["size"] === $lst["size"] ? "ok" : "differ";
+"#,
+    );
+    assert_eq!(out, "ok");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_fstat_array_size_matches_file_contents() {
+    let (out, dir) = compile_and_run_in_dir(
+        r#"<?php
+file_put_contents("fd.txt", "abcdefghij");
+$h = fopen("fd.txt", "r");
+$info = fstat($h);
+fclose($h);
+echo $info["size"];
+"#,
+    );
+    assert_eq!(out, "10");
+    let _ = fs::remove_dir_all(&dir);
+}
+

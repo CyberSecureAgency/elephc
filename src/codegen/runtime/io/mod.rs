@@ -13,6 +13,8 @@ mod getcwd;
 mod glob;
 mod scandir;
 mod stat;
+mod stat_array;
+mod stat_ext;
 mod tempnam;
 
 pub(crate) use cstr::emit_cstr;
@@ -30,4 +32,6 @@ pub(crate) use getcwd::emit_getcwd;
 pub(crate) use glob::emit_glob;
 pub(crate) use scandir::emit_scandir;
 pub(crate) use stat::emit_stat;
+pub(crate) use stat_array::emit_stat_array;
+pub(crate) use stat_ext::emit_stat_ext;
 pub(crate) use tempnam::emit_tempnam;

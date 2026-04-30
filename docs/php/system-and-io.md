@@ -112,6 +112,29 @@ Uses POSIX extended regex with common PCRE shorthand translation (`\s`, `\d`, `\
 | `tempnam()` | `tempnam($dir, $prefix): string` | Create temp filename |
 | `sys_get_temp_dir()` | `sys_get_temp_dir(): string` | System temp directory |
 
+## File metadata
+
+| Function | Signature | Description |
+|---|---|---|
+| `fileatime()` | `fileatime($filename): int` | Last access time as Unix timestamp |
+| `filectime()` | `filectime($filename): int` | Inode-change time as Unix timestamp |
+| `fileperms()` | `fileperms($filename): int` | Full `st_mode` (file-type bits + permissions) |
+| `fileowner()` | `fileowner($filename): int` | Owner UID |
+| `filegroup()` | `filegroup($filename): int` | Group GID |
+| `fileinode()` | `fileinode($filename): int` | Inode number |
+| `filetype()` | `filetype($filename): string` | One of `"file"`, `"dir"`, `"link"`, `"char"`, `"block"`, `"fifo"`, `"socket"`, `"unknown"`. Uses `lstat()` semantics. |
+| `is_executable()` | `is_executable($filename): bool` | `access(path, X_OK)` |
+| `is_link()` | `is_link($filename): bool` | True for symlinks (uses `lstat()`) |
+| `is_writeable()` | `is_writeable($filename): bool` | Alias of `is_writable()` |
+| `stat()` | `stat($filename): array` | Associative array with both numeric (0..=12) and string keys (`dev`, `ino`, `mode`, `nlink`, `uid`, `gid`, `rdev`, `size`, `atime`, `mtime`, `ctime`, `blksize`, `blocks`). |
+| `lstat()` | `lstat($filename): array` | Same shape as `stat()` but does not follow symlinks |
+| `fstat()` | `fstat($handle): array` | Same shape as `stat()` but operates on an open file descriptor |
+| `clearstatcache()` | `clearstatcache(...): void` | No-op (elephc does not cache `stat()` results) |
+
+> All scalar metadata functions (`fileatime`, `filectime`, `fileperms`, `fileowner`, `filegroup`, `fileinode`) return `0` on stat failure, mirroring PHP behaviour for non-existent paths.
+
+> `stat()` / `lstat()` / `fstat()` return an empty associative array on failure. The 13 fields are always inserted in PHP's documented order.
+
 ## Debugging
 
 | Function | Signature | Description |
