@@ -50,6 +50,14 @@ fn wider_of(a: &PhpType, b: &PhpType) -> PhpType {
     a.clone()
 }
 
+fn mixed_container_value_type(ty: PhpType) -> PhpType {
+    if matches!(ty, PhpType::Iterable) {
+        PhpType::Mixed
+    } else {
+        ty
+    }
+}
+
 fn array_union_type(a: &PhpType, b: &PhpType) -> Option<PhpType> {
     match (a, b) {
         (PhpType::Array(left), PhpType::Array(right)) if left == right => {
@@ -234,7 +242,7 @@ pub(super) fn infer_local_type(
             let elem_ty = if elems.is_empty() {
                 PhpType::Int
             } else {
-                infer_local_type(&elems[0], sig, ctx)
+                mixed_container_value_type(infer_local_type(&elems[0], sig, ctx))
             };
             PhpType::Array(Box::new(elem_ty))
         }
@@ -245,14 +253,14 @@ pub(super) fn infer_local_type(
                 .unwrap_or(PhpType::Mixed);
             let mut value_ty = pairs
                 .first()
-                .map(|(_, value)| infer_local_type(value, sig, ctx))
+                .map(|(_, value)| mixed_container_value_type(infer_local_type(value, sig, ctx)))
                 .unwrap_or(PhpType::Mixed);
             for (key, value) in pairs.iter().skip(1) {
                 key_ty = merge_array_key_types(
                     key_ty,
                     normalized_array_key_type(key, infer_local_type(key, sig, ctx)),
                 );
-                let next_ty = infer_local_type(value, sig, ctx);
+                let next_ty = mixed_container_value_type(infer_local_type(value, sig, ctx));
                 if next_ty != value_ty {
                     value_ty = PhpType::Mixed;
                 }
