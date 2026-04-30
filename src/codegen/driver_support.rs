@@ -368,6 +368,18 @@ pub(crate) fn emit_box_current_value_as_mixed(emitter: &mut Emitter, ty: &PhpTyp
     }
 }
 
+pub(crate) fn emit_box_iterable_value_for_mixed_container(
+    emitter: &mut Emitter,
+    ty: &mut PhpType,
+) -> bool {
+    if !matches!(ty, PhpType::Iterable) {
+        return false;
+    }
+    emit_box_iterable_as_mixed(emitter);
+    *ty = PhpType::Mixed;
+    true
+}
+
 fn emit_box_iterable_as_mixed(emitter: &mut Emitter) {
     match emitter.target.arch {
         Arch::AArch64 => {

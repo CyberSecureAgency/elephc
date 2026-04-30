@@ -85,6 +85,63 @@ fn test_iterable_foreach_key_remains_mixed_after_runtime_branch() {
 }
 
 #[test]
+fn test_iterable_value_in_indexed_array_stays_boxed() {
+    let out = compile_and_run(
+        "<?php
+        function id(iterable $items): iterable {
+            return $items;
+        }
+        function show(iterable $items): void {
+            foreach ($items as $value) {
+                echo is_iterable($value) ? gettype($value) : 'no';
+                echo ':';
+                var_dump($value);
+            }
+        }
+        show([id([1, 2])]);
+        ",
+    );
+    assert_eq!(out, "array:array(2) {\n}\n");
+}
+
+#[test]
+fn test_iterable_value_in_assoc_array_stays_boxed() {
+    let out = compile_and_run(
+        "<?php
+        function id(iterable $items): iterable {
+            return $items;
+        }
+        $items = ['inner' => id([1, 2])];
+        foreach ($items as $value) {
+            echo is_iterable($value) ? gettype($value) : 'no';
+            echo ':';
+            var_dump($value);
+        }
+        ",
+    );
+    assert_eq!(out, "array:array(2) {\n}\n");
+}
+
+#[test]
+fn test_iterable_value_appended_to_array_stays_boxed() {
+    let out = compile_and_run(
+        "<?php
+        function id(iterable $items): iterable {
+            return $items;
+        }
+        $items = [];
+        $items[] = id(['a' => 1]);
+        foreach ($items as $value) {
+            echo is_iterable($value) ? gettype($value) : 'no';
+            echo ':';
+            var_dump($value);
+        }
+        ",
+    );
+    assert_eq!(out, "array:array(1) {\n}\n");
+}
+
+#[test]
 fn test_gettype_iterable_returns_array() {
     let out = compile_and_run(
         "<?php
