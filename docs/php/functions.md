@@ -29,7 +29,10 @@ function repeat(string $label, int $count): string {
 - `void` is valid only as a return type
 - `never` is valid only as a return type and must not return normally
 - Typed parameters can use default values
-- Function, method, constructor, closure, and arrow-function parameter and return type hints are checked
+- Function, method, constructor, closure, and arrow-function parameter hints are checked
+- Function, method, closure, and arrow-function return type hints are checked
+- Non-`void` declared return types must return a value on every reachable path; `throw`, `exit()`/`die()`, and infinite loops count as non-returning paths
+- Bare `return;` is valid only for `void` returns; use `return null;` for nullable return types
 - Named arguments supported for user-defined functions (reordered at compile time)
 - Named arguments not supported for built-in functions, extern functions, or calls mixed with spread arguments
 

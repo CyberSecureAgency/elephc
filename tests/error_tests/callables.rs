@@ -56,9 +56,33 @@ fn test_error_arrow_return_type_rejects_mismatch() {
 }
 
 #[test]
+fn test_error_closure_return_type_requires_return_value() {
+    expect_error(
+        "<?php $f = function(): int { };",
+        "Closure must return a value on every path",
+    );
+}
+
+#[test]
+fn test_error_closure_return_type_rejects_partial_fallthrough() {
+    expect_error(
+        "<?php $f = function(bool $ok): int { if ($ok) { return 1; } };",
+        "Closure must return a value on every path",
+    );
+}
+
+#[test]
+fn test_error_closure_return_type_rejects_bare_return() {
+    expect_error(
+        "<?php $f = function(): mixed { return; };",
+        "Closure return type must return a value of type",
+    );
+}
+
+#[test]
 fn test_error_closure_void_return_type_rejects_value() {
     expect_error(
         "<?php $f = function(): void { return 1; };",
-        "Closure return type expects Void, got Int",
+        "Closure return type must not return a value",
     );
 }

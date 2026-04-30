@@ -129,6 +129,46 @@ fn test_error_function_declared_return_type_rejects_mismatch_via_first_class_cal
 }
 
 #[test]
+fn test_error_function_declared_return_type_requires_return_value() {
+    expect_error(
+        "<?php function foo(): int { }",
+        "Function 'foo' must return a value on every path",
+    );
+}
+
+#[test]
+fn test_error_function_declared_return_type_rejects_partial_fallthrough() {
+    expect_error(
+        "<?php function foo(bool $ok): int { if ($ok) { return 1; } }",
+        "Function 'foo' must return a value on every path",
+    );
+}
+
+#[test]
+fn test_error_function_declared_return_type_rejects_switch_break_path() {
+    expect_error(
+        "<?php function foo(int $x): int { switch ($x) { case 1: if ($x > 0) { break; } return 1; default: return 2; } }",
+        "Function 'foo' must return a value on every path",
+    );
+}
+
+#[test]
+fn test_error_function_declared_return_type_rejects_bare_return() {
+    expect_error(
+        "<?php function foo(): ?int { return; }",
+        "Function 'foo' return type must return a value of type",
+    );
+}
+
+#[test]
+fn test_error_method_declared_return_type_requires_return_value() {
+    expect_error(
+        "<?php class Box { public function value(): int { } }",
+        "Method 'Box::value' must return a value on every path",
+    );
+}
+
+#[test]
 fn test_error_typed_closure_param_rejects_wrong_argument() {
     expect_error(
         "<?php $f = function (int $x) { echo $x; }; $f(\"hello\");",

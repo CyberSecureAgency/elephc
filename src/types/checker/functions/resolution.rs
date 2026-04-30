@@ -410,7 +410,7 @@ impl Checker {
         self.functions.insert(name.to_string(), provisional_sig);
 
         let mut return_type = PhpType::Void;
-        let mut all_return_types: Vec<PhpType> = Vec::new();
+        let mut all_return_infos = Vec::new();
         let mut errors = Vec::new();
         let ref_param_names: Vec<String> = decl
             .params
@@ -424,9 +424,7 @@ impl Checker {
                 if let Err(error) = checker.check_stmt(stmt, &mut local_env) {
                     errors.extend(error.flatten());
                 }
-                if let Some(rt) = checker.find_return_type(stmt, &local_env) {
-                    all_return_types.push(rt);
-                }
+                checker.collect_return_infos(stmt, &local_env, &mut all_return_infos);
             }
             Ok(())
         })?;
@@ -446,37 +444,34 @@ impl Checker {
                     &format!("Function '{}' declared never must not return", name),
                 ));
             }
-            if all_return_types.is_empty() {
-                // :never functions are allowed to have no return statements (they always throw/exit).
-                if !matches!(declared_ret, PhpType::Never) {
-                    self.require_compatible_arg_type(
+            self.require_declared_return_coverage(
+                &declared_ret,
+                &decl.body,
+                decl.span,
+                &format!("Function '{}'", name),
+            )?;
+            if !all_return_infos.is_empty() {
+                for return_info in &all_return_infos {
+                    self.require_compatible_return_type(
                         &declared_ret,
-                        &PhpType::Void,
-                        decl.span,
-                        &format!("Function '{}' return type", name),
-                    )?;
-                }
-            } else {
-                for rt in &all_return_types {
-                    self.require_compatible_arg_type(
-                        &declared_ret,
-                        rt,
+                        &return_info.ty,
+                        return_info.has_value,
                         decl.span,
                         &format!("Function '{}' return type", name),
                     )?;
                 }
             }
             return_type = if Self::is_generic_array_hint(&declared_ret)
-                && matches!(inferred_specific_array_type(&all_return_types), Some(_))
+                && matches!(inferred_specific_array_type_from_infos(&all_return_infos), Some(_))
             {
-                inferred_specific_array_type(&all_return_types).unwrap()
+                inferred_specific_array_type_from_infos(&all_return_infos).unwrap()
             } else {
                 declared_ret
             };
-        } else if !all_return_types.is_empty() {
-            return_type = all_return_types[0].clone();
-            for rt in &all_return_types[1..] {
-                return_type = Self::wider_type(&return_type, rt);
+        } else if !all_return_infos.is_empty() {
+            return_type = all_return_infos[0].ty.clone();
+            for return_info in &all_return_infos[1..] {
+                return_type = Self::wider_type(&return_type, &return_info.ty);
             }
         }
 
@@ -500,9 +495,12 @@ impl Checker {
     }
 }
 
-fn inferred_specific_array_type(return_types: &[PhpType]) -> Option<PhpType> {
+fn inferred_specific_array_type_from_infos(
+    return_types: &[super::returns::ReturnInfo],
+) -> Option<PhpType> {
     let mut specific: Option<PhpType> = None;
-    for return_ty in return_types {
+    for return_info in return_types {
+        let return_ty = &return_info.ty;
         if matches!(return_ty, PhpType::Void) {
             continue;
         }

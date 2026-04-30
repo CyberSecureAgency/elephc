@@ -88,9 +88,9 @@ impl Checker {
         span: Span,
         env: &TypeEnv,
     ) -> Result<(PhpType, bool), CompileError> {
-        let mut all_return_types = Vec::new();
+        let mut all_return_infos = Vec::new();
         for stmt in body {
-            self.collect_return_types(stmt, env, &mut all_return_types);
+            self.collect_return_infos(stmt, env, &mut all_return_infos);
         }
 
         if let Some(type_ann) = return_type {
@@ -102,37 +102,36 @@ impl Checker {
                     "Closure declared never must not return",
                 ));
             }
-            if all_return_types.is_empty() {
-                if !matches!(declared_ret, PhpType::Never) {
-                    self.require_compatible_arg_type(
-                        &declared_ret,
-                        &PhpType::Void,
-                        span,
-                        "Closure return type",
-                    )?;
-                }
+            self.require_declared_return_coverage(&declared_ret, body, span, "Closure")?;
+            if all_return_infos.is_empty() {
                 return Ok((declared_ret, true));
             }
 
-            for rt in &all_return_types {
-                self.require_compatible_arg_type(&declared_ret, rt, span, "Closure return type")?;
+            for return_info in &all_return_infos {
+                self.require_compatible_return_type(
+                    &declared_ret,
+                    &return_info.ty,
+                    return_info.has_value,
+                    span,
+                    "Closure return type",
+                )?;
             }
 
-            let mut inferred_return = all_return_types[0].clone();
-            for rt in &all_return_types[1..] {
-                inferred_return = wider_type_syntactic(&inferred_return, rt);
+            let mut inferred_return = all_return_infos[0].ty.clone();
+            for return_info in &all_return_infos[1..] {
+                inferred_return = wider_type_syntactic(&inferred_return, &return_info.ty);
             }
 
             Ok((
                 Self::specialize_generic_array_hint(&declared_ret, &inferred_return),
                 true,
             ))
-        } else if all_return_types.is_empty() {
+        } else if all_return_infos.is_empty() {
             Ok((PhpType::Int, false))
         } else {
-            let mut inferred_return = all_return_types[0].clone();
-            for rt in &all_return_types[1..] {
-                inferred_return = wider_type_syntactic(&inferred_return, rt);
+            let mut inferred_return = all_return_infos[0].ty.clone();
+            for return_info in &all_return_infos[1..] {
+                inferred_return = wider_type_syntactic(&inferred_return, &return_info.ty);
             }
             Ok((inferred_return, false))
         }

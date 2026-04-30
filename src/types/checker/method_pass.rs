@@ -143,7 +143,19 @@ impl Checker {
         method_env: &TypeEnv,
         pass_errors: &mut Vec<CompileError>,
     ) {
-        let raw_inferred = self.find_return_type_in_body(&method.body, method_env);
+        let mut return_infos = Vec::new();
+        for stmt in &method.body {
+            self.collect_return_infos(stmt, method_env, &mut return_infos);
+        }
+        let raw_inferred = if return_infos.is_empty() {
+            None
+        } else {
+            let mut widest = return_infos[0].ty.clone();
+            for return_info in &return_infos[1..] {
+                widest = Self::wider_type(&widest, &return_info.ty);
+            }
+            Some(widest)
+        };
         let inferred_return = raw_inferred.clone().unwrap_or(PhpType::Void);
         let effective_return = if let Some(type_ann) = method.return_type.as_ref() {
             match self.resolve_declared_return_type_hint(
@@ -167,21 +179,35 @@ impl Checker {
                         self.current_method_is_static = false;
                         return;
                     }
+                    if let Err(error) = self.require_declared_return_coverage(
+                        &declared,
+                        &method.body,
+                        method.span,
+                        &format!("Method '{}::{}'", class.name, method.name),
+                    ) {
+                        pass_errors.extend(error.flatten());
+                        self.current_class = None;
+                        self.current_method = None;
+                        self.current_method_is_static = false;
+                        return;
+                    }
                     // :never methods are allowed to have no return statements (they always throw/exit/loop).
-                    let skip_compat_check =
-                        matches!(declared, PhpType::Never) && raw_inferred.is_none();
+                    let skip_compat_check = matches!(declared, PhpType::Never);
                     if !skip_compat_check {
-                        if let Err(error) = self.require_compatible_arg_type(
-                            &declared,
-                            &inferred_return,
-                            method.span,
-                            &format!("Method '{}::{}' return type", class.name, method.name),
-                        ) {
-                            pass_errors.extend(error.flatten());
-                            self.current_class = None;
-                            self.current_method = None;
-                            self.current_method_is_static = false;
-                            return;
+                        for return_info in &return_infos {
+                            if let Err(error) = self.require_compatible_return_type(
+                                &declared,
+                                &return_info.ty,
+                                return_info.has_value,
+                                method.span,
+                                &format!("Method '{}::{}' return type", class.name, method.name),
+                            ) {
+                                pass_errors.extend(error.flatten());
+                                self.current_class = None;
+                                self.current_method = None;
+                                self.current_method_is_static = false;
+                                return;
+                            }
                         }
                     }
                     if Self::is_generic_array_hint(&declared)

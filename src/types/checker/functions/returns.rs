@@ -1,51 +1,36 @@
+use crate::errors::CompileError;
 use crate::parser::ast::{Stmt, StmtKind};
 use crate::types::{PhpType, TypeEnv};
 
 use super::super::Checker;
 
+#[derive(Clone)]
+pub(crate) struct ReturnInfo {
+    pub ty: PhpType,
+    pub has_value: bool,
+}
+
 impl Checker {
-    pub fn find_return_type_in_body(&mut self, body: &[Stmt], env: &TypeEnv) -> Option<PhpType> {
-        let mut types = Vec::new();
-        for stmt in body {
-            self.collect_return_types(stmt, env, &mut types);
-        }
-        if types.is_empty() {
-            return None;
-        }
-        let mut widest = types[0].clone();
-        for ty in &types[1..] {
-            widest = Self::wider_type(&widest, ty);
-        }
-        Some(widest)
-    }
-
-    pub fn find_return_type(&mut self, stmt: &Stmt, env: &TypeEnv) -> Option<PhpType> {
-        let mut types = Vec::new();
-        self.collect_return_types(stmt, env, &mut types);
-        if types.is_empty() {
-            return None;
-        }
-        let mut widest = types[0].clone();
-        for ty in &types[1..] {
-            widest = Self::wider_type(&widest, ty);
-        }
-        Some(widest)
-    }
-
-    pub(crate) fn collect_return_types(
+    pub(crate) fn collect_return_infos(
         &mut self,
         stmt: &Stmt,
         env: &TypeEnv,
-        types: &mut Vec<PhpType>,
+        returns: &mut Vec<ReturnInfo>,
     ) {
         match &stmt.kind {
             StmtKind::Return(Some(expr)) => {
                 if let Ok(ty) = self.infer_type(expr, env) {
-                    types.push(ty);
+                    returns.push(ReturnInfo {
+                        ty,
+                        has_value: true,
+                    });
                 }
             }
             StmtKind::Return(None) => {
-                types.push(PhpType::Void);
+                returns.push(ReturnInfo {
+                    ty: PhpType::Void,
+                    has_value: false,
+                });
             }
             StmtKind::If {
                 then_body,
@@ -54,16 +39,16 @@ impl Checker {
                 ..
             } => {
                 for s in then_body {
-                    self.collect_return_types(s, env, types);
+                    self.collect_return_infos(s, env, returns);
                 }
                 for (_, body) in elseif_clauses {
                     for s in body {
-                        self.collect_return_types(s, env, types);
+                        self.collect_return_infos(s, env, returns);
                     }
                 }
                 if let Some(body) = else_body {
                     for s in body {
-                        self.collect_return_types(s, env, types);
+                        self.collect_return_infos(s, env, returns);
                     }
                 }
             }
@@ -72,7 +57,7 @@ impl Checker {
             | StmtKind::For { body, .. }
             | StmtKind::Foreach { body, .. } => {
                 for s in body {
-                    self.collect_return_types(s, env, types);
+                    self.collect_return_infos(s, env, returns);
                 }
             }
             StmtKind::Try {
@@ -81,28 +66,28 @@ impl Checker {
                 finally_body,
             } => {
                 for s in try_body {
-                    self.collect_return_types(s, env, types);
+                    self.collect_return_infos(s, env, returns);
                 }
                 for catch_clause in catches {
                     for s in &catch_clause.body {
-                        self.collect_return_types(s, env, types);
+                        self.collect_return_infos(s, env, returns);
                     }
                 }
                 if let Some(body) = finally_body {
                     for s in body {
-                        self.collect_return_types(s, env, types);
+                        self.collect_return_infos(s, env, returns);
                     }
                 }
             }
             StmtKind::Switch { cases, default, .. } => {
                 for (_, body) in cases {
                     for s in body {
-                        self.collect_return_types(s, env, types);
+                        self.collect_return_infos(s, env, returns);
                     }
                 }
                 if let Some(body) = default {
                     for s in body {
-                        self.collect_return_types(s, env, types);
+                        self.collect_return_infos(s, env, returns);
                     }
                 }
             }
@@ -112,6 +97,71 @@ impl Checker {
 
     pub(crate) fn body_contains_return(body: &[Stmt]) -> bool {
         body.iter().any(Self::stmt_contains_return)
+    }
+
+    pub(crate) fn require_declared_return_coverage(
+        &self,
+        declared_ret: &PhpType,
+        body: &[Stmt],
+        span: crate::span::Span,
+        context: &str,
+    ) -> Result<(), CompileError> {
+        if matches!(declared_ret, PhpType::Void | PhpType::Never) {
+            return Ok(());
+        }
+
+        if crate::termination::block_guarantees_function_exit(body) {
+            Ok(())
+        } else {
+            Err(CompileError::new(
+                span,
+                &format!("{} must return a value on every path", context),
+            ))
+        }
+    }
+
+    pub(crate) fn require_compatible_return_type(
+        &self,
+        expected: &PhpType,
+        actual: &PhpType,
+        has_value: bool,
+        span: crate::span::Span,
+        context: &str,
+    ) -> Result<(), CompileError> {
+        if !has_value {
+            if matches!(expected, PhpType::Void) {
+                return Ok(());
+            }
+            return Err(CompileError::new(
+                span,
+                &format!("{} must return a value of type {:?}", context, expected),
+            ));
+        }
+
+        if matches!(expected, PhpType::Void) {
+            return Err(CompileError::new(
+                span,
+                &format!("{} must not return a value", context),
+            ));
+        }
+
+        if matches!(actual, PhpType::Void) && !Self::return_type_accepts_null(expected) {
+            return Err(CompileError::new(
+                span,
+                &format!("{} expects {:?}, got Void", context, expected),
+            ));
+        }
+
+        self.require_compatible_arg_type(expected, actual, span, context)
+    }
+
+    fn return_type_accepts_null(ty: &PhpType) -> bool {
+        match ty {
+            PhpType::Mixed => true,
+            PhpType::Union(members) => members.iter().any(Self::return_type_accepts_null),
+            PhpType::Void => true,
+            _ => false,
+        }
     }
 
     fn stmt_contains_return(stmt: &Stmt) -> bool {
