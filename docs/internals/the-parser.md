@@ -110,8 +110,8 @@ Things that do something:
 | `TypedAssign { type_expr, name, value }` | `int $x = 42;`, `buffer<int> $xs = buffer_new<int>(8);` |
 | `FunctionDecl { name, params, variadic, return_type, body }` | `function foo(int $a, &$b, string $c = "x"): string { }` — params is `Vec<(String, Option<TypeExpr>, Option<Expr>, bool)>` where the tuple stores name, declared type, default value, and `is_ref` (pass by reference). `variadic` is `Option<String>` for variadic parameters (`...$args`) and `return_type` is an optional declared `TypeExpr` |
 | `Return(Option<Expr>)` | `return $x;` or `return;` |
-| `Break` | `break;` |
-| `Continue` | `continue;` |
+| `Break(usize)` | `break;`, `break 2;` |
+| `Continue(usize)` | `continue;`, `continue 2;` |
 | `Include { path, once, required }` | `include 'file.php';` |
 | `Throw(Expr)` | `throw new Exception("boom");` |
 | `Try { try_body, catches, finally_body }` | `try { ... } catch (Exception $e) { ... } finally { ... }` |
@@ -402,8 +402,8 @@ Statement parsing is simpler — after `parse()` has peeled off top-level `exter
 | `Trait` | Trait declaration with trait uses, properties, and methods |
 | `Extern` | Handled one level up in `parser/mod.rs` via `parse_extern_stmts()` |
 | `Return` | Return with optional expression |
-| `Break` | Break statement |
-| `Continue` | Continue statement |
+| `Break` | Break statement with optional positive integer level |
+| `Continue` | Continue statement with optional positive integer level |
 | `Include`/`Require` | Include statement (path is parsed as an expression and later folded by the resolver when it is a compile-time string) |
 | `Const` | Constant declaration (`const NAME = value;`) |
 | `Namespace` | Namespace declaration (`namespace App\Core;` or `namespace App\Core { ... }`) |

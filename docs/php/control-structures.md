@@ -81,7 +81,21 @@ for ($i = 0; $i < 100; $i++) {
 // Output: 1 3
 ```
 
-**Not supported:** `break 2;` / `continue 2;` (multi-level).
+Multi-level exits are supported with positive integer literal depths:
+
+```php
+<?php
+for ($row = 0; $row < 3; $row++) {
+    for ($col = 0; $col < 3; $col++) {
+        if ($row == 1 && $col == 1) {
+            break 2;       // leaves both loops
+        }
+    }
+}
+```
+
+The level counts enclosing loops and `switch` statements, matching PHP. `break;`
+and `continue;` are equivalent to `break 1;` and `continue 1;`.
 
 ## switch / case / default
 

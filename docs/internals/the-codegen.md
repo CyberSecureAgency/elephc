@@ -745,10 +745,18 @@ For associative arrays, see [Associative array codegen](#associative-array-codeg
 
 ### Break / Continue
 
-`break` emits a `b` (unconditional jump) to the current loop's end label.
-`continue` emits a `b` to the loop's continue label (the condition check for `while`, the update for `for`).
+`break` emits a `b` (unconditional jump) to the selected loop/switch end label.
+`continue` emits a `b` to the selected continue label (the condition check for
+`while`, the update for `for`, or the switch end label for PHP-style
+`continue` inside `switch`).
 
-The `loop_stack` in the Context tracks which labels to jump to for nested loops. Each `LoopLabels` entry also carries an `sp_adjust` field so returns inside switch/loop-driven control flow can undo any temporary stack slots before jumping to the shared function epilogue.
+The `loop_stack` in the Context tracks labels for nested loops and switches.
+Multi-level forms such as `break 2;` and `continue 2;` index back through that
+stack. Each `LoopLabels` entry also carries an `sp_adjust` field so multi-level
+exits and returns can undo any skipped switch-subject temporary stack slots
+before jumping to the selected target or shared function epilogue. If the exit
+crosses a `finally`, codegen records the selected target and runs the active
+`finally` chain before resuming the branch.
 
 ### Exceptions and `finally`
 
