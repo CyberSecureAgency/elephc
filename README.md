@@ -221,7 +221,7 @@ if ($x === 3) {
 | `bool` | `true`, `false` |
 | `null` | `null` |
 | `mixed` | `mixed $x = 42;`, `function show(mixed $x): string { ... }` |
-| `iterable` | `function walk(iterable $items): iterable { ... }` (PHP `array \| Traversable` pseudo-type, type-erased at runtime) |
+| `iterable` | `function walk(iterable $items): iterable { ... }` (array-backed PHP `array \| Traversable` pseudo-type; Traversable objects are future work) |
 | `array` | `[1, 2, 3]`, `["key" => "value"]`, `[[1,2],[3,4]]` (indexed, associative, multi-dimensional, copy-on-write, union with `+`) |
 | `object` | `new Foo()`, `$user->name` |
 | `pointer` | `ptr($x)`, `ptr_null()`, `ptr_cast<int>($p)` |
