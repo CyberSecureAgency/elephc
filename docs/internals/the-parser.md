@@ -289,14 +289,14 @@ parse_expr_bp(0):
   prefix → IntLiteral(1)
 
   loop iteration 1:
-    next token: +  → (left_bp=21, right_bp=22)
-    21 >= 0? yes → consume +
-    parse_expr_bp(22):
+    next token: +  → (left_bp=29, right_bp=30)
+    29 >= 0? yes → consume +
+    parse_expr_bp(30):
       prefix → IntLiteral(2)
       loop iteration:
-        next token: *  → (left_bp=23, right_bp=24)
-        23 >= 22? yes → consume *
-        parse_expr_bp(24):
+        next token: *  → (left_bp=31, right_bp=32)
+        31 >= 30? yes → consume *
+        parse_expr_bp(32):
           prefix → IntLiteral(3)
           loop: no more operators
           return IntLiteral(3)
