@@ -48,6 +48,9 @@ echo "Assignment before word and: " . ($assigned ? "yes" : "no") . "\n";
 $score = 10;
 echo "Assignment expression value: " . ($score += 5) . "\n";
 
+$scores = [2, 4];
+echo "Array assignment expression value: " . ($scores[1] += 3) . "\n";
+
 // Short ternary / Elvis keeps the left value when truthy
 $nickname = "";
 $display_name = $nickname ?: "anonymous";

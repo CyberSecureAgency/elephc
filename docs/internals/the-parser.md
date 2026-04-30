@@ -260,7 +260,7 @@ The word-form logical operators (`and`, `xor`, `or`) have PHP's lower precedence
 
 The full ternary form builds `ExprKind::Ternary`. The omitted-middle form `expr ?: fallback` builds `ExprKind::ShortTernary` so later phases can preserve PHP's single-evaluation rule for the left-hand expression.
 
-Variable assignment expressions build `ExprKind::Assignment { target, value }`. Their binding power matches PHP's low-precedence assignment slot, so `$x = true and false` parses as `($x = true) and false`, while `$x = $y = 1` remains right-associative. Standalone variable assignment statements still lower to `StmtKind::Assign` unless a lower-precedence word logical operator requires the whole statement to be represented as an expression statement. Non-local expression targets are rejected for now; non-local assignment statements continue to use the statement-specific lowering described below.
+Assignment expressions build `ExprKind::Assignment { target, value }`. Their binding power matches PHP's low-precedence assignment slot, so `$x = true and false` parses as `($x = true) and false`, while `$x = $y = 1` remains right-associative. Standalone variable assignment statements still lower to `StmtKind::Assign` unless a lower-precedence word logical operator requires the whole statement to be represented as an expression statement. Replayable non-local targets such as `$items[$i]`, `$obj->x`, and `ClassName::$x` are accepted in expression form when their target dependencies stay stable while the assigned value is evaluated; targets with side-effecting receiver/index subexpressions or RHS-mutated target dependencies are rejected until expression-level target stabilization is implemented.
 
 ### The algorithm
 

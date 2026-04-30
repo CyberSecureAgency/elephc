@@ -142,7 +142,28 @@ $count = 4;
 echo ($count += 3); // 7
 ```
 
-Assignment expression precedence matches PHP: assignment binds lower than `?:` and `??`, but higher than the word-form logical operators. The expression form currently supports local variable targets only. Non-local targets such as `($items[0] = 1)`, `($obj->x = 1)`, and `(ClassName::$x = 1)` are tracked in `ROADMAP.md`; use the already-supported standalone statement form for those targets today.
+Assignment expression precedence matches PHP: assignment binds lower than `?:` and `??`, but higher than the word-form logical operators. The expression form supports local variables plus replayable non-local targets such as array elements, object properties, static properties, and indexed array slots stored in properties:
+
+```php
+<?php
+$items = [1, 2];
+echo ($items[1] = 5); // 5
+
+class Box {
+    public $count = 1;
+    public $items = [2];
+}
+$box = new Box();
+echo ($box->count += 4);
+echo ($box->items[0] *= 3);
+
+class Registry {
+    public static ?int $value = null;
+}
+echo (Registry::$value ??= 10);
+```
+
+Non-local assignment expression targets must be replayable and must stay stable while the assigned value is evaluated. Receiver/index expressions with side effects, or RHS expressions that mutate a variable used by the target, are still limited to standalone assignment statements for now. This avoids evaluating those expressions twice while the compiler does not yet have expression-level target stabilization.
 
 ## List Unpacking
 
