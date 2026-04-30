@@ -143,6 +143,7 @@ Proper type system for PHP compatibility.
 - [x] Heredoc / nowdoc strings
 - [x] Bitwise operators: `&`, `|`, `^`, `~`, `<<`, `>>`
 - [x] Full compound assignment family: `**=`, `&=`, `|=`, `^=`, `<<=`, `>>=`
+- [x] Variable assignment expressions — local `=`, compound assignment, and `??=` can be used as PHP-compatible expressions with assignment precedence below `?:` / `??` and above `and` / `xor` / `or`
 - [x] Spaceship operator: `<=>`
 - [x] `call_user_func()` (string callbacks)
 - [x] `call_user_func_array()`
@@ -416,7 +417,7 @@ Features that are feasible but complex. Not currently planned for any specific v
 
 | Feature | Complexity | Notes |
 |---|---|---|
-| Assignment expressions with PHP low-precedence operators | Medium | Model assignment as an expression so forms like `$x = true and false;` match PHP exactly instead of requiring parentheses around the word-form logical RHS. Requires parser/AST/type/codegen changes and precedence regression tests. |
+| Non-local assignment expressions | Medium | Extend expression-form assignment beyond local variables to array, object property, and static property targets such as `($items[0] = 1)`, `($obj->x += 1)`, and `(ClassName::$x ??= 1)`. Standalone non-local assignment statements already work; expression form needs return-value preservation without double-evaluating receiver/index expressions. |
 | PHP case-insensitive symbol parity | Medium | Extend PHP-compatible case-insensitive matching beyond magic constants to keywords, built-in/user function calls, class/interface/trait names, and method lookup while preserving PHP's case-sensitive variables, object properties, string array keys, and user constants. |
 | Dynamic `instanceof` targets | Medium | Support PHP forms such as `$obj instanceof $className` once class-string/object target expressions and their runtime validation semantics are modeled. Current support is for named class/interface targets plus `self`, `parent`, and `static`. |
 | Mixed nullsafe/member chains | Medium | Match PHP's full chain semantics for forms that mix `?->` and `->`, such as `$a?->b->c`. Current support handles nullsafe hops written explicitly with `?->` and short-circuits each nullsafe receiver. |

@@ -58,7 +58,7 @@ sidebar:
 
 Word-form logical precedence matches PHP: `and` binds tighter than `xor`, and `xor` binds tighter than `or`. All three bind looser than `&&`, `||`, `??`, and the ternary operators.
 
-Word-form logical operators are case-insensitive (`AND`, `Or`, and `xOr` are accepted). Assignment expressions are not part of elephc's expression subset yet, so use parentheses when a word-form logical expression is the right-hand side of an assignment: `$x = (true and false);`.
+Word-form logical operators are case-insensitive (`AND`, `Or`, and `xOr` are accepted). Assignment expressions bind tighter than `and`, `xor`, and `or`, matching PHP: `$x = true and false` is parsed as `($x = true) and false`.
 
 ## Error Control
 
@@ -127,6 +127,22 @@ Registry::$items[0] ??= 10;
 
 Append targets such as `$items[] += 1` are invalid; append syntax is only supported with plain assignment (`$items[] = 1`).
 Receiver and index expressions are evaluated once for non-local compound targets, matching PHP read-modify-write behavior for forms such as `$items[f()] += 1` and `getBox()->count += 1`.
+
+Local variable assignments can also be used as expressions. The expression returns the assigned value and still updates the local:
+
+```php
+<?php
+echo ($x = 5);      // 5
+echo $x;            // 5
+
+$x = true and false;
+echo $x ? "T" : "F"; // T
+
+$count = 4;
+echo ($count += 3); // 7
+```
+
+Assignment expression precedence matches PHP: assignment binds lower than `?:` and `??`, but higher than the word-form logical operators. The expression form currently supports local variable targets only. Non-local targets such as `($items[0] = 1)`, `($obj->x = 1)`, and `(ClassName::$x = 1)` are tracked in `ROADMAP.md`; use the already-supported standalone statement form for those targets today.
 
 ## List Unpacking
 
