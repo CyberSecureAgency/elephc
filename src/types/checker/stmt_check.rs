@@ -55,7 +55,8 @@ impl Checker {
                 Err(CompileError::new(stmt.span, "Unresolved include statement"))
             }
             StmtKind::PackedClassDecl { .. } => Ok(()),
-            StmtKind::Break | StmtKind::Continue => Ok(()),
+            StmtKind::Break(levels) => self.check_loop_exit(stmt.span, "break", *levels),
+            StmtKind::Continue(levels) => self.check_loop_exit(stmt.span, "continue", *levels),
             StmtKind::ExprStmt(expr) => {
                 self.infer_type(expr, env)?;
                 Ok(())
@@ -74,6 +75,22 @@ impl Checker {
             StmtKind::ExternFunctionDecl { .. }
             | StmtKind::ExternClassDecl { .. }
             | StmtKind::ExternGlobalDecl { .. } => Ok(()),
+        }
+    }
+
+    fn check_loop_exit(
+        &self,
+        span: crate::span::Span,
+        keyword: &str,
+        levels: usize,
+    ) -> Result<(), CompileError> {
+        if levels <= self.break_continue_depth {
+            Ok(())
+        } else {
+            Err(CompileError::new(
+                span,
+                &format!("Cannot '{}' {} levels", keyword, levels),
+            ))
         }
     }
 }

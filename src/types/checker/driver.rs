@@ -181,6 +181,7 @@ impl Checker {
             active_ref_params: HashSet::new(),
             active_globals: HashSet::new(),
             active_statics: HashSet::new(),
+            break_continue_depth: 0,
         }
     }
 
