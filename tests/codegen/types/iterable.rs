@@ -68,6 +68,23 @@ fn test_foreach_over_iterable_indexed_strings_uses_runtime_slot_width() {
 }
 
 #[test]
+fn test_iterable_foreach_key_remains_mixed_after_runtime_branch() {
+    let out = compile_and_run(
+        "<?php
+        function last_key(iterable $items): void {
+            foreach ($items as $k => $v) {
+            }
+            echo $k;
+        }
+        last_key(['a' => 1]);
+        echo '|';
+        last_key([10, 20]);
+        ",
+    );
+    assert_eq!(out, "a|1");
+}
+
+#[test]
 fn test_gettype_iterable_returns_array() {
     let out = compile_and_run(
         "<?php

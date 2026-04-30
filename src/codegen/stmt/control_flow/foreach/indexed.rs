@@ -155,8 +155,7 @@ pub(crate) fn emit_indexed_foreach_runtime_mixed(
     if let Some(kv) = key_var {
         if let Some(kvar) = ctx.variables.get(kv) {
             let k_offset = kvar.stack_offset;
-            crate::codegen::abi::store_at_offset_scratch(emitter, "x0", k_offset, "x10");
-            ctx.update_var_type_and_ownership(kv, PhpType::Int, HeapOwnership::NonHeap);
+            store_runtime_mixed_index_key_aarch64(kv, k_offset, emitter, ctx);
         } else {
             emitter.comment(&format!("WARNING: undefined foreach key variable ${}", kv));
         }
@@ -354,8 +353,7 @@ fn emit_indexed_foreach_runtime_mixed_linux_x86_64(
     if let Some(kv) = key_var {
         if let Some(kvar) = ctx.variables.get(kv) {
             let k_offset = kvar.stack_offset;
-            crate::codegen::abi::store_at_offset_scratch(emitter, "rax", k_offset, "r10");
-            ctx.update_var_type_and_ownership(kv, PhpType::Int, HeapOwnership::NonHeap);
+            store_runtime_mixed_index_key_x86_64(kv, k_offset, emitter, ctx);
         } else {
             emitter.comment(&format!("WARNING: undefined foreach key variable ${}", kv));
         }
@@ -426,4 +424,40 @@ fn emit_indexed_foreach_runtime_mixed_linux_x86_64(
     emitter.instruction(&format!("jmp {}", loop_start));                        // continue the indexed-array iterable loop
     emitter.label(loop_end);
     emitter.instruction("add rsp, 64");                                         // release index, value tag, length, and array-pointer stack slots
+}
+
+fn store_runtime_mixed_index_key_aarch64(
+    name: &str,
+    offset: usize,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+) {
+    emitter.instruction("str x0, [sp, #-16]!");                                 // preserve the current integer index while replacing the mixed key slot
+    crate::codegen::abi::load_at_offset_scratch(emitter, "x0", offset, "x10");
+    emitter.instruction("bl __rt_decref_mixed");                                // release the previous owned mixed key if one exists
+    emitter.instruction("ldr x1, [sp]");                                        // reload the current index as the mixed integer payload
+    emitter.instruction("mov x0, #0");                                          // runtime tag 0 = integer key
+    emitter.instruction("mov x2, xzr");                                         // integer mixed payloads do not use a high word
+    emitter.instruction("bl __rt_mixed_from_value");                            // box the foreach index as an owned mixed key value
+    crate::codegen::abi::store_at_offset_scratch(emitter, "x0", offset, "x10");
+    emitter.instruction("ldr x0, [sp], #16");                                   // restore the current index for the indexed-array value load
+    ctx.update_var_type_and_ownership(name, PhpType::Mixed, HeapOwnership::Owned);
+}
+
+fn store_runtime_mixed_index_key_x86_64(
+    name: &str,
+    offset: usize,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+) {
+    abi::emit_push_reg(emitter, "rax");                                         // preserve the current integer index while replacing the mixed key slot
+    crate::codegen::abi::load_at_offset_scratch(emitter, "rax", offset, "r10");
+    emitter.instruction("call __rt_decref_mixed");                              // release the previous owned mixed key if one exists
+    emitter.instruction("mov rdi, QWORD PTR [rsp]");                            // reload the current index as the mixed integer payload
+    emitter.instruction("xor rsi, rsi");                                        // integer mixed payloads do not use a high word
+    emitter.instruction("mov eax, 0");                                          // runtime tag 0 = integer key
+    emitter.instruction("call __rt_mixed_from_value");                          // box the foreach index as an owned mixed key value
+    crate::codegen::abi::store_at_offset_scratch(emitter, "rax", offset, "r10");
+    abi::emit_pop_reg(emitter, "rax");                                          // restore the current index for the indexed-array value load
+    ctx.update_var_type_and_ownership(name, PhpType::Mixed, HeapOwnership::Owned);
 }
