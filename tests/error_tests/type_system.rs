@@ -79,18 +79,10 @@ fn test_error_assignment_expression_rejects_non_lvalue() {
 }
 
 #[test]
-fn test_error_assignment_expression_rejects_effectful_non_local_target() {
+fn test_error_null_coalesce_assignment_expression_rejects_mutated_non_local_target_dependency() {
     expect_error(
-        "<?php function idx() { return 0; } $items = [1]; echo ($items[idx()] = 2);",
-        "Non-local assignment expression target must be replayable",
-    );
-}
-
-#[test]
-fn test_error_assignment_expression_rejects_mutated_non_local_target_dependency() {
-    expect_error(
-        "<?php $items = [1, 2]; $i = 0; echo ($items[$i] = ($i = 1));",
-        "Non-local assignment expression target must stay stable across the assigned value",
+        "<?php $items = [null, 2]; $i = 0; echo ($items[$i] ??= ($i = 1));",
+        "Null coalescing assignment expression target must stay stable across the assigned value",
     );
 }
 
