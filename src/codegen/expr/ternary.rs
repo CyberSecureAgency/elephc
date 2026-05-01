@@ -85,6 +85,8 @@ fn infer_branch_result_type(left: &Expr, right: &Expr, ctx: &Context) -> PhpType
     let right_ty = functions::infer_local_type_with_ctx(right, &dummy_sig, ctx);
     if left_ty == right_ty {
         left_ty
+    } else if left_ty == PhpType::Void || right_ty == PhpType::Void {
+        PhpType::Mixed
     } else if left_ty == PhpType::Str || right_ty == PhpType::Str {
         PhpType::Str
     } else if left_ty == PhpType::Float || right_ty == PhpType::Float {
@@ -104,7 +106,9 @@ fn coerce_branch_result(
     if result_ty == branch_ty {
         return;
     }
-    if *result_ty == PhpType::Str {
+    if matches!(result_ty, PhpType::Mixed | PhpType::Union(_)) {
+        crate::codegen::emit_box_current_value_as_mixed(emitter, branch_ty);
+    } else if *result_ty == PhpType::Str {
         coerce_to_string(emitter, ctx, data, branch_ty);
     } else if *result_ty == PhpType::Float && *branch_ty == PhpType::Int {
         abi::emit_int_result_to_float_result(emitter);                          // convert int to float for unified result type
@@ -115,6 +119,7 @@ fn pop_saved_result_value(emitter: &mut Emitter, ty: &PhpType) {
     match ty.codegen_repr() {
         PhpType::Bool
         | PhpType::Int
+        | PhpType::Iterable
         | PhpType::Mixed
         | PhpType::Union(_)
         | PhpType::Array(_)

@@ -77,8 +77,8 @@ pub(crate) fn stmt_local_writes(stmt: &Stmt) -> Option<HashSet<String>> {
         | StmtKind::Return(Some(expr)) => expr_local_writes(expr),
         StmtKind::Throw(expr) => expr_local_writes(expr),
         StmtKind::Return(None)
-        | StmtKind::Break
-        | StmtKind::Continue
+        | StmtKind::Break(_)
+        | StmtKind::Continue(_)
         | StmtKind::NamespaceDecl { .. }
         | StmtKind::UseDecl { .. }
         | StmtKind::FunctionDecl { .. }
@@ -268,6 +268,7 @@ pub(crate) fn expr_local_writes(expr: &Expr) -> Option<HashSet<String>> {
         | ExprKind::BitNot(inner)
         | ExprKind::Throw(inner)
         | ExprKind::ErrorSuppress(inner)
+        | ExprKind::Print(inner)
         | ExprKind::Spread(inner)
         | ExprKind::PtrCast { expr: inner, .. }
         | ExprKind::Cast { expr: inner, .. } => expr_local_writes(inner),
@@ -280,6 +281,17 @@ pub(crate) fn expr_local_writes(expr: &Expr) -> Option<HashSet<String>> {
             expr_local_writes(value)?,
             expr_local_writes(default)?,
         ]),
+        ExprKind::Assignment {
+            target,
+            value,
+            prelude,
+            ..
+        } => {
+            let mut writes = block_local_writes(prelude)?;
+            writes.extend(expr_local_writes(value)?);
+            collect_assignment_target_writes(target, &mut writes)?;
+            Some(writes)
+        }
         ExprKind::ArrayLiteral(items) => items.iter().try_fold(HashSet::new(), |mut acc, item| {
             acc.extend(expr_local_writes(item)?);
             Some(acc)
@@ -346,6 +358,32 @@ pub(crate) fn expr_local_writes(expr: &Expr) -> Option<HashSet<String>> {
         | ExprKind::NullsafePropertyAccess { object, .. } => expr_local_writes(object),
         ExprKind::ClassConstant { .. } => Some(HashSet::new()),
     }
+}
+
+fn collect_assignment_target_writes(
+    target: &Expr,
+    writes: &mut HashSet<String>,
+) -> Option<()> {
+    match &target.kind {
+        ExprKind::Variable(name) => {
+            writes.insert(name.clone());
+        }
+        ExprKind::ArrayAccess { array, index } => {
+            if let ExprKind::Variable(name) = &array.kind {
+                writes.insert(name.clone());
+            }
+            writes.extend(expr_local_writes(array)?);
+            writes.extend(expr_local_writes(index)?);
+        }
+        ExprKind::PropertyAccess { object, .. }
+        | ExprKind::NullsafePropertyAccess { object, .. } => {
+            writes.extend(expr_local_writes(object)?);
+        }
+        _ => {
+            writes.extend(expr_local_writes(target)?);
+        }
+    }
+    Some(())
 }
 
 pub(crate) fn merge_write_sets<const N: usize>(sets: [HashSet<String>; N]) -> Option<HashSet<String>> {

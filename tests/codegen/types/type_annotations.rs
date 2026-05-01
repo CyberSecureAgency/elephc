@@ -245,6 +245,91 @@ fn test_nullable_return_type_boxes_results() {
 }
 
 #[test]
+fn test_declared_return_type_allows_throw_only_body() {
+    let out = compile_and_run(
+        "<?php
+        function fail(): string {
+            throw new \\Exception(\"boom\");
+        }
+        try {
+            echo fail();
+        } catch (\\Exception $e) {
+            echo $e->getMessage();
+        }
+        ",
+    );
+    assert_eq!(out, "boom");
+}
+
+#[test]
+fn test_declared_return_type_allows_exit_only_body() {
+    let out = compile_and_run(
+        "<?php
+        function bail(): int {
+            exit(0);
+        }
+        echo \"before\";
+        bail();
+        echo \"after\";
+        ",
+    );
+    assert_eq!(out, "before");
+}
+
+#[test]
+fn test_declared_return_type_allows_infinite_loop_body() {
+    let out = compile_and_run(
+        "<?php
+        function spin(): int {
+            while (true) {
+                echo \"\";
+            }
+        }
+        function spin_for(): int {
+            for (;;) {
+                echo \"\";
+            }
+        }
+        echo \"ok\";
+        ",
+    );
+    assert_eq!(out, "ok");
+}
+
+#[test]
+fn test_declared_return_type_allows_exhaustive_switch_body() {
+    let out = compile_and_run(
+        "<?php
+        function label(int $value): string {
+            switch ($value) {
+                case 1:
+                    return \"one\";
+                default:
+                    return \"other\";
+            }
+        }
+        echo label(1);
+        echo \"|\";
+        echo label(2);
+        ",
+    );
+    assert_eq!(out, "one|other");
+}
+
+#[test]
+fn test_arrow_nullable_return_type_allows_null_value() {
+    let out = compile_and_run(
+        "<?php
+        $maybe = fn(bool $ok): ?int => $ok ? 7 : null;
+        echo is_null($maybe(false)) ? \"null\" : \"value\";
+        echo \"|\";
+        echo $maybe(true);
+        ",
+    );
+    assert_eq!(out, "null|7");
+}
+
+#[test]
 fn test_union_return_type_boxes_results() {
     let out = compile_and_run(
         "<?php

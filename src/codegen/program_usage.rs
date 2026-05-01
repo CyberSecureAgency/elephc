@@ -190,12 +190,27 @@ fn collect_required_class_names_in_expr(expr: &Expr, names: &mut HashSet<String>
         | ExprKind::BitNot(expr)
         | ExprKind::Throw(expr)
         | ExprKind::ErrorSuppress(expr)
+        | ExprKind::Print(expr)
         | ExprKind::Spread(expr)
         | ExprKind::Cast { expr, .. }
         | ExprKind::PtrCast { expr, .. } => collect_required_class_names_in_expr(expr, names),
         ExprKind::NullCoalesce { value, default } => {
             collect_required_class_names_in_expr(value, names);
             collect_required_class_names_in_expr(default, names);
+        }
+        ExprKind::Assignment {
+            target,
+            value,
+            result_target,
+            prelude,
+            ..
+        } => {
+            collect_required_class_names_in_body(prelude, names);
+            collect_required_class_names_in_expr(target, names);
+            collect_required_class_names_in_expr(value, names);
+            if let Some(result_target) = result_target {
+                collect_required_class_names_in_expr(result_target, names);
+            }
         }
         ExprKind::FunctionCall { args, .. } | ExprKind::ClosureCall { args, .. } => {
             for arg in args {
@@ -351,7 +366,7 @@ fn stmt_uses_variable(stmt: &Stmt, needle: &str) -> bool {
         | StmtKind::ExprStmt(value)
         | StmtKind::ConstDecl { value, .. } => expr_uses_variable(value, needle),
         StmtKind::Return(Some(value)) => expr_uses_variable(value, needle),
-        StmtKind::Return(None) | StmtKind::Break | StmtKind::Continue => false,
+        StmtKind::Return(None) | StmtKind::Break(_) | StmtKind::Continue(_) => false,
         StmtKind::ArrayAssign { array, index, value } => {
             array == needle
                 || expr_uses_variable(index, needle)
@@ -504,10 +519,25 @@ fn expr_uses_variable(expr: &Expr, needle: &str) -> bool {
         | ExprKind::BitNot(inner)
         | ExprKind::Throw(inner)
         | ExprKind::ErrorSuppress(inner)
+        | ExprKind::Print(inner)
         | ExprKind::Spread(inner)
         | ExprKind::PtrCast { expr: inner, .. } => expr_uses_variable(inner, needle),
         ExprKind::NullCoalesce { value, default } => {
             expr_uses_variable(value, needle) || expr_uses_variable(default, needle)
+        }
+        ExprKind::Assignment {
+            target,
+            value,
+            result_target,
+            prelude,
+            ..
+        } => {
+            prelude.iter().any(|stmt| stmt_uses_variable(stmt, needle))
+                || expr_uses_variable(target, needle)
+                || expr_uses_variable(value, needle)
+                || result_target
+                    .as_deref()
+                    .is_some_and(|target| expr_uses_variable(target, needle))
         }
         ExprKind::PreIncrement(name)
         | ExprKind::PostIncrement(name)

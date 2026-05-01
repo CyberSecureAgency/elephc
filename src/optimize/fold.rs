@@ -85,6 +85,7 @@ pub(super) fn fold_expr(expr: Expr) -> Expr {
         }
         ExprKind::Throw(inner) => ExprKind::Throw(Box::new(fold_expr(*inner))),
         ExprKind::ErrorSuppress(inner) => ExprKind::ErrorSuppress(Box::new(fold_expr(*inner))),
+        ExprKind::Print(inner) => ExprKind::Print(Box::new(fold_expr(*inner))),
         ExprKind::NullCoalesce { value, default } => {
             let value = fold_expr(*value);
             let default = fold_expr(*default);
@@ -93,6 +94,19 @@ pub(super) fn fold_expr(expr: Expr) -> Expr {
                 default: Box::new(default),
             })
         }
+        ExprKind::Assignment {
+            target,
+            value,
+            result_target,
+            prelude,
+            conditional_value_temp,
+        } => ExprKind::Assignment {
+            target: Box::new(fold_expr(*target)),
+            value: Box::new(fold_expr(*value)),
+            result_target: result_target.map(|target| Box::new(fold_expr(*target))),
+            prelude: fold_block(prelude),
+            conditional_value_temp,
+        },
         ExprKind::PreIncrement(name) => ExprKind::PreIncrement(name),
         ExprKind::PostIncrement(name) => ExprKind::PostIncrement(name),
         ExprKind::PreDecrement(name) => ExprKind::PreDecrement(name),
@@ -169,6 +183,7 @@ pub(super) fn fold_expr(expr: Expr) -> Expr {
         ExprKind::Closure {
             params,
             variadic,
+            return_type,
             body,
             is_arrow,
             is_static,
@@ -176,6 +191,7 @@ pub(super) fn fold_expr(expr: Expr) -> Expr {
         } => ExprKind::Closure {
             params: fold_params(params),
             variadic,
+            return_type,
             body: fold_block(body),
             is_arrow,
             is_static,

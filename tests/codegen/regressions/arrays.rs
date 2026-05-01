@@ -331,6 +331,30 @@ echo count($arr) . "|" . $arr[0] . "|" . $arr[50];
 }
 
 #[test]
+fn test_indexed_array_direct_growth_preserves_int_slots() {
+    let out = compile_and_run(
+        r#"<?php
+$arr = [10, 20, 30];
+$arr[3] = 40;
+echo count($arr) . "|" . $arr[0] . "|" . $arr[1] . "|" . $arr[2] . "|" . $arr[3];
+"#,
+    );
+    assert_eq!(out, "4|10|20|30|40");
+}
+
+#[test]
+fn test_indexed_array_direct_growth_preserves_string_slots() {
+    let out = compile_and_run(
+        r#"<?php
+$arr = ["a", "b"];
+$arr[2] = "c";
+echo count($arr) . "|" . $arr[0] . "|" . $arr[1] . "|" . $arr[2];
+"#,
+    );
+    assert_eq!(out, "3|a|b|c");
+}
+
+#[test]
 fn test_array_push_function_growth() {
     // array_push() triggers growth
     let out = compile_and_run(

@@ -58,7 +58,7 @@ sidebar:
 
 Word-form logical precedence matches PHP: `and` binds tighter than `xor`, and `xor` binds tighter than `or`. All three bind looser than `&&`, `||`, `??`, and the ternary operators.
 
-Word-form logical operators are case-insensitive (`AND`, `Or`, and `xOr` are accepted). Assignment expressions are not part of elephc's expression subset yet, so use parentheses when a word-form logical expression is the right-hand side of an assignment: `$x = (true and false);`.
+Word-form logical operators are case-insensitive (`AND`, `Or`, and `xOr` are accepted). Assignment expressions bind tighter than `and`, `xor`, and `or`, matching PHP: `$x = true and false` is parsed as `($x = true) and false`.
 
 ## Error Control
 
@@ -71,6 +71,22 @@ echo "still running";
 ```
 
 The operand is evaluated normally and its value is preserved. Only suppressible runtime warnings are hidden; compile-time errors and fatal runtime errors still report normally. Nested `@` scopes are tracked with a runtime suppression depth, and exception unwinds restore the previous suppression state before entering a `catch`.
+
+## Print Expression
+
+`print` is supported as a PHP-compatible expression: it writes its operand to
+stdout and returns `1`.
+
+```php
+<?php
+$status = print "ready\n";
+echo $status;          // 1
+echo print "nested";   // nested1
+```
+
+Its precedence matches PHP: the operand can include `?:` and `??`, while the
+word-form logical operators `and`, `xor`, and `or` bind looser than the whole
+`print` expression.
 
 ## String
 
@@ -111,6 +127,45 @@ Registry::$items[0] ??= 10;
 
 Append targets such as `$items[] += 1` are invalid; append syntax is only supported with plain assignment (`$items[] = 1`).
 Receiver and index expressions are evaluated once for non-local compound targets, matching PHP read-modify-write behavior for forms such as `$items[f()] += 1` and `getBox()->count += 1`.
+
+Local variable assignments can also be used as expressions. The expression returns the assigned value and still updates the local:
+
+```php
+<?php
+echo ($x = 5);      // 5
+echo $x;            // 5
+
+$x = true and false;
+echo $x ? "T" : "F"; // T
+
+$count = 4;
+echo ($count += 3); // 7
+```
+
+Assignment expression precedence matches PHP: assignment binds lower than `?:` and `??`, but higher than the word-form logical operators. The expression form supports local variables plus stabilized non-local targets such as array elements, object properties, static properties, and indexed array slots stored in properties:
+
+```php
+<?php
+$items = [1, 2];
+echo ($items[1] = 5); // 5
+
+class Box {
+    public $count = 1;
+    public $items = [2];
+}
+$box = new Box();
+echo ($box->count += 4);
+echo ($box->items[0] *= 3);
+
+class Registry {
+    public static ?int $value = null;
+}
+echo (Registry::$value ??= 10);
+```
+
+Non-local assignment expression targets stabilize receiver and index subexpressions when needed, so side-effecting targets such as `$items[idx()] = 1` and `make_box()->count += 1` are evaluated once. For `=` and compound assignment, elephc also preserves PHP's ordering for RHS-mutated simple indexes such as `$items[$i] = ($i = 1)` while pre-evaluating computed indexes such as `$items[$i + 0] = ($i = 1)`.
+
+For `??=` expression form, elephc preserves the PHP short-circuit rule and the conditional write order for non-local targets. If the current target value is non-null, the right-hand side is not evaluated. If it is null, the right-hand side runs before the final write target is evaluated, so forms such as `$items[$i] ??= ($i = 1)` write through the updated simple index while computed/effectful index parts remain stabilized.
 
 ## List Unpacking
 

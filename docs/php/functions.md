@@ -29,7 +29,10 @@ function repeat(string $label, int $count): string {
 - `void` is valid only as a return type
 - `never` is valid only as a return type and must not return normally
 - Typed parameters can use default values
-- Function, method, and constructor return type hints are checked; closure and arrow-function parameter type hints are supported, but closure / arrow return annotations are still future work
+- Function, method, constructor, closure, and arrow-function parameter hints are checked
+- Function, method, closure, and arrow-function return type hints are checked
+- Non-`void` declared return types must return a value on every reachable path; `throw`, `exit()`/`die()`, and infinite loops count as non-returning paths
+- Bare `return;` is valid only for `void` returns; use `return null;` for nullable return types
 - Named arguments supported for user-defined functions (reordered at compile time)
 - Named arguments not supported for built-in functions, extern functions, or calls mixed with spread arguments
 
@@ -65,7 +68,7 @@ Variables inside a function are separate from the caller.
 
 ```php
 <?php
-$double = function($x) {
+$double = function(int $x): int {
     return $x * 2;
 };
 echo $double(5); // 10
@@ -76,7 +79,7 @@ Closures can capture with `use`:
 ```php
 <?php
 $factor = 3;
-$multiply = function($x) use ($factor) {
+$multiply = function(int $x) use ($factor): int {
     return $x * $factor;
 };
 echo $multiply(5); // 15
@@ -119,11 +122,11 @@ class C {
 
 ```php
 <?php
-$double = fn($x) => $x * 2;
+$double = fn(int $x): int => $x * 2;
 echo $double(5); // 10
 
 $nums = [1, 2, 3, 4];
-$squared = array_map(fn($n) => $n * $n, $nums);
+$squared = array_map(fn(int $n): int => $n * $n, $nums);
 ```
 
 ## First-class callable syntax
@@ -201,4 +204,20 @@ $c = [...$a, ...$b]; // [1, 2, 3, 4]
 
 ## print
 
-`print` works as an alias for `echo`. Always returns 1 but cannot be used as expression.
+`print` is a PHP language construct expression. It writes its operand to stdout
+using the same scalar output rules as `echo`, then returns `1`.
+
+```php
+<?php
+$ok = print "ready\n";
+echo $ok;             // 1
+
+echo print "nested";  // prints "nested1"
+```
+
+As in PHP, `print` can also stand alone as a statement:
+
+```php
+<?php
+print "hello\n";
+```

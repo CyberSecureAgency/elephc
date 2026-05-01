@@ -33,6 +33,7 @@ pub enum PhpType {
     Bool,
     Void,                          // null
     Never,                         // marks a function/method that never returns (always throws / exits / loops)
+    Iterable,                      // PHP `iterable` pseudo-type (array | Traversable), type-erased
     Mixed,                         // runtime-boxed heterogeneous assoc-array value
     Array(Box<PhpType>),           // e.g., Array(Int) = int[]
     AssocArray {                    // e.g., AssocArray { key: Str, value: Int }
@@ -51,6 +52,8 @@ pub enum PhpType {
 This is still much smaller than full PHP's runtime type system, but it now includes user-written union and nullable annotations where the language subset supports them. `Union(...)` values are lowered to the same boxed runtime representation used by `Mixed`. The distinction between `Array` (indexed) and `AssocArray` (key-value) is determined at compile time from the literal syntax (`[1, 2]` vs `["a" => 1]`).
 
 `Never` is a return-position-only marker: a function annotated `: never` must always diverge (throw, call `exit()`/`die()`, or loop forever). The type checker rejects any reachable `return value;` from such a function, and the runtime size is zero because the value is never materialized. `: never` is rejected as a parameter or local-variable type — same restriction as `: void`.
+
+`Iterable` represents PHP's `iterable` pseudo-type (`array | Traversable`). It is treated as a type-erased 8-byte raw heap pointer at runtime — the checker accepts `Array` and `AssocArray` arguments for parameters declared `iterable`, and `foreach` over an `iterable` local types both `$key` and `$value` as `Mixed`. Direct operations on iterable values (`foreach`, `echo`, `gettype()`, `var_dump()`, `===`, scalar casts, `is_iterable()`) dispatch through the `__rt_heap_kind` runtime helper. Indexed-array iterables use the value-type tag stored in the array header to box loop values as `Mixed`; associative iterables reuse the hash iterator payload tag. Object-backed `Traversable` is not modeled yet and still routes to `__rt_iterable_unsupported_kind`.
 
 `Callable` is used for anonymous functions (closures), arrow functions, and first-class callables. A callable value is stored as a function pointer (8 bytes) on the stack, and is invoked via an indirect branch (`blr`).
 
@@ -88,6 +91,7 @@ The first assignment determines a variable's type. After that, reassignment is o
 | `Pointer(None)` | `Pointer(Some("T"))` | Yes (merged to the more specific pointer tag) |
 | `Pointer(Some("A"))` | `Pointer(Some("B"))` | Yes, but merged to opaque `Pointer(None)` if tags differ |
 | `Pointer(*)` | `Int` / `Str` / `Array` | **No** — compile error |
+| `Array(_)` / `AssocArray(_, _)` | `Iterable` parameter | Yes (PHP `iterable` accepts arrays at the call boundary) |
 
 This means elephc rejects code that PHP would allow:
 
@@ -97,6 +101,19 @@ $x = "hello";  // ← Type error: cannot reassign $x from Int to Str
 ```
 
 This is intentional — it lets the compiler know exactly what `$x` is at every point, without needing runtime type tags.
+
+## Statement checks
+
+Statement checking validates control-flow constraints that are not expression
+types. `foreach` requires an indexed or associative array input and binds the
+key/value variables to the inferred element types. `break` and `continue`
+track the active loop/switch target depth, so `break 2;` is accepted only when
+two enclosing break/continue targets exist in the current function or closure
+body. Function, method, and closure bodies reset that depth so an inner
+declaration cannot target an outer loop. `finally` bodies also record the
+target depth at entry: `break` or `continue` may target loops/switches created
+inside that `finally`, but jumping out of a `finally` block is rejected to match
+PHP.
 
 ## Expression type inference
 
@@ -132,14 +149,15 @@ The type checker computes the type of every expression:
 | `Int <=> Int` | spaceship | `Int` (-1, 0, or 1) |
 | `expr instanceof ClassName` | class/interface metadata check | `Bool` |
 | `expr ?? expr` | null coalescing | Type of the non-null operand |
+| `print expr` | output expression | `Int` (`1`) |
 
 ### Function calls
 
-Built-in functions have hardcoded type signatures (see below). User-defined functions, methods, and constructors can carry declared parameter and return type hints. Closures and arrow functions currently carry declared parameter hints, while their return type is inferred from the body or expression because closure / arrow return annotations are not represented in the AST yet. Named arguments are normalized against the declared parameter list before the usual argument-count and type checks run.
+Built-in functions have hardcoded type signatures (see below). User-defined functions, methods, constructors, closures, and arrow functions can carry declared parameter hints; functions, methods, closures, and arrow functions can carry declared return type hints. Declared non-`void` returns are validated both against returned values and against reachable fallthrough paths, while `throw`, `exit()`/`die()`, and provably infinite loops count as non-returning paths. Closure / arrow return annotations are represented in the AST and threaded into callable `FunctionSig` metadata; unannotated closures continue to infer their return type from the body or expression. Named arguments are normalized against the declared parameter list before the usual argument-count and type checks run.
 
 ## Built-in function signatures
 
-**Files:** `src/types/checker/builtins/`, plus `src/types/checker/mod.rs` and `src/types/checker/inference/` for special expression forms such as `ExprKind::PtrCast` and `ExprKind::InstanceOf`
+**Files:** `src/types/checker/builtins/`, plus `src/types/checker/mod.rs` and `src/types/checker/inference/` for special expression forms such as `ExprKind::PtrCast`, `ExprKind::InstanceOf`, and `ExprKind::Print`
 
 Every built-in function has a registered type signature:
 

@@ -17,13 +17,14 @@ sidebar:
 | `float`          | Yes              | 64-bit double-precision. Literals: `3.14`, `.5`, `1.5e3`, `1.0e-5`, `1_000.5`, `1e1_0`. Constants: `INF`, `NAN`.       |
 | `array`          | Yes              | Indexed (`[1, 2, 3]`) and associative (`["key" => "value"]`). Arrays use copy-on-write semantics.                      |
 | `mixed`          | Yes              | Supported in type hints and typed locals. Runtime values are boxed with a per-value tag.                               |
+| `iterable`       | Yes              | PHP pseudo-type for `array \| Traversable`. Array-backed iterables support indexed and associative `foreach`; runtime operations (`echo`, `gettype()`, `var_dump()`, `===`, casts, `is_iterable()`) dispatch on the heap-kind tag. |
 | `callable`       | Yes              | Closures, arrow functions, first-class callables, and FFI callback parameters.                                         |
 | `object`         | Yes              | Class instances. Heap-allocated, fixed-layout. `new ClassName(...)`                                                    |
 | `enum`           | Yes              | Pure and backed enums. Cases are singletons. Backed enums support `->value`, `::from()`, `::tryFrom()`, `::cases()`.   |
 | `int|string`     | Yes              | Union type — variable accepts any of the listed types. Lowered to Mixed at runtime.                                    |
 | `?int`           | Yes              | Nullable shorthand — sugar for `int|null`.                                                                             |
-| `void`           | Return only      | Valid as a function, method, or extern return type. Internally, `null` is represented as `Void`.                       |
-| `never`          | Return only      | Marks a function, method, or interface method that **never returns** — it must always `throw`, call `exit()`/`die()`, or loop forever. Returning is rejected at type-check time. |
+| `void`           | Return only      | Valid as a function, method, closure, arrow, or extern return type. Internally, `null` is represented as `Void`.        |
+| `never`          | Return only      | Marks a function, method, closure, or interface method that **never returns** — it must always `throw`, call `exit()`/`die()`, or loop forever. Returning is rejected at type-check time. |
 | `ptr` / `ptr<T>` | elephc extension | Raw 64-bit pointer, optionally carrying a checked compile-time pointee tag. See [Pointers](../beyond-php/pointers.md). |
 | `buffer<T>`      | elephc extension | Fixed-size contiguous storage for POD scalars, pointers, or packed records. See [Buffers](../beyond-php/buffers.md).   |
 | `packed class`   | elephc extension | Flat POD record type with compile-time field offsets. See [Packed Classes](../beyond-php/packed-classes.md).           |
@@ -32,7 +33,7 @@ sidebar:
 
 ### Never
 
-`never` marks a function, method, or interface method that **must not return normally**. The function body is expected to either `throw`, call `exit()`/`die()`, or loop forever.
+`never` marks a function, method, closure, or interface method that **must not return normally**. The function body is expected to either `throw`, call `exit()`/`die()`, or loop forever.
 
 ```php
 <?php
@@ -57,7 +58,7 @@ interface Aborts {
 
 Rules:
 
-- valid as a return type for functions, instance methods, static methods, and interface methods
+- valid as a return type for functions, closures, instance methods, static methods, and interface methods
 - matched case-insensitively like PHP's built-in type names (`never`, `Never`, and `NEVER` are equivalent)
 - must be used as a standalone return type; `?never`, `never|null`, and `int|never` are rejected
 - not valid as a parameter, property, or typed local
@@ -159,6 +160,8 @@ Aliases: `(integer)`, `(double)`, `(real)`, `(boolean)`.
 - Loose comparison (`==`) between different types coerces both sides to integer.
 - `??=` is checked against typed assignment storage for variables, object properties, static properties, and non-append array elements. For concrete local variable types, the fallback must keep the same type or be a literal `null`.
 - elephc does not model PHP's uninitialized typed-property state; property slots without explicit defaults start from the compiler's existing zero/null-like object-slot initialization until assigned.
+- Object-implemented `Traversable` is not yet supported for `iterable`; array-backed iterables work for both indexed and associative arrays.
+- Plain array numeric casts (`(int)$array`, `(float)$array`) follow elephc's existing array cast semantics (return the element count rather than PHP's `0`/`1`). Direct `iterable` numeric casts use PHP's empty/non-empty `0`/`1` semantics.
 
 ### Compiler diagnostics
 

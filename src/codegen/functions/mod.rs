@@ -23,7 +23,7 @@ use self::cleanup::{
 };
 use self::control_flow::{collect_try_slots, mark_control_flow_epilogue_unsafe};
 pub use self::locals::collect_local_vars;
-pub(crate) use self::types::codegen_declared_type;
+pub(crate) use self::types::{codegen_declared_type, codegen_static_type};
 pub use self::types::{infer_contextual_type, infer_local_type_pub, infer_local_type_with_ctx};
 
 #[allow(clippy::too_many_arguments)]
@@ -287,14 +287,7 @@ fn emit_function_with_label_and_class(
         if param_names.contains(name) {
             continue;
         }
-        if matches!(
-            &var.ty,
-            PhpType::Str
-                | PhpType::Mixed
-                | PhpType::Array(_)
-                | PhpType::AssocArray { .. }
-                | PhpType::Object(_)
-        ) {
+        if matches!(&var.ty, PhpType::Str) || var.ty.is_refcounted() {
             super::abi::emit_store_zero_to_local_slot(emitter, var.stack_offset); // zero-init to prevent stale ptr free
         }
     }

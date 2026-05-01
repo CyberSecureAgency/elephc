@@ -435,8 +435,8 @@ fn walk_stmt<P: Pass>(stmt: Stmt, pass: &mut P) -> Stmt {
             required,
         },
         // Statements with no Expr children or only simple data:
-        other @ (StmtKind::Break
-        | StmtKind::Continue
+        other @ (StmtKind::Break(_)
+        | StmtKind::Continue(_)
         | StmtKind::UseDecl { .. }
         | StmtKind::Global { .. }
         | StmtKind::PackedClassDecl { .. }
@@ -507,9 +507,23 @@ fn walk_expr<P: Pass>(expr: Expr, pass: &mut P) -> Expr {
         ExprKind::BitNot(inner) => ExprKind::BitNot(Box::new(walk_expr(*inner, pass))),
         ExprKind::Throw(inner) => ExprKind::Throw(Box::new(walk_expr(*inner, pass))),
         ExprKind::ErrorSuppress(inner) => ExprKind::ErrorSuppress(Box::new(walk_expr(*inner, pass))),
+        ExprKind::Print(inner) => ExprKind::Print(Box::new(walk_expr(*inner, pass))),
         ExprKind::NullCoalesce { value, default } => ExprKind::NullCoalesce {
             value: Box::new(walk_expr(*value, pass)),
             default: Box::new(walk_expr(*default, pass)),
+        },
+        ExprKind::Assignment {
+            target,
+            value,
+            result_target,
+            prelude,
+            conditional_value_temp,
+        } => ExprKind::Assignment {
+            target: Box::new(walk_expr(*target, pass)),
+            value: Box::new(walk_expr(*value, pass)),
+            result_target: result_target.map(|target| Box::new(walk_expr(*target, pass))),
+            prelude: prelude.into_iter().map(|stmt| walk_stmt(stmt, pass)).collect(),
+            conditional_value_temp,
         },
         ExprKind::FunctionCall { name, args } => ExprKind::FunctionCall {
             name,
@@ -565,6 +579,7 @@ fn walk_expr<P: Pass>(expr: Expr, pass: &mut P) -> Expr {
         ExprKind::Closure {
             params,
             variadic,
+            return_type,
             body,
             is_arrow,
             is_static,
@@ -582,6 +597,7 @@ fn walk_expr<P: Pass>(expr: Expr, pass: &mut P) -> Expr {
             ExprKind::Closure {
                 params: new_params,
                 variadic,
+                return_type,
                 body: new_body,
                 is_arrow,
                 is_static,

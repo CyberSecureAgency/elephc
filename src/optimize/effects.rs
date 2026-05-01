@@ -145,8 +145,8 @@ pub(super) fn stmt_effect(stmt: &Stmt) -> Effect {
         | StmtKind::TraitDecl { .. }
         | StmtKind::Global { .. }
         | StmtKind::Return(None)
-        | StmtKind::Break
-        | StmtKind::Continue
+        | StmtKind::Break(_)
+        | StmtKind::Continue(_)
         | StmtKind::ExternFunctionDecl { .. }
         | StmtKind::ExternClassDecl { .. }
         | StmtKind::ExternGlobalDecl { .. } => Effect::PURE,
@@ -176,10 +176,27 @@ pub(super) fn expr_effect(expr: &Expr) -> Effect {
         | ExprKind::Cast { expr: inner, .. }
         | ExprKind::PtrCast { expr: inner, .. }
         | ExprKind::Spread(inner) => expr_effect(inner),
+        ExprKind::Print(inner) => expr_effect(inner).with_side_effects(),
         ExprKind::BinaryOp { left, right, .. } => expr_effect(left).combine(expr_effect(right)),
         ExprKind::InstanceOf { value, .. } => expr_effect(value),
         ExprKind::Throw(inner) => expr_effect(inner).with_side_effects().with_may_throw(),
         ExprKind::NullCoalesce { value, default } => expr_effect(value).combine(expr_effect(default)),
+        ExprKind::Assignment {
+            target,
+            value,
+            result_target,
+            prelude,
+            ..
+        } => block_effect(prelude)
+            .combine(expr_effect(target))
+            .combine(expr_effect(value))
+            .combine(
+                result_target
+                    .as_deref()
+                    .map(expr_effect)
+                    .unwrap_or(Effect::PURE),
+            )
+            .with_side_effects(),
         ExprKind::PreIncrement(_)
         | ExprKind::PostIncrement(_)
         | ExprKind::PreDecrement(_)

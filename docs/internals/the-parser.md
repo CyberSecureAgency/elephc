@@ -54,6 +54,7 @@ Things that have a value:
 | `Not(Expr)` | `!$x` | Logical NOT |
 | `BitNot(Expr)` | `~$x` | Bitwise NOT (complement) |
 | `Throw(Expr)` | `throw new Exception("boom")` | Throw expression node used both in statements and expression positions such as `??` or ternaries |
+| `Print(Expr)` | `print $x` | PHP print expression. It writes the operand and returns `1`; statement-form `print $x;` is represented as `ExprStmt(Print(...))`. |
 | `NullCoalesce { value, default }` | `$x ?? $y` | Returns `$x` if non-null, otherwise `$y` |
 | `PreIncrement(String)` | `++$i` | Returns new value |
 | `PostIncrement(String)` | `$i++` | Returns old value |
@@ -68,7 +69,7 @@ Things that have a value:
 | `ShortTernary { value, default }` | `$a ?: $fallback` | PHP short ternary / Elvis form. Codegen evaluates `value` once, returns it if truthy, otherwise returns `default`. |
 | `ErrorSuppress(Expr)` | `@file_get_contents("missing.txt")` | PHP error-control prefix expression. Codegen wraps the operand in a runtime warning-suppression scope. |
 | `Cast { target, expr }` | `(int)$x` | |
-| `Closure { params, variadic, body, is_arrow, is_static, captures }` | `function(int $x = 1) use ($y) { ... }`, `fn(int $x) => $x * 2`, or `static function() { ... }` | Anonymous function / arrow function. Params is `Vec<(String, Option<TypeExpr>, Option<Expr>, bool)>` — name, declared type, default, is_ref. `variadic` is an optional parameter name. `captures` is `Vec<String>` — variables captured via an explicit `use (...)` clause. Arrow functions are still represented as `Closure`, parse with `is_arrow = true`, and do not carry explicit `use (...)` captures in the AST. Closure and arrow parameter type hints are parsed, but closure / arrow return annotations are not represented in the AST yet. `is_static` is set when the closure is prefixed with the `static` keyword (PHP `static function () {}` / `static fn () => …`); the type checker rejects any reference to `$this` inside a static closure. |
+| `Closure { params, variadic, return_type, body, is_arrow, is_static, captures }` | `function(int $x = 1) use ($y): string { ... }`, `fn(int $x): int => $x * 2`, or `static function(): int { ... }` | Anonymous function / arrow function. Params is `Vec<(String, Option<TypeExpr>, Option<Expr>, bool)>` — name, declared type, default, is_ref. `variadic` is an optional parameter name. `return_type` stores the optional declared closure / arrow return `TypeExpr`. `captures` is `Vec<String>` — variables captured via an explicit `use (...)` clause. Arrow functions are still represented as `Closure`, parse with `is_arrow = true`, and do not carry explicit `use (...)` captures in the AST. `is_static` is set when the closure is prefixed with the `static` keyword (PHP `static function () {}` / `static fn () => …`); the type checker rejects any reference to `$this` inside a static closure. |
 | `NamedArg { name, value }` | `foo(name: "Alice")` | Named call argument. Later phases reorder these against the declared parameter list. |
 | `ClosureCall { var, args }` | `$fn(1, 2)` | Calling a closure stored in a variable |
 | `ExprCall { callee, args }` | `$arr[0](1, 2)` | Calling the result of an expression (e.g., array access returning a callable) |
@@ -109,8 +110,8 @@ Things that do something:
 | `TypedAssign { type_expr, name, value }` | `int $x = 42;`, `buffer<int> $xs = buffer_new<int>(8);` |
 | `FunctionDecl { name, params, variadic, return_type, body }` | `function foo(int $a, &$b, string $c = "x"): string { }` — params is `Vec<(String, Option<TypeExpr>, Option<Expr>, bool)>` where the tuple stores name, declared type, default value, and `is_ref` (pass by reference). `variadic` is `Option<String>` for variadic parameters (`...$args`) and `return_type` is an optional declared `TypeExpr` |
 | `Return(Option<Expr>)` | `return $x;` or `return;` |
-| `Break` | `break;` |
-| `Continue` | `continue;` |
+| `Break(usize)` | `break;`, `break 2;` |
+| `Continue(usize)` | `continue;`, `continue 2;` |
 | `Include { path, once, required }` | `include 'file.php';` |
 | `Throw(Expr)` | `throw new Exception("boom");` |
 | `Try { try_body, catches, finally_body }` | `try { ... } catch (Exception $e) { ... } finally { ... }` |
@@ -159,7 +160,8 @@ At statement level, parsing is split between `parser/mod.rs` and the `stmt/` sub
 | `Use` | Namespace import declaration |
 | `Return` | Return statement |
 | `Throw` | Throw statement |
-| `Echo` / `Print` | Echo/print statement |
+| `Echo` | Echo statement |
+| `Print` | Generic expression statement containing `Print(...)` |
 | `If` / `While` / `Do` / `For` / `Foreach` / `Switch` / `Try` | Control-flow statement |
 | `Const` / `Global` / `Static` | Declaration-like statement |
 | `Variable` / `This` / `Identifier` / `Backslash` / `Self_` / `Parent` / `Static::...` | Assignment, property write, call, or generic expression statement |
@@ -227,6 +229,7 @@ Operator          Left BP    Right BP    Associativity
 or                  1          2         left
 xor                 3          4         left
 and                 5          6         left
+assignment          7          6         RIGHT (variable targets)
 ? : / ?:            7          7         right-ish ternary parse
 ??                  9          8         RIGHT (null coalescing)
 ||                 11         12         left
@@ -257,7 +260,9 @@ The word-form logical operators (`and`, `xor`, `or`) have PHP's lower precedence
 
 The full ternary form builds `ExprKind::Ternary`. The omitted-middle form `expr ?: fallback` builds `ExprKind::ShortTernary` so later phases can preserve PHP's single-evaluation rule for the left-hand expression.
 
-Because assignment expressions are not represented in the AST yet, assignment statement right-hand sides are parsed starting at ternary precedence. That deliberately rejects unparenthesized forms such as `$x = true and false;` instead of compiling them with non-PHP semantics. Parenthesized logical RHS expressions such as `$x = (true and false);` are parsed normally.
+Assignment expressions build `ExprKind::Assignment { target, value, result_target, prelude, conditional_value_temp }`. Their binding power matches PHP's low-precedence assignment slot, so `$x = true and false` parses as `($x = true) and false`, while `$x = $y = 1` remains right-associative. Standalone variable assignment statements still lower to `StmtKind::Assign` unless a lower-precedence word logical operator requires the whole statement to be represented as an expression statement.
+
+For non-local expression targets, the parser emits hidden assignment prelude statements when a receiver, index, or RHS must be evaluated exactly once before the final write. The lowered `target` is the write target, `result_target` is the expression read after the write, and `prelude` contains temporary assignments such as the captured result of `idx()` in `$items[idx()] = value()` or the RHS value in `$items[$i] = ($i = 1)`. This keeps codegen on the normal assignment paths while preserving PHP's evaluation order for plain and compound assignment expressions. For `??=`, `conditional_value_temp` reserves a hidden temporary that codegen fills only in the null branch, preserving PHP's conditional RHS evaluation for targets such as `$items[$i] ??= ($i = 1)`.
 
 ### The algorithm
 
@@ -287,14 +292,14 @@ parse_expr_bp(0):
   prefix → IntLiteral(1)
 
   loop iteration 1:
-    next token: +  → (left_bp=21, right_bp=22)
-    21 >= 0? yes → consume +
-    parse_expr_bp(22):
+    next token: +  → (left_bp=29, right_bp=30)
+    29 >= 0? yes → consume +
+    parse_expr_bp(30):
       prefix → IntLiteral(2)
       loop iteration:
-        next token: *  → (left_bp=23, right_bp=24)
-        23 >= 22? yes → consume *
-        parse_expr_bp(24):
+        next token: *  → (left_bp=31, right_bp=32)
+        31 >= 30? yes → consume *
+        parse_expr_bp(32):
           prefix → IntLiteral(3)
           loop: no more operators
           return IntLiteral(3)
@@ -323,11 +328,12 @@ Before looking for infix operators, the parser handles **prefix** constructs —
 | `true` / `false` | Return `BoolLiteral` node |
 | `null` | Return `Null` node |
 | `Variable` | Return `Variable` node (with postfix `++`/`--` check) |
-| `throw` | Parse the following expression and wrap it in `ExprKind::Throw` |
-| `-` (minus) | Parse inner expr at bp=27, return `Negate` |
-| `!` (not) | Parse inner expr at bp=27, return `Not` |
-| `~` (bitwise not) | Parse inner expr at bp=27, return `BitNot` |
-| `@` (error control) | Parse inner expr at unary precedence, return `ErrorSuppress` |
+| `throw` | Parse the following expression at the lowest precedence and wrap it in `ExprKind::Throw` |
+| `print` | Parse the operand at ternary-level precedence (bp=7, above word logical operators) and wrap it in `ExprKind::Print` |
+| `-` (minus) | Parse inner expr at unary precedence (bp=35), return `Negate` |
+| `!` (not) | Parse inner expr at unary precedence (bp=35), return `Not` |
+| `~` (bitwise not) | Parse inner expr at unary precedence (bp=35), return `BitNot` |
+| `@` (error control) | Parse inner expr at unary precedence (bp=35), return `ErrorSuppress` |
 | `++` / `--` | Return `PreIncrement` / `PreDecrement` |
 | `(int)` / `(float)` / ... | Parse inner expr, return `Cast` |
 | `(` | Parse inner expr, expect `)`, return inner expr (and allow a later postfix call like `(expr)(args)`) |
@@ -380,7 +386,8 @@ Statement parsing is simpler — after `parse()` has peeled off top-level `exter
 
 | Current token | Parse as |
 |---|---|
-| `Echo` / `Print` | `Echo` statement — parse expression, expect `;` |
+| `Echo` | `Echo` statement — parse expression, expect `;` |
+| `Print` | Expression statement — parse `Print(...)`, expect `;` |
 | `Throw` | `Throw` statement — parse one expression, expect `;` |
 | `IfDef` | Build-time conditional statement |
 | `Variable` | Assignment, compound assignment, array assign/push, or expression statement |
@@ -399,8 +406,8 @@ Statement parsing is simpler — after `parse()` has peeled off top-level `exter
 | `Trait` | Trait declaration with trait uses, properties, and methods |
 | `Extern` | Handled one level up in `parser/mod.rs` via `parse_extern_stmts()` |
 | `Return` | Return with optional expression |
-| `Break` | Break statement |
-| `Continue` | Continue statement |
+| `Break` | Break statement with optional positive integer level |
+| `Continue` | Continue statement with optional positive integer level |
 | `Include`/`Require` | Include statement (path is parsed as an expression and later folded by the resolver when it is a compile-time string) |
 | `Const` | Constant declaration (`const NAME = value;`) |
 | `Namespace` | Namespace declaration (`namespace App\Core;` or `namespace App\Core { ... }`) |
@@ -420,13 +427,15 @@ $x = 42;         →  Assign { name: "x", value: IntLiteral(42) }
 $x += 5;         →  Assign { name: "x", value: BinaryOp(Add, Variable("x"), IntLiteral(5)) }
 $x <<= 1;        →  Assign { name: "x", value: BinaryOp(ShiftLeft, Variable("x"), IntLiteral(1)) }
 $x ??= 5;        →  Assign { name: "x", value: NullCoalesce(Variable("x"), IntLiteral(5)) }
+$x = true and false; → ExprStmt(BinaryOp(Assignment(Variable("x"), BoolLiteral(true)), And, BoolLiteral(false)))
+echo ($x += 1);  →  Echo(Assignment(Variable("x"), BinaryOp(Add, Variable("x"), IntLiteral(1))))
 $arr[0] = 5;     →  ArrayAssign { array: "arr", index: IntLiteral(0), value: IntLiteral(5) }
 $arr[0] += 5;    →  ArrayAssign { array: "arr", index: IntLiteral(0), value: BinaryOp(Add, ArrayGet(...), IntLiteral(5)) }
 $arr[] = 5;      →  ArrayPush { array: "arr", value: IntLiteral(5) }
 $x++;            →  ExprStmt(PostIncrement("x"))
 ```
 
-Compound assignments (`+=`, `-=`, `*=`, `**=`, `/=`, `.=`, `%=`, `&=`, `|=`, `^=`, `<<=`, `>>=`) are desugared into regular assignments with binary operations. Null coalescing assignment (`??=`) is represented as a regular assignment with a `NullCoalesce` value; codegen recognizes this shape and emits a conditional store so the right-hand side is only evaluated when the current target value is `null`.
+Compound assignments (`+=`, `-=`, `*=`, `**=`, `/=`, `.=`, `%=`, `&=`, `|=`, `^=`, `<<=`, `>>=`) are desugared into regular assignments with binary operations. Null coalescing assignment (`??=`) is represented as a regular assignment with a `NullCoalesce` value; codegen recognizes this shape and emits a conditional store so the right-hand side is only evaluated when the current target value is `null`. In expression form, the type checker and optimizer treat `ExprKind::Assignment`, its hidden prelude, and its conditional value temp as observable assignment machinery so the assignment cannot be folded away or hidden by stale constant-propagation facts.
 
 Compound assignments can target variables, object properties, static properties, and non-append array elements. For simple targets, the parser lowers directly to the final assignment node. For effectful non-local targets such as `$obj->items[next_key()] += 1`, the parser emits a `StmtKind::Synthetic` sequence that stores the receiver or index expressions in hidden temporaries, then performs the read-modify-write using those temporaries. This preserves PHP's single-evaluation behavior without making codegen duplicate the target expressions.
 

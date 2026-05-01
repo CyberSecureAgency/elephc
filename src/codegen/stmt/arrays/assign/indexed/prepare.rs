@@ -44,10 +44,12 @@ pub(super) fn prepare_indexed_array_assign(
     emitter.instruction("str x0, [sp, #-16]!");                                 // push array pointer onto stack
     emit_expr(index, emitter, ctx, data);
     emitter.instruction("str x0, [sp, #-16]!");                                 // push computed index onto stack
-    let val_ty = emit_expr(value, emitter, ctx, data);
+    let mut val_ty = emit_expr(value, emitter, ctx, data);
+    let boxed_iterable =
+        crate::codegen::emit_box_iterable_value_for_mixed_container(emitter, &mut val_ty);
     if matches!(val_ty, PhpType::Str) {
         abi::emit_call_label(emitter, "__rt_str_persist");                      // persist transient string results before storing them in indexed-array slots
-    } else {
+    } else if !boxed_iterable {
         helpers::retain_borrowed_heap_result(emitter, value, &val_ty);
     }
     match &val_ty {
@@ -98,6 +100,7 @@ pub(super) fn prepare_indexed_array_assign(
     emitter.instruction("ldr x12, [x10, #8]");                                  // reload the new array capacity after growth
     emitter.instruction(&format!("b {}", grow_check));                          // continue growing until the target slot fits
     emitter.label(&grow_ready);
+    emitter.instruction("ldr x11, [x10]");                                      // reload the logical length after growth helpers clobber caller-saved registers
     if target.is_ref {
         abi::load_at_offset_scratch(emitter, "x13", target.offset, "x14");           // load ref pointer (x14 scratch avoids clobbering x9 = index)
         emitter.instruction("str x10, [x13]");                                  // store the possibly-grown array pointer through the ref
@@ -149,10 +152,12 @@ fn prepare_indexed_array_assign_linux_x86_64(
     abi::emit_push_reg(emitter, "rax");                                           // preserve the unique indexed-array pointer while evaluating the target index
     emit_expr(index, emitter, ctx, data);
     abi::emit_push_reg(emitter, "rax");                                           // preserve the computed target index while evaluating the assigned value
-    let val_ty = emit_expr(value, emitter, ctx, data);
+    let mut val_ty = emit_expr(value, emitter, ctx, data);
+    let boxed_iterable =
+        crate::codegen::emit_box_iterable_value_for_mixed_container(emitter, &mut val_ty);
     if matches!(val_ty, PhpType::Str) {
         abi::emit_call_label(emitter, "__rt_str_persist");                      // persist transient string results before storing them in indexed-array slots
-    } else {
+    } else if !boxed_iterable {
         helpers::retain_borrowed_heap_result(emitter, value, &val_ty);
     }
     match &val_ty {

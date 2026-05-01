@@ -101,6 +101,24 @@ fn test_error_control_requires_operand() {
 }
 
 #[test]
+fn test_error_print_requires_operand() {
+    expect_error("<?php print;", "Unexpected token");
+}
+
+#[test]
+fn test_error_break_level_must_be_positive() {
+    expect_error("<?php while (1) { break 0; }", "accepts only positive integers");
+}
+
+#[test]
+fn test_error_continue_level_must_be_integer_literal() {
+    expect_error(
+        "<?php $n = 1; while (1) { continue $n; }",
+        "requires an integer literal level",
+    );
+}
+
+#[test]
 fn test_error_single_ampersand() {
     expect_error("<?php &;", "Unexpected token");
 }

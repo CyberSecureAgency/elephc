@@ -22,11 +22,7 @@ pub(crate) fn emit_assoc_array_literal(
     let value_lo_reg = abi::int_arg_reg_name(emitter.target, 3);
     let value_hi_reg = abi::int_arg_reg_name(emitter.target, 4);
     let value_tag_reg = abi::int_arg_reg_name(emitter.target, 5);
-    let tag_reg = if emitter.target.arch == Arch::AArch64 {
-        abi::int_arg_reg_name(emitter.target, 1)
-    } else {
-        abi::temp_int_reg(emitter.target)
-    };
+    let tag_reg = abi::int_arg_reg_name(emitter.target, 1);
     let float_bits_reg = abi::temp_int_reg(emitter.target);
     let zero_reg = match emitter.target.arch {
         Arch::AArch64 => "xzr",
@@ -35,7 +31,12 @@ pub(crate) fn emit_assoc_array_literal(
     let (string_ptr_reg, string_len_reg) = abi::string_result_regs(emitter);
 
     let first_value_ty = super::super::super::functions::infer_contextual_type(&pairs[0].1, ctx);
-    let value_type_tag = super::super::super::runtime_value_tag(&first_value_ty);
+    let header_value_ty = if matches!(first_value_ty, PhpType::Iterable) {
+        PhpType::Mixed
+    } else {
+        first_value_ty
+    };
+    let value_type_tag = super::super::super::runtime_value_tag(&header_value_ty);
 
     abi::emit_load_int_immediate(
         emitter,
@@ -50,8 +51,12 @@ pub(crate) fn emit_assoc_array_literal(
     for (i, pair) in pairs.iter().enumerate() {
         super::super::super::emit_normalized_hash_key(&pair.0, emitter, ctx, data);
         abi::emit_push_reg_pair(emitter, string_ptr_reg, string_len_reg);        // save the assoc-array key payload while the value expression is emitted
-        let ty = emit_expr(&pair.1, emitter, ctx, data);
-        retain_borrowed_heap_arg(emitter, &pair.1, &ty);
+        let mut ty = emit_expr(&pair.1, emitter, ctx, data);
+        let boxed_iterable =
+            crate::codegen::emit_box_iterable_value_for_mixed_container(emitter, &mut ty);
+        if !boxed_iterable {
+            retain_borrowed_heap_arg(emitter, &pair.1, &ty);
+        }
         if i == 0 {
             val_ty = ty.clone();
         } else if ty != val_ty {

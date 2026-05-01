@@ -27,6 +27,18 @@ cargo test --test codegen_tests     # run only end-to-end tests
 cargo test test_fizzbuzz            # run a specific test
 ```
 
+Linux target-specific regressions can be checked through the Docker scripts in
+`scripts/`. They support both full suites and normal `cargo test` filters:
+
+```bash
+./scripts/test-linux-x86_64.sh                     # run all tests on Linux x86_64
+./scripts/test-linux-arm64.sh                      # run all tests on Linux ARM64
+./scripts/test-linux-x86_64.sh iterable            # run tests matching a filter
+./scripts/test-linux-arm64.sh test_my_feature      # run tests matching a filter
+./scripts/test-linux-x86_64.sh --rebuild           # rebuild the Docker image first
+./scripts/test-linux-arm64.sh --rebuild            # rebuild the Docker image first
+```
+
 Some tests are marked `#[ignore]` because they require external libraries (e.g., SDL2) not available in CI. **Before committing, always run `cargo test -- --include-ignored` locally** to verify nothing is broken — including ignored tests.
 
 ### Test strategy during development

@@ -8,6 +8,7 @@ fn test_effect_analysis_tracks_pure_iife_expr_calls() {
                 ExprKind::Closure {
                     params: Vec::new(),
                     variadic: None,
+                    return_type: None,
                     body: vec![Stmt::new(
                         StmtKind::Return(Some(Expr::new(
                             ExprKind::FunctionCall {
@@ -212,7 +213,7 @@ fn test_program_function_effects_merge_callable_aliases_across_switch_paths() {
                                         },
                                         Span::dummy(),
                                     ),
-                                    Stmt::new(StmtKind::Break, Span::dummy()),
+                                    Stmt::new(StmtKind::Break(1), Span::dummy()),
                                 ],
                             ),
                             (vec![Expr::int_lit(2)], Vec::new()),

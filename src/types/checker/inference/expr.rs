@@ -1,13 +1,201 @@
 use crate::errors::CompileError;
-use crate::parser::ast::{CallableTarget, Expr, ExprKind, StaticReceiver, Stmt, StmtKind};
+use crate::parser::ast::{
+    BinOp, CallableTarget, Expr, ExprKind, StaticReceiver, Stmt, StmtKind,
+};
+use crate::span::Span;
 use crate::types::{
     merge_array_key_types, normalized_array_key_type, packed_type_size, PhpType, TypeEnv,
 };
 
 use super::super::Checker;
-use super::syntactic::{infer_expr_type_syntactic, wider_type_syntactic};
+use super::syntactic::wider_type_syntactic;
 
 impl Checker {
+    pub(crate) fn infer_type_with_assignment_effects(
+        &mut self,
+        expr: &Expr,
+        env: &mut TypeEnv,
+    ) -> Result<PhpType, CompileError> {
+        match &expr.kind {
+            ExprKind::Assignment {
+                target,
+                value,
+                result_target,
+                prelude,
+                ..
+            } => {
+                self.check_assignment_expression(
+                    target,
+                    value,
+                    result_target.as_deref(),
+                    prelude,
+                    expr.span,
+                    env,
+                )
+            }
+            ExprKind::BinaryOp { left, op, right } => {
+                self.infer_type_with_assignment_effects(left, env)?;
+                if matches!(op, BinOp::And | BinOp::Or) {
+                    let mut right_env = env.clone();
+                    self.infer_type_with_assignment_effects(right, &mut right_env)?;
+                    Ok(PhpType::Bool)
+                } else {
+                    self.infer_type_with_assignment_effects(right, env)?;
+                    self.infer_type(expr, env)
+                }
+            }
+            ExprKind::NullCoalesce { value, default } => {
+                let value_ty = self.infer_type_with_assignment_effects(value, env)?;
+                let default_ty = if value_ty == PhpType::Void {
+                    self.infer_type_with_assignment_effects(default, env)?
+                } else {
+                    let mut default_env = env.clone();
+                    self.infer_type_with_assignment_effects(default, &mut default_env)?
+                };
+                if Self::union_contains_void(&value_ty) {
+                    Ok(wider_type_syntactic(
+                        &self.strip_void_from_union(&value_ty),
+                        &default_ty,
+                    ))
+                } else {
+                    Ok(wider_type_syntactic(&value_ty, &default_ty))
+                }
+            }
+            ExprKind::ShortTernary { value, default } => {
+                let value_ty = self.infer_type_with_assignment_effects(value, env)?;
+                let default_ty = if value_ty == PhpType::Void {
+                    self.infer_type_with_assignment_effects(default, env)?
+                } else {
+                    let mut default_env = env.clone();
+                    self.infer_type_with_assignment_effects(default, &mut default_env)?
+                };
+                Ok(wider_type_syntactic(&value_ty, &default_ty))
+            }
+            ExprKind::Ternary {
+                condition,
+                then_expr,
+                else_expr,
+            } => {
+                self.infer_type_with_assignment_effects(condition, env)?;
+                let mut then_env = env.clone();
+                let then_ty = self.infer_type_with_assignment_effects(then_expr, &mut then_env)?;
+                let mut else_env = env.clone();
+                let else_ty = self.infer_type_with_assignment_effects(else_expr, &mut else_env)?;
+                Ok(wider_type_syntactic(&then_ty, &else_ty))
+            }
+            ExprKind::ArrayLiteral(elems) => {
+                for elem in elems {
+                    self.infer_type_with_assignment_effects(elem, env)?;
+                }
+                self.infer_type(expr, env)
+            }
+            ExprKind::ArrayLiteralAssoc(pairs) => {
+                for (key, value) in pairs {
+                    self.infer_type_with_assignment_effects(key, env)?;
+                    self.infer_type_with_assignment_effects(value, env)?;
+                }
+                self.infer_type(expr, env)
+            }
+            ExprKind::Match {
+                subject,
+                arms,
+                default,
+            } => {
+                self.infer_type_with_assignment_effects(subject, env)?;
+                let mut result_ty = None;
+                for (conditions, result) in arms {
+                    let mut arm_env = env.clone();
+                    for condition in conditions {
+                        self.infer_type_with_assignment_effects(condition, &mut arm_env)?;
+                    }
+                    let arm_ty = self.infer_type_with_assignment_effects(result, &mut arm_env)?;
+                    result_ty = Some(match result_ty {
+                        Some(current) => wider_type_syntactic(&current, &arm_ty),
+                        None => arm_ty,
+                    });
+                }
+                if let Some(default) = default {
+                    let mut default_env = env.clone();
+                    let default_ty =
+                        self.infer_type_with_assignment_effects(default, &mut default_env)?;
+                    result_ty = Some(match result_ty {
+                        Some(current) => wider_type_syntactic(&current, &default_ty),
+                        None => default_ty,
+                    });
+                }
+                Ok(result_ty.unwrap_or(PhpType::Void))
+            }
+            ExprKind::ArrayAccess { array, index } => {
+                self.infer_type_with_assignment_effects(array, env)?;
+                self.infer_type_with_assignment_effects(index, env)?;
+                self.infer_type(expr, env)
+            }
+            ExprKind::Negate(inner)
+            | ExprKind::Not(inner)
+            | ExprKind::BitNot(inner)
+            | ExprKind::Throw(inner)
+            | ExprKind::ErrorSuppress(inner)
+            | ExprKind::Print(inner)
+            | ExprKind::Spread(inner) => {
+                self.infer_type_with_assignment_effects(inner, env)?;
+                self.infer_type(expr, env)
+            }
+            ExprKind::Cast { expr: inner, .. } | ExprKind::PtrCast { expr: inner, .. } => {
+                self.infer_type_with_assignment_effects(inner, env)?;
+                self.infer_type(expr, env)
+            }
+            ExprKind::FunctionCall { args, .. }
+            | ExprKind::NewObject { args, .. }
+            | ExprKind::StaticMethodCall { args, .. } => {
+                for arg in args {
+                    self.infer_type_with_assignment_effects(arg, env)?;
+                }
+                self.infer_type(expr, env)
+            }
+            ExprKind::ClosureCall { args, .. } => {
+                for arg in args {
+                    self.infer_type_with_assignment_effects(arg, env)?;
+                }
+                self.infer_type(expr, env)
+            }
+            ExprKind::ExprCall { callee, args } => {
+                self.infer_type_with_assignment_effects(callee, env)?;
+                for arg in args {
+                    self.infer_type_with_assignment_effects(arg, env)?;
+                }
+                self.infer_type(expr, env)
+            }
+            ExprKind::NamedArg { value, .. } => {
+                self.infer_type_with_assignment_effects(value, env)?;
+                self.infer_type(expr, env)
+            }
+            ExprKind::PropertyAccess { object, .. }
+            | ExprKind::NullsafePropertyAccess { object, .. } => {
+                self.infer_type_with_assignment_effects(object, env)?;
+                self.infer_type(expr, env)
+            }
+            ExprKind::MethodCall { object, args, .. }
+            | ExprKind::NullsafeMethodCall { object, args, .. } => {
+                self.infer_type_with_assignment_effects(object, env)?;
+                for arg in args {
+                    self.infer_type_with_assignment_effects(arg, env)?;
+                }
+                self.infer_type(expr, env)
+            }
+            ExprKind::BufferNew { len, .. } => {
+                self.infer_type_with_assignment_effects(len, env)?;
+                self.infer_type(expr, env)
+            }
+            ExprKind::NewScopedObject { args, .. } => {
+                for arg in args {
+                    self.infer_type_with_assignment_effects(arg, env)?;
+                }
+                self.infer_type(expr, env)
+            }
+            _ => self.infer_type(expr, env),
+        }
+    }
+
     pub fn infer_type(&mut self, expr: &Expr, env: &TypeEnv) -> Result<PhpType, CompileError> {
         match &expr.kind {
             ExprKind::BoolLiteral(_) => Ok(PhpType::Bool),
@@ -34,6 +222,10 @@ impl Checker {
                 Ok(PhpType::Bool)
             }
             ExprKind::ErrorSuppress(inner) => self.infer_type(inner, env),
+            ExprKind::Print(inner) => {
+                self.infer_type(inner, env)?;
+                Ok(PhpType::Int)
+            }
             ExprKind::PreIncrement(name)
             | ExprKind::PostIncrement(name)
             | ExprKind::PreDecrement(name)
@@ -289,6 +481,23 @@ impl Checker {
                     Ok(wider_type_syntactic(&vt, &dt))
                 }
             }
+            ExprKind::Assignment {
+                target,
+                value,
+                result_target,
+                prelude,
+                ..
+            } => {
+                let mut scoped_env = env.clone();
+                self.check_assignment_expression(
+                    target,
+                    value,
+                    result_target.as_deref(),
+                    prelude,
+                    expr.span,
+                    &mut scoped_env,
+                )
+            }
             ExprKind::ConstRef(name) => {
                 self.constants.get(name.as_str()).cloned().ok_or_else(|| {
                     CompileError::new(expr.span, &format!("Undefined constant: {}", name))
@@ -301,6 +510,7 @@ impl Checker {
             ExprKind::Closure {
                 params,
                 variadic,
+                return_type,
                 body,
                 is_arrow: _,
                 is_static,
@@ -309,7 +519,7 @@ impl Checker {
                 if *is_static {
                     body_must_not_use_this(body, expr.span)?;
                 }
-                self.infer_closure_type(params, variadic, body, captures, expr, env)
+                self.infer_closure_type(params, variadic, return_type, body, captures, expr, env)
             }
             ExprKind::Spread(inner) => {
                 let ty = self.infer_type(inner, env)?;
@@ -421,106 +631,66 @@ impl Checker {
         }
     }
 
-    /// Infer the return type of a closure by scanning its body for Return statements.
-    pub(crate) fn infer_closure_return_type(&mut self, body: &[Stmt], env: &TypeEnv) -> PhpType {
-        let mut return_types = Vec::new();
-        for stmt in body {
-            self.collect_closure_return_types(stmt, env, &mut return_types);
+    fn check_assignment_expression(
+        &mut self,
+        target: &Expr,
+        value: &Expr,
+        result_target: Option<&Expr>,
+        prelude: &[Stmt],
+        span: Span,
+        env: &mut TypeEnv,
+    ) -> Result<PhpType, CompileError> {
+        for stmt in prelude {
+            self.check_assignment_like_stmt(stmt, env)?;
         }
-        if return_types.is_empty() {
-            return PhpType::Int;
+
+        if let ExprKind::Variable(name) = &target.kind {
+            return self.check_local_assignment_expression(name, value, span, env);
         }
-        let mut result = return_types[0].clone();
-        for ty in &return_types[1..] {
-            result = wider_type_syntactic(&result, ty);
-        }
-        result
+
+        let stmt_kind = match &target.kind {
+            ExprKind::ArrayAccess { array, index } => match &array.kind {
+                ExprKind::Variable(array) => StmtKind::ArrayAssign {
+                    array: array.clone(),
+                    index: *index.clone(),
+                    value: value.clone(),
+                },
+                ExprKind::PropertyAccess { object, property } => StmtKind::PropertyArrayAssign {
+                    object: object.clone(),
+                    property: property.clone(),
+                    index: *index.clone(),
+                    value: value.clone(),
+                },
+                ExprKind::StaticPropertyAccess { receiver, property } => {
+                    StmtKind::StaticPropertyArrayAssign {
+                        receiver: receiver.clone(),
+                        property: property.clone(),
+                        index: *index.clone(),
+                        value: value.clone(),
+                    }
+                }
+                _ => return Err(CompileError::new(span, "Invalid assignment target")),
+            },
+            ExprKind::PropertyAccess { object, property } => StmtKind::PropertyAssign {
+                object: object.clone(),
+                property: property.clone(),
+                value: value.clone(),
+            },
+            ExprKind::StaticPropertyAccess { receiver, property } => {
+                StmtKind::StaticPropertyAssign {
+                    receiver: receiver.clone(),
+                    property: property.clone(),
+                    value: value.clone(),
+                }
+            }
+            _ => return Err(CompileError::new(span, "Invalid assignment target")),
+        };
+
+        let stmt = Stmt::new(stmt_kind, span);
+        self.check_assignment_like_stmt(&stmt, env)?;
+        self.infer_type(result_target.unwrap_or(target), env)
     }
 
-    fn collect_closure_return_types(
-        &mut self,
-        stmt: &Stmt,
-        env: &TypeEnv,
-        return_types: &mut Vec<PhpType>,
-    ) {
-        match &stmt.kind {
-            StmtKind::NamespaceDecl { .. } | StmtKind::UseDecl { .. } => {}
-            StmtKind::NamespaceBlock { body, .. } => {
-                for inner in body {
-                    self.collect_return_types(inner, env, return_types);
-                }
-            }
-            StmtKind::Return(Some(expr)) => {
-                let ty = self
-                    .infer_type(expr, env)
-                    .unwrap_or_else(|_| infer_expr_type_syntactic(expr));
-                return_types.push(ty);
-            }
-            StmtKind::Return(None) => {
-                return_types.push(PhpType::Void);
-            }
-            StmtKind::If {
-                then_body,
-                elseif_clauses,
-                else_body,
-                ..
-            } => {
-                for stmt in then_body {
-                    self.collect_closure_return_types(stmt, env, return_types);
-                }
-                for (_, body) in elseif_clauses {
-                    for stmt in body {
-                        self.collect_closure_return_types(stmt, env, return_types);
-                    }
-                }
-                if let Some(body) = else_body {
-                    for stmt in body {
-                        self.collect_closure_return_types(stmt, env, return_types);
-                    }
-                }
-            }
-            StmtKind::While { body, .. }
-            | StmtKind::DoWhile { body, .. }
-            | StmtKind::For { body, .. }
-            | StmtKind::Foreach { body, .. } => {
-                for stmt in body {
-                    self.collect_closure_return_types(stmt, env, return_types);
-                }
-            }
-            StmtKind::Try {
-                try_body,
-                catches,
-                finally_body,
-            } => {
-                for stmt in try_body {
-                    self.collect_closure_return_types(stmt, env, return_types);
-                }
-                for catch_clause in catches {
-                    for stmt in &catch_clause.body {
-                        self.collect_closure_return_types(stmt, env, return_types);
-                    }
-                }
-                if let Some(body) = finally_body {
-                    for stmt in body {
-                        self.collect_closure_return_types(stmt, env, return_types);
-                    }
-                }
-            }
-            StmtKind::Switch { cases, default, .. } => {
-                for (_, body) in cases {
-                    for stmt in body {
-                        self.collect_closure_return_types(stmt, env, return_types);
-                    }
-                }
-                if let Some(body) = default {
-                    for stmt in body {
-                        self.collect_closure_return_types(stmt, env, return_types);
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
 }
 
 impl Checker {
@@ -748,6 +918,7 @@ fn expr_must_not_use_this(expr: &Expr, span: crate::span::Span) -> Result<(), Co
         | ExprKind::BitNot(inner)
         | ExprKind::Throw(inner)
         | ExprKind::ErrorSuppress(inner)
+        | ExprKind::Print(inner)
         | ExprKind::Spread(inner)
         | ExprKind::PtrCast { expr: inner, .. }
         | ExprKind::Cast { expr: inner, .. } => expr_must_not_use_this(inner, span),

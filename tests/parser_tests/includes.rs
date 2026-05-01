@@ -1,8 +1,7 @@
 use super::*;
 
 #[test]
-fn test_word_logical_assignment_rhs_requires_parentheses() {
-    assert!(parse_fails("<?php $x = true and false;"));
+fn test_word_logical_typed_assignment_rhs_requires_parentheses() {
     assert!(parse_fails("<?php int $x = true or false;"));
 }
 

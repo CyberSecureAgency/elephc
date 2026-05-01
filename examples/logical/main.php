@@ -41,6 +41,28 @@ echo "Word or precedence: " . ($word_or ? "yes" : "no") . "\n";
 $word_xor = (true xor true and false);
 echo "Word xor precedence: " . ($word_xor ? "yes" : "no") . "\n";
 
+// Assignment expressions bind tighter than word-form logical operators
+$assigned = true and false;
+echo "Assignment before word and: " . ($assigned ? "yes" : "no") . "\n";
+
+$score = 10;
+echo "Assignment expression value: " . ($score += 5) . "\n";
+
+function bonus_index(): int {
+    return 1;
+}
+
+$scores = [2, 4];
+echo "Array assignment expression value: " . ($scores[bonus_index()] += 3) . "\n";
+
+$slot = 0;
+echo "RHS-mutated index assignment: " . ($scores[$slot] = ($slot = 1)) . "\n";
+echo "Scores after stabilized writes: " . $scores[0] . ", " . $scores[1] . "\n";
+
+$missing_slot = 2;
+echo "RHS-mutated null-coalesce assignment: " . ($scores[$missing_slot] ??= ($missing_slot = 0)) . "\n";
+echo "Scores after conditional write: " . $scores[0] . ", " . $scores[1] . "\n";
+
 // Short ternary / Elvis keeps the left value when truthy
 $nickname = "";
 $display_name = $nickname ?: "anonymous";

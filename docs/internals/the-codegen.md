@@ -553,15 +553,20 @@ So the behavior is slice-like, but it does not call `substr()` or a dedicated ru
 
 `emit_stmt()` is similarly split across focused helpers under `stmt/`: assignment/storage logic, array statements, and control-flow lowering (`branching`, `foreach`, `loops`) now live outside the thin top-level dispatcher. Small shared statement-side policies such as borrowed-result retention, local-slot ownership updates, static-init guards, and indexed-array metadata stamping now sit in `stmt/helpers.rs` instead of bloating `stmt.rs` itself. Storage lowering is now split too: `stmt/storage.rs` is just a boundary, with `storage/locals.rs` handling ordinary global/static symbol access and `storage/extern_globals.rs` owning extern-global load/store conventions. Assignment lowering is also split one level deeper: `stmt/assignments/locals.rs` handles plain local/global/ref writes, while `stmt/assignments/properties.rs` now orchestrates property writes across `properties/target.rs`, `magic_set.rs`, and `storage.rs`. Array-index writes follow the same pattern now: `stmt/arrays/assign.rs` is just a dispatcher, while `stmt/arrays/assign/buffer.rs` and `assoc.rs` isolate the non-indexed-container paths, and `stmt/arrays/assign/indexed.rs` now orchestrates the indexed-array write across `indexed/prepare.rs`, `normalize.rs`, `store.rs`, and `extend.rs`. Branching lowering now follows that same shape too: `stmt/control_flow/branching.rs` is just a boundary, while `branching/if_stmt.rs` and `branching/switch_stmt.rs` own the distinct lowering paths. Exception lowering follows the same structure: `stmt/control_flow/exceptions.rs` orchestrates the high-level try/catch/finally flow, while `exceptions/handlers.rs`, `catches.rs`, and `finally.rs` own the lower-level handler stack, catch matching, and pending-action/finally dispatch mechanics. Loop lowering is split too: `stmt/control_flow/loops.rs` is now just a boundary, with `loops/iterative.rs` handling `for`/`while`/`do...while` and `loops/exits.rs` owning `break`/`continue`/`return`. `foreach` lowering now follows the same pattern: `stmt/control_flow/foreach.rs` dispatches between `stmt/control_flow/foreach/indexed.rs` and `stmt/control_flow/foreach/assoc.rs`.
 
-### Echo
+### Echo and print
 
 ```php
 echo $x;
+$status = print $x;
 ```
 
 1. Evaluate expression → result in registers
 2. Check for null/false (skip printing if so — matches PHP behavior where `echo false` prints nothing)
 3. Call `emit_write_stdout()` from the [ABI module](#the-abi-module)
+
+`print` expressions reuse the same stdout helper, then write integer `1` into
+the expression result register so the value can be assigned, concatenated, or
+passed into another expression.
 
 ### Assignment
 
@@ -740,10 +745,22 @@ For associative arrays, see [Associative array codegen](#associative-array-codeg
 
 ### Break / Continue
 
-`break` emits a `b` (unconditional jump) to the current loop's end label.
-`continue` emits a `b` to the loop's continue label (the condition check for `while`, the update for `for`).
+`break` emits a `b` (unconditional jump) to the selected loop/switch end label.
+`continue` emits a `b` to the selected continue label (the condition check for
+`while`, the update for `for`, or the switch end label for PHP-style
+`continue` inside `switch`).
 
-The `loop_stack` in the Context tracks which labels to jump to for nested loops. Each `LoopLabels` entry also carries an `sp_adjust` field so returns inside switch/loop-driven control flow can undo any temporary stack slots before jumping to the shared function epilogue.
+The `loop_stack` in the Context tracks labels for nested loops and switches.
+Multi-level forms such as `break 2;` and `continue 2;` index back through that
+stack. Each `LoopLabels` entry also carries an `sp_adjust` field so multi-level
+exits and returns can undo any skipped switch-subject temporary stack slots
+before jumping to the selected target or shared function epilogue. If the exit
+crosses a `finally`, codegen records the selected target and runs the active
+`finally` chain before resuming the branch.
+
+The type checker rejects `break` / `continue` that would jump out of a
+`finally` body, so codegen only has to route legal exits from protected `try` or
+`catch` bodies through `finally_stack`.
 
 ### Exceptions and `finally`
 
@@ -753,7 +770,7 @@ Exception lowering lives in `src/codegen/stmt/control_flow/exceptions.rs`. The b
 2. Call `__rt_throw_current`, which unwinds activation records and `longjmp`s into the nearest handler
 3. For `try`, emit a `_setjmp` resume point plus a linked handler record in `_exc_handler_top`
 4. Test each catch target by class id or interface id through `__rt_exception_matches`
-5. Route `return`, `break`, `continue`, and rethrow through `finally_stack` so every enclosing `finally` runs before control leaves the protected region
+5. Route `return`, `break`, `continue`, and rethrow through `finally_stack` so every enclosing `finally` runs before control leaves the protected region. The checker rejects `break` / `continue` that would originate inside a `finally` and target an outer loop/switch.
 
 This means `finally` is part of ordinary control-flow lowering, not a separate runtime pass. The runtime only unwinds frames and chooses the landing pad; the compiler-generated labels still decide whether execution resumes in a matching `catch`, in a `finally`, or in an outer handler.
 

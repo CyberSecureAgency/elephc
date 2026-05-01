@@ -6,7 +6,7 @@
 - [x] Integers, strings (double and single quoted), echo, variables, comments
 - [x] Arithmetic (`+`, `-`, `*`, `/`, `%`), comparison (`==`, `!=`, `<`, `>`, `<=`, `>=`)
 - [x] String concatenation (`.`) with automatic int coercion
-- [x] `if` / `elseif` / `else`, `while`, `for`, `do...while`, `break`, `continue`
+- [x] `if` / `elseif` / `else`, `while`, `for`, `do...while`, `break`, `continue`, including multi-level `break N` / `continue N`
 - [x] Functions with local scope, return, recursion, nested calls
 - [x] Pre/post increment/decrement (`++$i`, `$i++`, `--$i`, `$i--`)
 - [x] Logical operators: `&&`, `||`, `and`, `or`, `xor`, `!` (`and`/`or`/symbolic forms use short-circuit evaluation)
@@ -102,7 +102,7 @@ Proper type system for PHP compatibility.
 - [x] `copy()`, `rename()`, `unlink()`, `mkdir()`, `rmdir()`
 - [x] `scandir()`, `glob()`, `getcwd()`, `chdir()`
 - [x] `tempnam()`, `sys_get_temp_dir()`
-- [x] `print` as alias for `echo`
+- [x] Statement-form `print` output
 - [x] `var_dump()`, `print_r()` for debugging
 
 ## v0.6.x — Associative arrays and switch (done)
@@ -124,6 +124,7 @@ Proper type system for PHP compatibility.
 - [x] `asort()`, `arsort()`, `ksort()`, `krsort()`
 - [x] `natsort()`, `natcasesort()`, `shuffle()`, `array_rand()`
 - [x] `range()`
+- [x] Direct indexed-array growth preserves existing slots for writes such as `$items[2] = 1` after `$items = [10, 20]`
 - [x] `switch` / `case` / `default` (with fall-through)
 - [x] `match` expression (PHP 8 style, no fall-through)
 
@@ -143,6 +144,7 @@ Proper type system for PHP compatibility.
 - [x] Heredoc / nowdoc strings
 - [x] Bitwise operators: `&`, `|`, `^`, `~`, `<<`, `>>`
 - [x] Full compound assignment family: `**=`, `&=`, `|=`, `^=`, `<<=`, `>>=`
+- [x] Assignment expressions — local variables and stabilized non-local targets (`$items[0]`, `$items[idx()]`, `$obj->x`, `makeBox()->x`, `ClassName::$x`, property array slots) support `=`, compound assignment, and `??=` as PHP-compatible expressions, including RHS-mutated target dependencies such as `$items[$i] ??= ($i = 1)`, with assignment precedence below `?:` / `??` and above `and` / `xor` / `or`
 - [x] Spaceship operator: `<=>`
 - [x] `call_user_func()` (string callbacks)
 - [x] `call_user_func_array()`
@@ -303,7 +305,7 @@ Proper type system for PHP compatibility.
 - [x] Final classes, methods, and properties (`final class Foo {}`, `final public function run() {}`, `final public $id`) — compile-time inheritance and override enforcement
 - [x] Union types (`int|string`) — tagged union with runtime type dispatch
 - [x] Nullable types (`?int`) — sugar for `int|null`
-- [x] Function / method parameter and return type hints (`function foo(int $x): string`) — compile-time validation for functions, methods, and constructors; closure / arrow parameter hints are supported, while closure / arrow return annotations remain future work
+- [x] Function / method parameter and return type hints (`function foo(int $x): string`) — compile-time validation for functions, methods, constructor parameters, closures, arrow functions, and non-`void` return-path coverage
 - [x] Constructor property promotion (`public function __construct(public int $x)`) — promoted parameters lower to declared properties plus constructor assignments, including visibility, `readonly`, defaults, nullable/union type declarations, and by-reference promoted parameters
 
 ## v0.18.x — Multi-platform and optimizations
@@ -336,6 +338,7 @@ Proper type system for PHP compatibility.
 - [x] Relational and loose-comparison contradiction guards for dead-code elimination
 - [x] Advanced static property parity — PHP-style static property redeclaration rules and direct array element writes such as `ClassName::$items[] = $value`
 - [x] Short ternary operator `?:` — PHP Elvis form with single evaluation of the left-hand expression
+- [x] `print` expression form — writes output and returns `1`, including statement-form `print $x;` as `ExprStmt(Print(...))`
 - [x] Constant propagation v2 — known-subject `switch` path merges, non-throwing `try` / unreachable-catch env merges, known `match` folding, and scalar indexed/associative array-literal access folding
 - [x] Constant propagation v3 — local loop path summaries for `while(false)`, `do...while(false)`, `while(true)` / `for(;;)` break exits, branch-local loop-exit merges, and safe pruning around `do...while(false)` loop exits
 - [ ] Constant propagation v4 — full fixed-point / basic-block propagation across arbitrary loops and general path merges once there are measured cases that justify the extra pass complexity
@@ -364,6 +367,7 @@ Proper type system for PHP compatibility.
 - [x] PHP 7.4 numeric separators (`1_000_000`, `0xFF_FF`, `0b1010_1010`, `0o7_7_7`, `1_000.5`, `1e1_0`) across decimal, hex, octal, binary, and float literals
 - [x] Trailing-character validation on numeric literals (rejects `0o78`, `078`, `0xfg`, `0b12`, `1_`, `1__0` at lex time instead of silently splitting tokens)
 - [x] Support for `never` return type
+- [x] `iterable` pseudo-type runtime parity — `foreach` over indexed-array and hash-backed iterables, `echo`, `gettype()`, `var_dump()`, `===`, scalar casts (`(int)`, `(float)`, `(string)`, `(bool)`), and the `is_iterable()` builtin all dispatch through the heap-kind tag/value-type metadata where needed
 
 ## v0.20.x — Shared and static libraries (C ABI)
 
@@ -414,19 +418,15 @@ Features that are feasible but complex. Not currently planned for any specific v
 
 | Feature | Complexity | Notes |
 |---|---|---|
-| Assignment expressions with PHP low-precedence operators | Medium | Model assignment as an expression so forms like `$x = true and false;` match PHP exactly instead of requiring parentheses around the word-form logical RHS. Requires parser/AST/type/codegen changes and precedence regression tests. |
 | PHP case-insensitive symbol parity | Medium | Extend PHP-compatible case-insensitive matching beyond magic constants to keywords, built-in/user function calls, class/interface/trait names, and method lookup while preserving PHP's case-sensitive variables, object properties, string array keys, and user constants. |
 | Dynamic `instanceof` targets | Medium | Support PHP forms such as `$obj instanceof $className` once class-string/object target expressions and their runtime validation semantics are modeled. Current support is for named class/interface targets plus `self`, `parent`, and `static`. |
 | Mixed nullsafe/member chains | Medium | Match PHP's full chain semantics for forms that mix `?->` and `->`, such as `$a?->b->c`. Current support handles nullsafe hops written explicitly with `?->` and short-circuits each nullsafe receiver. |
 | Full PHP list destructuring | Medium | Extend `[$a, $b] = ...` beyond plain variables and indexed RHS values to cover skipped entries, nested patterns, and associative-key destructuring. |
 | Heterogeneous indexed arrays | Medium | Allow mixed payloads in indexed arrays instead of requiring homogeneous indexed values. This would complete PHP array-union edge cases such as non-empty indexed arrays whose missing right-side numeric keys have a different value type. |
 | Mixed indexed/associative array union | Medium | Model `array + array` cases where one operand is represented as an indexed array and the other as an associative hash, preserving PHP's shared int/string key space and left-key precedence. |
-| Multi-level `break` / `continue` | Low | Parse and lower numeric depths such as `break 2;` and `continue 2;` through nested loop/switch/finally exits. |
 | Named-argument parity for built-ins, extern calls, and spread | Medium | Extend call validation/lowering so named arguments work outside user-defined calls and interact correctly with spread arguments. |
 | Captured closures as callback values | Medium | Forward hidden `use (...)` capture environments through callback-style built-ins such as `array_map`, `array_filter`, and `call_user_func`. |
-| Closure and arrow return type annotations | Low | Parse and validate `function (...): T {}` and `fn(...): T => expr`, adding a closure return-type field to the AST and threading it through closure `FunctionSig` creation. |
 | Full first-class callable targets | Medium | Support `static::method(...)` and `$object->method(...)` first-class callable syntax in addition to function, `ClassName::`, `self::`, and `parent::` targets. |
-| `print` expression form | Low | Model `print` as an expression that writes output and returns `1`, instead of only accepting it as an echo-like statement. |
 | OOP property parity v2 | High | Cover abstract properties, `readonly static` properties, instance property redeclaration rules, and the remaining by-reference constructor-promotion gaps (`readonly` and default values). |
 | Buffer ergonomics v2 | Medium | Consider dynamic resize/push/pop, `foreach`, array conversion, and automatic cleanup for `buffer<T>` while keeping the hot-path POD contract explicit. |
 | Broader date, regex, and JSON PHP parity | High | Expand `strtotime()` relative formats, PCRE-compatible regex features/captures/backreferences, and `json_decode()` structured array/object decoding. |
@@ -434,6 +434,7 @@ Features that are feasible but complex. Not currently planned for any specific v
 | Runtime-order-aware include_once / require_once | Medium | Add runtime guards for `include_once` / `require_once` inside functions, methods, loops, and conditional branches so skipped files match PHP execution order rather than only compile-time traversal order. |
 | PHP resource type compatibility | Medium | Model resources separately from integers so file handles and future extension handles can more closely match PHP behavior. |
 | Runtime-value compatibility polishing v2 | Medium | Continue with PHP's uninitialized typed-property state, integer overflow promotion, broader loose-comparison semantics, and future warning/notice sites as they are added. |
+| `iterable` Traversable parity | Medium | Model PHP's `Traversable` interface so user-defined iterator/aggregate objects can be accepted by `iterable`, `foreach`, and `is_iterable()`. Array-backed iterables already support indexed and associative `foreach`; scalar/echo/gettype/var_dump operations are wired through `__rt_heap_kind`. |
 | String-capable FFI callbacks | Medium | Allow C callback signatures that pass or return strings once ownership and temporary C-string lifetimes are modeled safely across callback boundaries. |
 | Generators / `yield` | High | Requires compile-time state machine transformation: every yield point becomes a switch case, all locals promoted to heap-allocated generator object. Edge cases with yield inside try/catch/finally are significant. |
 | `yield from` delegation | High | Depends on generators. Forwards iteration to an inner generator, propagating values and return. |

@@ -74,13 +74,63 @@ fn test_error_word_logical_missing_rhs() {
 }
 
 #[test]
-fn test_error_word_logical_assignment_rhs_requires_parentheses() {
-    expect_error("<?php $x = true and false;", "Expected ';'");
+fn test_error_assignment_expression_rejects_non_lvalue() {
+    expect_error("<?php echo 1 = 2;", "Invalid assignment target");
+}
+
+#[test]
+fn test_error_short_circuit_assignment_effect_is_not_definite() {
+    expect_error(
+        "<?php echo false && ($x = 1); echo $x;",
+        "Undefined variable: $x",
+    );
 }
 
 #[test]
 fn test_error_short_ternary_missing_default() {
     expect_error("<?php echo $x ?:;", "Unexpected token: Semicolon");
+}
+
+#[test]
+fn test_error_break_outside_loop_or_switch() {
+    expect_error("<?php break;", "Cannot 'break' 1 levels");
+}
+
+#[test]
+fn test_error_break_too_many_levels() {
+    expect_error("<?php while (1) { break 2; }", "Cannot 'break' 2 levels");
+}
+
+#[test]
+fn test_error_continue_too_many_levels() {
+    expect_error(
+        "<?php while (1) { continue 2; }",
+        "Cannot 'continue' 2 levels",
+    );
+}
+
+#[test]
+fn test_error_break_cannot_jump_out_of_finally() {
+    expect_error(
+        "<?php while (1) { try { echo 1; } finally { break; } }",
+        "Cannot jump out of a finally block",
+    );
+}
+
+#[test]
+fn test_error_continue_cannot_jump_out_of_finally() {
+    expect_error(
+        "<?php while (1) { try { echo 1; } finally { continue; } }",
+        "Cannot jump out of a finally block",
+    );
+}
+
+#[test]
+fn test_error_multilevel_break_cannot_jump_out_of_finally() {
+    expect_error(
+        "<?php while (1) { try { echo 1; } finally { while (1) { break 2; } } }",
+        "Cannot jump out of a finally block",
+    );
 }
 
 #[test]

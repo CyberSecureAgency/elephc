@@ -15,6 +15,15 @@ pub(super) fn emit_echo_stmt(
 ) {
     emitter.blank();
     emitter.comment("echo");
+    emit_expr_to_stdout(expr, emitter, ctx, data);
+}
+
+pub(crate) fn emit_expr_to_stdout(
+    expr: &Expr,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) {
     let ty = emit_expr(expr, emitter, ctx, data);
     stabilize_x86_64_echo_result(emitter, &ty);
     match &ty {
@@ -63,6 +72,7 @@ fn stabilize_x86_64_echo_result(emitter: &mut Emitter, ty: &PhpType) {
     match ty.codegen_repr() {
         PhpType::Bool
         | PhpType::Int
+        | PhpType::Iterable
         | PhpType::Mixed
         | PhpType::Union(_)
         | PhpType::Array(_)

@@ -1,5 +1,5 @@
 use crate::errors::CompileError;
-use crate::parser::ast::StmtKind;
+use crate::parser::ast::{Stmt, StmtKind};
 use crate::types::{PhpType, TypeEnv};
 
 use super::super::Checker;
@@ -17,7 +17,7 @@ impl Checker {
                 value_var,
                 body,
             } => {
-                let arr_ty = self.infer_type(array, env)?;
+                let arr_ty = self.infer_type_with_assignment_effects(array, env)?;
                 if let PhpType::Array(elem_ty) = &arr_ty {
                     if let Some(k) = key_var {
                         env.insert(k.clone(), PhpType::Int);
@@ -47,18 +47,18 @@ impl Checker {
                         env.insert(k.clone(), PhpType::Mixed);
                     }
                     env.insert(value_var.clone(), PhpType::Mixed);
+                } else if let PhpType::Iterable = &arr_ty {
+                    if let Some(k) = key_var {
+                        env.insert(k.clone(), PhpType::Mixed);
+                    }
+                    env.insert(value_var.clone(), PhpType::Mixed);
                 } else {
                     return Err(CompileError::new(
                         stmt.span,
-                        "foreach requires an array or an object implementing Iterator/IteratorAggregate",
+                        "foreach requires an array, iterable, or an object implementing Iterator/IteratorAggregate",
                     ));
                 }
-                let mut errors = Vec::new();
-                for s in body {
-                    if let Err(error) = self.check_stmt(s, env) {
-                        errors.extend(error.flatten());
-                    }
-                }
+                let errors = self.check_break_continue_target_body(body, env);
                 if errors.is_empty() {
                     Ok(())
                 } else {
@@ -70,25 +70,21 @@ impl Checker {
                 cases,
                 default,
             } => {
-                self.infer_type(subject, env)?;
+                self.infer_type_with_assignment_effects(subject, env)?;
                 let mut errors = Vec::new();
-                for (values, body) in cases {
+                for (values, _) in cases {
                     for v in values {
-                        self.infer_type(v, env)?;
+                        self.infer_type_with_assignment_effects(v, env)?;
                     }
-                    for s in body {
-                        if let Err(error) = self.check_stmt(s, env) {
-                            errors.extend(error.flatten());
-                        }
-                    }
+                }
+                self.break_continue_depth += 1;
+                for (_, body) in cases {
+                    errors.extend(self.check_body(body, env));
                 }
                 if let Some(body) = default {
-                    for s in body {
-                        if let Err(error) = self.check_stmt(s, env) {
-                            errors.extend(error.flatten());
-                        }
-                    }
+                    errors.extend(self.check_body(body, env));
                 }
+                self.break_continue_depth -= 1;
                 if errors.is_empty() {
                     Ok(())
                 } else {
@@ -101,7 +97,7 @@ impl Checker {
                 elseif_clauses,
                 else_body,
             } => {
-                self.infer_type(condition, env)?;
+                self.infer_type_with_assignment_effects(condition, env)?;
                 let mut errors = Vec::new();
                 for s in then_body {
                     if let Err(error) = self.check_stmt(s, env) {
@@ -109,7 +105,7 @@ impl Checker {
                     }
                 }
                 for (cond, body) in elseif_clauses {
-                    self.infer_type(cond, env)?;
+                    self.infer_type_with_assignment_effects(cond, env)?;
                     for s in body {
                         if let Err(error) = self.check_stmt(s, env) {
                             errors.extend(error.flatten());
@@ -130,13 +126,8 @@ impl Checker {
                 }
             }
             StmtKind::DoWhile { body, condition } => {
-                let mut errors = Vec::new();
-                for s in body {
-                    if let Err(error) = self.check_stmt(s, env) {
-                        errors.extend(error.flatten());
-                    }
-                }
-                self.infer_type(condition, env)?;
+                let errors = self.check_break_continue_target_body(body, env);
+                self.infer_type_with_assignment_effects(condition, env)?;
                 if errors.is_empty() {
                     Ok(())
                 } else {
@@ -144,13 +135,8 @@ impl Checker {
                 }
             }
             StmtKind::While { condition, body } => {
-                self.infer_type(condition, env)?;
-                let mut errors = Vec::new();
-                for s in body {
-                    if let Err(error) = self.check_stmt(s, env) {
-                        errors.extend(error.flatten());
-                    }
-                }
+                self.infer_type_with_assignment_effects(condition, env)?;
+                let errors = self.check_break_continue_target_body(body, env);
                 if errors.is_empty() {
                     Ok(())
                 } else {
@@ -167,17 +153,12 @@ impl Checker {
                     self.check_stmt(s, env)?;
                 }
                 if let Some(c) = condition {
-                    self.infer_type(c, env)?;
+                    self.infer_type_with_assignment_effects(c, env)?;
                 }
                 if let Some(s) = update {
                     self.check_stmt(s, env)?;
                 }
-                let mut errors = Vec::new();
-                for s in body {
-                    if let Err(error) = self.check_stmt(s, env) {
-                        errors.extend(error.flatten());
-                    }
-                }
+                let errors = self.check_break_continue_target_body(body, env);
                 if errors.is_empty() {
                     Ok(())
                 } else {
@@ -185,7 +166,7 @@ impl Checker {
                 }
             }
             StmtKind::Throw(expr) => {
-                let thrown_ty = self.infer_type(expr, env)?;
+                let thrown_ty = self.infer_type_with_assignment_effects(expr, env)?;
                 match thrown_ty {
                     PhpType::Object(type_name)
                         if self.object_type_implements_throwable(&type_name) =>
@@ -250,11 +231,10 @@ impl Checker {
                     }
                 }
                 if let Some(body) = finally_body {
-                    for s in body {
-                        if let Err(error) = self.check_stmt(s, env) {
-                            errors.extend(error.flatten());
-                        }
-                    }
+                    self.finally_break_continue_bases
+                        .push(self.break_continue_depth);
+                    errors.extend(self.check_body(body, env));
+                    self.finally_break_continue_bases.pop();
                 }
                 if errors.is_empty() {
                     Ok(())
@@ -264,5 +244,26 @@ impl Checker {
             }
             _ => unreachable!("non-control-flow statement routed to control-flow checker"),
         }
+    }
+
+    fn check_break_continue_target_body(
+        &mut self,
+        body: &[Stmt],
+        env: &mut TypeEnv,
+    ) -> Vec<CompileError> {
+        self.break_continue_depth += 1;
+        let errors = self.check_body(body, env);
+        self.break_continue_depth -= 1;
+        errors
+    }
+
+    fn check_body(&mut self, body: &[Stmt], env: &mut TypeEnv) -> Vec<CompileError> {
+        let mut errors = Vec::new();
+        for stmt in body {
+            if let Err(error) = self.check_stmt(stmt, env) {
+                errors.extend(error.flatten());
+            }
+        }
+        errors
     }
 }
