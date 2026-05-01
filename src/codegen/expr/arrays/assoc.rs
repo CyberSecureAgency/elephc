@@ -22,11 +22,7 @@ pub(crate) fn emit_assoc_array_literal(
     let value_lo_reg = abi::int_arg_reg_name(emitter.target, 3);
     let value_hi_reg = abi::int_arg_reg_name(emitter.target, 4);
     let value_tag_reg = abi::int_arg_reg_name(emitter.target, 5);
-    let tag_reg = if emitter.target.arch == Arch::AArch64 {
-        abi::int_arg_reg_name(emitter.target, 1)
-    } else {
-        abi::temp_int_reg(emitter.target)
-    };
+    let tag_reg = abi::int_arg_reg_name(emitter.target, 1);
     let float_bits_reg = abi::temp_int_reg(emitter.target);
     let zero_reg = match emitter.target.arch {
         Arch::AArch64 => "xzr",
