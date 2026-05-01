@@ -24,8 +24,7 @@ function repeat(string $label, int $count): string {
 }
 ```
 
-- Supported types: `int`, `float`, `bool`, `string`, `array`, `callable`, `ptr`, class/interface/enum names
-- `mixed`, union, and nullable type hints supported
+- Supported types: `int`, `float`, `bool`, `string`, `array`, `mixed`, `iterable`, `callable`, `ptr`, `buffer<T>`, class/interface/enum names, unions, and nullable forms
 - `void` is valid only as a return type
 - `never` is valid only as a return type and must not return normally
 - Typed parameters can use default values

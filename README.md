@@ -372,13 +372,15 @@ src/
 │
 ├── codegen/             # AST → target assembly
 │   ├── mod.rs           # Pipeline entry, main/global codegen orchestration
+│   ├── driver_support.rs # Pipeline glue and orchestration helpers
+│   ├── prescan.rs       # Pre-pass collecting program-wide codegen metadata
+│   ├── program_usage.rs # Usage analysis feeding metadata emission
 │   ├── expr.rs          # Expression codegen dispatcher
 │   ├── expr/            # Focused expression helpers (arrays, calls, objects, binops, ...)
 │   ├── stmt.rs          # Statement codegen dispatcher
 │   ├── stmt/            # Focused statement helpers (arrays, control_flow, io, storage, ...)
-│   ├── abi.rs           # Target-aware load/store/write helpers
-│   ├── abi/             # Calling-convention and spill helpers
-│   ├── functions.rs     # User function emission
+│   ├── abi/             # Target-aware calling-convention, frame, and value helpers
+│   ├── functions/       # User function emission and epilogue cleanup
 │   ├── ffi.rs           # Extern function/global/class codegen
 │   ├── context.rs       # Variables, labels, loop stack
 │   ├── data_section.rs  # String/float literal .data section

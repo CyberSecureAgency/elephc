@@ -17,7 +17,7 @@ sidebar:
 | `float`          | Yes              | 64-bit double-precision. Literals: `3.14`, `.5`, `1.5e3`, `1.0e-5`, `1_000.5`, `1e1_0`. Constants: `INF`, `NAN`.       |
 | `array`          | Yes              | Indexed (`[1, 2, 3]`) and associative (`["key" => "value"]`). Arrays use copy-on-write semantics.                      |
 | `mixed`          | Yes              | Supported in type hints and typed locals. Runtime values are boxed with a per-value tag.                               |
-| `iterable`       | Yes              | PHP pseudo-type for `array \| Traversable`. Supports indexed arrays, associative arrays, `Iterator`, and `IteratorAggregate`; runtime operations (`foreach`, `echo`, `gettype()`, `var_dump()`, `===`, casts, `is_iterable()`) dispatch on the heap-kind tag. |
+| `iterable`       | Yes              | PHP pseudo-type for `array \| Traversable`. Supports indexed arrays, associative arrays, `Iterator`, and `IteratorAggregate`; runtime operations (`foreach`, `echo`, `gettype()`, `var_dump()`, `===`, casts, `is_iterable()`) dispatch on heap-kind, value-type, or interface metadata as needed. |
 | `callable`       | Yes              | Closures, arrow functions, first-class callables, and FFI callback parameters.                                         |
 | `object`         | Yes              | Class instances. Heap-allocated, fixed-layout. `new ClassName(...)`                                                    |
 | `enum`           | Yes              | Pure and backed enums. Cases are singletons. Backed enums support `->value`, `::from()`, `::tryFrom()`, `::cases()`.   |

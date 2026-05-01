@@ -743,6 +743,10 @@ For indexed arrays:
 
 For associative arrays, see [Associative array codegen](#associative-array-codegen): the loop stores a hash pointer plus cursor, then advances with `__rt_hash_iter_next`.
 
+For `Iterator` objects, codegen parks the receiver in a 16-byte stack slot, dispatches `rewind()`, then drives the loop through `valid()`, `key()`, `current()`, and `next()`. Keys and values are boxed into `Mixed` because the concrete runtime payload can vary per iterator implementation. `IteratorAggregate` values dispatch `getIterator()` first, then reuse the same iterator loop path. Values typed as `iterable` branch through runtime heap-kind and interface metadata so arrays, direct `Iterator` objects, and aggregate-backed objects select the correct lowering.
+
+Before the first `valid()` call, foreach target slots are normalized to boxed `Mixed`. That keeps empty iterators compatible with PHP: existing target variables keep a valid mixed cell, fresh loop variables remain null-like, and receiver aliases stay live until loop cleanup.
+
 ### Break / Continue
 
 `break` emits a `b` (unconditional jump) to the selected loop/switch end label.

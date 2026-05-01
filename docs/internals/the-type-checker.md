@@ -105,15 +105,18 @@ This is intentional — it lets the compiler know exactly what `$x` is at every 
 ## Statement checks
 
 Statement checking validates control-flow constraints that are not expression
-types. `foreach` requires an indexed or associative array input and binds the
-key/value variables to the inferred element types. `break` and `continue`
-track the active loop/switch target depth, so `break 2;` is accepted only when
-two enclosing break/continue targets exist in the current function or closure
-body. Function, method, and closure bodies reset that depth so an inner
-declaration cannot target an outer loop. `finally` bodies also record the
-target depth at entry: `break` or `continue` may target loops/switches created
-inside that `finally`, but jumping out of a `finally` block is rejected to match
-PHP.
+types. `foreach` accepts indexed arrays, associative arrays, values typed
+`Iterable`, and objects/interfaces that implement `Iterator` or
+`IteratorAggregate`. Indexed and associative array loops bind key/value
+variables to inferred element/key types; `Iterable` and object-backed iterator
+loops bind them as `Mixed` because concrete payload tags are discovered at
+runtime. `break` and `continue` track the active loop/switch target depth, so
+`break 2;` is accepted only when two enclosing break/continue targets exist in
+the current function or closure body. Function, method, and closure bodies reset
+that depth so an inner declaration cannot target an outer loop. `finally` bodies
+also record the target depth at entry: `break` or `continue` may target
+loops/switches created inside that `finally`, but jumping out of a `finally`
+block is rejected to match PHP.
 
 ## Expression type inference
 
