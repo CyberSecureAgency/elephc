@@ -1,8 +1,7 @@
 <?php
 
 // Demonstrates implementing the built-in Iterator interface and consuming
-// it from a foreach loop. elephc dispatches rewind/valid/current/key/next
-// through the regular vtable — the same path PHP uses.
+// it from foreach and iterable-typed functions.
 
 class Range implements Iterator {
     private int $current;
@@ -72,7 +71,7 @@ class RangeFactory implements IteratorAggregate {
         $this->end = $end;
     }
 
-    public function getIterator(): Range {
+    public function getIterator(): Iterator {
         return new Range($this->start, $this->end, 1);
     }
 }
@@ -83,3 +82,22 @@ foreach (new RangeFactory(0, 3) as $i) {
     echo " ";
 }
 echo "\n";
+
+function print_any(iterable $items): void {
+    foreach ($items as $key => $value) {
+        echo $key;
+        echo ":";
+        echo $value;
+        echo " ";
+    }
+    echo "\n";
+}
+
+echo "iterable parameter from Iterator:\n";
+print_any(new Range(2, 5, 1));
+
+echo "iterable parameter from IteratorAggregate:\n";
+print_any(new RangeFactory(4, 7));
+
+echo is_iterable(new Range(0, 1, 1)) ? "iterator is iterable\n" : "not iterable\n";
+echo is_iterable(new RangeFactory(0, 1)) ? "aggregate is iterable\n" : "not iterable\n";

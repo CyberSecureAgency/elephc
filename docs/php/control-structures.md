@@ -96,7 +96,10 @@ foreach (new Range(0, 5) as $i) {
 
 The loop calls `rewind()` once, then on each iteration: `valid()` to test
 continuation, `current()` and `key()` to bind the loop variables, and
-`next()` after the body. Method dispatch goes through the regular vtable.
+`next()` after the body. Method dispatch uses class vtables for concrete
+iterator classes and interface metadata for `Iterator`/`IteratorAggregate`
+typed values. The `iterable` pseudo-type accepts arrays and these Traversable
+objects.
 
 ## break / continue
 
