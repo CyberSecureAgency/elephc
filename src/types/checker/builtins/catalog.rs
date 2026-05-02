@@ -1,4 +1,4 @@
-pub(crate) fn is_supported_builtin_function(name: &str) -> bool {
+fn is_supported_builtin_function_exact(name: &str) -> bool {
     matches!(
         name,
         "abs"
@@ -230,4 +230,13 @@ pub(crate) fn is_supported_builtin_function(name: &str) -> bool {
             | "var_dump"
             | "wordwrap"
     )
+}
+
+pub(crate) fn canonical_builtin_function_name(name: &str) -> Option<String> {
+    let canonical = name.to_ascii_lowercase();
+    is_supported_builtin_function_exact(&canonical).then_some(canonical)
+}
+
+pub(crate) fn is_supported_builtin_function(name: &str) -> bool {
+    canonical_builtin_function_name(name).is_some()
 }
