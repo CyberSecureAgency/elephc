@@ -227,14 +227,39 @@ pub(super) fn emit_method_call(
 ) -> PhpType {
     emitter.comment(&format!("->{}()", method));
 
+    // Resolve the receiver's static class. Accepts a direct object type or
+    // a nullable object union (`?Foo`, `Foo|null`) — for those, the
+    // singular Object member's class is used and the runtime unbox below
+    // turns null receivers into a controlled fatal before dispatch.
     let obj_ty = functions::infer_contextual_type(object, ctx);
-    let class_name = match &obj_ty {
-        PhpType::Object(cn) => cn.clone(),
-        _ => {
+    let class_name = match functions::singular_object_class(&obj_ty) {
+        Some(cn) => cn.to_string(),
+        None => {
             emitter.comment("WARNING: method call on non-object");
             return PhpType::Int;
         }
     };
+    // Evaluate the receiver before arguments, matching PHP's left-to-right
+    // call order. When the receiver's codegen-level type is Mixed (the
+    // runtime representation for nullable / union object parameters), the
+    // result register holds a pointer to a boxed mixed cell rather than the
+    // raw object — unbox it so the downstream method dispatch receives the
+    // underlying object pointer.
+    let runtime_obj_ty = emit_expr(object, emitter, ctx, data);
+    if matches!(runtime_obj_ty, PhpType::Mixed | PhpType::Union(_)) {
+        let message = format!(
+            "Fatal error: Call to a member function {}() on null\n",
+            method
+        );
+        super::emit_unbox_mixed_object_or_fatal(
+            message.as_bytes(),
+            emitter,
+            ctx,
+            data,
+        );
+    }
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                 // save the receiver below later argument temporaries for PHP evaluation order
+
     let sig = ctx
         .classes
         .get(&class_name)
@@ -242,17 +267,7 @@ pub(super) fn emit_method_call(
         .cloned();
     let arg_types = eval_and_push_args(args, sig.as_ref(), emitter, ctx, data);
 
-    let obj_ty = emit_expr(object, emitter, ctx, data);
-    let class_name = match &obj_ty {
-        PhpType::Object(cn) => cn.clone(),
-        _ => {
-            emitter.comment("WARNING: method call on non-object");
-            return PhpType::Int;
-        }
-    };
-    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                 // push $this pointer for the active target ABI
-
-    emit_method_call_with_pushed_args(&class_name, method, &arg_types, emitter, ctx)
+    emit_method_call_with_saved_receiver_below_args(&class_name, method, &arg_types, emitter, ctx)
 }
 
 pub(super) fn emit_immediate_class_id(emitter: &mut Emitter, class_id: u64) {

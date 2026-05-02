@@ -26,6 +26,34 @@ pub fn infer_contextual_type(expr: &Expr, ctx: &Context) -> PhpType {
     infer_local_type(expr, &empty_sig, Some(ctx))
 }
 
+/// Extract the canonical object class name from a type that statically
+/// resolves to an object — either directly (`Object("Foo")`) or as the
+/// single object member of a nullable / object-only union
+/// (`Union([Object("Foo"), Void])`). Returns `None` for `Mixed` and any
+/// union that mixes multiple classes or non-object members.
+pub(crate) fn singular_object_class(ty: &PhpType) -> Option<&str> {
+    match ty {
+        PhpType::Object(name) => Some(name.as_str()),
+        PhpType::Union(members) => {
+            let mut found: Option<&str> = None;
+            for member in members {
+                match member {
+                    PhpType::Void => continue,
+                    PhpType::Object(name) => {
+                        if found.is_some_and(|existing| existing != name.as_str()) {
+                            return None;
+                        }
+                        found = Some(name.as_str());
+                    }
+                    _ => return None,
+                }
+            }
+            found
+        }
+        _ => None,
+    }
+}
+
 fn wider_of(a: &PhpType, b: &PhpType) -> PhpType {
     if a == b {
         return a.clone();
@@ -621,17 +649,25 @@ pub(super) fn infer_local_type(
         }
         ExprKind::PropertyAccess { object, property } => {
             if let Some(c) = ctx {
-                let obj_ty = infer_local_type(object, sig, Some(c));
-                if let PhpType::Object(cn) = &obj_ty {
-                    if let Some(ci) = c.classes.get(cn) {
+                if let Some((cn, nullable)) = nullsafe_context_class(object, sig, c) {
+                    if let Some(ci) = c.classes.get(&cn) {
                         if let Some((_, ty)) = ci.properties.iter().find(|(n, _)| n == property) {
-                            return ty.clone();
+                            return if nullable {
+                                merge_union_members(vec![ty.clone(), PhpType::Void])
+                            } else {
+                                ty.clone()
+                            };
                         }
                         if let Some(sig) = ci.methods.get("__get") {
-                            return sig.return_type.clone();
+                            return if nullable {
+                                merge_union_members(vec![sig.return_type.clone(), PhpType::Void])
+                            } else {
+                                sig.return_type.clone()
+                            };
                         }
                     }
                 }
+                let obj_ty = infer_local_type(object, sig, Some(c));
                 if let PhpType::Pointer(Some(cn)) = &obj_ty {
                     if let Some(ci) = c.extern_classes.get(cn) {
                         if let Some(field) = ci.fields.iter().find(|field| field.name == *property)
@@ -717,7 +753,7 @@ pub(super) fn infer_local_type(
         ExprKind::MethodCall { object, method, .. } => {
             if let Some(c) = ctx {
                 let obj_ty = infer_local_type(object, sig, Some(c));
-                if let PhpType::Object(cn) = &obj_ty {
+                if let Some(cn) = singular_object_class(&obj_ty) {
                     if let Some(ci) = c.classes.get(cn) {
                         if let Some(msig) = ci.methods.get(method) {
                             return msig.return_type.clone();

@@ -2,6 +2,7 @@ use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
+use crate::codegen::functions;
 use crate::parser::ast::Expr;
 use crate::types::PhpType;
 
@@ -14,7 +15,23 @@ pub(super) fn emit_property_access(
     ctx: &mut Context,
     data: &mut DataSection,
 ) -> PhpType {
+    // Resolve the receiver's static class up-front so a nullable object
+    // union (`?Foo`) routes through the same path as a direct object type.
+    // Direct object receivers produce a raw object pointer, while nullable
+    // unions produce a boxed mixed cell that must be checked and unboxed
+    // before the normal property load.
+    let static_obj_ty = functions::infer_contextual_type(object, ctx);
+    let static_class = functions::singular_object_class(&static_obj_ty)
+        .map(|name| name.to_string());
     let obj_ty = emit_expr(object, emitter, ctx, data);
+    if let Some(class_name) = static_class.as_ref() {
+        if matches!(obj_ty, PhpType::Mixed | PhpType::Union(_)) {
+            return emit_nullable_object_property_access(class_name, property, emitter, ctx, data);
+        }
+        if matches!(obj_ty, PhpType::Object(_)) {
+            return emit_loaded_object_property_access(class_name, property, emitter, ctx, data);
+        }
+    }
     let (class_name, prop_ty, offset, needs_deref, is_reference) = match &obj_ty {
         PhpType::Object(class_name) => {
             return emit_loaded_object_property_access(class_name, property, emitter, ctx, data);
@@ -143,6 +160,30 @@ pub(super) fn emit_property_access(
     }
 
     prop_ty
+}
+
+fn emit_nullable_object_property_access(
+    class_name: &str,
+    property: &str,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> PhpType {
+    let null_label = ctx.next_label("nullable_prop_null");
+    let done_label = ctx.next_label("nullable_prop_done");
+    let message = format!("Warning: Attempt to read property \"{}\" on null\n", property);
+
+    super::emit_unbox_mixed_object_or_null_branch(&null_label, emitter);
+    let property_ty = emit_loaded_object_property_access(class_name, property, emitter, ctx, data);
+    super::box_nullable_result(&property_ty, emitter);
+    abi::emit_jump(emitter, &done_label);                                      // skip the nullable property null path after a real property read
+
+    emitter.label(&null_label);
+    super::emit_runtime_warning(message.as_bytes(), emitter, data);
+    super::emit_boxed_null(emitter);
+
+    emitter.label(&done_label);
+    PhpType::Mixed
 }
 
 pub(super) fn emit_loaded_object_property_access(

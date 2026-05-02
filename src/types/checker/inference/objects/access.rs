@@ -16,6 +16,22 @@ impl Checker {
         if let PhpType::Object(class_name) = &obj_ty {
             return self.infer_property_on_class_type(class_name, property, expr);
         }
+        // Non-nullsafe property access on a nullable / union object type
+        // (`?Foo`, `Foo|null`) is allowed when the union resolves to a
+        // single class. A null receiver emits a PHP-style warning and
+        // evaluates to null, so the inferred type remains nullable.
+        if let PhpType::Union(_) = &obj_ty {
+            if let Some((class_name, nullable)) =
+                self.nullsafe_object_receiver(&obj_ty, expr, "property access")?
+            {
+                let property_ty = self.infer_property_on_class_type(&class_name, property, expr)?;
+                return if nullable {
+                    Ok(self.normalize_union_type(vec![property_ty, PhpType::Void]))
+                } else {
+                    Ok(property_ty)
+                };
+            }
+        }
         if let PhpType::Pointer(Some(class_name)) = &obj_ty {
             if let Some(field_ty) = self.extern_field_type(class_name, property) {
                 return Ok(field_ty);

@@ -14,3 +14,5 @@ mod constructor_promotion;
 mod static_properties;
 #[path = "objects/nested_arrays.rs"]
 mod nested_arrays;
+#[path = "objects/nullable_dispatch.rs"]
+mod nullable_dispatch;

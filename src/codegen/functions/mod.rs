@@ -25,6 +25,7 @@ use self::control_flow::{collect_try_slots, mark_control_flow_epilogue_unsafe};
 pub use self::locals::collect_local_vars;
 pub(crate) use self::types::{codegen_declared_type, codegen_static_type};
 pub use self::types::{infer_contextual_type, infer_local_type_pub, infer_local_type_with_ctx};
+pub(crate) use self::types::singular_object_class;
 
 #[allow(clippy::too_many_arguments)]
 pub fn emit_function(

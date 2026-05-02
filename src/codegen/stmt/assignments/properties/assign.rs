@@ -3,7 +3,7 @@ use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
-use crate::codegen::expr::{coerce_result_to_type, emit_expr};
+use crate::codegen::expr::{coerce_result_to_type, emit_expr, objects};
 use crate::codegen::stmt::helpers;
 use crate::parser::ast::{Expr, ExprKind};
 use crate::types::PhpType;
@@ -43,6 +43,18 @@ pub(crate) fn emit_property_assign_stmt(
 
     let magic_set_class = magic_set::resolve_magic_set_target(object, property, ctx);
     let declared_target_ty = declared_property_type(object, property, ctx);
+    if let Some(class_name) = nullable_object_class(object, ctx) {
+        emit_nullable_property_assign_stmt(
+            object,
+            &class_name,
+            property,
+            value,
+            emitter,
+            ctx,
+            data,
+        );
+        return;
+    }
     if references::is_reference_property(object, property, ctx) {
         if let Some(var_name) = references::promoted_reference_bind_var(object, property, value, ctx) {
             references::emit_property_reference_bind(&var_name, object, property, emitter, ctx, data);
@@ -79,7 +91,10 @@ pub(crate) fn emit_property_assign_stmt(
             magic_set::emit_magic_set_call(&class_name, property, &val_ty, emitter, ctx, data);
             return;
         }
-        target::PropertyAssignResolution::Abort => return,
+        target::PropertyAssignResolution::Abort => {
+            abi::emit_release_temporary_stack(emitter, pushed_value_temp_bytes(&val_ty)); // discard the saved RHS value when the property target cannot be resolved
+            return;
+        }
     };
 
     if target.needs_deref {
@@ -99,12 +114,110 @@ pub(crate) fn emit_property_assign_stmt(
     storage::store_property_value(emitter, object_reg, &val_ty, target.offset);
 }
 
+fn nullable_object_class(object: &Expr, ctx: &Context) -> Option<String> {
+    let obj_ty = crate::codegen::functions::infer_contextual_type(object, ctx);
+    if !matches!(obj_ty, PhpType::Union(_)) {
+        return None;
+    }
+    crate::codegen::functions::singular_object_class(&obj_ty).map(str::to_string)
+}
+
+fn emit_nullable_property_assign_stmt(
+    object: &Expr,
+    class_name: &str,
+    property: &str,
+    value: &Expr,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) {
+    let magic_set_class = magic_set_target_for_class(class_name, property, ctx);
+    let declared_target_ty = declared_property_type_for_class(class_name, property, ctx);
+
+    let runtime_obj_ty = emit_expr(object, emitter, ctx, data);
+    let guard_nullable = matches!(runtime_obj_ty, PhpType::Mixed | PhpType::Union(_));
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                 // save the nullable receiver before evaluating the RHS in PHP order
+
+    let mut val_ty = emit_expr(value, emitter, ctx, data);
+    let boxed_to_mixed = declared_target_ty.as_ref().is_some_and(|target_ty| {
+        matches!(target_ty, PhpType::Mixed | PhpType::Union(_))
+            && !matches!(val_ty, PhpType::Mixed | PhpType::Union(_))
+    });
+    if let Some(target_ty) = &declared_target_ty {
+        coerce_result_to_type(emitter, ctx, data, &val_ty, target_ty);
+        val_ty = target_ty.clone();
+    }
+    if magic_set_class.is_none() && !boxed_to_mixed {
+        helpers::retain_borrowed_heap_result(emitter, value, &val_ty);
+    }
+    abi::emit_push_result_value(emitter, &val_ty);
+
+    let value_temp_bytes = pushed_value_temp_bytes(&val_ty);
+    abi::emit_load_temporary_stack_slot(
+        emitter,
+        abi::int_result_reg(emitter),
+        value_temp_bytes,
+    );
+    if guard_nullable {
+        let message = format!(
+            "Fatal error: Attempt to assign property \"{}\" on null\n",
+            property
+        );
+        objects::emit_unbox_mixed_object_or_fatal(message.as_bytes(), emitter, ctx, data);
+    }
+
+    let object_ty = PhpType::Object(class_name.to_string());
+    let target = match target::resolve_property_assign_target(
+        &object_ty,
+        property,
+        magic_set_class.as_deref(),
+        emitter,
+        ctx,
+    ) {
+        target::PropertyAssignResolution::Resolved(target) => target,
+        target::PropertyAssignResolution::UseMagicSet(class_name) => {
+            magic_set::emit_magic_set_call(&class_name, property, &val_ty, emitter, ctx, data);
+            abi::emit_release_temporary_stack(emitter, 16);                     // discard the saved nullable receiver after __set consumes the RHS
+            return;
+        }
+        target::PropertyAssignResolution::Abort => {
+            abi::emit_release_temporary_stack(emitter, value_temp_bytes + 16);  // discard the saved RHS and nullable receiver for unresolved targets
+            return;
+        }
+    };
+
+    let object_reg = abi::symbol_scratch_reg(emitter);
+    emitter.instruction(&format!("mov {}, {}", object_reg, abi::int_result_reg(emitter))); // keep the unboxed object pointer while property storage is updated
+    if target.is_reference {
+        let pointer_reg = abi::temp_int_reg(emitter.target);
+        abi::emit_load_from_address(emitter, pointer_reg, object_reg, target.offset);
+        storage::release_previous_referenced_value(emitter, pointer_reg, &target.prop_ty, &val_ty);
+        storage::store_referenced_value(emitter, pointer_reg, &val_ty);
+        abi::emit_release_temporary_stack(emitter, 16);                         // discard the saved nullable receiver after reference storage consumes the RHS
+        return;
+    }
+
+    storage::release_previous_property_value(emitter, object_reg, &target.prop_ty, target.offset);
+    storage::store_property_value(emitter, object_reg, &val_ty, target.offset);
+    abi::emit_release_temporary_stack(emitter, 16);                             // discard the saved nullable receiver after property storage consumes the RHS
+}
+
+fn pushed_value_temp_bytes(val_ty: &PhpType) -> usize {
+    if matches!(val_ty, PhpType::Void | PhpType::Never) {
+        0
+    } else {
+        16
+    }
+}
+
 fn declared_property_type(object: &Expr, property: &str, ctx: &Context) -> Option<PhpType> {
     let obj_ty = crate::codegen::functions::infer_contextual_type(object, ctx);
-    let PhpType::Object(class_name) = obj_ty else {
-        return None;
-    };
-    let class_info = ctx.classes.get(&class_name)?;
+    let class_name = crate::codegen::functions::singular_object_class(&obj_ty)?;
+    declared_property_type_for_class(class_name, property, ctx)
+}
+
+fn declared_property_type_for_class(class_name: &str, property: &str, ctx: &Context) -> Option<PhpType> {
+    let class_info = ctx.classes.get(class_name)?;
     if !class_info.declared_properties.contains(property) {
         return None;
     }
@@ -113,4 +226,12 @@ fn declared_property_type(object: &Expr, property: &str, ctx: &Context) -> Optio
         .iter()
         .find(|(name, _)| name == property)
         .map(|(_, ty)| ty.clone())
+}
+
+fn magic_set_target_for_class(class_name: &str, property: &str, ctx: &Context) -> Option<String> {
+    let class_info = ctx.classes.get(class_name)?;
+    if class_info.properties.iter().any(|(name, _)| name == property) {
+        return None;
+    }
+    class_info.methods.contains_key("__set").then_some(class_name.to_string())
 }

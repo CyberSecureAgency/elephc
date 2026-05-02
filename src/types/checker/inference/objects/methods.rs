@@ -18,6 +18,17 @@ impl Checker {
         if let PhpType::Object(class_name) = &obj_ty {
             return self.infer_method_call_on_class_type(class_name, method, args, expr, env);
         }
+        // Method calls on a nullable / union object type (`?Foo`, `Foo|null`)
+        // are allowed when the union resolves to a single class — at runtime
+        // a null receiver still faults as in PHP, but the type-checker
+        // surfaces the proper return type so callers can chain further work.
+        if let PhpType::Union(_) = &obj_ty {
+            if let Some((class_name, _nullable)) =
+                self.nullsafe_object_receiver(&obj_ty, expr, "method call")?
+            {
+                return self.infer_method_call_on_class_type(&class_name, method, args, expr, env);
+            }
+        }
         Ok(PhpType::Int)
     }
 
