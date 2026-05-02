@@ -283,6 +283,9 @@ pub(super) fn resolve_constant_name(
         if symbols.has_constant(&name.as_canonical()) {
             return name.as_canonical();
         }
+        if is_builtin_global_constant(name.as_str()) {
+            return name.as_canonical();
+        }
         return local;
     }
     if let Some(first) = name.parts.first() {
@@ -300,4 +303,16 @@ pub(super) fn resolve_constant_name(
         }
     }
     name.as_canonical()
+}
+
+fn is_builtin_global_constant(name: &str) -> bool {
+    matches!(
+        name,
+        "PHP_OS"
+            | "PATHINFO_DIRNAME"
+            | "PATHINFO_BASENAME"
+            | "PATHINFO_EXTENSION"
+            | "PATHINFO_FILENAME"
+            | "PATHINFO_ALL"
+    )
 }
