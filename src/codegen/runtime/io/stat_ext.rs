@@ -233,14 +233,13 @@ pub fn emit_stat_ext(emitter: &mut Emitter) {
 }
 
 fn emit_stat_ext_linux_x86_64(emitter: &mut Emitter) {
-    let plat = emitter.platform;
     let frame_size = 144usize;
-    let mode_off = plat.stat_mode_offset();
-    let atime_off = plat.stat_atime_offset();
-    let ctime_off = plat.stat_ctime_offset();
-    let ino_off = plat.stat_ino_offset();
-    let uid_off = plat.stat_uid_offset();
-    let gid_off = plat.stat_gid_offset();
+    let mode_off = 24usize;
+    let atime_off = 72usize;
+    let ctime_off = 104usize;
+    let ino_off = 8usize;
+    let uid_off = 28usize;
+    let gid_off = 32usize;
 
     // Reusable prologue/epilogue helpers for the libc-stat-based scalar getters.
     let stat_call = |emitter: &mut Emitter| {

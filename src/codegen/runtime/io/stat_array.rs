@@ -182,21 +182,20 @@ pub fn emit_stat_array(emitter: &mut Emitter) {
 }
 
 fn emit_stat_array_linux_x86_64(emitter: &mut Emitter) {
-    let plat = emitter.platform;
     let stat_buf = 144usize;
-    let mode_off = plat.stat_mode_offset();
-    let size_off = plat.stat_size_offset();
-    let atime_off = plat.stat_atime_offset();
-    let mtime_off = plat.stat_mtime_offset();
-    let ctime_off = plat.stat_ctime_offset();
-    let ino_off = plat.stat_ino_offset();
-    let uid_off = plat.stat_uid_offset();
-    let gid_off = plat.stat_gid_offset();
-    let dev_off = plat.stat_dev_offset();
-    let rdev_off = plat.stat_rdev_offset();
-    let nlink_off = plat.stat_nlink_offset();
-    let blksize_off = plat.stat_blksize_offset();
-    let blocks_off = plat.stat_blocks_offset();
+    let mode_off = 24usize;
+    let size_off = 48usize;
+    let atime_off = 72usize;
+    let mtime_off = 88usize;
+    let ctime_off = 104usize;
+    let ino_off = 8usize;
+    let uid_off = 28usize;
+    let gid_off = 32usize;
+    let dev_off = 0usize;
+    let rdev_off = 40usize;
+    let nlink_off = 16usize;
+    let blksize_off = 56usize;
+    let blocks_off = 64usize;
 
     // Frame layout (rbp-relative):
     //   [rbp - 8]              : hash pointer slot
@@ -213,7 +212,7 @@ fn emit_stat_array_linux_x86_64(emitter: &mut Emitter) {
         (0,  "_stat_key_dev",     3, format!("mov rax, QWORD PTR [rbp - {}]", buf_neg - dev_off as i64)),
         (1,  "_stat_key_ino",     3, format!("mov rax, QWORD PTR [rbp - {}]", buf_neg - ino_off as i64)),
         (2,  "_stat_key_mode",    4, format!("mov eax, DWORD PTR [rbp - {}]", buf_neg - mode_off as i64)),
-        (3,  "_stat_key_nlink",   5, format!("mov eax, DWORD PTR [rbp - {}]", buf_neg - nlink_off as i64)),
+        (3,  "_stat_key_nlink",   5, format!("mov rax, QWORD PTR [rbp - {}]", buf_neg - nlink_off as i64)),
         (4,  "_stat_key_uid",     3, format!("mov eax, DWORD PTR [rbp - {}]", buf_neg - uid_off as i64)),
         (5,  "_stat_key_gid",     3, format!("mov eax, DWORD PTR [rbp - {}]", buf_neg - gid_off as i64)),
         (6,  "_stat_key_rdev",    4, format!("mov rax, QWORD PTR [rbp - {}]", buf_neg - rdev_off as i64)),
@@ -221,13 +220,13 @@ fn emit_stat_array_linux_x86_64(emitter: &mut Emitter) {
         (8,  "_stat_key_atime",   5, format!("mov rax, QWORD PTR [rbp - {}]", buf_neg - atime_off as i64)),
         (9,  "_stat_key_mtime",   5, format!("mov rax, QWORD PTR [rbp - {}]", buf_neg - mtime_off as i64)),
         (10, "_stat_key_ctime",   5, format!("mov rax, QWORD PTR [rbp - {}]", buf_neg - ctime_off as i64)),
-        (11, "_stat_key_blksize", 7, format!("mov eax, DWORD PTR [rbp - {}]", buf_neg - blksize_off as i64)),
+        (11, "_stat_key_blksize", 7, format!("mov rax, QWORD PTR [rbp - {}]", buf_neg - blksize_off as i64)),
         (12, "_stat_key_blocks",  6, format!("mov rax, QWORD PTR [rbp - {}]", buf_neg - blocks_off as i64)),
     ];
 
     let emit_build_hash = |emitter: &mut Emitter, entries: &[(i64, &str, i64, String)]| {
-        emitter.instruction("mov rax, 32");                                     // capacity
-        emitter.instruction("mov rdi, 0");                                      // value type = Int
+        emitter.instruction("mov rdi, 32");                                     // first hash_new argument: capacity
+        emitter.instruction("mov rsi, 0");                                      // second hash_new argument: value type = Int
         emitter.instruction("call __rt_hash_new");                              // returns hash pointer in rax
         emitter.instruction(&format!("mov QWORD PTR [rbp - {}], rax", hash_slot_neg)); // save hash pointer
         for (idx, key_sym, key_len, load_instr) in entries {
@@ -257,8 +256,8 @@ fn emit_stat_array_linux_x86_64(emitter: &mut Emitter) {
     };
 
     let emit_empty_hash = |emitter: &mut Emitter| {
-        emitter.instruction("mov rax, 16");                                     // capacity
-        emitter.instruction("mov rdi, 0");                                      // value type = Int
+        emitter.instruction("mov rdi, 16");                                     // first hash_new argument: capacity
+        emitter.instruction("mov rsi, 0");                                      // second hash_new argument: value type = Int
         emitter.instruction("call __rt_hash_new");                              // empty hash in rax
     };
 
