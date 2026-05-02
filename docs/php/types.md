@@ -128,6 +128,9 @@ $b = (bool)0;        // false
 $a = (array)42;      // [42]
 ```
 
+Cast names and aliases are case-insensitive, matching PHP. For example,
+`(INT)`, `(Integer)`, and `(integer)` are equivalent.
+
 Aliases: `(integer)`, `(double)`, `(real)`, `(boolean)`.
 
 ### Type functions
