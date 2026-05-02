@@ -349,7 +349,7 @@ fn test_pathinfo_extension_dotfile() {
     let out = compile_and_run(
         r#"<?php echo pathinfo(".bashrc", PATHINFO_EXTENSION);"#,
     );
-    assert_eq!(out, "");
+    assert_eq!(out, "bashrc");
 }
 
 #[test]
@@ -381,7 +381,7 @@ fn test_pathinfo_filename_dotfile() {
     let out = compile_and_run(
         r#"<?php echo pathinfo(".bashrc", PATHINFO_FILENAME);"#,
     );
-    assert_eq!(out, ".bashrc");
+    assert_eq!(out, "");
 }
 
 #[test]
@@ -430,15 +430,15 @@ echo array_key_exists("extension", $info) ? "yes" : "no";
 }
 
 #[test]
-fn test_pathinfo_array_dotfile_omits_extension() {
+fn test_pathinfo_array_dotfile_includes_extension() {
     let out = compile_and_run(
         r#"<?php
 $info = pathinfo(".bashrc");
-echo $info["basename"] . "|" . $info["filename"] . "|";
+echo $info["basename"] . "|" . $info["extension"] . "|" . $info["filename"] . "|";
 echo array_key_exists("extension", $info) ? "yes" : "no";
 "#,
     );
-    assert_eq!(out, ".bashrc|.bashrc|no");
+    assert_eq!(out, ".bashrc|bashrc||yes");
 }
 
 #[test]
@@ -461,4 +461,68 @@ echo $info["dirname"] . "|" . $info["basename"] . "|" . $info["extension"] . "|"
 "#,
     );
     assert_eq!(out, ".|foo.txt|txt|foo");
+}
+
+#[test]
+fn test_pathinfo_array_empty_path_omits_dirname() {
+    let out = compile_and_run(
+        r#"<?php
+$info = pathinfo("");
+echo (array_key_exists("dirname", $info) ? "yes" : "no") . "|";
+echo $info["basename"] . "|" . $info["filename"] . "|";
+echo pathinfo("", PATHINFO_DIRNAME);
+"#,
+    );
+    assert_eq!(out, "no|||");
+}
+
+#[test]
+fn test_pathinfo_array_trailing_dot_keeps_empty_extension_key() {
+    let out = compile_and_run(
+        r#"<?php
+$info = pathinfo("file.");
+echo $info["basename"] . "|" . $info["extension"] . "|" . $info["filename"] . "|";
+echo array_key_exists("extension", $info) ? "yes" : "no";
+"#,
+    );
+    assert_eq!(out, "file.||file|yes");
+}
+
+#[test]
+fn test_pathinfo_bitmask_component_priority() {
+    let out = compile_and_run(
+        r#"<?php
+echo pathinfo("/a/b.php", PATHINFO_DIRNAME | PATHINFO_EXTENSION) . "|";
+echo pathinfo("/a/b.php", PATHINFO_BASENAME | PATHINFO_FILENAME) . "|";
+echo pathinfo("/a/b.php", PATHINFO_EXTENSION | PATHINFO_FILENAME) . "|";
+echo pathinfo("/a/b.php", 0);
+"#,
+    );
+    assert_eq!(out, "/a|b.php|php|");
+}
+
+#[test]
+fn test_pathinfo_all_bitmask_expression_returns_array() {
+    let out = compile_and_run(
+        r#"<?php
+$info = pathinfo("foo.txt", PATHINFO_DIRNAME | PATHINFO_BASENAME | PATHINFO_EXTENSION | PATHINFO_FILENAME);
+echo $info["dirname"] . "|" . $info["basename"] . "|" . $info["extension"] . "|" . $info["filename"];
+"#,
+    );
+    assert_eq!(out, ".|foo.txt|txt|foo");
+}
+
+#[test]
+fn test_dirname_dynamic_invalid_levels_fails() {
+    let err = compile_and_run_expect_failure(
+        r#"<?php
+$levels = 0;
+echo dirname("/usr/local/bin", $levels);
+"#,
+    );
+    assert!(
+        err.contains("dirname(): Argument #2 ($levels) must be greater than or equal to 1"),
+        "unexpected stderr: {}",
+        err
+    );
 }

@@ -1,5 +1,7 @@
 use crate::codegen::{emit::Emitter, platform::Arch};
 
+use super::super::data::DIRNAME_LEVELS_MSG;
+
 /// basename: extract trailing name component of a path.
 /// Input:  x1/x2 = path string, x3/x4 = optional suffix string (empty = no suffix)
 /// Output: x1/x2 = trailing name component (a slice of the input path)
@@ -311,6 +313,8 @@ pub fn emit_dirname_levels(emitter: &mut Emitter) {
     emitter.instruction("sub sp, sp, #32");                                     // reserve a small frame for the loop counter and return address
     emitter.instruction("stp x29, x30, [sp, #16]");                             // save frame pointer and return address across dirname calls
     emitter.instruction("add x29, sp, #16");                                    // establish a stable frame pointer for the loop frame
+    emitter.instruction("cmp x3, #1");                                          // PHP requires dirname() levels to be at least 1
+    emitter.instruction("b.lt __rt_dirname_levels_fail");                       // reject invalid dynamic levels with a fatal runtime diagnostic
     emitter.instruction("str x3, [sp, #0]");                                    // store the requested parent depth as the remaining loop count
 
     emitter.label("__rt_dirname_levels_loop");
@@ -327,6 +331,14 @@ pub fn emit_dirname_levels(emitter: &mut Emitter) {
     emitter.instruction("ldp x29, x30, [sp, #16]");                             // restore frame pointer and return address
     emitter.instruction("add sp, sp, #32");                                     // release the dirname-levels frame
     emitter.instruction("ret");                                                 // return the repeated dirname result in x1/x2
+
+    emitter.label("__rt_dirname_levels_fail");
+    crate::codegen::abi::emit_symbol_address(emitter, "x1", "_dirname_levels_msg"); // load the dirname levels fatal diagnostic text
+    emitter.instruction(&format!("mov x2, #{}", DIRNAME_LEVELS_MSG.len()));     // pass the exact dirname levels diagnostic length to write()
+    emitter.instruction("mov x0, #2");                                          // write dirname diagnostics to stderr
+    emitter.syscall(4);
+    emitter.instruction("mov x0, #1");                                          // use a failing process exit status for invalid dirname levels
+    emitter.syscall(1);
 }
 
 fn emit_dirname_levels_linux_x86_64(emitter: &mut Emitter) {
@@ -338,6 +350,8 @@ fn emit_dirname_levels_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("push rbp");                                            // preserve caller frame pointer before the loop helper uses a spill slot
     emitter.instruction("mov rbp, rsp");                                        // establish a stable frame base for the remaining level count
     emitter.instruction("sub rsp, 16");                                         // reserve aligned spill space for the remaining level count
+    emitter.instruction("cmp rdi, 1");                                          // PHP requires dirname() levels to be at least 1
+    emitter.instruction("jl __rt_dirname_levels_fail_x86");                     // reject invalid dynamic levels with a fatal runtime diagnostic
     emitter.instruction("mov QWORD PTR [rbp - 8], rdi");                        // save the requested parent depth as the remaining loop count
 
     emitter.label("__rt_dirname_levels_loop_x86");
@@ -354,4 +368,14 @@ fn emit_dirname_levels_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("add rsp, 16");                                         // release the dirname-levels spill space
     emitter.instruction("pop rbp");                                             // restore caller frame pointer
     emitter.instruction("ret");                                                 // return the repeated dirname result in rax/rdx
+
+    emitter.label("__rt_dirname_levels_fail_x86");
+    crate::codegen::abi::emit_symbol_address(emitter, "rsi", "_dirname_levels_msg"); // load the dirname levels fatal diagnostic text
+    emitter.instruction(&format!("mov edx, {}", DIRNAME_LEVELS_MSG.len()));     // pass the exact dirname levels diagnostic length to write()
+    emitter.instruction("mov edi, 2");                                          // write dirname diagnostics to stderr
+    emitter.instruction("mov eax, 1");                                          // Linux x86_64 syscall 1 writes the diagnostic bytes
+    emitter.instruction("syscall");                                             // emit the invalid dirname levels diagnostic
+    emitter.instruction("mov edi, 1");                                          // use a failing process exit status for invalid dirname levels
+    emitter.instruction("mov eax, 60");                                         // Linux x86_64 syscall 60 exits the process
+    emitter.instruction("syscall");                                             // terminate after the fatal dirname diagnostic
 }

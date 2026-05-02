@@ -3,7 +3,7 @@ use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
 use crate::codegen::expr::emit_expr;
 use crate::codegen::{abi, platform::Arch};
-use crate::parser::ast::{Expr, ExprKind};
+use crate::parser::ast::{BinOp, Expr, ExprKind};
 use crate::types::PhpType;
 
 pub fn emit(
@@ -15,7 +15,7 @@ pub fn emit(
 ) -> Option<PhpType> {
     emitter.comment("pathinfo()");
     emit_expr(&args[0], emitter, ctx, data);
-    if args.len() == 1 || pathinfo_flag_is_all(args.get(1), ctx) {
+    if args.len() == 1 || pathinfo_static_flag_value(args.get(1), ctx) == Some(15) {
         // No-flag form: build the associative array via the runtime helper.
         abi::emit_call_label(emitter, "__rt_pathinfo_array");                   // call the runtime helper that builds the dirname/basename/extension/filename hash
         // The hash pointer comes back in x0 / rax — that is already the
@@ -45,13 +45,29 @@ pub fn emit(
     Some(PhpType::Str)
 }
 
-fn pathinfo_flag_is_all(flag: Option<&Expr>, ctx: &Context) -> bool {
+fn pathinfo_static_flag_value(flag: Option<&Expr>, ctx: &Context) -> Option<i64> {
     match flag.map(|expr| &expr.kind) {
-        Some(ExprKind::IntLiteral(15)) => true,
+        Some(ExprKind::IntLiteral(value)) => Some(*value),
         Some(ExprKind::ConstRef(name)) => ctx
             .constants
             .get(name.as_str())
-            .is_some_and(|(value, _)| matches!(value, ExprKind::IntLiteral(15))),
-        _ => false,
+            .and_then(|(value, _)| match value {
+                ExprKind::IntLiteral(value) => Some(*value),
+                _ => None,
+            }),
+        Some(ExprKind::Negate(inner)) => {
+            pathinfo_static_flag_value(Some(inner.as_ref()), ctx).map(|value| -value)
+        }
+        Some(ExprKind::BinaryOp { left, op, right }) => {
+            let left = pathinfo_static_flag_value(Some(left.as_ref()), ctx)?;
+            let right = pathinfo_static_flag_value(Some(right.as_ref()), ctx)?;
+            match op {
+                BinOp::BitAnd => Some(left & right),
+                BinOp::BitOr => Some(left | right),
+                BinOp::BitXor => Some(left ^ right),
+                _ => None,
+            }
+        }
+        _ => None,
     }
 }

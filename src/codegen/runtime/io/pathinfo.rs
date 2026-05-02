@@ -1,13 +1,13 @@
 use crate::codegen::{emit::Emitter, platform::Arch};
 
-/// pathinfo (single-flag form): return one component of a path as a string.
+/// pathinfo (component-flag form): return one component of a path as a string.
 /// Input:  x1/x2 = path, x3 = flag (1=DIRNAME, 2=BASENAME, 4=EXTENSION, 8=FILENAME)
 /// Output: x1/x2 = component string (empty when the requested component is absent)
 ///
-/// Currently supports only the single-flag form (returning string). The
-/// no-flag form (returning an associative array) is intentionally not
-/// implemented: it requires building a hash at runtime and is deferred to a
-/// follow-up. The type checker rejects 1-argument calls with a clear error.
+/// PHP accepts component bitmasks; when several component bits are present it
+/// returns the first component in DIRNAME → BASENAME → EXTENSION → FILENAME
+/// order. Exact PATHINFO_ALL is handled by the array helper before reaching
+/// this routine, so dynamic exact-15 flags fail closed to an empty string.
 ///
 /// EXTENSION / FILENAME are computed by first reducing the path to its
 /// basename (via `__rt_basename`) and then locating the last `.` in the
@@ -29,20 +29,23 @@ pub fn emit_pathinfo_str(emitter: &mut Emitter) {
     emitter.instruction("mov x29, sp");                                         // establish new frame pointer
 
     // -- dispatch on the flag value --
-    emitter.instruction("cmp x3, #1");                                          // PATHINFO_DIRNAME?
-    emitter.instruction("b.eq __rt_pathinfo_dirname");                          // delegate to dirname runtime
-    emitter.instruction("cmp x3, #2");                                          // PATHINFO_BASENAME?
-    emitter.instruction("b.eq __rt_pathinfo_basename");                         // delegate to basename runtime
-    emitter.instruction("cmp x3, #4");                                          // PATHINFO_EXTENSION?
-    emitter.instruction("b.eq __rt_pathinfo_extension");                        // compute extension from basename
-    emitter.instruction("cmp x3, #8");                                          // PATHINFO_FILENAME?
-    emitter.instruction("b.eq __rt_pathinfo_filename");                         // compute filename (basename minus extension)
-    // Unsupported flag (e.g. PATHINFO_ALL): return the empty string for now.
+    emitter.instruction("cmp x3, #15");                                         // dynamic PATHINFO_ALL reaches the string helper only when not statically known
+    emitter.instruction("b.eq __rt_pathinfo_empty");                            // fail closed instead of returning a misleading component string
+    emitter.instruction("and x9, x3, #1");                                      // does the bitmask request PATHINFO_DIRNAME first?
+    emitter.instruction("cbnz x9, __rt_pathinfo_dirname");                      // delegate to dirname runtime when dirname is present
+    emitter.instruction("and x9, x3, #2");                                      // does the bitmask request PATHINFO_BASENAME next?
+    emitter.instruction("cbnz x9, __rt_pathinfo_basename");                     // delegate to basename runtime when basename is present
+    emitter.instruction("and x9, x3, #4");                                      // does the bitmask request PATHINFO_EXTENSION next?
+    emitter.instruction("cbnz x9, __rt_pathinfo_extension");                    // compute extension from basename when requested
+    emitter.instruction("and x9, x3, #8");                                      // does the bitmask request PATHINFO_FILENAME last?
+    emitter.instruction("cbnz x9, __rt_pathinfo_filename");                     // compute filename when requested
+    emitter.label("__rt_pathinfo_empty");
     emitter.instruction("mov x1, #0");                                          // return empty pointer
     emitter.instruction("mov x2, #0");                                          // return empty length
     emitter.instruction("b __rt_pathinfo_done");                                // unwind frame and return
 
     emitter.label("__rt_pathinfo_dirname");
+    emitter.instruction("cbz x2, __rt_pathinfo_empty");                         // pathinfo("", PATHINFO_DIRNAME) returns "" rather than dirname("") = "."
     emitter.instruction("bl __rt_dirname");                                     // run dirname; result in x1/x2
     emitter.instruction("b __rt_pathinfo_done");                                // unwind frame and return
 
@@ -68,9 +71,8 @@ pub fn emit_pathinfo_str(emitter: &mut Emitter) {
     emitter.instruction("b __rt_pathinfo_ext_scan");                            // continue scanning
 
     emitter.label("__rt_pathinfo_ext_found");
-    // Dot at index x5-1. PHP returns "" when the dot is the first byte (e.g. ".bashrc" → "").
-    emitter.instruction("sub x9, x5, #1");                                      // index of the dot
-    emitter.instruction("cbz x9, __rt_pathinfo_ext_none");                      // dot at position 0 → no extension
+    // Dot at index x5-1. PHP treats leading-dot names as having an extension,
+    // but trailing-dot names have an empty extension key in the array form.
     emitter.instruction("add x1, x1, x5");                                      // skip past the dot
     emitter.instruction("sub x2, x2, x5");                                      // remaining bytes form the extension
     emitter.instruction("b __rt_pathinfo_done");                                // unwind frame and return
@@ -84,11 +86,10 @@ pub fn emit_pathinfo_str(emitter: &mut Emitter) {
     emitter.instruction("mov x3, #0");                                          // basename with empty suffix
     emitter.instruction("mov x4, #0");                                          // suffix length 0
     emitter.instruction("bl __rt_basename");                                    // x1/x2 = basename slice
-    // Find the last '.' that is NOT at position 0 (PHP keeps ".bashrc" → ".bashrc").
+    // Find the last '.'; PHP trims leading-dot names to an empty filename.
     emitter.instruction("mov x5, x2");                                          // scan index = length
     emitter.label("__rt_pathinfo_filename_scan");
-    emitter.instruction("cmp x5, #1");                                          // dot at position 0 is treated as part of the name
-    emitter.instruction("b.le __rt_pathinfo_done");                             // no qualifying dot → keep the full basename
+    emitter.instruction("cbz x5, __rt_pathinfo_done");                          // no dot found → keep the full basename
     emitter.instruction("sub x9, x5, #1");                                      // candidate index
     emitter.instruction("ldrb w10, [x1, x9]");                                  // load candidate byte
     emitter.instruction("cmp w10, #0x2E");                                      // is it '.'?
@@ -116,20 +117,25 @@ fn emit_pathinfo_str_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("push rbp");                                            // preserve caller frame pointer while pathinfo dispatches
     emitter.instruction("mov rbp, rsp");                                        // establish stable frame base
 
-    emitter.instruction("cmp rdi, 1");                                          // PATHINFO_DIRNAME?
-    emitter.instruction("je __rt_pathinfo_dirname_x86");                        // delegate to dirname
-    emitter.instruction("cmp rdi, 2");                                          // PATHINFO_BASENAME?
-    emitter.instruction("je __rt_pathinfo_basename_x86");                       // delegate to basename
-    emitter.instruction("cmp rdi, 4");                                          // PATHINFO_EXTENSION?
-    emitter.instruction("je __rt_pathinfo_extension_x86");                      // compute extension
-    emitter.instruction("cmp rdi, 8");                                          // PATHINFO_FILENAME?
-    emitter.instruction("je __rt_pathinfo_filename_x86");                       // compute filename
+    emitter.instruction("cmp rdi, 15");                                         // dynamic PATHINFO_ALL cannot be returned by the string helper
+    emitter.instruction("je __rt_pathinfo_empty_x86");                          // fail closed instead of returning a misleading component string
+    emitter.instruction("test rdi, 1");                                         // does the bitmask request PATHINFO_DIRNAME first?
+    emitter.instruction("jnz __rt_pathinfo_dirname_x86");                       // delegate to dirname when dirname is present
+    emitter.instruction("test rdi, 2");                                         // does the bitmask request PATHINFO_BASENAME next?
+    emitter.instruction("jnz __rt_pathinfo_basename_x86");                      // delegate to basename when basename is present
+    emitter.instruction("test rdi, 4");                                         // does the bitmask request PATHINFO_EXTENSION next?
+    emitter.instruction("jnz __rt_pathinfo_extension_x86");                     // compute extension when requested
+    emitter.instruction("test rdi, 8");                                         // does the bitmask request PATHINFO_FILENAME last?
+    emitter.instruction("jnz __rt_pathinfo_filename_x86");                      // compute filename when requested
+    emitter.label("__rt_pathinfo_empty_x86");
     emitter.instruction("xor eax, eax");                                        // unsupported flag → empty pointer
     emitter.instruction("xor edx, edx");                                        // unsupported flag → empty length
     emitter.instruction("pop rbp");                                             // restore frame pointer
     emitter.instruction("ret");                                                 // return empty string
 
     emitter.label("__rt_pathinfo_dirname_x86");
+    emitter.instruction("test rdx, rdx");                                       // pathinfo("", PATHINFO_DIRNAME) returns "" rather than dirname("") = "."
+    emitter.instruction("jz __rt_pathinfo_empty_x86");                          // preserve PHP's pathinfo-specific empty-path rule
     emitter.instruction("call __rt_dirname");                                   // dirname; result in rax/rdx
     emitter.instruction("pop rbp");                                             // restore frame pointer
     emitter.instruction("ret");                                                 // return result
@@ -157,10 +163,6 @@ fn emit_pathinfo_str_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("sub r8, 1");                                           // step left
     emitter.instruction("jmp __rt_pathinfo_ext_scan_x86");                      // continue scanning
     emitter.label("__rt_pathinfo_ext_found_x86");
-    emitter.instruction("mov r9, r8");                                          // r9 = position right after the dot
-    emitter.instruction("sub r9, 1");                                           // r9 = index of the dot
-    emitter.instruction("test r9, r9");                                         // dot at index 0?
-    emitter.instruction("jz __rt_pathinfo_ext_none_x86");                       // → empty extension (".bashrc")
     emitter.instruction("add rax, r8");                                         // skip past the dot
     emitter.instruction("sub rdx, r8");                                         // remaining bytes form the extension
     emitter.instruction("pop rbp");                                             // restore frame pointer
@@ -177,8 +179,8 @@ fn emit_pathinfo_str_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("call __rt_basename");                                  // basename; result in rax/rdx
     emitter.instruction("mov r8, rdx");                                         // r8 = scan index = basename length
     emitter.label("__rt_pathinfo_filename_scan_x86");
-    emitter.instruction("cmp r8, 1");                                           // dot at index 0 stays part of the filename
-    emitter.instruction("jle __rt_pathinfo_filename_done_x86");                 // no qualifying dot → keep full basename
+    emitter.instruction("test r8, r8");                                         // exhausted the basename without finding a dot?
+    emitter.instruction("jz __rt_pathinfo_filename_done_x86");                  // no dot found → keep full basename
     emitter.instruction("mov r9, r8");                                          // candidate index = r8 - 1
     emitter.instruction("sub r9, 1");                                           // step left
     emitter.instruction("movzx ecx, BYTE PTR [rax + r9]");                      // load candidate byte
@@ -197,9 +199,10 @@ fn emit_pathinfo_str_linux_x86_64(emitter: &mut Emitter) {
 /// pathinfo (no-flag form): build an associative array with the path components.
 /// Input:  x1/x2 = path
 /// Output: x0 = pointer to a freshly allocated hash table containing
-///         "dirname", "basename", "extension" (only when non-empty), and "filename".
+///         "dirname" (except for empty paths), "basename", "extension" (only
+///         when the basename contains a dot), and "filename".
 ///
-/// Insertion order matches PHP: dirname → basename → extension (if any) → filename.
+/// Insertion order matches PHP: dirname → basename → extension (if present) → filename.
 /// String values are persisted into owned heap storage via `__rt_str_persist`
 /// before being inserted, so the hash remains valid after the path argument
 /// is dropped.
@@ -240,6 +243,8 @@ pub fn emit_pathinfo_array(emitter: &mut Emitter) {
     emitter.instruction("str x0, [sp, #16]");                                   // save the hash pointer
 
     // -- insert "dirname" (flag = 1) --
+    emitter.instruction("ldr x9, [sp, #8]");                                    // reload the original path length before deciding whether dirname exists
+    emitter.instruction("cbz x9, __rt_pathinfo_array_skip_dirname");            // pathinfo("") omits the dirname key
     emitter.instruction("ldr x1, [sp, #0]");                                    // reload path pointer
     emitter.instruction("ldr x2, [sp, #8]");                                    // reload path length
     emitter.instruction("mov x3, #1");                                          // PATHINFO_DIRNAME
@@ -256,6 +261,8 @@ pub fn emit_pathinfo_array(emitter: &mut Emitter) {
     emitter.instruction("ldr x0, [sp, #16]");                                   // reload hash pointer
     emitter.instruction("bl __rt_hash_set");                                    // insert dirname; x0 = updated hash pointer
     emitter.instruction("str x0, [sp, #16]");                                   // persist any post-grow hash pointer
+
+    emitter.label("__rt_pathinfo_array_skip_dirname");
 
     // -- insert "basename" (flag = 2) --
     emitter.instruction("ldr x1, [sp, #0]");                                    // reload path pointer
@@ -280,7 +287,7 @@ pub fn emit_pathinfo_array(emitter: &mut Emitter) {
     emitter.instruction("ldr x2, [sp, #8]");                                    // reload path length
     emitter.instruction("mov x3, #4");                                          // PATHINFO_EXTENSION
     emitter.instruction("bl __rt_pathinfo_str");                                // x1/x2 = extension slice (or 0/0 when absent)
-    emitter.instruction("cbz x2, __rt_pathinfo_array_skip_ext");                // empty extension → skip the key
+    emitter.instruction("cbz x1, __rt_pathinfo_array_skip_ext");                // no dot in basename → skip the extension key
     emitter.instruction("bl __rt_str_persist");                                 // persist extension into owned heap storage
     emitter.instruction("str x1, [sp, #24]");                                   // save persisted value pointer
     emitter.instruction("str x2, [sp, #32]");                                   // save persisted value length
@@ -348,6 +355,9 @@ fn emit_pathinfo_array_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov QWORD PTR [rbp - 24], rax");                       // save hash pointer
 
     // -- "dirname" (flag = 1) --
+    emitter.instruction("mov r8, QWORD PTR [rbp - 16]");                        // reload the original path length before deciding whether dirname exists
+    emitter.instruction("test r8, r8");                                         // is the original path empty?
+    emitter.instruction("jz __rt_pathinfo_array_skip_dirname_x86");             // pathinfo("") omits the dirname key
     emitter.instruction("mov rax, QWORD PTR [rbp - 8]");                        // reload path pointer
     emitter.instruction("mov rdx, QWORD PTR [rbp - 16]");                       // reload path length
     emitter.instruction("mov rdi, 1");                                          // PATHINFO_DIRNAME
@@ -363,6 +373,8 @@ fn emit_pathinfo_array_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov rdi, QWORD PTR [rbp - 24]");                       // hash pointer (first __rt_hash_set arg)
     emitter.instruction("call __rt_hash_set");                                  // insert dirname; rax = updated hash pointer
     emitter.instruction("mov QWORD PTR [rbp - 24], rax");                       // persist updated hash pointer
+
+    emitter.label("__rt_pathinfo_array_skip_dirname_x86");
 
     // -- "basename" (flag = 2) --
     emitter.instruction("mov rax, QWORD PTR [rbp - 8]");                        // reload path pointer
@@ -386,8 +398,8 @@ fn emit_pathinfo_array_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov rdx, QWORD PTR [rbp - 16]");                       // reload path length
     emitter.instruction("mov rdi, 4");                                          // PATHINFO_EXTENSION
     emitter.instruction("call __rt_pathinfo_str");                              // rax/rdx = extension slice (or 0/0)
-    emitter.instruction("test rdx, rdx");                                       // empty extension?
-    emitter.instruction("jz __rt_pathinfo_array_skip_ext_x86");                 // → skip the key
+    emitter.instruction("test rax, rax");                                       // no dot in basename?
+    emitter.instruction("jz __rt_pathinfo_array_skip_ext_x86");                 // → skip the extension key
     emitter.instruction("call __rt_str_persist");                               // persist extension into owned heap storage
     emitter.instruction("mov QWORD PTR [rbp - 32], rax");                       // save persisted value pointer
     emitter.instruction("mov QWORD PTR [rbp - 40], rdx");                       // save persisted value length

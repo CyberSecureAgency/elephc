@@ -295,6 +295,17 @@ fn test_error_fnmatch_rejects_unsupported_flags() {
     );
 }
 
+#[test]
+fn test_error_pathinfo_rejects_dynamic_flags() {
+    expect_error(
+        r#"<?php
+$flag = PATHINFO_EXTENSION;
+echo pathinfo("foo.txt", $flag);
+"#,
+        "pathinfo() flag must be a compile-time PATHINFO_* constant, bitmask, or integer literal",
+    );
+}
+
 // --- v0.6: switch/match/array errors ---
 
 #[test]

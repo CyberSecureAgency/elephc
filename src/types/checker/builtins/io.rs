@@ -1,5 +1,5 @@
 use crate::errors::CompileError;
-use crate::parser::ast::{Expr, ExprKind};
+use crate::parser::ast::{BinOp, Expr, ExprKind};
 use crate::types::{PhpType, TypeEnv};
 
 use super::super::Checker;
@@ -286,7 +286,16 @@ pub(super) fn check_builtin(
             for arg in args {
                 checker.infer_type(arg, env)?;
             }
-            if pathinfo_returns_array(args) {
+            let flag = match args.get(1) {
+                Some(flag) => Some(pathinfo_static_flag_value(flag).ok_or_else(|| {
+                    CompileError::new(
+                        span,
+                        "pathinfo() flag must be a compile-time PATHINFO_* constant, bitmask, or integer literal",
+                    )
+                })?),
+                None => None,
+            };
+            if flag.is_none() || flag == Some(15) {
                 Ok(Some(PhpType::AssocArray {
                     key: Box::new(PhpType::Str),
                     value: Box::new(PhpType::Str),
@@ -299,17 +308,28 @@ pub(super) fn check_builtin(
     }
 }
 
-fn pathinfo_returns_array(args: &[Expr]) -> bool {
-    args.len() == 1
-        || args
-            .get(1)
-            .is_some_and(|flag| pathinfo_flag_is_all(flag))
-}
-
-fn pathinfo_flag_is_all(flag: &Expr) -> bool {
+fn pathinfo_static_flag_value(flag: &Expr) -> Option<i64> {
     match &flag.kind {
-        ExprKind::IntLiteral(15) => true,
-        ExprKind::ConstRef(name) => name.as_str() == "PATHINFO_ALL",
-        _ => false,
+        ExprKind::IntLiteral(value) => Some(*value),
+        ExprKind::ConstRef(name) => match name.as_str() {
+            "PATHINFO_DIRNAME" => Some(1),
+            "PATHINFO_BASENAME" => Some(2),
+            "PATHINFO_EXTENSION" => Some(4),
+            "PATHINFO_FILENAME" => Some(8),
+            "PATHINFO_ALL" => Some(15),
+            _ => None,
+        },
+        ExprKind::Negate(inner) => pathinfo_static_flag_value(inner).map(|value| -value),
+        ExprKind::BinaryOp { left, op, right } => {
+            let left = pathinfo_static_flag_value(left)?;
+            let right = pathinfo_static_flag_value(right)?;
+            match op {
+                BinOp::BitAnd => Some(left & right),
+                BinOp::BitOr => Some(left | right),
+                BinOp::BitXor => Some(left ^ right),
+                _ => None,
+            }
+        }
+        _ => None,
     }
 }
