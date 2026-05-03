@@ -241,7 +241,7 @@ src/
 │   │   ├── arrays/            count, array_push, buffer_new/len/free, sort, array_map, usort, ... (58 files)
 │   │   ├── math/              abs, floor, pow, rand, fmod, fdiv, round, min, max, sin, cos, ... (32 files)
 │   │   ├── types/             is_*, gettype, empty, unset, settype, ... (17 files)
-│   │   ├── io/                fopen, fwrite, file_get_contents, scandir, ... (36 files)
+│   │   ├── io/                fopen, fwrite, file_get_contents, scandir, ... (64 files)
 │   │   ├── pointers/          ptr, ptr_get, ptr_set, ptr_read8, ptr_write8, ptr_offset, ... (12 files)
 │   │   └── system/            exit, define, time, date, mktime, json_encode, preg_match, ... (25 files)
 │   │
@@ -253,7 +253,7 @@ src/
 │       ├── x86_minimal.rs     Minimal x86_64 runtime slice for the Linux x86_64 target
 │       ├── strings/           itoa, concat, ftoa, sprintf, md5, sha1, str_persist, ... (53 files)
 │       ├── arrays/            heap_alloc, heap_free, array_free_deep, array_grow, hash_grow, hash_*, mixed boxing/freeing, mixed instanceof, sort, usort, refcount, gc/decref dispatch, ... (112 files)
-│       ├── io/                fopen, fgets, fread, stat, scandir, ... (17 files)
+│       ├── io/                fopen, fgets, fread, stat, scandir, ... (27 files)
 │       ├── buffers/           buffer_new, buffer_len, bounds_fail, use_after_free helpers (5 files incl. mod.rs)
 │       ├── exceptions.rs      Exception runtime module root / re-exports
 │       ├── exceptions/        cleanup_frames, matches, throw_current, rethrow_current helpers (4 files)

@@ -362,7 +362,7 @@ All regex routines use **POSIX extended regular expressions** via libc's `regcom
 
 ## I/O routines
 
-**Source:** `src/codegen/runtime/io/` (23 files)
+**Source:** `src/codegen/runtime/io/` (27 files)
 
 These routines handle file and filesystem operations through target-aware libc/syscall helpers. PHP strings (pointer + length) must be converted to null-terminated C strings before passing to C or OS APIs — `__rt_cstr` handles the primary buffer and also emits `__rt_cstr2` for routines that need a second simultaneous C string.
 
@@ -391,6 +391,14 @@ These routines handle file and filesystem operations through target-aware libc/s
 | `__rt_tempnam` | Create temporary filename |
 | `__rt_fgetcsv` | Parse CSV line from file |
 | `__rt_fputcsv` | Write CSV line to file |
+| `__rt_basename` / `__rt_dirname` / `__rt_dirname_levels` | Compute path components for `basename()` / `dirname()` including repeated parent traversal |
+| `__rt_fnmatch` | Match shell-style path globs with PHP/libc-compatible flag bits for the selected target |
+| `__rt_realpath` | Canonicalize an existing path, returning a null pointer on failure so codegen can box PHP `false` |
+| `__rt_pathinfo_str` / `__rt_pathinfo_array` | Return one `pathinfo()` component for component flags, or build the associative-array `PATHINFO_ALL` shape |
+| `__rt_chmod` / `__rt_chown` / `__rt_chown_user` / `__rt_chgrp_group` | File ownership and mode modification helpers |
+| `__rt_umask` / `__rt_ftruncate` | Process umask and file truncation helpers |
+| `__rt_fsync` / `__rt_fflush` / `__rt_fdatasync` | File descriptor flush helpers; `fflush()` maps to `fsync()` because elephc has no userspace stdio buffer |
+| `__rt_touch` | Create missing files and update access/modification timestamps |
 
 ## Pointer routines
 

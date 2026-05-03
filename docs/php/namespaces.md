@@ -123,6 +123,15 @@ define("PI", 3.14159);
 | `STDIN` | int | 0 |
 | `STDOUT` | int | 1 |
 | `STDERR` | int | 2 |
+| `PATHINFO_DIRNAME` | int | 1 |
+| `PATHINFO_BASENAME` | int | 2 |
+| `PATHINFO_EXTENSION` | int | 4 |
+| `PATHINFO_FILENAME` | int | 8 |
+| `PATHINFO_ALL` | int | 15 |
+| `FNM_NOESCAPE` | int | Target-specific libc/PHP value |
+| `FNM_PATHNAME` | int | Target-specific libc/PHP value |
+| `FNM_PERIOD` | int | 4 |
+| `FNM_CASEFOLD` | int | 16 |
 
 ## Superglobals
 
