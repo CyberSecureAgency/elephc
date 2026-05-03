@@ -346,6 +346,7 @@ pub(super) fn check_builtin(
                 return Err(CompileError::new(span, "touch() takes 1, 2, or 3 arguments"));
             }
             checker.infer_type(&args[0], env)?;
+            let mut timestamp_types = Vec::new();
             for arg in args.iter().skip(1) {
                 let ty = checker.infer_type(arg, env)?;
                 if !matches!(ty, PhpType::Int | PhpType::Void) {
@@ -354,9 +355,10 @@ pub(super) fn check_builtin(
                         "touch() timestamp arguments must be int or null",
                     ));
                 }
+                timestamp_types.push(ty);
             }
-            if matches!(args.get(1).map(|arg| &arg.kind), Some(ExprKind::Null))
-                && matches!(args.get(2), Some(arg) if !matches!(&arg.kind, ExprKind::Null))
+            if matches!(timestamp_types.first(), Some(PhpType::Void))
+                && matches!(timestamp_types.get(1), Some(ty) if !matches!(ty, PhpType::Void))
             {
                 return Err(CompileError::new(
                     span,

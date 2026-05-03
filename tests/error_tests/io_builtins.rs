@@ -341,6 +341,13 @@ fn test_error_touch_rejects_invalid_timestamp_args() {
         r#"<?php touch("file.txt", null, 1000);"#,
         "touch() mtime cannot be null when atime is provided",
     );
+    expect_error(
+        r#"<?php
+$mtime = null;
+touch("file.txt", $mtime, 1000);
+"#,
+        "touch() mtime cannot be null when atime is provided",
+    );
 }
 
 #[test]

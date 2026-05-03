@@ -279,6 +279,20 @@ echo ($ok ? "y" : "n") . "|" . (filemtime("current.txt") > 1000000000 ? "y" : "n
 }
 
 #[test]
+fn test_touch_null_mtime_variable_uses_current_time() {
+    let (out, dir) = compile_and_run_in_dir(
+        r#"<?php
+file_put_contents("current_var.txt", "");
+$mtime = null;
+$ok = touch("current_var.txt", $mtime);
+echo ($ok ? "y" : "n") . "|" . (filemtime("current_var.txt") > 1000000000 ? "y" : "n");
+"#,
+    );
+    assert_eq!(out, "y|y");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn test_touch_with_explicit_mtime() {
     let (out, dir) = compile_and_run_in_dir(
         r#"<?php
@@ -311,6 +325,20 @@ fn test_touch_null_atime_defaults_to_explicit_mtime() {
 file_put_contents("null_atime.txt", "");
 touch("null_atime.txt", 1000000000, null);
 echo filemtime("null_atime.txt") . "|" . fileatime("null_atime.txt");
+"#,
+    );
+    assert_eq!(out, "1000000000|1000000000");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_touch_null_atime_variable_defaults_to_explicit_mtime() {
+    let (out, dir) = compile_and_run_in_dir(
+        r#"<?php
+file_put_contents("null_atime_var.txt", "");
+$atime = null;
+touch("null_atime_var.txt", 1000000000, $atime);
+echo filemtime("null_atime_var.txt") . "|" . fileatime("null_atime_var.txt");
 "#,
     );
     assert_eq!(out, "1000000000|1000000000");

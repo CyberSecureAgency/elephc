@@ -2,6 +2,7 @@ use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
 use crate::codegen::expr::emit_expr;
+use crate::codegen::functions::infer_contextual_type;
 use crate::codegen::{abi, platform::Arch};
 use crate::parser::ast::{Expr, ExprKind};
 use crate::types::PhpType;
@@ -33,7 +34,7 @@ fn emit_touch_args_aarch64(
     ctx: &mut Context,
     data: &mut DataSection,
 ) {
-    match touch_time_shape(args) {
+    match touch_time_shape(args, ctx) {
         TouchTimeShape::BothNow => {
             emitter.instruction("mov x3, #0");                                  // ignored mtime seconds when runtime uses current time
             emitter.instruction("mov x4, #0");                                  // ignored atime seconds when runtime uses current time
@@ -66,7 +67,7 @@ fn emit_touch_args_x86_64(
     ctx: &mut Context,
     data: &mut DataSection,
 ) {
-    match touch_time_shape(args) {
+    match touch_time_shape(args, ctx) {
         TouchTimeShape::BothNow => {
             emitter.instruction("mov rdi, 0");                                  // ignored mtime seconds when runtime uses current time
             emitter.instruction("mov rsi, 0");                                  // ignored atime seconds when runtime uses current time
@@ -101,17 +102,19 @@ enum TouchTimeShape {
     ExplicitBoth,
 }
 
-fn touch_time_shape(args: &[Expr]) -> TouchTimeShape {
+fn touch_time_shape(args: &[Expr], ctx: &Context) -> TouchTimeShape {
     match args.len() {
         1 => TouchTimeShape::BothNow,
-        2 if is_null_literal(&args[1]) => TouchTimeShape::BothNow,
+        2 if is_static_null(&args[1], ctx) => TouchTimeShape::BothNow,
         2 => TouchTimeShape::MtimeAlsoAtime,
-        _ if is_null_literal(&args[1]) && is_null_literal(&args[2]) => TouchTimeShape::BothNow,
-        _ if is_null_literal(&args[2]) => TouchTimeShape::MtimeAlsoAtime,
+        _ if is_static_null(&args[1], ctx) && is_static_null(&args[2], ctx) => {
+            TouchTimeShape::BothNow
+        }
+        _ if is_static_null(&args[2], ctx) => TouchTimeShape::MtimeAlsoAtime,
         _ => TouchTimeShape::ExplicitBoth,
     }
 }
 
-fn is_null_literal(expr: &Expr) -> bool {
-    matches!(expr.kind, ExprKind::Null)
+fn is_static_null(expr: &Expr, ctx: &Context) -> bool {
+    matches!(expr.kind, ExprKind::Null) || infer_contextual_type(expr, ctx) == PhpType::Void
 }
