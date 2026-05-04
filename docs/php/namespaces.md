@@ -114,7 +114,7 @@ Rejected (compile error):
 
 `const` or `define()` calls inside functions, methods, loops, and branches are scoped to that resolved body during include expansion. They do not leak into the surrounding top-level include path resolver.
 
-**Other limitations:** Included files must start with `<?php`. Runtime-dynamic include paths are not supported by the current AOT resolver.
+**Other limitations:** Included files must start with `<?php`. Runtime-dynamic include paths are not supported by the current AOT resolver. Function, class, interface, and trait declarations from included files are still discovered in resolver traversal order, so references can remain sensitive to source include order until include-graph declaration discovery is implemented.
 
 ## Constants
 ```php
