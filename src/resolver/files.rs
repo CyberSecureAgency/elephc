@@ -1,0 +1,31 @@
+use std::path::{Path, PathBuf};
+
+use crate::errors::CompileError;
+use crate::lexer;
+use crate::parser;
+use crate::parser::ast::Stmt;
+use crate::span::Span;
+
+pub(super) fn resolve_path(path: &str, base_dir: &Path) -> PathBuf {
+    let p = Path::new(path);
+    if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        base_dir.join(p)
+    }
+}
+
+pub(super) fn parse_file(path: &Path, include_span: Span) -> Result<Vec<Stmt>, CompileError> {
+    let source = std::fs::read_to_string(path).map_err(|e| {
+        CompileError::new(
+            include_span,
+            &format!("Cannot read '{}': {}", path.display(), e),
+        )
+    })?;
+
+    let file = path.display().to_string();
+
+    let tokens = lexer::tokenize(&source).map_err(|e| e.with_file(file.clone()))?;
+
+    parser::parse(&tokens).map_err(|e| e.with_file(file))
+}
