@@ -24,10 +24,16 @@ pub fn resolve(program: Program, base_dir: &Path) -> Result<Program, CompileErro
         return Ok(program);
     }
 
-    let mut included: HashSet<PathBuf> = HashSet::new();
+    let mut declared_once: HashSet<PathBuf> = HashSet::new();
     let mut include_chain: Vec<PathBuf> = Vec::new();
     let mut state = ResolveState::default();
-    resolve_stmts(program, base_dir, &mut included, &mut include_chain, &mut state)
+    resolve_stmts(
+        program,
+        base_dir,
+        &mut declared_once,
+        &mut include_chain,
+        &mut state,
+    )
 }
 
 /// Fold a path expression to a compile-time string. Handles string literals,
@@ -239,7 +245,7 @@ fn has_includes(stmts: &[Stmt]) -> bool {
 fn resolve_stmts(
     stmts: Vec<Stmt>,
     base_dir: &Path,
-    included: &mut HashSet<PathBuf>,
+    declared_once: &mut HashSet<PathBuf>,
     include_chain: &mut Vec<PathBuf>,
     state: &mut ResolveState,
 ) -> Result<Vec<Stmt>, CompileError> {
@@ -263,44 +269,76 @@ fn resolve_stmts(
                     continue;
                 }
 
-                if *once && included.contains(&canonical) {
-                    continue;
-                }
-
                 if include_chain.contains(&canonical) {
+                    if *once {
+                        continue;
+                    }
                     return Err(CompileError::new(
                         stmt.span,
                         &format!("Circular include detected: '{}'", path_str),
                     ));
                 }
 
-                included.insert(canonical.clone());
-
                 let included_stmts = parse_file(&resolved, stmt.span)?;
                 let included_stmts =
                     crate::magic_constants::substitute_file_and_scope_constants(included_stmts, &resolved);
 
                 let included_dir = resolved.parent().unwrap_or(base_dir);
-                include_chain.push(canonical);
+                include_chain.push(canonical.clone());
 
                 let saved_namespace = state.namespace.clone();
                 let saved_imports = state.const_imports.clone();
                 state.namespace = None;
                 state.const_imports = HashMap::new();
                 let resolved_stmts =
-                    resolve_stmts(included_stmts, included_dir, included, include_chain, state)?;
+                    resolve_stmts(included_stmts, included_dir, declared_once, include_chain, state)?;
                 state.namespace = saved_namespace;
                 state.const_imports = saved_imports;
 
                 include_chain.pop();
 
-                result.push(Stmt::new(
-                    StmtKind::NamespaceBlock {
-                        name: None,
-                        body: resolved_stmts,
-                    },
-                    stmt.span,
-                ));
+                let include_label = include_once_label(&canonical);
+                if *once {
+                    // Declarations stay hoisted for the existing AOT symbol model; executable
+                    // include body statements are guarded so runtime order matches PHP.
+                    let (decls, executable) = split_include_once_declarations(resolved_stmts);
+                    if declared_once.insert(canonical) && !decls.is_empty() {
+                        result.push(Stmt::new(
+                            StmtKind::NamespaceBlock {
+                                name: None,
+                                body: decls,
+                            },
+                            stmt.span,
+                        ));
+                    }
+                    result.push(Stmt::new(
+                        StmtKind::IncludeOnceGuard {
+                            label: include_label,
+                            body: vec![Stmt::new(
+                                StmtKind::NamespaceBlock {
+                                    name: None,
+                                    body: executable,
+                                },
+                                stmt.span,
+                            )],
+                        },
+                        stmt.span,
+                    ));
+                } else {
+                    result.push(Stmt::new(
+                        StmtKind::IncludeOnceMark {
+                            label: include_label,
+                        },
+                        stmt.span,
+                    ));
+                    result.push(Stmt::new(
+                        StmtKind::NamespaceBlock {
+                            name: None,
+                            body: resolved_stmts,
+                        },
+                        stmt.span,
+                    ));
+                }
             }
             StmtKind::ConstDecl { name, value } => {
                 if let Ok(s) = fold_include_path(value, state) {
@@ -334,7 +372,7 @@ fn resolve_stmts(
                 state.namespace = Some(namespace_string(name));
                 state.const_imports = HashMap::new();
                 let body_resolved =
-                    resolve_stmts(body.clone(), base_dir, included, include_chain, state)?;
+                    resolve_stmts(body.clone(), base_dir, declared_once, include_chain, state)?;
                 state.namespace = saved_namespace;
                 state.const_imports = saved_imports;
                 result.push(Stmt::new(
@@ -350,19 +388,19 @@ fn resolve_stmts(
                 result.push(stmt);
             }
             StmtKind::If { condition, then_body, elseif_clauses, else_body } => {
-                let then_body = resolve_isolated(then_body.clone(), base_dir, included, include_chain, state)?;
+                let then_body = resolve_isolated(then_body.clone(), base_dir, declared_once, include_chain, state)?;
                 let elseif_clauses = elseif_clauses
                     .iter()
                     .map(|(cond, body)| {
                         Ok((
                             cond.clone(),
-                            resolve_isolated(body.clone(), base_dir, included, include_chain, state)?,
+                            resolve_isolated(body.clone(), base_dir, declared_once, include_chain, state)?,
                         ))
                     })
                     .collect::<Result<Vec<_>, CompileError>>()?;
                 let else_body = else_body
                     .as_ref()
-                    .map(|body| resolve_isolated(body.clone(), base_dir, included, include_chain, state))
+                    .map(|body| resolve_isolated(body.clone(), base_dir, declared_once, include_chain, state))
                     .transpose()?;
                 result.push(Stmt::new(
                     StmtKind::If {
@@ -375,7 +413,7 @@ fn resolve_stmts(
                 ));
             }
             StmtKind::While { condition, body } => {
-                let body = resolve_isolated(body.clone(), base_dir, included, include_chain, state)?;
+                let body = resolve_isolated(body.clone(), base_dir, declared_once, include_chain, state)?;
                 result.push(Stmt::new(
                     StmtKind::While {
                         condition: condition.clone(),
@@ -385,7 +423,7 @@ fn resolve_stmts(
                 ));
             }
             StmtKind::DoWhile { body, condition } => {
-                let body = resolve_isolated(body.clone(), base_dir, included, include_chain, state)?;
+                let body = resolve_isolated(body.clone(), base_dir, declared_once, include_chain, state)?;
                 result.push(Stmt::new(
                     StmtKind::DoWhile {
                         body,
@@ -395,7 +433,7 @@ fn resolve_stmts(
                 ));
             }
             StmtKind::For { init, condition, update, body } => {
-                let body = resolve_isolated(body.clone(), base_dir, included, include_chain, state)?;
+                let body = resolve_isolated(body.clone(), base_dir, declared_once, include_chain, state)?;
                 result.push(Stmt::new(
                     StmtKind::For {
                         init: init.clone(),
@@ -407,7 +445,7 @@ fn resolve_stmts(
                 ));
             }
             StmtKind::Foreach { array, key_var, value_var, body } => {
-                let body = resolve_isolated(body.clone(), base_dir, included, include_chain, state)?;
+                let body = resolve_isolated(body.clone(), base_dir, declared_once, include_chain, state)?;
                 result.push(Stmt::new(
                     StmtKind::Foreach {
                         array: array.clone(),
@@ -424,13 +462,13 @@ fn resolve_stmts(
                     .map(|(values, body)| {
                         Ok((
                             values.clone(),
-                            resolve_isolated(body.clone(), base_dir, included, include_chain, state)?,
+                            resolve_isolated(body.clone(), base_dir, declared_once, include_chain, state)?,
                         ))
                     })
                     .collect::<Result<Vec<_>, CompileError>>()?;
                 let default = default
                     .as_ref()
-                    .map(|body| resolve_isolated(body.clone(), base_dir, included, include_chain, state))
+                    .map(|body| resolve_isolated(body.clone(), base_dir, declared_once, include_chain, state))
                     .transpose()?;
                 result.push(Stmt::new(
                     StmtKind::Switch {
@@ -447,7 +485,7 @@ fn resolve_stmts(
                 finally_body,
             } => {
                 let try_body =
-                    resolve_isolated(try_body.clone(), base_dir, included, include_chain, state)?;
+                    resolve_isolated(try_body.clone(), base_dir, declared_once, include_chain, state)?;
                 let catches = catches
                     .iter()
                     .map(|catch_clause| {
@@ -457,7 +495,7 @@ fn resolve_stmts(
                             body: resolve_isolated(
                                 catch_clause.body.clone(),
                                 base_dir,
-                                included,
+                                declared_once,
                                 include_chain,
                                 state,
                             )?,
@@ -466,7 +504,7 @@ fn resolve_stmts(
                     .collect::<Result<Vec<_>, CompileError>>()?;
                 let finally_body = finally_body
                     .as_ref()
-                    .map(|body| resolve_isolated(body.clone(), base_dir, included, include_chain, state))
+                    .map(|body| resolve_isolated(body.clone(), base_dir, declared_once, include_chain, state))
                     .transpose()?;
                 result.push(Stmt::new(
                     StmtKind::Try {
@@ -478,7 +516,7 @@ fn resolve_stmts(
                 ));
             }
             StmtKind::FunctionDecl { name, params, variadic, return_type, body } => {
-                let body = resolve_isolated(body.clone(), base_dir, included, include_chain, state)?;
+                let body = resolve_isolated(body.clone(), base_dir, declared_once, include_chain, state)?;
                 result.push(Stmt::new(
                     StmtKind::FunctionDecl {
                         name: name.clone(),
@@ -501,7 +539,7 @@ fn resolve_stmts(
                 properties,
                 methods,
             } => {
-                let methods = resolve_methods(methods, base_dir, included, include_chain, state)?;
+                let methods = resolve_methods(methods, base_dir, declared_once, include_chain, state)?;
                 result.push(Stmt::new(
                     StmtKind::ClassDecl {
                         name: name.clone(),
@@ -518,7 +556,7 @@ fn resolve_stmts(
                 ));
             }
             StmtKind::InterfaceDecl { name, extends, methods } => {
-                let methods = resolve_methods(methods, base_dir, included, include_chain, state)?;
+                let methods = resolve_methods(methods, base_dir, declared_once, include_chain, state)?;
                 result.push(Stmt::new(
                     StmtKind::InterfaceDecl {
                         name: name.clone(),
@@ -534,7 +572,7 @@ fn resolve_stmts(
                 properties,
                 methods,
             } => {
-                let methods = resolve_methods(methods, base_dir, included, include_chain, state)?;
+                let methods = resolve_methods(methods, base_dir, declared_once, include_chain, state)?;
                 result.push(Stmt::new(
                     StmtKind::TraitDecl {
                         name: name.clone(),
@@ -557,18 +595,18 @@ fn resolve_stmts(
 fn resolve_isolated(
     stmts: Vec<Stmt>,
     base_dir: &Path,
-    included: &mut HashSet<PathBuf>,
+    declared_once: &mut HashSet<PathBuf>,
     include_chain: &mut Vec<PathBuf>,
     state: &ResolveState,
 ) -> Result<Vec<Stmt>, CompileError> {
     let mut local = state.clone();
-    resolve_stmts(stmts, base_dir, included, include_chain, &mut local)
+    resolve_stmts(stmts, base_dir, declared_once, include_chain, &mut local)
 }
 
 fn resolve_methods(
     methods: &[ClassMethod],
     base_dir: &Path,
-    included: &mut HashSet<PathBuf>,
+    declared_once: &mut HashSet<PathBuf>,
     include_chain: &mut Vec<PathBuf>,
     state: &ResolveState,
 ) -> Result<Vec<ClassMethod>, CompileError> {
@@ -576,13 +614,79 @@ fn resolve_methods(
         .iter()
         .map(|method| {
             let body =
-                resolve_isolated(method.body.clone(), base_dir, included, include_chain, state)?;
+                resolve_isolated(method.body.clone(), base_dir, declared_once, include_chain, state)?;
             Ok(ClassMethod {
                 body,
                 ..method.clone()
             })
         })
         .collect()
+}
+
+fn include_once_label(path: &Path) -> String {
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in path.to_string_lossy().as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("_include_once_{hash:016x}")
+}
+
+fn split_include_once_declarations(stmts: Vec<Stmt>) -> (Vec<Stmt>, Vec<Stmt>) {
+    let mut declarations = Vec::new();
+    let mut executable = Vec::new();
+
+    for stmt in stmts {
+        match &stmt.kind {
+            StmtKind::NamespaceDecl { .. } | StmtKind::UseDecl { .. } => {
+                declarations.push(stmt.clone());
+                executable.push(stmt);
+            }
+            StmtKind::NamespaceBlock { name, body } => {
+                let (body_decls, body_exec) = split_include_once_declarations(body.clone());
+                if !body_decls.is_empty() {
+                    declarations.push(Stmt::new(
+                        StmtKind::NamespaceBlock {
+                            name: name.clone(),
+                            body: body_decls,
+                        },
+                        stmt.span,
+                    ));
+                }
+                if !body_exec.is_empty() {
+                    executable.push(Stmt::new(
+                        StmtKind::NamespaceBlock {
+                            name: name.clone(),
+                            body: body_exec,
+                        },
+                        stmt.span,
+                    ));
+                }
+            }
+            StmtKind::Synthetic(stmts) => {
+                let (body_decls, body_exec) = split_include_once_declarations(stmts.clone());
+                if !body_decls.is_empty() {
+                    declarations.push(Stmt::new(StmtKind::Synthetic(body_decls), stmt.span));
+                }
+                if !body_exec.is_empty() {
+                    executable.push(Stmt::new(StmtKind::Synthetic(body_exec), stmt.span));
+                }
+            }
+            StmtKind::FunctionDecl { .. }
+            | StmtKind::ClassDecl { .. }
+            | StmtKind::EnumDecl { .. }
+            | StmtKind::InterfaceDecl { .. }
+            | StmtKind::TraitDecl { .. }
+            | StmtKind::PackedClassDecl { .. }
+            | StmtKind::ExternFunctionDecl { .. }
+            | StmtKind::ExternClassDecl { .. }
+            | StmtKind::ExternGlobalDecl { .. }
+            | StmtKind::ConstDecl { .. } => declarations.push(stmt),
+            _ => executable.push(stmt),
+        }
+    }
+
+    (declarations, executable)
 }
 
 fn resolve_path(path: &str, base_dir: &Path) -> PathBuf {
