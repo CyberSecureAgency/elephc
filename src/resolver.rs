@@ -54,51 +54,66 @@ fn fold_include_path(expr: &Expr, state: &ResolveState) -> Result<String, String
                 name.as_str()
             )
         }),
-        _ => Err(runtime_dynamic_include_path_message(expr)),
+        _ => Err(include_path_error_message(expr)),
     }
 }
 
-fn runtime_dynamic_include_path_message(expr: &Expr) -> String {
+fn include_path_error_message(expr: &Expr) -> String {
+    if let Some(detail) = runtime_dynamic_include_path_detail(expr) {
+        return format!(
+            "Runtime-dynamic include/require path expressions are not supported: {}. \
+             Include paths must be compile-time-constant strings (string literals, \
+             concatenations of foldable strings, or `const`/`define()` string constants)",
+            detail
+        );
+    }
+
     format!(
-        "Runtime-dynamic include/require path expressions are not supported: {}. \
-         Include paths must be compile-time-constant strings (string literals, \
-         concatenations of foldable strings, or `const`/`define()` string constants)",
-        runtime_dynamic_include_path_detail(expr)
+        "include path must be a compile-time-constant string \
+         (string literal, concatenation thereof, or a `const`/`define()`-d \
+         string constant): {}",
+        invalid_include_path_detail(expr)
     )
 }
 
-fn runtime_dynamic_include_path_detail(expr: &Expr) -> String {
+fn runtime_dynamic_include_path_detail(expr: &Expr) -> Option<String> {
     match &expr.kind {
         ExprKind::Variable(name) => {
-            format!("variable `${}` is resolved at runtime", name)
+            Some(format!("variable `${}` is resolved at runtime", name))
         }
         ExprKind::FunctionCall { name, .. } => {
-            format!("function call `{}()` is resolved at runtime", name.as_str())
+            Some(format!("function call `{}()` is resolved at runtime", name.as_str()))
         }
         ExprKind::ClosureCall { var, .. } => {
-            format!("closure call `${}()` is resolved at runtime", var)
+            Some(format!("closure call `${}()` is resolved at runtime", var))
         }
         ExprKind::ExprCall { .. } => {
-            "callable expression call is resolved at runtime".to_string()
+            Some("callable expression call is resolved at runtime".to_string())
         }
         ExprKind::MethodCall { method, .. } | ExprKind::NullsafeMethodCall { method, .. } => {
-            format!("method call `->{}` is resolved at runtime", method)
+            Some(format!("method call `->{}` is resolved at runtime", method))
         }
         ExprKind::StaticMethodCall { method, .. } => {
-            format!("static method call `::{}` is resolved at runtime", method)
+            Some(format!("static method call `::{}` is resolved at runtime", method))
         }
         ExprKind::Ternary { .. } | ExprKind::ShortTernary { .. } => {
-            "ternary path selection is resolved at runtime".to_string()
+            Some("ternary path selection is resolved at runtime".to_string())
         }
         ExprKind::PropertyAccess { property, .. } | ExprKind::NullsafePropertyAccess { property, .. } => {
-            format!("property access `->{}` is resolved at runtime", property)
+            Some(format!("property access `->{}` is resolved at runtime", property))
         }
         ExprKind::StaticPropertyAccess { property, .. } => {
-            format!("static property access `::${}` is resolved at runtime", property)
+            Some(format!("static property access `::${}` is resolved at runtime", property))
         }
         ExprKind::ArrayAccess { .. } => {
-            "array access is resolved at runtime".to_string()
+            Some("array access is resolved at runtime".to_string())
         }
+        _ => None,
+    }
+}
+
+fn invalid_include_path_detail(expr: &Expr) -> String {
+    match &expr.kind {
         ExprKind::BinaryOp { op, .. } if *op != BinOp::Concat => {
             "only string concatenation can be folded for include paths".to_string()
         }

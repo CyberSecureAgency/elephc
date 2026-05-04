@@ -48,6 +48,11 @@ fn test_error_include_non_string_path() {
         "message did not mention compile-time-constant string: {}",
         err.message
     );
+    assert!(
+        !err.message.contains("Runtime-dynamic"),
+        "static non-string path should not be reported as runtime-dynamic: {}",
+        err.message
+    );
 }
 
 fn expect_runtime_dynamic_include_path_error(src: &str, expected_detail: &str) {
@@ -70,6 +75,22 @@ fn expect_runtime_dynamic_include_path_error(src: &str, expected_detail: &str) {
 fn test_error_include_variable_path_is_explicitly_rejected() {
     expect_runtime_dynamic_include_path_error(
         "<?php function load($path) { require $path; }",
+        "variable `$path` is resolved at runtime",
+    );
+}
+
+#[test]
+fn test_error_include_concat_variable_path_reports_runtime_part() {
+    expect_runtime_dynamic_include_path_error(
+        "<?php function load($path) { require 'lib/' . $path; }",
+        "variable `$path` is resolved at runtime",
+    );
+}
+
+#[test]
+fn test_error_include_once_variable_path_is_explicitly_rejected() {
+    expect_runtime_dynamic_include_path_error(
+        "<?php function load($path) { include_once $path; }",
         "variable `$path` is resolved at runtime",
     );
 }
