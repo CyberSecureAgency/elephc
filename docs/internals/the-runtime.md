@@ -27,6 +27,7 @@ All runtime routines start with `__rt_`:
 
 ```
 __rt_itoa          integer → string
+__rt_resource_to_string resource → "Resource id #N"
 __rt_ftoa          float → string
 __rt_concat        string + string → string
 __rt_str_eq        string == string → bool
@@ -56,6 +57,17 @@ Converts a signed 64-bit integer in `x0` to a decimal string.
 5. Update concat buffer offset
 
 The digits are written **right-to-left** because division gives us the least significant digit first. The result is written into the [concat buffer](memory-model.md#the-string-buffer).
+
+### `__rt_resource_to_string` — Resource to string
+
+**File:** `strings/resource_to_string.rs`
+
+Formats the native resource payload used by stream handles as PHP's display string (`Resource id #N`). The helper keeps resources distinct from integers when boxing into `mixed`, while still letting the I/O runtime pass the underlying file descriptor to stream syscalls.
+
+**Input:** `x0` = native resource payload
+**Output:** `x1` = pointer to string, `x2` = length
+
+`__rt_resource_write_stdout` uses the same display form for `echo` / `print` without exposing the raw file descriptor as an integer.
 
 ### `__rt_ftoa` — Float to string
 

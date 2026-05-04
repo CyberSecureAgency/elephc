@@ -173,7 +173,7 @@ file_get_contents($filename: Str) → Str|Bool
 fileatime($filename: Str) / filectime($filename: Str) → Int|Bool
 fileperms($filename: Str) / fileowner($filename: Str) / filegroup($filename: Str) / fileinode($filename: Str) → Int|Bool
 filetype($filename: Str) → Str|Bool
-stat($filename: Str) / lstat($filename: Str) / fstat($handle: Int) → AssocArray|Bool
+stat($filename: Str) / lstat($filename: Str) / fstat($handle: resource<stream>) → AssocArray|Bool
 define($name: Str, $value: scalar) → Bool
 count($arr: Array|AssocArray) → Int
 abs($val: Int|Float) → Int|Float

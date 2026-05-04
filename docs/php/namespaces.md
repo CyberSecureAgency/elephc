@@ -120,9 +120,9 @@ define("PI", 3.14159);
 | `PHP_EOL` | string | `"\n"` |
 | `PHP_OS` | string | `"Darwin"` on macOS targets, `"Linux"` on Linux targets |
 | `DIRECTORY_SEPARATOR` | string | `"/"` |
-| `STDIN` | int | 0 |
-| `STDOUT` | int | 1 |
-| `STDERR` | int | 2 |
+| `STDIN` | resource | Standard input stream |
+| `STDOUT` | resource | Standard output stream |
+| `STDERR` | resource | Standard error stream |
 | `PATHINFO_DIRNAME` | int | 1 |
 | `PATHINFO_BASENAME` | int | 2 |
 | `PATHINFO_EXTENSION` | int | 4 |

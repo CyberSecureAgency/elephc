@@ -21,6 +21,7 @@ if (is_readable("greeting.txt")) {
 
 // Use fopen/fwrite/fclose for line-by-line writing
 $f = fopen("numbers.txt", "w");
+echo "Handle type: " . gettype($f) . "\n";
 $i = 1;
 while ($i <= 5) {
     fwrite($f, "Line " . $i . "\n");

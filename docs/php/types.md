@@ -1,6 +1,6 @@
 ---
 title: "Types"
-description: "Data types supported by elephc: int, float, string, bool, array, null, mixed, callable, object, enum, and extension types."
+description: "Data types supported by elephc: int, float, string, bool, array, null, mixed, iterable, resource, callable, object, enum, and extension types."
 sidebar:
   order: 1
 ---
@@ -18,6 +18,7 @@ sidebar:
 | `array`          | Yes              | Indexed (`[1, 2, 3]`) and associative (`["key" => "value"]`). Arrays use copy-on-write semantics.                      |
 | `mixed`          | Yes              | Supported in type hints and typed locals. Runtime values are boxed with a per-value tag.                               |
 | `iterable`       | Yes              | PHP pseudo-type for `array \| Traversable`. Supports indexed arrays, associative arrays, `Iterator`, and `IteratorAggregate`; runtime operations (`foreach`, `echo`, `gettype()`, `var_dump()`, `===`, casts, `is_iterable()`) dispatch on heap-kind, value-type, or interface metadata as needed. |
+| `resource`       | Inferred only    | File handles and standard streams are modeled separately from integers. `fopen()` returns a stream resource, and `STDIN`, `STDOUT`, and `STDERR` are stream resources. PHP does not allow `resource` as a type declaration, so elephc does not accept `resource` annotations. |
 | `callable`       | Yes              | Closures, arrow functions, first-class callables, and FFI callback parameters.                                         |
 | `object`         | Yes              | Class instances. Heap-allocated, fixed-layout. `new ClassName(...)`                                                    |
 | `enum`           | Yes              | Pure and backed enums. Cases are singletons. Backed enums support `->value`, `::from()`, `::tryFrom()`, `::cases()`.   |
@@ -28,7 +29,6 @@ sidebar:
 | `ptr` / `ptr<T>` | elephc extension | Raw 64-bit pointer, optionally carrying a checked compile-time pointee tag. See [Pointers](../beyond-php/pointers.md). |
 | `buffer<T>`      | elephc extension | Fixed-size contiguous storage for POD scalars, pointers, or packed records. See [Buffers](../beyond-php/buffers.md).   |
 | `packed class`   | elephc extension | Flat POD record type with compile-time field offsets. See [Packed Classes](../beyond-php/packed-classes.md).           |
-| `resource`       | No               | File handles are modeled as integer file descriptors (`int`).                                                          |
 
 
 ### Never
@@ -164,6 +164,7 @@ Aliases: `(integer)`, `(double)`, `(real)`, `(boolean)`.
 - `??=` is checked against typed assignment storage for variables, object properties, static properties, and non-append array elements. For concrete local variable types, the fallback must keep the same type or be a literal `null`.
 - elephc does not model PHP's uninitialized typed-property state; property slots without explicit defaults start from the compiler's existing zero/null-like object-slot initialization until assigned.
 - Plain array numeric casts (`(int)$array`, `(float)$array`) follow elephc's existing array cast semantics (return the element count rather than PHP's `0`/`1`). Direct `iterable` numeric casts use PHP's empty/non-empty `0`/`1` semantics.
+- `fopen()` success values are PHP-style `resource` values, but open failures are still represented internally as invalid stream resources rather than PHP's `false`. Full `resource|false` stream failure parity is tracked in the roadmap.
 
 ### Filesystem functions not implemented
 

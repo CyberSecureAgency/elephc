@@ -73,18 +73,20 @@ Uses POSIX extended regex with common PCRE shorthand translation (`\s`, `\d`, `\
 
 | Function | Signature | Description |
 |---|---|---|
-| `fopen()` | `fopen($filename, $mode): int` | Open file (modes: r, w, a, r+, w+, a+) |
-| `fclose()` | `fclose($handle): bool` | Close file handle |
-| `fread()` | `fread($handle, $length): string` | Read up to $length bytes |
-| `fwrite()` | `fwrite($handle, $data): int` | Write to file |
-| `fgets()` | `fgets($handle): string` | Read a line |
-| `feof()` | `feof($handle): bool` | End-of-file check |
+| `fopen()` | `fopen($filename, $mode): resource` | Open file (modes: r, w, a, r+, w+, a+) |
+| `fclose()` | `fclose(resource $handle): bool` | Close file handle |
+| `fread()` | `fread(resource $handle, $length): string` | Read up to $length bytes |
+| `fwrite()` | `fwrite(resource $handle, $data): int` | Write to file |
+| `fgets()` | `fgets(resource $handle): string` | Read a line |
+| `feof()` | `feof(resource $handle): bool` | End-of-file check |
 | `readline()` | `readline([$prompt]): string` | Read line from STDIN |
-| `fseek()` | `fseek($handle, $offset [, $whence]): int` | Seek in file |
-| `ftell()` | `ftell($handle): int` | Current position |
-| `rewind()` | `rewind($handle): bool` | Seek to beginning |
-| `fgetcsv()` | `fgetcsv($handle [, $sep]): array` | Read CSV line |
-| `fputcsv()` | `fputcsv($handle, $fields [, $sep]): int` | Write CSV line |
+| `fseek()` | `fseek(resource $handle, $offset [, $whence]): int` | Seek in file |
+| `ftell()` | `ftell(resource $handle): int` | Current position |
+| `rewind()` | `rewind(resource $handle): bool` | Seek to beginning |
+| `fgetcsv()` | `fgetcsv(resource $handle [, $sep]): array` | Read CSV line |
+| `fputcsv()` | `fputcsv(resource $handle, $fields [, $sep]): int` | Write CSV line |
+
+File handles are PHP `resource` values, not integers. `gettype(fopen(...))` and `gettype(STDIN)` return `"resource"`, and passing a plain `int` to stream functions is rejected. Open-failure `resource|false` parity is not complete yet; failed `fopen()` calls currently produce an invalid stream resource for the follow-up stream operation.
 
 ## File system
 
@@ -128,10 +130,10 @@ Uses POSIX extended regex with common PCRE shorthand translation (`\s`, `\d`, `\
 | `is_writeable()` | `is_writeable($filename): bool` | Alias of `is_writable()` |
 | `stat()` | `stat($filename): array\|false` | Associative array with both numeric (0..=12) and string keys (`dev`, `ino`, `mode`, `nlink`, `uid`, `gid`, `rdev`, `size`, `atime`, `mtime`, `ctime`, `blksize`, `blocks`), or `false` on failure. |
 | `lstat()` | `lstat($filename): array\|false` | Same shape as `stat()` but does not follow symlinks, or `false` on failure |
-| `fstat()` | `fstat($handle): array\|false` | Same shape as `stat()` but operates on an open file descriptor, or `false` on failure |
+| `fstat()` | `fstat(resource $handle): array\|false` | Same shape as `stat()` but operates on an open stream resource, or `false` on failure |
 | `clearstatcache()` | `clearstatcache($clear_realpath_cache = false, $filename = ""): void` | No-op (elephc does not cache `stat()` results). Arguments are still evaluated. |
 
-> The 13 `stat()` / `lstat()` / `fstat()` fields are inserted in PHP's documented order. Check the return value against `false` before reading fields when the path or descriptor may be invalid.
+> The 13 `stat()` / `lstat()` / `fstat()` fields are inserted in PHP's documented order. Check the return value against `false` before reading fields when the path or stream may be invalid.
 
 ## Path manipulation
 
