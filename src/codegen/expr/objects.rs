@@ -297,6 +297,26 @@ pub(super) fn emit_property_access(
     access::emit_property_access(object, property, emitter, ctx, data)
 }
 
+pub(super) fn emit_nullable_object_property_access(
+    class_name: &str,
+    property: &str,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> PhpType {
+    access::emit_nullable_object_property_access(class_name, property, emitter, ctx, data)
+}
+
+pub(super) fn emit_loaded_object_property_access(
+    class_name: &str,
+    property: &str,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> PhpType {
+    access::emit_loaded_object_property_access(class_name, property, emitter, ctx, data)
+}
+
 pub(super) fn emit_nullsafe_property_access(
     object: &Expr,
     property: &str,
@@ -375,6 +395,28 @@ pub(super) fn emit_method_call_with_pushed_args(
     ctx: &mut Context,
 ) -> PhpType {
     dispatch::emit_method_call_with_pushed_args(class_name, method, arg_types, emitter, ctx)
+}
+
+pub(super) fn emit_method_call_with_saved_receiver_below_args(
+    class_name: &str,
+    method: &str,
+    arg_types: &[PhpType],
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+) -> PhpType {
+    dispatch::emit_method_call_with_saved_receiver_below_args(
+        class_name, method, arg_types, emitter, ctx,
+    )
+}
+
+pub(super) fn emit_pushed_method_args(
+    args: &[Expr],
+    sig: Option<&crate::types::FunctionSig>,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> Vec<PhpType> {
+    dispatch::emit_pushed_method_args(args, sig, emitter, ctx, data)
 }
 
 pub(super) fn emit_static_method_call(

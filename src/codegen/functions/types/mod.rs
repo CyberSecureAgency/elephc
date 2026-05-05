@@ -102,6 +102,23 @@ pub(super) fn infer_local_type(
             PhpType::Str => PhpType::Str,
             PhpType::Array(t) => *t,
             PhpType::AssocArray { value, .. } => *value,
+            PhpType::Union(members) => {
+                let mut result_members = Vec::new();
+                for member in members {
+                    match member {
+                        PhpType::Void => result_members.push(PhpType::Void),
+                        PhpType::Str => result_members.push(PhpType::Str),
+                        PhpType::Array(t) => result_members.push(*t),
+                        PhpType::AssocArray { value, .. } => result_members.push(*value),
+                        _ => {}
+                    }
+                }
+                if result_members.is_empty() {
+                    PhpType::Int
+                } else {
+                    union::merge_union_members(result_members)
+                }
+            }
             PhpType::Buffer(t) => match *t {
                 PhpType::Packed(name) => PhpType::Pointer(Some(name)),
                 other => other,

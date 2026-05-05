@@ -162,7 +162,7 @@ pub(super) fn emit_property_access(
     prop_ty
 }
 
-fn emit_nullable_object_property_access(
+pub(super) fn emit_nullable_object_property_access(
     class_name: &str,
     property: &str,
     emitter: &mut Emitter,

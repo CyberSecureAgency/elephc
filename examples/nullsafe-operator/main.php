@@ -23,3 +23,5 @@ echo $withAddress?->profile?->address?->city ?? "unknown";
 echo "\n";
 echo $withoutProfile?->profile?->address?->city ?? "unknown";
 echo "\n";
+echo $withoutProfile?->profile->address?->city ?? "unknown";
+echo "\n";

@@ -351,7 +351,9 @@ impl Checker {
         env: &TypeEnv,
     ) -> Result<PhpType, CompileError> {
         let callee_ty = self.infer_type(callee, env)?;
-        if callee_ty != PhpType::Callable {
+        let nullable_callable =
+            Self::is_nullable_callable_from_nullsafe_chain(callee, &callee_ty);
+        if callee_ty != PhpType::Callable && !nullable_callable {
             return Err(CompileError::new(
                 expr.span,
                 &format!(
@@ -371,33 +373,36 @@ impl Checker {
                             .insert(var_name.clone(), specialized_sig.clone());
                         self.closure_return_types
                             .insert(var_name.clone(), specialized_sig.return_type.clone());
-                        return self.check_known_callable_call(
+                        let ret_ty = self.check_known_callable_call(
                             &specialized_sig,
                             args,
                             expr.span,
                             env,
                             &format!("callable ${}", var_name),
-                        );
+                        )?;
+                        return Ok(self.nullable_callable_result(ret_ty, nullable_callable));
                     }
-                    return self.check_known_callable_call(
+                    let ret_ty = self.check_known_callable_call(
                         &sig,
                         args,
                         expr.span,
                         env,
                         &format!("callable ${}", var_name),
-                    );
+                    )?;
+                    return Ok(self.nullable_callable_result(ret_ty, nullable_callable));
                 }
             }
             ExprKind::FirstClassCallable(target) => {
                 let sig =
                     self.specialize_first_class_callable_target(target, args, expr.span, env)?;
-                return self.check_known_callable_call(
+                let ret_ty = self.check_known_callable_call(
                     &sig,
                     args,
                     expr.span,
                     env,
                     "first-class callable",
-                );
+                )?;
+                return Ok(self.nullable_callable_result(ret_ty, nullable_callable));
             }
             _ => {}
         }
@@ -414,22 +419,52 @@ impl Checker {
         match &callee.kind {
             ExprKind::Variable(var_name) => {
                 if let Some(ret_ty) = self.closure_return_types.get(var_name) {
-                    return Ok(ret_ty.clone());
+                    return Ok(self.nullable_callable_result(ret_ty.clone(), nullable_callable));
                 }
             }
             ExprKind::ArrayAccess { array, .. } => {
                 if let ExprKind::Variable(arr_name) = &array.kind {
                     if let Some(ret_ty) = self.closure_return_types.get(arr_name) {
-                        return Ok(ret_ty.clone());
+                        return Ok(self.nullable_callable_result(ret_ty.clone(), nullable_callable));
                     }
                 }
             }
             ExprKind::Closure { body, .. } => {
-                return Ok(infer_return_type_syntactic(body));
+                let ret_ty = infer_return_type_syntactic(body);
+                return Ok(self.nullable_callable_result(ret_ty, nullable_callable));
             }
             _ => {}
         }
-        Ok(PhpType::Int) // fallback for unknown callables
+        Ok(self.nullable_callable_result(PhpType::Int, nullable_callable)) // fallback for unknown callables
+    }
+
+    fn nullable_callable_result(&self, ret_ty: PhpType, nullable_callable: bool) -> PhpType {
+        if nullable_callable {
+            self.normalize_union_type(vec![ret_ty, PhpType::Void])
+        } else {
+            ret_ty
+        }
+    }
+
+    fn is_nullable_callable_from_nullsafe_chain(callee: &Expr, callee_ty: &PhpType) -> bool {
+        let PhpType::Union(members) = callee_ty else {
+            return false;
+        };
+        members.iter().any(|member| *member == PhpType::Callable)
+            && members.iter().any(|member| *member == PhpType::Void)
+            && expr_contains_nullsafe_member(callee)
+    }
+}
+
+fn expr_contains_nullsafe_member(expr: &Expr) -> bool {
+    match &expr.kind {
+        ExprKind::NullsafePropertyAccess { .. } | ExprKind::NullsafeMethodCall { .. } => true,
+        ExprKind::PropertyAccess { object, .. } | ExprKind::MethodCall { object, .. } => {
+            expr_contains_nullsafe_member(object)
+        }
+        ExprKind::ArrayAccess { array, .. } => expr_contains_nullsafe_member(array),
+        ExprKind::ExprCall { callee, .. } => expr_contains_nullsafe_member(callee),
+        _ => false,
     }
 }
 

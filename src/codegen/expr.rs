@@ -1,6 +1,7 @@
 mod arrays;
 mod assignment;
 mod binops;
+mod chains;
 pub(crate) mod calls;
 mod coerce;
 mod compare;
@@ -29,6 +30,10 @@ pub fn emit_expr(
     ctx: &mut Context,
     data: &mut DataSection,
 ) -> PhpType {
+    if let Some(ty) = chains::emit_nullsafe_postfix_chain(expr, emitter, ctx, data) {
+        return ty;
+    }
+
     match &expr.kind {
         ExprKind::BoolLiteral(b) => {
             scalars::emit_bool_literal(*b, emitter)

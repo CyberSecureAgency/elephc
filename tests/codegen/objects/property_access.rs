@@ -178,6 +178,183 @@ echo none()?->label(arg()) ?? "none";
 }
 
 #[test]
+fn test_mixed_nullsafe_member_chain_skips_rest_when_base_is_null() {
+    let out = compile_and_run_capture(
+        r#"<?php
+class Leaf {
+    public string $name = "hit";
+}
+class Branch {
+    public ?Leaf $leaf = null;
+}
+class Root {
+    public ?Branch $branch = null;
+}
+function read(?Root $root): void {
+    echo $root?->branch->leaf->name ?? "fallback";
+}
+read(null);
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    assert_eq!(out.stdout, "fallback");
+    assert_eq!(out.stderr, "");
+}
+
+#[test]
+fn test_mixed_nullsafe_member_chain_warns_for_real_null_midpoint() {
+    let out = compile_and_run_capture(
+        r#"<?php
+class Leaf {
+    public string $name = "hit";
+}
+class Branch {
+    public ?Leaf $leaf = null;
+}
+class Root {
+    public ?Branch $branch = null;
+}
+$root = new Root();
+$root->branch = new Branch();
+echo $root?->branch->leaf->name ?? "fallback";
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    assert_eq!(out.stdout, "fallback");
+    assert!(
+        out.stderr.contains("Warning: Attempt to read property \"name\" on null"),
+        "{}",
+        out.stderr
+    );
+}
+
+#[test]
+fn test_mixed_nullsafe_member_chain_skips_method_arguments() {
+    let out = compile_and_run_capture(
+        r#"<?php
+function noisy(): string {
+    echo "noisy|";
+    return "arg";
+}
+class Branch {
+    public function label(string $value): string {
+        return $value;
+    }
+}
+class Root {
+    public ?Branch $branch = null;
+}
+function read(?Root $root): void {
+    echo $root?->branch->label(noisy()) ?? "fallback";
+}
+read(null);
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    assert_eq!(out.stdout, "fallback");
+    assert_eq!(out.stderr, "");
+}
+
+#[test]
+fn test_mixed_nullsafe_member_chain_fatals_before_method_arguments_on_real_null() {
+    let out = compile_and_run_capture(
+        r#"<?php
+function noisy(): string {
+    echo "noisy|";
+    return "arg";
+}
+class Branch {
+    public function label(string $value): string {
+        return $value;
+    }
+}
+class Root {
+    public ?Branch $branch = null;
+}
+$root = new Root();
+echo $root?->branch->label(noisy()) ?? "fallback";
+"#,
+    );
+    assert!(!out.success, "program unexpectedly succeeded");
+    assert_eq!(out.stdout, "");
+    assert!(
+        out.stderr.contains("Call to a member function label() on null"),
+        "{}",
+        out.stderr
+    );
+}
+
+#[test]
+fn test_nullsafe_middle_of_member_chain_skips_following_member() {
+    let out = compile_and_run_capture(
+        r#"<?php
+class Leaf {
+    public string $name = "hit";
+}
+class Branch {
+    public ?Leaf $leaf = null;
+}
+class Root {
+    public ?Branch $branch = null;
+}
+$root = new Root();
+echo $root->branch?->leaf->name ?? "fallback";
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    assert_eq!(out.stdout, "fallback");
+    assert_eq!(out.stderr, "");
+}
+
+#[test]
+fn test_nullsafe_chain_skips_array_index_expression() {
+    let out = compile_and_run_capture(
+        r#"<?php
+function noisy(): int {
+    echo "noisy|";
+    return 0;
+}
+class Root {
+    public array $items = [7];
+}
+function read(?Root $root): void {
+    echo $root?->items[noisy()] ?? "fallback";
+}
+read(null);
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    assert_eq!(out.stdout, "fallback");
+    assert_eq!(out.stderr, "");
+}
+
+#[test]
+fn test_nullsafe_chain_skips_expr_call_arguments() {
+    let out = compile_and_run_capture(
+        r#"<?php
+function noisy(): string {
+    echo "noisy|";
+    return "arg";
+}
+class Root {
+    public function callback(): callable {
+        return function(string $value): string {
+            return $value;
+        };
+    }
+}
+function read(?Root $root): void {
+    echo ($root?->callback())(noisy()) ?? "fallback";
+}
+read(null);
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    assert_eq!(out.stdout, "fallback");
+    assert_eq!(out.stderr, "");
+}
+
+#[test]
 fn test_class_array_of_objects_property_access() {
     let out = compile_and_run(
         r#"<?php
