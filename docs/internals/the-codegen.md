@@ -387,7 +387,7 @@ The exception handler frame also snapshots the current suppression depth before 
 
 ### Nullsafe operator
 
-The `?->` operator lowers nullable receivers through the boxed mixed path used by nullable and union storage. Codegen unboxes the receiver, branches directly to a boxed `null` result when the runtime tag is null, and only evaluates property loads, method arguments, and method dispatch on the non-null object branch. Non-nullable object receivers reuse the ordinary `->` lowering.
+The `?->` operator lowers nullable receivers through the boxed mixed path used by nullable and union storage. Codegen flattens postfix chains that contain a nullsafe segment, evaluates the base once, and branches to a shared boxed-`null` result when a nullsafe receiver is null. That branch skips the rest of the chain, including later ordinary `->` segments, array indexes, method arguments, and callable arguments. If an ordinary segment later receives a real null value from the non-short-circuited path, it still follows PHP's warning or fatal behavior.
 
 ### Type coercions
 

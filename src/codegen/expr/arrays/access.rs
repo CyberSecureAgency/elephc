@@ -113,8 +113,18 @@ pub(crate) fn emit_array_access(
     data: &mut DataSection,
 ) -> PhpType {
     let arr_ty = emit_expr(array, emitter, ctx, data);
+    emit_array_access_with_loaded_base(&arr_ty, index, emitter, ctx, data, false)
+}
 
-    if let PhpType::Buffer(elem_ty) = &arr_ty {
+pub(crate) fn emit_array_access_with_loaded_base(
+    arr_ty: &PhpType,
+    index: &Expr,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+    box_nullable_base: bool,
+) -> PhpType {
+    if let PhpType::Buffer(elem_ty) = arr_ty {
         let buffer_reg = abi::symbol_scratch_reg(emitter);
         let len_reg = abi::temp_int_reg(emitter.target);
         let stride_reg = match emitter.target.arch {
@@ -190,7 +200,7 @@ pub(crate) fn emit_array_access(
         }
     }
 
-    if arr_ty == PhpType::Str {
+    if *arr_ty == PhpType::Str {
         let (str_ptr_reg, str_len_reg) = abi::string_result_regs(emitter);
         abi::emit_push_reg_pair(emitter, str_ptr_reg, str_len_reg);             // preserve the indexed source string while evaluating the scalar offset expression
         emit_expr(index, emitter, ctx, data);
@@ -245,7 +255,7 @@ pub(crate) fn emit_array_access(
         return PhpType::Str;
     }
 
-    let assoc_value_ty = match &arr_ty {
+    let assoc_value_ty = match arr_ty {
         PhpType::AssocArray { value, .. } => Some(*value.clone()),
         PhpType::Union(members) => members.iter().find_map(|member| {
             if let PhpType::AssocArray { value, .. } = member {
@@ -259,8 +269,13 @@ pub(crate) fn emit_array_access(
     };
 
     if let Some(val_ty) = assoc_value_ty {
+        let boxed_assoc_base = matches!(arr_ty, PhpType::Mixed | PhpType::Union(_));
+        let box_assoc_result =
+            box_nullable_base && boxed_assoc_base && !matches!(val_ty.codegen_repr(), PhpType::Mixed);
+        let boxed_assoc_fallback =
+            box_assoc_result || matches!(val_ty.codegen_repr(), PhpType::Mixed);
         let done = ctx.next_label("hash_done");
-        if matches!(arr_ty, PhpType::Mixed | PhpType::Union(_)) {
+        if boxed_assoc_base {
             let hash_payload = ctx.next_label("hash_payload");
             abi::emit_push_reg(emitter, abi::int_result_reg(emitter));          // preserve the boxed array|false value while evaluating the key expression
             crate::codegen::emit_normalized_hash_key(index, emitter, ctx, data);
@@ -273,9 +288,8 @@ pub(crate) fn emit_array_access(
                     emitter.instruction("cmp x0, #5");                          // runtime tag 5 = associative array
                     emitter.instruction(&format!("b.eq {}", hash_payload));     // continue only when the boxed payload is a hash
                     abi::emit_release_temporary_stack(emitter, 32);             // discard the saved key and boxed base before returning the null-like fallback
-                    if matches!(val_ty, PhpType::Mixed | PhpType::Union(_)) {
-                        emitter.instruction("mov x0, #0");                      // null payload low word for non-array access
-                        crate::codegen::emit_box_current_value_as_mixed(emitter, &PhpType::Void);
+                    if boxed_assoc_fallback {
+                        objects_boxed_null_for_array_access(emitter);
                     } else {
                         abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), i64::MAX - 1);
                     }
@@ -291,9 +305,8 @@ pub(crate) fn emit_array_access(
                     emitter.instruction("cmp rax, 5");                          // runtime tag 5 = associative array
                     emitter.instruction(&format!("je {}", hash_payload));       // continue only when the boxed payload is a hash
                     abi::emit_release_temporary_stack(emitter, 32);             // discard the saved key and boxed base before returning the null-like fallback
-                    if matches!(val_ty, PhpType::Mixed | PhpType::Union(_)) {
-                        emitter.instruction("xor eax, eax");                    // null payload low word for non-array access
-                        crate::codegen::emit_box_current_value_as_mixed(emitter, &PhpType::Void);
+                    if boxed_assoc_fallback {
+                        objects_boxed_null_for_array_access(emitter);
                     } else {
                         abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), i64::MAX - 1);
                     }
@@ -362,12 +375,19 @@ pub(crate) fn emit_array_access(
                 }
             },
         }
+        if box_assoc_result {
+            crate::codegen::emit_box_current_value_as_mixed(emitter, &val_ty);
+        }
         abi::emit_jump(emitter, &done);                                           // skip the not-found fallback after materializing the successful lookup result
 
         emitter.label(&not_found);
-        abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), i64::MAX - 1); // materialize the shared null sentinel for associative-array misses
+        if boxed_assoc_fallback {
+            objects_boxed_null_for_array_access(emitter);
+        } else {
+            abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), i64::MAX - 1); // materialize the shared null sentinel for associative-array misses
+        }
         emitter.label(&done);
-        return val_ty;
+        return if box_assoc_result { PhpType::Mixed } else { val_ty };
     }
 
     abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the array pointer while evaluating the index expression
@@ -377,13 +397,40 @@ pub(crate) fn emit_array_access(
     let result_reg = abi::int_result_reg(emitter);
     abi::emit_pop_reg(emitter, array_reg);                                      // restore the array pointer into a scratch register
     emitter.comment("array access");
-    let elem_ty = match &arr_ty {
-        PhpType::Array(t) => *t.clone(),
-        _ => PhpType::Int,
-    };
+    let (elem_ty, boxed_indexed_base) = indexed_array_element_type(arr_ty, box_nullable_base);
 
     let null_label = ctx.next_label("arr_null");
     let ok_label = ctx.next_label("arr_ok");
+    if boxed_indexed_base {
+        let array_payload = ctx.next_label("arr_payload");
+        abi::emit_push_reg(emitter, result_reg);                                // preserve the evaluated array index while unboxing the nullable array base
+        match emitter.target.arch {
+            Arch::AArch64 => {
+                emitter.instruction(&format!("mov x0, {}", array_reg));         // move the boxed array base into the mixed-unbox input register
+                abi::emit_call_label(emitter, "__rt_mixed_unbox");              // inspect the boxed array base after the index expression has run
+                emitter.instruction("cmp x0, #4");                              // runtime tag 4 = indexed array
+                emitter.instruction(&format!("b.eq {}", array_payload));        // continue only when the boxed payload is an indexed array
+                abi::emit_release_temporary_stack(emitter, 16);                 // discard the saved index before returning a boxed null fallback
+                objects_boxed_null_for_array_access(emitter);
+                emitter.instruction(&format!("b {}", ok_label));                // skip indexed-array bounds checks when the base is not an array
+                emitter.label(&array_payload);
+                emitter.instruction(&format!("mov {}, x1", array_reg));         // move the unboxed indexed-array pointer into the scratch array register
+                abi::emit_pop_reg(emitter, result_reg);                         // restore the evaluated index for bounds checking
+            }
+            Arch::X86_64 => {
+                emitter.instruction(&format!("mov rax, {}", array_reg));        // move the boxed array base into the mixed-unbox input register
+                abi::emit_call_label(emitter, "__rt_mixed_unbox");              // inspect the boxed array base after the index expression has run
+                emitter.instruction("cmp rax, 4");                              // runtime tag 4 = indexed array
+                emitter.instruction(&format!("je {}", array_payload));          // continue only when the boxed payload is an indexed array
+                abi::emit_release_temporary_stack(emitter, 16);                 // discard the saved index before returning a boxed null fallback
+                objects_boxed_null_for_array_access(emitter);
+                emitter.instruction(&format!("jmp {}", ok_label));              // skip indexed-array bounds checks when the base is not an array
+                emitter.label(&array_payload);
+                emitter.instruction(&format!("mov {}, rdi", array_reg));        // move the unboxed indexed-array pointer into the scratch array register
+                abi::emit_pop_reg(emitter, result_reg);                         // restore the evaluated index for bounds checking
+            }
+        }
+    }
     match emitter.target.arch {
         Arch::AArch64 => {
             emitter.instruction("cmp x0, #0");                                  // check if index is negative
@@ -455,16 +502,52 @@ pub(crate) fn emit_array_access(
         }
         _ => {}
     }
+    if boxed_indexed_base {
+        crate::codegen::emit_box_current_value_as_mixed(emitter, &elem_ty);
+    }
     match emitter.target.arch {
         Arch::AArch64 => emitter.instruction(&format!("b {ok_label}")),         // skip null sentinel fallback
         Arch::X86_64 => emitter.instruction(&format!("jmp {ok_label}")),        // skip null sentinel fallback
     }
 
     emitter.label(&null_label);
-    abi::emit_load_int_immediate(emitter, result_reg, 0x7fff_ffff_ffff_fffe);   // materialize the runtime null sentinel for out-of-bounds access
+    if boxed_indexed_base {
+        objects_boxed_null_for_array_access(emitter);
+    } else {
+        abi::emit_load_int_immediate(emitter, result_reg, 0x7fff_ffff_ffff_fffe); // materialize the runtime null sentinel for out-of-bounds access
+    }
     emitter.label(&ok_label);
 
-    elem_ty
+    if boxed_indexed_base { PhpType::Mixed } else { elem_ty }
+}
+
+fn indexed_array_element_type(arr_ty: &PhpType, box_nullable_base: bool) -> (PhpType, bool) {
+    match arr_ty {
+        PhpType::Array(elem_ty) => (*elem_ty.clone(), false),
+        PhpType::Union(members) => {
+            let elem_ty = members
+                .iter()
+                .find_map(|member| {
+                    if let PhpType::Array(elem_ty) = member {
+                        Some(*elem_ty.clone())
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(PhpType::Int);
+            (elem_ty, box_nullable_base)
+        }
+        _ => (PhpType::Int, false),
+    }
+}
+
+fn objects_boxed_null_for_array_access(emitter: &mut Emitter) {
+    abi::emit_load_int_immediate(
+        emitter,
+        abi::int_result_reg(emitter),
+        0x7fff_ffff_ffff_fffe,
+    );
+    crate::codegen::emit_box_current_value_as_mixed(emitter, &PhpType::Void);
 }
 
 pub(crate) fn emit_buffer_new(

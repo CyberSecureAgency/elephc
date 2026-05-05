@@ -198,11 +198,12 @@ Use a nullable, union, or `mixed` typed local when the fallback may change the s
 <?php
 echo $user?->profile?->name ?? "anonymous";
 echo $user?->profile?->label() ?? "missing";
+echo $user?->profile->address?->city ?? "unknown";
 ```
 
-`?->` supports nullable object property access and method calls. If the receiver is `null`, the member access or method call is skipped and the expression returns `null`; method arguments are not evaluated on that skipped branch. Use `??` when you want to provide a fallback value.
+`?->` supports nullable object property access and method calls. If the receiver is `null`, elephc skips the rest of the current postfix chain and the expression returns `null`; method arguments, array indexes, and callable arguments on that skipped branch are not evaluated. Mixed chains such as `$user?->profile->address` match PHP: `->address` is skipped when `$user` is `null`, but still warns or fatals normally if `$user` is non-null and `profile` itself is `null`. Use `??` when you want to provide a fallback value.
 
-Nullsafe access cannot be used as an assignment target or combined with first-class callable creation, matching PHP. Full PHP parity for mixed chains such as `$a?->b->c` is tracked in `ROADMAP.md`; write each nullable hop explicitly as `?->` today.
+Nullsafe access cannot be used as an assignment target or combined with first-class callable creation, matching PHP.
 
 ## Increment / Decrement
 

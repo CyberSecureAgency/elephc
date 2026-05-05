@@ -63,6 +63,17 @@ pub(super) fn emit_expr_call(
     indirect::emit_expr_call(callee, args, emitter, ctx, data)
 }
 
+pub(super) fn emit_loaded_expr_call(
+    callee: &Expr,
+    args: &[Expr],
+    loaded_callee_ty: &PhpType,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> PhpType {
+    indirect::emit_loaded_expr_call(callee, args, loaded_callee_ty, emitter, ctx, data)
+}
+
 pub(super) fn emit_first_class_callable(
     target: &crate::parser::ast::CallableTarget,
     emitter: &mut Emitter,

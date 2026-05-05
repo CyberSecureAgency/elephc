@@ -159,12 +159,63 @@ impl Checker {
                         Ok(*value.clone())
                     }
                     PhpType::Union(members) => {
+                        let mut result_members = Vec::new();
+                        let mut saw_indexable_member = false;
+                        let mut first_index_error = None;
                         for member in members {
-                            if let PhpType::AssocArray { value, .. } = member {
-                                return Ok(*value.clone());
+                            match member {
+                                PhpType::Void => result_members.push(PhpType::Void),
+                                PhpType::Str => {
+                                    saw_indexable_member = true;
+                                    if idx_ty != PhpType::Int {
+                                        first_index_error =
+                                            first_index_error.or(Some("String index must be integer"));
+                                        continue;
+                                    }
+                                    result_members.push(PhpType::Str);
+                                }
+                                PhpType::Array(elem_ty) => {
+                                    saw_indexable_member = true;
+                                    if idx_ty != PhpType::Int {
+                                        first_index_error =
+                                            first_index_error.or(Some("Array index must be integer"));
+                                        continue;
+                                    }
+                                    result_members.push(*elem_ty.clone());
+                                }
+                                PhpType::AssocArray { value, .. } => {
+                                    saw_indexable_member = true;
+                                    result_members.push(*value.clone());
+                                }
+                                PhpType::Buffer(elem_ty) => {
+                                    saw_indexable_member = true;
+                                    if idx_ty != PhpType::Int {
+                                        first_index_error =
+                                            first_index_error.or(Some("Buffer index must be integer"));
+                                        continue;
+                                    }
+                                    match elem_ty.as_ref() {
+                                        PhpType::Packed(name) => {
+                                            result_members.push(PhpType::Pointer(Some(name.clone())))
+                                        }
+                                        _ => result_members.push(*elem_ty.clone()),
+                                    }
+                                }
+                                _ => {}
                             }
                         }
-                        Err(CompileError::new(expr.span, "Cannot index non-array"))
+                        let has_concrete_result =
+                            result_members.iter().any(|member| *member != PhpType::Void);
+                        if !has_concrete_result && saw_indexable_member {
+                            Err(CompileError::new(
+                                expr.span,
+                                first_index_error.unwrap_or("Cannot index non-array"),
+                            ))
+                        } else if result_members.is_empty() {
+                            Err(CompileError::new(expr.span, "Cannot index non-array"))
+                        } else {
+                            Ok(self.normalize_union_type(result_members))
+                        }
                     }
                     PhpType::Buffer(elem_ty) => {
                         if idx_ty != PhpType::Int {
