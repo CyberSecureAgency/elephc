@@ -190,9 +190,11 @@ src/
 │   ├── expr/                  Expression submodules
 │   │   ├── arrays.rs          Array-expression dispatch
 │   │   ├── arrays/            `access.rs`, `indexed.rs`, `assoc.rs`
+│   │   ├── assignment.rs      Assignment expression lowering
 │   │   ├── binops/            `arithmetic.rs`, `array_union.rs`, `comparison.rs`, `target.rs`, `mod.rs`
 │   │   ├── calls.rs           Call-expression dispatch
 │   │   ├── calls/             `function.rs`, `closure.rs`, `first_class.rs`, `indirect.rs`, `args.rs`
+│   │   ├── chains.rs          Mixed nullsafe/member postfix-chain lowering
 │   │   ├── coerce.rs          Truthiness / string / null coercions
 │   │   ├── compare.rs         Comparison and widening helpers
 │   │   ├── diagnostics.rs     Error-control / runtime-diagnostic expression helpers
