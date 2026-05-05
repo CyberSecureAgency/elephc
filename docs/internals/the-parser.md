@@ -49,7 +49,7 @@ Things that have a value:
 | `Null` | `null` | |
 | `Variable(String)` | `$x` | Name without `$` |
 | `BinaryOp { left, op, right }` | `$a + $b` | See operator table below |
-| `InstanceOf { value, target }` | `$obj instanceof User` | Class/interface runtime type check. The target is a parsed `Name`, not a general expression, so codegen never evaluates the RHS as a value. |
+| `InstanceOf { value, target }` | `$obj instanceof User`, `$obj instanceof $className` | Class/interface runtime type check. The target is either a named class/interface target or a dynamic target expression. |
 | `Negate(Expr)` | `-$x` | Unary minus |
 | `Not(Expr)` | `!$x` | Logical NOT |
 | `BitNot(Expr)` | `~$x` | Bitwise NOT (complement) |
@@ -191,7 +191,7 @@ BitAnd  BitOr  BitXor  ShiftLeft  ShiftRight
 NullCoalesce
 ```
 
-`instanceof` is represented as `ExprKind::InstanceOf` rather than `BinOp` because PHP's supported RHS form is a class/interface target name (`User`, `self`, `parent`, `static`), not an ordinary expression to evaluate.
+`instanceof` is represented as `ExprKind::InstanceOf` rather than `BinOp` because PHP has special RHS grammar: named targets (`User`, `self`, `parent`, `static`) are resolved like class names, while variable/property/array targets and parenthesized expressions are evaluated dynamically.
 
 ### Type expressions (`TypeExpr`)
 
@@ -263,7 +263,7 @@ assignment          7          6         RIGHT (variable targets)
 .  (concat)        27         28         left
 + -                29         30         left
 * / %              31         32         left
-instanceof         35         special    left, target-name RHS
+instanceof         35         special    left, named-or-dynamic RHS
 unary (- ! ~)          35                prefix
 **                 37         36         RIGHT (r < l)
 ```
@@ -274,7 +274,7 @@ unary (- ! ~)          35                prefix
 
 For `??`, the Pratt table still uses `BinOp::NullCoalesce` to assign binding power, but the parser builds a dedicated `ExprKind::NullCoalesce { value, default }` node rather than a generic `BinaryOp`.
 
-For `instanceof`, the Pratt loop handles the keyword at expression level and then parses only a class/interface target name. Its binding power matches PHP's behavior where `!$obj instanceof User` parses as `!($obj instanceof User)`.
+For `instanceof`, the Pratt loop handles the keyword at expression level and then parses either a class/interface target name or a dynamic target expression. Its binding power matches PHP's behavior where `!$obj instanceof User` parses as `!($obj instanceof User)`.
 
 The word-form logical operators (`and`, `xor`, `or`) have PHP's lower precedence. The symbolic `&&` and `||` continue to bind more tightly.
 

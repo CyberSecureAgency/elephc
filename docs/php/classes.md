@@ -64,9 +64,12 @@ $item = new Button();
 echo ($item instanceof Button) ? "yes" : "no";      // yes
 echo ($item instanceof Widget) ? "yes" : "no";      // yes
 echo ($item instanceof Renderable) ? "yes" : "no";  // yes
+
+$target = "Button";
+echo ($item instanceof $target) ? "yes" : "no";     // yes
 ```
 
-The runtime check uses emitted class metadata, so subclasses match parent classes and implemented interfaces. The left-hand side may be a direct object or a boxed `mixed` / nullable / union value; non-object payloads return `false`. Supported targets are named classes/interfaces, `self`, `parent`, and late-bound `static`.
+The runtime check uses emitted class metadata, so subclasses match parent classes and implemented interfaces. The left-hand side may be a direct object or a boxed `mixed` / nullable / union value; non-object payloads return `false` once any dynamic target has been validated. Supported targets are named classes/interfaces, `self`, `parent`, late-bound `static`, dynamic class/interface strings, and dynamic object expressions.
 
 ## Abstract classes
 ```php

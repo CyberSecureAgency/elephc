@@ -834,9 +834,9 @@ The result is the object pointer in `x0`.
 
 `ExprKind::InstanceOf` evaluates the left-hand side exactly once, materializes the target class or interface id from emitted metadata, and returns a boolean in `x0`. Direct object values call `__rt_exception_matches`, the same metadata matcher used by exception catch lowering, so inherited classes and implemented interfaces are handled through the same parent-id and class-interface tables.
 
-When the left-hand side is lowered as `Mixed` or `Union`, codegen calls `__rt_mixed_instanceof` instead. That helper unwraps nested mixed boxes, returns `false` for scalar, array, null, and unknown payload tags, and only forwards object payloads into `__rt_exception_matches`. This keeps nullable and union object checks PHP-compatible without treating the boxed mixed cell itself as an object pointer.
+For named targets, when the left-hand side is lowered as `Mixed` or `Union`, codegen calls `__rt_mixed_instanceof` instead. That helper unwraps nested mixed boxes, returns `false` for scalar, array, null, and unknown payload tags, and only forwards object payloads into `__rt_exception_matches`. This keeps nullable and union object checks PHP-compatible without treating the boxed mixed cell itself as an object pointer.
 
-Targets are resolved before codegen. Named classes/interfaces become concrete metadata ids, `self` and `parent` resolve in the current lexical class context, and `static` uses the forwarded called-class id for late static binding.
+Named targets are resolved before codegen. Named classes/interfaces become concrete metadata ids, `self` and `parent` resolve in the current lexical class context, and `static` uses the forwarded called-class id for late static binding. Dynamic targets are evaluated and validated after the left-hand side is evaluated; string targets are resolved through emitted case-insensitive class/interface name metadata, object targets load the target object's runtime class id, invalid target payloads branch to a fatal runtime diagnostic, and non-object left-hand payloads become `false` after that validation step.
 
 ### Property access (`$obj->prop`)
 

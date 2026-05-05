@@ -32,7 +32,9 @@ sidebar:
 | `<=>` | `$a <=> $b` | Spaceship: returns -1, 0, or 1 |
 | `instanceof` | `$obj instanceof User` | Runtime class/interface check; returns bool |
 
-`instanceof` supports named class/interface targets plus `self`, `parent`, and `static`. Direct object values and boxed `mixed` / nullable / union values are checked at runtime; scalar, array, and null payloads return `false`. Unknown class/interface targets return `false`, matching PHP. Dynamic RHS targets such as `$obj instanceof $className` are not supported yet and are tracked in `ROADMAP.md`.
+`instanceof` supports named class/interface targets plus `self`, `parent`, and `static`. It also supports dynamic targets such as `$obj instanceof $className`, `$obj instanceof $otherObject`, and parenthesized target expressions like `$obj instanceof ($prefix . $suffix)`.
+
+Direct object values and boxed `mixed` / nullable / union values are checked at runtime; scalar, array, and null payloads return `false` after the dynamic target has been validated. Dynamic string targets are matched case-insensitively against class/interface names; unknown class strings return `false`. Dynamic object targets use the target object's runtime class. If a dynamic target is neither a string nor an object, the program exits with a fatal runtime diagnostic.
 
 ## Bitwise
 

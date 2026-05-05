@@ -27,6 +27,13 @@ echo ($item instanceof Widget) ? "widget\n" : "not widget\n";
 echo ($item instanceof Renderable) ? "renderable\n" : "not renderable\n";
 echo ($item instanceof Missing) ? "missing\n" : "not missing\n";
 
+$className = "Button";
+$interfaceName = "Renderable";
+$targetObject = new Widget();
+echo ($item instanceof $className) ? "dynamic class\n" : "not dynamic class\n";
+echo ($item instanceof $interfaceName) ? "dynamic interface\n" : "not dynamic interface\n";
+echo ($item instanceof $targetObject) ? "dynamic object\n" : "not dynamic object\n";
+
 $probe = new Probe();
 $probe->check($item);
 $probe->check(new Probe());
