@@ -36,8 +36,8 @@ function repeat(string $label, int $count): string {
 - Function, method, closure, and arrow-function return type hints are checked
 - Non-`void` declared return types must return a value on every reachable path; `throw`, `exit()`/`die()`, and infinite loops count as non-returning paths
 - Bare `return;` is valid only for `void` returns; use `return null;` for nullable return types
-- Named arguments supported for user-defined functions (reordered at compile time)
-- Named arguments not supported for built-in functions, extern functions, or calls mixed with spread arguments
+- Named arguments supported for user-defined functions, methods, closures, built-ins, and extern functions (reordered at compile time)
+- Named arguments can follow spread arguments, as in `foo(...$args, suffix: "!")`; positional arguments cannot follow either named arguments or spread arguments
 
 ## Recursion
 
