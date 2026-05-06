@@ -1,8 +1,24 @@
 use crate::errors::CompileError;
 use crate::parser::ast::{Expr, ExprKind};
+use crate::span::Span;
 use crate::types::{FunctionSig, PhpType, TypeEnv};
 
 use super::super::Checker;
+
+enum PrefixArg {
+    Positional(Expr),
+    Spread(Expr, Span),
+}
+
+fn spread_element_expr(spread_expr: &Expr, element_idx: usize, span: Span) -> Expr {
+    Expr::new(
+        ExprKind::ArrayAccess {
+            array: Box::new(spread_expr.clone()),
+            index: Box::new(Expr::new(ExprKind::IntLiteral(element_idx as i64), span)),
+        },
+        span,
+    )
+}
 
 impl Checker {
     pub(crate) fn has_named_args(args: &[Expr]) -> bool {
@@ -17,18 +33,43 @@ impl Checker {
         span: crate::span::Span,
         callee_desc: &str,
     ) -> Result<Vec<Expr>, CompileError> {
-        if !Self::has_named_args(args) {
-            return Ok(args.to_vec());
-        }
+        self.normalize_call_args(sig, args, span, callee_desc, false)
+    }
 
-        if args.iter().any(|arg| matches!(arg.kind, ExprKind::Spread(_))) {
-            return Err(CompileError::new(
-                span,
-                &format!(
-                    "{} does not support mixing named arguments with spread arguments yet",
-                    callee_desc
-                ),
-            ));
+    pub(crate) fn normalize_builtin_call_args(
+        &self,
+        sig: &FunctionSig,
+        args: &[Expr],
+        span: crate::span::Span,
+        callee_desc: &str,
+    ) -> Result<Vec<Expr>, CompileError> {
+        self.normalize_call_args(sig, args, span, callee_desc, true)
+    }
+
+    fn normalize_call_args(
+        &self,
+        sig: &FunctionSig,
+        args: &[Expr],
+        span: crate::span::Span,
+        callee_desc: &str,
+        trim_trailing_defaults: bool,
+    ) -> Result<Vec<Expr>, CompileError> {
+        if !Self::has_named_args(args) {
+            let mut seen_spread = false;
+            for arg in args {
+                if matches!(arg.kind, ExprKind::Spread(_)) {
+                    seen_spread = true;
+                } else if seen_spread {
+                    return Err(CompileError::new(
+                        arg.span,
+                        &format!(
+                            "{} cannot use positional arguments after spread arguments",
+                            callee_desc
+                        ),
+                    ));
+                }
+            }
+            return Ok(args.to_vec());
         }
 
         let regular_param_count = if sig.variadic.is_some() {
@@ -36,10 +77,10 @@ impl Checker {
         } else {
             sig.params.len()
         };
-        let mut resolved: Vec<Option<Expr>> = vec![None; regular_param_count];
-        let mut variadic_args = Vec::new();
-        let mut positional_idx = 0usize;
+        let mut named_values: Vec<Option<(Expr, Span)>> = vec![None; regular_param_count];
+        let mut prefix_args = Vec::new();
         let mut seen_named = false;
+        let mut seen_spread = false;
 
         for arg in args {
             match &arg.kind {
@@ -56,7 +97,7 @@ impl Checker {
                             &format!("{} has no parameter ${}", callee_desc, name),
                         ));
                     };
-                    if resolved[param_idx].is_some() {
+                    if named_values[param_idx].is_some() {
                         return Err(CompileError::new(
                             arg.span,
                             &format!(
@@ -65,7 +106,20 @@ impl Checker {
                             ),
                         ));
                     }
-                    resolved[param_idx] = Some((**value).clone());
+                    named_values[param_idx] = Some(((**value).clone(), arg.span));
+                }
+                ExprKind::Spread(inner) => {
+                    if seen_named {
+                        return Err(CompileError::new(
+                            arg.span,
+                            &format!(
+                                "{} cannot use argument unpacking after named arguments",
+                                callee_desc
+                            ),
+                        ));
+                    }
+                    seen_spread = true;
+                    prefix_args.push(PrefixArg::Spread((**inner).clone(), arg.span));
                 }
                 _ => {
                     if seen_named {
@@ -77,18 +131,92 @@ impl Checker {
                             ),
                         ));
                     }
-                    if positional_idx < regular_param_count {
-                        resolved[positional_idx] = Some(arg.clone());
-                    } else {
-                        variadic_args.push(arg.clone());
+                    if seen_spread {
+                        return Err(CompileError::new(
+                            arg.span,
+                            &format!(
+                                "{} cannot use positional arguments after spread arguments",
+                                callee_desc
+                            ),
+                        ));
                     }
-                    positional_idx += 1;
+                    prefix_args.push(PrefixArg::Positional(arg.clone()));
                 }
             }
         }
 
+        let mut resolved: Vec<Option<Expr>> = vec![None; regular_param_count];
+        let mut variadic_args = Vec::new();
+        let mut positional_idx = 0usize;
+
+        for prefix_arg in prefix_args {
+            match prefix_arg {
+                PrefixArg::Positional(arg) => {
+                    if positional_idx < regular_param_count {
+                        if let Some((_, named_span)) = &named_values[positional_idx] {
+                            let param_name = sig
+                                .params
+                                .get(positional_idx)
+                                .map(|(name, _)| name.as_str())
+                                .unwrap_or("arg");
+                            return Err(CompileError::new(
+                                *named_span,
+                                &format!(
+                                    "{} parameter ${} is already assigned",
+                                    callee_desc, param_name
+                                ),
+                            ));
+                        }
+                        resolved[positional_idx] = Some(arg);
+                    } else {
+                        variadic_args.push(arg);
+                    }
+                    positional_idx += 1;
+                }
+                PrefixArg::Spread(inner, spread_span) => {
+                    let next_named_idx = (positional_idx..regular_param_count)
+                        .find(|idx| named_values[*idx].is_some())
+                        .unwrap_or(regular_param_count);
+                    for element_idx in 0..next_named_idx.saturating_sub(positional_idx) {
+                        resolved[positional_idx] =
+                            Some(spread_element_expr(&inner, element_idx, spread_span));
+                        positional_idx += 1;
+                    }
+                }
+            }
+        }
+
+        for (idx, named_value) in named_values.into_iter().enumerate() {
+            if let Some((value, named_span)) = named_value {
+                if resolved[idx].is_some() {
+                    let param_name = sig
+                        .params
+                        .get(idx)
+                        .map(|(name, _)| name.as_str())
+                        .unwrap_or("arg");
+                        return Err(CompileError::new(
+                            named_span,
+                            &format!(
+                                "{} parameter ${} is already assigned",
+                                callee_desc, param_name
+                            ),
+                        ));
+                    }
+                resolved[idx] = Some(value);
+            }
+        }
+
         let mut normalized = Vec::new();
-        for (idx, slot) in resolved.into_iter().enumerate() {
+        let output_len = if trim_trailing_defaults {
+            resolved
+                .iter()
+                .rposition(|slot| slot.is_some())
+                .map(|idx| idx + 1)
+                .unwrap_or(0)
+        } else {
+            regular_param_count
+        };
+        for (idx, slot) in resolved.into_iter().take(output_len).enumerate() {
             if let Some(arg) = slot {
                 normalized.push(arg);
             } else if let Some(Some(default_expr)) = sig.defaults.get(idx) {

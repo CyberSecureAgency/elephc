@@ -98,3 +98,50 @@ fn test_named_arguments_static_method_call() {
     );
     assert_eq!(out, "Hi Alice?");
 }
+
+#[test]
+fn test_named_arguments_builtin_call() {
+    let out = compile_and_run(
+        r#"<?php
+echo strlen(string: "hello");
+echo ":";
+echo str_repeat(times: 3, string: "ha");
+"#,
+    );
+    assert_eq!(out, "5:hahaha");
+}
+
+#[test]
+fn test_named_arguments_builtin_uses_defaults_for_skipped_optional_params() {
+    let out = compile_and_run(
+        r#"<?php
+echo number_format(num: 1234, thousands_separator: " ");
+"#,
+    );
+    assert_eq!(out, "1 234");
+}
+
+#[test]
+fn test_named_arguments_builtin_with_spread_prefix() {
+    let out = compile_and_run(
+        r#"<?php
+$args = ["ha"];
+echo str_repeat(...$args, times: 3);
+"#,
+    );
+    assert_eq!(out, "hahaha");
+}
+
+#[test]
+fn test_named_arguments_after_spread_for_user_function() {
+    let out = compile_and_run(
+        r#"<?php
+function sum3($a, $b, $c) {
+    return $a + $b + $c;
+}
+$args = [10, 20];
+echo sum3(...$args, c: 30);
+"#,
+    );
+    assert_eq!(out, "60");
+}

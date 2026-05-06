@@ -6,7 +6,7 @@ use crate::codegen::expr::emit_expr;
 use crate::codegen::platform::Arch;
 use crate::names::function_symbol;
 use crate::parser::ast::{Expr, ExprKind};
-use crate::types::PhpType;
+use crate::types::{FunctionSig, PhpType};
 
 /// Emit an extern (FFI) function call using the C ABI.
 /// The C symbol is `_{name}` (macOS convention).
@@ -22,6 +22,25 @@ pub fn emit_extern_call(
         .get(name)
         .cloned()
         .unwrap_or_else(|| panic!("codegen bug: extern function '{}' not found", name));
+    let call_sig = ctx
+        .functions
+        .get(name)
+        .cloned()
+        .unwrap_or_else(|| FunctionSig {
+            params: sig.params.clone(),
+            defaults: vec![None; sig.params.len()],
+            return_type: sig.return_type.clone(),
+            declared_return: true,
+            ref_params: vec![false; sig.params.len()],
+            declared_params: vec![true; sig.params.len()],
+            variadic: None,
+        });
+    let normalized_args = crate::codegen::expr::calls::args::normalize_named_call_args(
+        &call_sig,
+        args,
+        crate::codegen::expr::calls::args::regular_param_count(Some(&call_sig), args.len()),
+    );
+    let args = normalized_args.as_slice();
 
     emitter.comment(&format!("extern call: {}()", name));
 

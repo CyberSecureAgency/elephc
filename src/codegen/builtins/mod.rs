@@ -21,6 +21,14 @@ pub fn emit_builtin_call(
     ctx: &mut Context,
     data: &mut DataSection,
 ) -> Option<PhpType> {
+    let normalized_args;
+    let args = if let Some(sig) = crate::types::builtin_call_sig(name) {
+        normalized_args = crate::codegen::expr::calls::args::normalize_builtin_call_args(&sig, args);
+        normalized_args.as_slice()
+    } else {
+        args
+    };
+
     system::emit(name, args, emitter, ctx, data)
         .or_else(|| strings::emit(name, args, emitter, ctx, data))
         .or_else(|| arrays::emit(name, args, emitter, ctx, data))

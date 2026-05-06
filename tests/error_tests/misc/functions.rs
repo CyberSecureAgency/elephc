@@ -129,18 +129,34 @@ fn test_error_named_arguments_reject_duplicate_assignment() {
 }
 
 #[test]
-fn test_error_named_arguments_reject_builtin_calls() {
+fn test_error_named_arguments_reject_unknown_builtin_parameter() {
     expect_error(
-        "<?php strlen(string: \"hello\");",
-        "Builtin 'strlen' does not support named arguments yet",
+        "<?php strlen(value: \"hello\");",
+        "Builtin 'strlen' has no parameter $value",
     );
 }
 
 #[test]
-fn test_error_named_arguments_reject_spread_mix() {
+fn test_error_named_arguments_reject_positional_after_spread() {
     expect_error(
-        "<?php function greet($name, $age) { echo $name; } $args = [\"Alice\"]; greet(...$args, age: 30);",
-        "Function 'greet' does not support mixing named arguments with spread arguments yet",
+        "<?php function greet($name, $age) { echo $name; } $args = [\"Alice\"]; greet(...$args, 30);",
+        "Function 'greet' cannot use positional arguments after spread arguments",
+    );
+}
+
+#[test]
+fn test_error_named_arguments_reject_spread_after_named() {
+    expect_error(
+        "<?php function greet($name, $age) { echo $name; } $args = [30]; greet(name: \"Alice\", ...$args);",
+        "Function 'greet' cannot use argument unpacking after named arguments",
+    );
+}
+
+#[test]
+fn test_error_named_arguments_reject_unknown_extern_parameter() {
+    expect_error(
+        "<?php extern function abs(int $n): int; abs(value: -1);",
+        "Extern function 'abs' has no parameter $value",
     );
 }
 
