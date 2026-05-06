@@ -308,7 +308,7 @@ pub(crate) fn prepare_call_args(
         }
     }
 
-    let spread_into_named = spread_arg.is_some() && !is_variadic;
+    let spread_into_named = spread_arg.is_some() && spread_at_index < regular_param_count;
     let mut all_args = regular_args;
     if !spread_into_named {
         if let Some(sig) = sig {
@@ -496,9 +496,13 @@ pub(crate) fn emit_pushed_call_args(
 
     if prepared.is_variadic {
         if let Some(spread_expr) = prepared.spread_arg.as_ref() {
-            let variadic_ty = emit_spread_variadic_array_arg(
+            let tail_start = prepared
+                .regular_param_count
+                .saturating_sub(prepared.spread_at_index);
+            let variadic_ty = emit_spread_tail_variadic_array_arg(
                 spread_expr,
-                "spread array as variadic param",
+                tail_start,
+                "spread tail as variadic param",
                 emitter,
                 ctx,
                 data,
@@ -909,8 +913,9 @@ fn emit_branch_if_spread_element_missing(
     }
 }
 
-pub(crate) fn emit_spread_variadic_array_arg(
+pub(crate) fn emit_spread_tail_variadic_array_arg(
     spread_expr: &Expr,
+    tail_start: usize,
     context_label: &str,
     emitter: &mut Emitter,
     ctx: &mut Context,
@@ -918,9 +923,25 @@ pub(crate) fn emit_spread_variadic_array_arg(
 ) -> PhpType {
     emitter.comment(context_label);
     let spread_ty = super::super::emit_expr(spread_expr, emitter, ctx, data);
-    super::super::retain_borrowed_heap_arg(emitter, spread_expr, &spread_ty);
-    abi::emit_push_result_value(emitter, &spread_ty);
-    spread_ty
+    let source_elem_ty = spread_source_elem_ty(&spread_ty);
+    let container_elem_ty = variadic_container_elem_ty(&source_elem_ty);
+    let offset_reg = abi::int_arg_reg_name(emitter.target, 1);
+    let length_reg = abi::int_arg_reg_name(emitter.target, 2);
+    abi::emit_load_int_immediate(emitter, offset_reg, tail_start as i64);
+    abi::emit_load_int_immediate(emitter, length_reg, -1);
+    let helper = if source_elem_ty.codegen_repr().is_refcounted() {
+        "__rt_array_slice_refcounted"
+    } else {
+        "__rt_array_slice"
+    };
+    abi::emit_call_label(emitter, helper);
+    super::super::arrays::emit_array_value_type_stamp(
+        emitter,
+        abi::int_result_reg(emitter),
+        &container_elem_ty,
+    );
+    abi::emit_push_result_value(emitter, &PhpType::Array(Box::new(container_elem_ty.clone())));
+    PhpType::Array(Box::new(container_elem_ty))
 }
 
 pub(crate) fn emit_empty_variadic_array_arg(context_label: &str, emitter: &mut Emitter) -> PhpType {
