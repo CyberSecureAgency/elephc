@@ -3,12 +3,8 @@ use crate::codegen::{abi, context::Context, data_section::DataSection, functions
 use crate::names::Name;
 use crate::parser::ast::{BinOp, Expr, ExprKind};
 use crate::span::Span;
+use crate::types::call_args::{self, NamedParamMatch, NamedParamTracker, PrefixArg};
 use crate::types::{FunctionSig, PhpType};
-
-enum PrefixArg {
-    Positional(Expr),
-    Spread(Expr, Span),
-}
 
 pub(crate) struct SpreadLengthCheck {
     pub(crate) spread_expr: Expr,
@@ -55,18 +51,11 @@ struct VariadicArgSource {
 }
 
 pub(crate) fn has_named_args(args: &[Expr]) -> bool {
-    args.iter()
-        .any(|arg| matches!(arg.kind, ExprKind::NamedArg { .. }))
+    call_args::has_named_args(args)
 }
 
 pub(crate) fn regular_param_count(sig: Option<&FunctionSig>, fallback_arg_count: usize) -> usize {
-    sig.map(|sig| {
-        if sig.variadic.is_some() {
-            sig.params.len().saturating_sub(1)
-        } else {
-            sig.params.len()
-        }
-    })
+    sig.map(call_args::regular_param_count)
     .unwrap_or(fallback_arg_count)
 }
 
@@ -250,7 +239,7 @@ fn preevaluate_named_value_if_needed(
     ctx: &mut Context,
     data: &mut DataSection,
 ) -> Expr {
-    let is_ref = named_param_index(sig, regular_param_count, name)
+    let is_ref = call_args::named_param_index(sig, regular_param_count, name)
         .and_then(|param_idx| sig.ref_params.get(param_idx))
         .copied()
         .unwrap_or(false);
@@ -298,6 +287,7 @@ fn normalize_call_args(
     }
 
     let mut named_values: Vec<Option<Expr>> = vec![None; regular_param_count];
+    let mut named_tracker = NamedParamTracker::new(regular_param_count);
     let mut prefix_args = Vec::new();
     let mut variadic_args = Vec::new();
     let mut seen_named = false;
@@ -308,21 +298,25 @@ fn normalize_call_args(
         match &arg.kind {
             ExprKind::NamedArg { name, value } => {
                 seen_named = true;
-                if let Some(param_idx) = sig
-                    .params
-                    .iter()
-                    .take(regular_param_count)
-                    .position(|(param_name, _)| param_name == name)
-                {
-                    named_values[param_idx] = Some((**value).clone());
-                } else if allow_unknown_named_variadic && sig.variadic.is_some() {
-                    variadic_args.push(Expr::new(
-                        ExprKind::NamedArg {
-                            name: name.clone(),
-                            value: value.clone(),
-                        },
-                        arg.span,
-                    ));
+                match named_tracker.assign(
+                    sig,
+                    regular_param_count,
+                    name,
+                    allow_unknown_named_variadic,
+                ) {
+                    Ok(NamedParamMatch::Regular(param_idx)) => {
+                        named_values[param_idx] = Some((**value).clone());
+                    }
+                    Ok(NamedParamMatch::Variadic) => {
+                        variadic_args.push(Expr::new(
+                            ExprKind::NamedArg {
+                                name: name.clone(),
+                                value: value.clone(),
+                            },
+                            arg.span,
+                        ));
+                    }
+                    Ok(NamedParamMatch::Unknown) | Err(_) => {}
                 }
             }
             ExprKind::Spread(inner) => {
@@ -738,7 +732,7 @@ fn emit_source_order_named_call_args(
     for arg in args_exprs {
         match &arg.kind {
             ExprKind::NamedArg { name, value } => {
-                if let Some(param_idx) = named_param_index(sig, regular_param_count, name) {
+                if let Some(param_idx) = call_args::named_param_index(sig, regular_param_count, name) {
                     let temp_idx = emit_source_temp_arg(
                         value,
                         sig,
@@ -854,7 +848,7 @@ fn emit_source_order_named_spread_call_args(
     let mut first_named_idx = regular_param_count;
     for arg in &args_exprs[first_named_pos..] {
         if let ExprKind::NamedArg { name, value } = &arg.kind {
-            if let Some(param_idx) = named_param_index(sig, regular_param_count, name) {
+            if let Some(param_idx) = call_args::named_param_index(sig, regular_param_count, name) {
                 first_named_idx = first_named_idx.min(param_idx);
                 let temp_idx = emit_source_temp_arg(
                     value,
@@ -938,13 +932,6 @@ fn emit_source_order_named_spread_call_args(
         ctx,
         data,
     )
-}
-
-fn named_param_index(sig: &FunctionSig, regular_param_count: usize, name: &str) -> Option<usize> {
-    sig.params
-        .iter()
-        .take(regular_param_count)
-        .position(|(param_name, _)| param_name == name)
 }
 
 fn push_source_temp_type(source_temp_types: &mut Vec<PhpType>, ty: PhpType) -> usize {

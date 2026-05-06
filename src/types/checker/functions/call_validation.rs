@@ -2,14 +2,10 @@ use crate::errors::CompileError;
 use crate::names::Name;
 use crate::parser::ast::{BinOp, Expr, ExprKind};
 use crate::span::Span;
+use crate::types::call_args::{self, NamedParamMatch, NamedParamTracker, PrefixArg};
 use crate::types::{FunctionSig, PhpType, TypeEnv};
 
 use super::super::Checker;
-
-enum PrefixArg {
-    Positional(Expr),
-    Spread(Expr, Span),
-}
 
 fn spread_element_expr(spread_expr: &Expr, element_idx: usize, span: Span) -> Expr {
     Expr::new(
@@ -56,8 +52,7 @@ fn spread_len_expr(spread_expr: &Expr, span: Span) -> Expr {
 
 impl Checker {
     pub(crate) fn has_named_args(args: &[Expr]) -> bool {
-        args.iter()
-            .any(|arg| matches!(arg.kind, ExprKind::NamedArg { .. }))
+        call_args::has_named_args(args)
     }
 
     pub(crate) fn normalize_named_call_args(
@@ -89,7 +84,7 @@ impl Checker {
         trim_trailing_defaults: bool,
         allow_unknown_named_variadic: bool,
     ) -> Result<Vec<Expr>, CompileError> {
-        if !Self::has_named_args(args) {
+        if !call_args::has_named_args(args) {
             let mut seen_spread = false;
             for arg in args {
                 if matches!(arg.kind, ExprKind::Spread(_)) {
@@ -107,12 +102,9 @@ impl Checker {
             return Ok(args.to_vec());
         }
 
-        let regular_param_count = if sig.variadic.is_some() {
-            sig.params.len().saturating_sub(1)
-        } else {
-            sig.params.len()
-        };
+        let regular_param_count = call_args::regular_param_count(sig);
         let mut named_values: Vec<Option<(Expr, Span)>> = vec![None; regular_param_count];
+        let mut named_tracker = NamedParamTracker::new(regular_param_count);
         let mut prefix_args = Vec::new();
         let mut variadic_args = Vec::new();
         let mut seen_named = false;
@@ -122,13 +114,16 @@ impl Checker {
             match &arg.kind {
                 ExprKind::NamedArg { name, value } => {
                     seen_named = true;
-                    let Some(param_idx) = sig
-                        .params
-                        .iter()
-                        .take(regular_param_count)
-                        .position(|(param_name, _)| param_name == name)
-                    else {
-                        if allow_unknown_named_variadic && sig.variadic.is_some() {
+                    match named_tracker.assign(
+                        sig,
+                        regular_param_count,
+                        name,
+                        allow_unknown_named_variadic,
+                    ) {
+                        Ok(NamedParamMatch::Regular(param_idx)) => {
+                            named_values[param_idx] = Some(((**value).clone(), arg.span));
+                        }
+                        Ok(NamedParamMatch::Variadic) => {
                             variadic_args.push(Expr::new(
                                 ExprKind::NamedArg {
                                     name: name.clone(),
@@ -138,21 +133,27 @@ impl Checker {
                             ));
                             continue;
                         }
-                        return Err(CompileError::new(
-                            arg.span,
-                            &format!("{} has no parameter ${}", callee_desc, name),
-                        ));
-                    };
-                    if named_values[param_idx].is_some() {
-                        return Err(CompileError::new(
-                            arg.span,
-                            &format!(
-                                "{} parameter ${} is already assigned",
-                                callee_desc, name
-                            ),
-                        ));
+                        Ok(NamedParamMatch::Unknown) => {
+                            return Err(CompileError::new(
+                                arg.span,
+                                &format!("{} has no parameter ${}", callee_desc, name),
+                            ));
+                        }
+                        Err(duplicate) => {
+                            let param_name = sig
+                                .params
+                                .get(duplicate.param_idx)
+                                .map(|(name, _)| name.as_str())
+                                .unwrap_or(name);
+                            return Err(CompileError::new(
+                                arg.span,
+                                &format!(
+                                    "{} parameter ${} is already assigned",
+                                    callee_desc, param_name
+                                ),
+                            ));
+                        }
                     }
-                    named_values[param_idx] = Some(((**value).clone(), arg.span));
                 }
                 ExprKind::Spread(inner) => {
                     if seen_named {

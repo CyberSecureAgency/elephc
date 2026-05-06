@@ -373,11 +373,7 @@ impl Checker {
             .map(|arg| self.infer_type(arg, caller_env))
             .collect::<Result<Vec<_>, CompileError>>()?;
         if let Some(stored_sig) = self.functions.get_mut(name) {
-            let regular_param_count = if stored_sig.variadic.is_some() {
-                stored_sig.params.len().saturating_sub(1)
-            } else {
-                stored_sig.params.len()
-            };
+            let regular_param_count = crate::types::call_args::regular_param_count(stored_sig);
             let mut seen_idx = 0usize;
             for (arg, actual_ty) in args.iter().zip(actual_arg_types.iter()) {
                 if matches!(arg.kind, ExprKind::Spread(_)) {
