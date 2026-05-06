@@ -112,6 +112,17 @@ echo str_repeat(times: 3, string: "ha");
 }
 
 #[test]
+fn test_named_arguments_builtin_case_insensitive_namespace_fallback() {
+    let out = compile_and_run(
+        r#"<?php
+namespace Demo;
+echo STRLEN(string: "abc");
+"#,
+    );
+    assert_eq!(out, "3");
+}
+
+#[test]
 fn test_named_arguments_builtin_uses_defaults_for_skipped_optional_params() {
     let out = compile_and_run(
         r#"<?php
@@ -119,6 +130,18 @@ echo number_format(num: 1234, thousands_separator: " ");
 "#,
     );
     assert_eq!(out, "1 234");
+}
+
+#[test]
+fn test_named_arguments_builtin_settype_reorders_call() {
+    let out = compile_and_run(
+        r#"<?php
+$value = 42;
+settype(type: "string", var: $value);
+echo gettype($value) . ":" . $value;
+"#,
+    );
+    assert_eq!(out, "string:42");
 }
 
 #[test]

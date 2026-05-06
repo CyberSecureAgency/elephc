@@ -194,14 +194,14 @@ impl Checker {
                         .get(idx)
                         .map(|(name, _)| name.as_str())
                         .unwrap_or("arg");
-                        return Err(CompileError::new(
-                            named_span,
-                            &format!(
-                                "{} parameter ${} is already assigned",
-                                callee_desc, param_name
-                            ),
-                        ));
-                    }
+                    return Err(CompileError::new(
+                        named_span,
+                        &format!(
+                            "{} parameter ${} is already assigned",
+                            callee_desc, param_name
+                        ),
+                    ));
+                }
                 resolved[idx] = Some(value);
             }
         }

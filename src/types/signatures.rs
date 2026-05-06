@@ -36,6 +36,7 @@ pub(crate) fn builtin_call_sig(name: &str) -> Option<FunctionSig> {
         | "empty" | "isset" | "unset" | "var_dump" | "print_r" => {
             Some(fixed(&["value"]))
         }
+        "settype" => Some(fixed(&["var", "type"])),
         "function_exists" => Some(fixed(&["function"])),
 
         "is_nan" | "is_finite" | "is_infinite" | "abs" | "floor" | "ceil" | "sqrt"
@@ -240,6 +241,7 @@ pub(crate) fn builtin_call_sig(name: &str) -> Option<FunctionSig> {
         "ptr_offset" => Some(fixed(&["pointer", "offset"])),
         "ptr_set" | "ptr_write8" | "ptr_write32" => Some(fixed(&["pointer", "value"])),
         "ptr_sizeof" => Some(fixed(&["type"])),
+        "buffer_new" => Some(fixed(&["length"])),
         "buffer_len" | "buffer_free" => Some(fixed(&["buffer"])),
         _ => None,
     }
