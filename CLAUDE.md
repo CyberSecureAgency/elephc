@@ -192,13 +192,17 @@ Leaf builtin/runtime files contain exactly **one emitter function**. Keep dispat
 
 Do not list every builtin in this guide. `src/types/checker/builtins/catalog.rs` and `src/types/signatures.rs` are the canonical sources; update those instead of maintaining parallel lists.
 
-### Call argument validation and lowering
+### Call argument semantics
 
 All function-like call surfaces must share the same argument rules instead of normalizing locally in individual emitters:
 
-- Type-checker validation and normalization lives in `src/types/checker/functions/call_validation.rs`.
-- Codegen argument normalization, source-order evaluation, spread checks, and ABI materialization live in `src/codegen/expr/calls/args.rs`.
-- Builtins and extern calls use the same named/spread pre-evaluation path before their category-specific emitter runs.
+- Shared named/positional/spread semantics live in `src/types/call_args.rs` whenever they are not codegen-specific.
+- The type checker and codegen must reuse shared helpers or planners for named-argument matching, duplicate detection, static associative-spread expansion, and the regular/variadic split. Do not reimplement those rules separately in checker and emitter code.
+- Type-checker validation and diagnostic mapping lives in `src/types/checker/functions/call_validation.rs`; it should consume the shared semantic helpers rather than owning the rules.
+- `src/codegen/expr/calls/args.rs` is call-argument orchestration: normalization entry points, spread checks, and ABI materialization. Source-order named/spread lowering lives in `src/codegen/expr/calls/args/named.rs`.
+- User-defined calls, builtins, and extern calls must use the same named/spread normalization rules before any callee-specific lowering runs.
+- PHP call unpacking with static string keys maps to named arguments (`f(...["a" => 1])` behaves like `f(a: 1)`). Static numeric keys remain positional.
+- When adding or extending a builtin, verify `first_class_callable_builtin_sig()` as well as the direct builtin signature so first-class callable syntax and callable aliases stay coherent.
 - PHP source evaluation order is distinct from ABI parameter order. Preserve side effects in source order, then materialize arguments in parameter/ABI order.
 - Spread arguments before named arguments must be evaluated once, length/overwrite checks must happen at the PHP-observable point, and later named-argument side effects must not be skipped by early codegen checks.
 - User-defined variadics accept unknown named arguments as string-keyed variadic entries; internal/builtin variadics reject unknown named arguments like PHP internals.
