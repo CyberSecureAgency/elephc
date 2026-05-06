@@ -1682,25 +1682,90 @@ pub(crate) fn emit_spread_into_named_params(
     let source_elem_ty = spread_source_elem_ty(&spread_ty);
     let elem_stride = array_element_stride(&source_elem_ty);
     let _ = super::super::emit_expr(spread_expr, emitter, ctx, data);
-    let array_data_reg = match emitter.target.arch {
+    let array_base_reg = match emitter.target.arch {
         crate::codegen::platform::Arch::AArch64 => "x20",
-        crate::codegen::platform::Arch::X86_64 => "r10",
+        crate::codegen::platform::Arch::X86_64 => "r12",
     };
-    emitter.instruction(&format!("mov {}, {}", array_data_reg, abi::int_result_reg(emitter))); // preserve the spread array pointer across boxing or incref helper calls
-    match emitter.target.arch {
-        crate::codegen::platform::Arch::AArch64 => {
-            emitter.instruction(&format!("add {}, {}, #24", array_data_reg, array_data_reg)); // skip the array header to point at the first spread element
-        }
-        crate::codegen::platform::Arch::X86_64 => {
-            emitter.instruction(&format!("add {}, 24", array_data_reg));        // skip the array header to point at the first spread element
-        }
-    }
+    emitter.instruction(&format!("mov {}, {}", array_base_reg, abi::int_result_reg(emitter))); // preserve the spread array pointer across boxing or incref helper calls
     for idx in 0..remaining {
         let target_ty = declared_target_ty(sig, spread_at_index + idx);
-        load_array_element_to_result(emitter, &source_elem_ty, array_data_reg, idx * elem_stride);
-        let pushed_ty =
-            push_loaded_array_element_arg(&source_elem_ty, target_ty, emitter, ctx, data);
+        let default = sig
+            .and_then(|sig| sig.defaults.get(spread_at_index + idx))
+            .and_then(|default| default.as_ref());
+        let pushed_ty = push_spread_element_or_default_arg(
+            array_base_reg,
+            idx,
+            elem_stride,
+            &source_elem_ty,
+            default,
+            target_ty,
+            emitter,
+            ctx,
+            data,
+        );
         arg_types.push(pushed_ty);
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn push_spread_element_or_default_arg(
+    array_base_reg: &str,
+    element_idx: usize,
+    elem_stride: usize,
+    source_elem_ty: &PhpType,
+    default: Option<&Expr>,
+    target_ty: Option<&PhpType>,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> PhpType {
+    if let Some(default) = default {
+        let use_default = ctx.next_label("spread_default");
+        let done = ctx.next_label("spread_done");
+        emit_branch_if_spread_element_missing(array_base_reg, element_idx, &use_default, emitter);
+        load_array_element_to_result(
+            emitter,
+            source_elem_ty,
+            array_base_reg,
+            24 + element_idx * elem_stride,
+        );
+        let loaded_ty =
+            push_loaded_array_element_arg(source_elem_ty, target_ty, emitter, ctx, data);
+        abi::emit_jump(emitter, &done);
+        emitter.label(&use_default);
+        let default_ty = push_expr_arg(default, target_ty, emitter, ctx, data);
+        emitter.label(&done);
+        return super::super::widen_codegen_type(&loaded_ty, &default_ty);
+    }
+
+    load_array_element_to_result(
+        emitter,
+        source_elem_ty,
+        array_base_reg,
+        24 + element_idx * elem_stride,
+    );
+    push_loaded_array_element_arg(source_elem_ty, target_ty, emitter, ctx, data)
+}
+
+fn emit_branch_if_spread_element_missing(
+    array_base_reg: &str,
+    element_idx: usize,
+    label: &str,
+    emitter: &mut Emitter,
+) {
+    match emitter.target.arch {
+        crate::codegen::platform::Arch::AArch64 => {
+            emitter.instruction(&format!("ldr x9, [{}]", array_base_reg));      // load spread length before choosing spread element or default
+            abi::emit_load_int_immediate(emitter, "x10", element_idx as i64);
+            emitter.instruction("cmp x9, x10");                                 // check whether this optional spread element exists
+            emitter.instruction(&format!("b.le {}", label));                    // use the default when the spread is too short for this slot
+        }
+        crate::codegen::platform::Arch::X86_64 => {
+            emitter.instruction(&format!("mov r10, QWORD PTR [{}]", array_base_reg)); // load spread length before choosing spread element or default
+            abi::emit_load_int_immediate(emitter, "r11", element_idx as i64);
+            emitter.instruction("cmp r10, r11");                                // check whether this optional spread element exists
+            emitter.instruction(&format!("jle {}", label));                     // use the default when the spread is too short for this slot
+        }
     }
 }
 

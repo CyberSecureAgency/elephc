@@ -234,6 +234,32 @@ echo sum3(...$args, c: 30);
 }
 
 #[test]
+fn test_spread_only_uses_default_for_unpacked_optional_param() {
+    let out = compile_and_run(
+        r#"<?php
+function show($a, $b = 99) {
+    echo $a . ":" . $b;
+}
+show(...[10]);
+"#,
+    );
+    assert_eq!(out, "10:99");
+}
+
+#[test]
+fn test_spread_only_positional_prefix_uses_default_for_optional_tail() {
+    let out = compile_and_run(
+        r#"<?php
+function show($a, $b = 99) {
+    echo $a . ":" . $b;
+}
+show(10, ...[]);
+"#,
+    );
+    assert_eq!(out, "10:99");
+}
+
+#[test]
 fn test_named_arguments_after_spread_rejects_short_spread() {
     let err = compile_and_run_expect_failure(
         r#"<?php
