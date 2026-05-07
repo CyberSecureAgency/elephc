@@ -86,3 +86,42 @@ fn test_error_closure_void_return_type_rejects_value() {
         "Closure return type must not return a value",
     );
 }
+
+#[test]
+fn test_error_fiber_callback_rejects_too_many_start_args() {
+    expect_error(
+        "<?php $fiber = new Fiber(function($a, $b, $c, $d, $e, $f, $g, $h): void {});",
+        "Fiber callbacks support at most 7 start arguments, got 8",
+    );
+}
+
+#[test]
+fn test_error_fiber_callback_rejects_by_ref_start_arg() {
+    expect_error(
+        "<?php $fiber = new Fiber(function(&$value): void {});",
+        "Fiber callbacks cannot receive start arguments by reference",
+    );
+}
+
+#[test]
+fn test_error_fiber_direct_callback_rejects_capture_slot_overflow() {
+    expect_error(
+        r#"<?php
+$a = "a"; $b = "b"; $c = "c"; $d = "d";
+$fiber = new Fiber(function() use ($a, $b, $c, $d): void {});
+"#,
+        "Fiber capture $d exceeds the 7 integer-slot Fiber capture limit",
+    );
+}
+
+#[test]
+fn test_error_fiber_variable_callback_rejects_capture_slot_overflow() {
+    expect_error(
+        r#"<?php
+$a = "a"; $b = "b"; $c = "c"; $d = "d";
+$fn = function() use ($a, $b, $c, $d): void {};
+$fiber = new Fiber($fn);
+"#,
+        "Fiber capture $d exceeds the 7 integer-slot Fiber capture limit",
+    );
+}

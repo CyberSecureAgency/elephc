@@ -120,6 +120,28 @@ fn update_callable_assignment_metadata(
                 .closure_return_types
                 .insert(name.to_string(), sig.return_type.clone());
             checker.callable_sigs.insert(name.to_string(), sig);
+            if let ExprKind::Closure { captures, .. } = &callable_source.kind {
+                let capture_types = captures
+                    .iter()
+                    .map(|capture| {
+                        (
+                            capture.clone(),
+                            env.get(capture).cloned().unwrap_or(PhpType::Mixed),
+                        )
+                    })
+                    .collect();
+                checker
+                    .callable_captures
+                    .insert(name.to_string(), capture_types);
+            } else if let ExprKind::Variable(src_name) = &callable_source.kind {
+                if let Some(captures) = checker.callable_captures.get(src_name).cloned() {
+                    checker.callable_captures.insert(name.to_string(), captures);
+                } else {
+                    checker.callable_captures.remove(name);
+                }
+            } else {
+                checker.callable_captures.remove(name);
+            }
             if let ExprKind::FirstClassCallable(target) = &callable_source.kind {
                 checker
                     .first_class_callable_targets
@@ -138,11 +160,13 @@ fn update_callable_assignment_metadata(
         } else {
             checker.closure_return_types.remove(name);
             checker.callable_sigs.remove(name);
+            checker.callable_captures.remove(name);
             checker.first_class_callable_targets.remove(name);
         }
     } else {
         checker.closure_return_types.remove(name);
         checker.callable_sigs.remove(name);
+        checker.callable_captures.remove(name);
         checker.first_class_callable_targets.remove(name);
     }
     Ok(())
