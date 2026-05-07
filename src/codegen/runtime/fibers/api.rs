@@ -62,6 +62,7 @@ pub fn emit_fiber_throw_state_error(emitter: &mut Emitter) {
 /// __rt_fiber_construct: allocate and initialise a Fiber object.
 /// Input:  x0 = callable (closure object pointer; may be NULL for diagnostics)
 ///         x1 = class_id assigned by the type checker for the Fiber class
+///         x2 = optional wrapper entry that adapts Fiber Mixed traffic to the callable ABI
 /// Output: x0 = pointer to the new Fiber object (16-byte heap header sits at -8)
 pub fn emit_fiber_construct(emitter: &mut Emitter) {
     if emitter.target.arch == Arch::X86_64 {
@@ -73,13 +74,15 @@ pub fn emit_fiber_construct(emitter: &mut Emitter) {
     emitter.comment("--- runtime: fiber_construct ---");
     emitter.label_global("__rt_fiber_construct");
 
-    // -- frame: keep callable in x19, class_id in x20 across the heap calls --
-    emitter.instruction("sub sp, sp, #32");                                     // reserve scratch frame plus saved callee regs
-    emitter.instruction("stp x29, x30, [sp, #16]");                             // save frame pointer and return address
-    emitter.instruction("stp x19, x20, [sp]");                                  // preserve callee-saved registers we will use as argument cache
-    emitter.instruction("add x29, sp, #16");                                    // anchor the new frame pointer
+    // -- frame: keep callable/class/wrapper across the heap calls --
+    emitter.instruction("sub sp, sp, #64");                                     // reserve scratch frame plus saved callee regs
+    emitter.instruction("stp x29, x30, [sp, #48]");                             // save frame pointer and return address
+    emitter.instruction("stp x19, x20, [sp]");                                  // preserve callee-saved registers used as argument cache
+    emitter.instruction("stp x21, x22, [sp, #16]");                             // preserve callee-saved registers used for object and wrapper pointers
+    emitter.instruction("add x29, sp, #48");                                    // anchor the new frame pointer
     emitter.instruction("mov x19, x0");                                         // x19 = callable (preserved across heap_alloc)
     emitter.instruction("mov x20, x1");                                         // x20 = class_id (preserved across heap_alloc)
+    emitter.instruction("mov x22, x2");                                         // x22 = optional Fiber entry wrapper pointer
 
     // -- allocate the Fiber object payload --
     emitter.instruction(&format!("mov x0, #{}", FIBER_OBJECT_SIZE));            // size in bytes for the Fiber object payload
@@ -96,7 +99,7 @@ pub fn emit_fiber_construct(emitter: &mut Emitter) {
     emitter.instruction(&format!("str xzr, [x21, #{}]", FIBER_STACK_SIZE_OFFSET)); // stack_size placeholder (overwritten after stack alloc)
     emitter.instruction(&format!("str xzr, [x21, #{}]", FIBER_SAVED_SP_OFFSET)); // saved_sp placeholder (overwritten after fake-frame setup)
     emitter.instruction(&format!("str xzr, [x21, #{}]", FIBER_CALLABLE_OFFSET)); // callable.lo placeholder (overwritten with x19 below)
-    emitter.instruction(&format!("str xzr, [x21, #{}]", FIBER_CALLABLE_OFFSET + 8)); // callable.hi reserved for closure type tag
+    emitter.instruction(&format!("str xzr, [x21, #{}]", FIBER_CALLABLE_OFFSET + 8)); // callable wrapper placeholder (overwritten with x22 below)
     emitter.instruction(&format!("str xzr, [x21, #{}]", FIBER_CALLER_OFFSET));  // caller starts NULL (no resumer until start/resume)
     emitter.instruction(&format!("str xzr, [x21, #{}]", FIBER_TRANSFER_VALUE_OFFSET)); // transfer_value.lo cleared
     emitter.instruction(&format!("str xzr, [x21, #{}]", FIBER_TRANSFER_VALUE_OFFSET + 8)); // transfer_value.hi cleared
@@ -118,6 +121,7 @@ pub fn emit_fiber_construct(emitter: &mut Emitter) {
 
     // -- record the captured callable --
     emitter.instruction(&format!("str x19, [x21, #{}]", FIBER_CALLABLE_OFFSET)); // callable.lo = closure pointer
+    emitter.instruction(&format!("str x22, [x21, #{}]", FIBER_CALLABLE_OFFSET + 8)); // callable wrapper = Fiber entry ABI adapter
 
     // -- allocate the per-fiber stack via mmap; alloc returns base/top/total --
     emitter.instruction(&format!("mov x0, #{}", FIBER_DEFAULT_STACK_SIZE));     // request the default usable fiber stack size in bytes
@@ -148,9 +152,10 @@ pub fn emit_fiber_construct(emitter: &mut Emitter) {
     emitter.instruction("mov x0, x21");                                         // return the freshly built Fiber pointer
 
     // -- tear down the scratch frame and return --
+    emitter.instruction("ldp x21, x22, [sp, #16]");                             // restore caller's x21/x22
     emitter.instruction("ldp x19, x20, [sp]");                                  // restore caller's x19/x20
-    emitter.instruction("ldp x29, x30, [sp, #16]");                             // restore caller's frame pointer and return address
-    emitter.instruction("add sp, sp, #32");                                     // release the scratch frame
+    emitter.instruction("ldp x29, x30, [sp, #48]");                             // restore caller's frame pointer and return address
+    emitter.instruction("add sp, sp, #64");                                     // release the scratch frame
     emitter.instruction("ret");                                                 // hand the new Fiber object back to the constructor caller
 }
 
@@ -203,8 +208,15 @@ pub fn emit_fiber_start(emitter: &mut Emitter) {
     emitter.instruction("brk #0xfffe");                                         // defensive trap if __rt_throw_current ever returns
     emitter.label("__rt_fiber_start_no_escape");
 
-    // -- harvest the value the fiber yielded into transfer_value.lo --
-    emitter.instruction(&format!("ldr x0, [x19, #{}]", FIBER_TRANSFER_VALUE_OFFSET)); // x0 = fiber->transfer_value.lo (suspend value or terminal return)
+    // -- harvest a suspend value, or PHP null when the fiber terminated cleanly --
+    emitter.instruction(&format!("ldr x9, [x19, #{}]", FIBER_STATE_OFFSET));    // x9 = current fiber state after control returned
+    emitter.instruction(&format!("cmp x9, #{}", FIBER_STATE_TERMINATED));       // did the fiber finish instead of suspending?
+    emitter.instruction("b.ne __rt_fiber_start_return_yield");                  // suspended fibers return their yielded transfer value
+    emit_box_null_mixed(emitter);
+    emitter.instruction("b __rt_fiber_start_return_ready");                     // skip the yielded-value load after boxing PHP null
+    emitter.label("__rt_fiber_start_return_yield");
+    emitter.instruction(&format!("ldr x0, [x19, #{}]", FIBER_TRANSFER_VALUE_OFFSET)); // x0 = fiber->transfer_value.lo (suspend yield value)
+    emitter.label("__rt_fiber_start_return_ready");
 
     // -- epilogue --
     emitter.instruction("ldr x19, [sp]");                                       // restore caller's x19
@@ -268,8 +280,15 @@ pub fn emit_fiber_resume(emitter: &mut Emitter) {
     emitter.instruction("brk #0xfffe");                                         // defensive trap if __rt_throw_current ever returns
     emitter.label("__rt_fiber_resume_no_escape");
 
-    // -- harvest the value the fiber yielded back to us --
-    emitter.instruction(&format!("ldr x0, [x19, #{}]", FIBER_TRANSFER_VALUE_OFFSET)); // x0 = fiber->transfer_value.lo (next yield value or terminal return)
+    // -- harvest a suspend value, or PHP null when the fiber terminated cleanly --
+    emitter.instruction(&format!("ldr x9, [x19, #{}]", FIBER_STATE_OFFSET));    // x9 = current fiber state after control returned
+    emitter.instruction(&format!("cmp x9, #{}", FIBER_STATE_TERMINATED));       // did the fiber finish instead of suspending again?
+    emitter.instruction("b.ne __rt_fiber_resume_return_yield");                 // suspended fibers return their next yielded transfer value
+    emit_box_null_mixed(emitter);
+    emitter.instruction("b __rt_fiber_resume_return_ready");                    // skip the yielded-value load after boxing PHP null
+    emitter.label("__rt_fiber_resume_return_yield");
+    emitter.instruction(&format!("ldr x0, [x19, #{}]", FIBER_TRANSFER_VALUE_OFFSET)); // x0 = fiber->transfer_value.lo (next yield value)
+    emitter.label("__rt_fiber_resume_return_ready");
 
     emitter.instruction("ldr x19, [sp]");                                       // restore caller's x19
     emitter.instruction("ldp x29, x30, [sp, #16]");                             // restore frame pointer and return address
@@ -302,7 +321,7 @@ pub fn emit_fiber_suspend(emitter: &mut Emitter) {
     abi::emit_load_symbol_to_reg(emitter, "x19", "_fiber_current", 0);          // x19 = currently running fiber* (NULL means called from main)
     emitter.instruction("cbnz x19, __rt_fiber_suspend_state_ok");               // proceed when we are actually executing inside a fiber
     abi::emit_symbol_address(emitter, "x0", "_fiber_msg_suspend_outside");      // x0 = pointer to the static error message
-    emitter.instruction("mov x1, #47");                                         // x1 = error message length in bytes
+    emitter.instruction("mov x1, #33");                                         // x1 = error message length in bytes
     emitter.instruction("bl __rt_fiber_throw_state_error");                     // raise FiberError; this call does not return
     emitter.label("__rt_fiber_suspend_state_ok");
     emitter.instruction("mov x0, x20");                                         // restore the yielded value into x0 for the suspend logic below
@@ -372,7 +391,7 @@ pub fn emit_fiber_throw(emitter: &mut Emitter) {
     emitter.instruction(&format!("cmp x9, #{}", FIBER_STATE_SUSPENDED));        // is the fiber currently paused at a Fiber::suspend() call?
     emitter.instruction("b.eq __rt_fiber_throw_state_ok");                      // proceed only when the fiber is suspended
     abi::emit_symbol_address(emitter, "x0", "_fiber_msg_throw_not_suspended");  // x0 = pointer to the static error message
-    emitter.instruction("mov x1, #47");                                         // x1 = error message length in bytes
+    emitter.instruction("mov x1, #43");                                         // x1 = error message length in bytes
     emitter.instruction("bl __rt_fiber_throw_state_error");                     // raise FiberError; this call does not return
     emitter.label("__rt_fiber_throw_state_ok");
     emitter.instruction("mov x1, x20");                                         // restore the Throwable into the second argument register
@@ -397,7 +416,15 @@ pub fn emit_fiber_throw(emitter: &mut Emitter) {
     emitter.instruction("brk #0xfffe");                                         // defensive trap if __rt_throw_current ever returns
     emitter.label("__rt_fiber_throw_no_escape");
 
-    emitter.instruction(&format!("ldr x0, [x19, #{}]", FIBER_TRANSFER_VALUE_OFFSET)); // x0 = fiber->transfer_value.lo
+    // -- harvest a suspend value, or PHP null when the fiber terminated cleanly --
+    emitter.instruction(&format!("ldr x9, [x19, #{}]", FIBER_STATE_OFFSET));    // x9 = current fiber state after control returned
+    emitter.instruction(&format!("cmp x9, #{}", FIBER_STATE_TERMINATED));       // did the fiber finish instead of suspending again?
+    emitter.instruction("b.ne __rt_fiber_throw_return_yield");                  // suspended fibers return their next yielded transfer value
+    emit_box_null_mixed(emitter);
+    emitter.instruction("b __rt_fiber_throw_return_ready");                     // skip the yielded-value load after boxing PHP null
+    emitter.label("__rt_fiber_throw_return_yield");
+    emitter.instruction(&format!("ldr x0, [x19, #{}]", FIBER_TRANSFER_VALUE_OFFSET)); // x0 = fiber->transfer_value.lo (next yield value)
+    emitter.label("__rt_fiber_throw_return_ready");
 
     emitter.instruction("ldr x19, [sp]");                                       // restore caller's x19
     emitter.instruction("ldp x29, x30, [sp, #16]");                             // restore frame pointer and return address
@@ -413,8 +440,16 @@ pub fn emit_fiber_get_current(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: fiber_get_current ---");
     emitter.label_global("__rt_fiber_get_current");
-    abi::emit_load_symbol_to_reg(emitter, "x0", "_fiber_current", 0);           // x0 = pointer to the currently running fiber (NULL = main thread)
-    emitter.instruction("ret");                                                 // hand the current fiber pointer back to the caller
+    abi::emit_load_symbol_to_reg(emitter, "x1", "_fiber_current", 0);           // x1 = pointer to the currently running fiber (NULL = main thread)
+    emitter.instruction("cbz x1, __rt_fiber_get_current_null");                 // main-thread calls return boxed PHP null
+    emitter.instruction("mov x0, #6");                                          // runtime tag 6 = object
+    emitter.instruction("mov x2, #0");                                          // object payloads use only the low word
+    emitter.instruction("b __rt_mixed_from_value");                             // tail-call the boxer so the caller's link register is preserved
+    emitter.label("__rt_fiber_get_current_null");
+    emitter.instruction("mov x0, #8");                                          // runtime tag 8 = PHP null
+    emitter.instruction("mov x1, #0");                                          // null has no low payload word
+    emitter.instruction("mov x2, #0");                                          // null has no high payload word
+    emitter.instruction("b __rt_mixed_from_value");                             // tail-call the boxer so the caller's link register is preserved
 }
 
 /// __rt_fiber_get_return: read the value a terminated fiber returned.
@@ -442,12 +477,12 @@ pub fn emit_fiber_get_return(emitter: &mut Emitter) {
     emitter.instruction(&format!("cmp x9, #{}", FIBER_STATE_TERMINATED));       // has the fiber finished its callable?
     emitter.instruction("b.eq __rt_fiber_get_return_state_ok");                 // proceed only when the fiber has terminated
     abi::emit_symbol_address(emitter, "x0", "_fiber_msg_not_terminated");       // x0 = pointer to the static error message
-    emitter.instruction("mov x1, #59");                                         // x1 = error message length in bytes
+    emitter.instruction("mov x1, #57");                                         // x1 = error message length in bytes
     emitter.instruction("bl __rt_fiber_throw_state_error");                     // raise FiberError; this call does not return
 
     emitter.label("__rt_fiber_get_return_state_ok");
     emitter.instruction(&format!("ldr x0, [x19, #{}]", FIBER_TRANSFER_VALUE_OFFSET)); // x0 = fiber->transfer_value.lo (the closure's return value)
-    emitter.instruction("b __rt_fiber_get_return_done");
+    emitter.instruction("b __rt_fiber_get_return_done");                        // skip the NULL-receiver fallback once the return value is loaded
 
     emitter.label("__rt_fiber_get_return_null");
     emitter.instruction("mov x0, #0");                                          // safe default when a NULL receiver bypassed type checking
@@ -476,6 +511,13 @@ pub fn emit_fiber_state_getter(emitter: &mut Emitter) {
     emitter.label("__rt_fiber_state_eq_false");
     emitter.instruction("mov x0, #0");                                          // NULL fiber pointer always evaluates to false
     emitter.instruction("ret");                                                 // return false to the caller
+}
+
+fn emit_box_null_mixed(emitter: &mut Emitter) {
+    emitter.instruction("mov x0, #8");                                          // runtime tag 8 = PHP null
+    emitter.instruction("mov x1, #0");                                          // null has no low payload word
+    emitter.instruction("mov x2, #0");                                          // null has no high payload word
+    emitter.instruction("bl __rt_mixed_from_value");                            // allocate a boxed Mixed null cell for the PHP-visible result
 }
 
 fn emit_x86_64_stub(emitter: &mut Emitter, name: &str) {

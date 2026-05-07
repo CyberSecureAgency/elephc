@@ -240,20 +240,27 @@ fn emit_new_fiber(
 
     emitter.comment("new Fiber() — runtime construction");
 
-    if let Some(callable_expr) = args.first() {
+    let wrapper_label = if let Some(callable_expr) = args.first() {
         emit_expr(callable_expr, emitter, ctx, data);
+        super::fiber_wrapper::prepare_fiber_wrapper(callable_expr, ctx)
     } else {
         emitter.comment("WARNING: Fiber constructor missing $callback argument");
         abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), 0);
-    }
+        None
+    };
 
-    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the closure pointer across the immediate-load that prepares the second argument
-    abi::emit_pop_reg(emitter, abi::int_arg_reg_name(emitter.target, 0));       // pop the closure pointer into the first integer argument register for the active target ABI
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the closure pointer across constructor-argument setup
     abi::emit_load_int_immediate(
         emitter,
         abi::int_arg_reg_name(emitter.target, 1),
         class_id as i64,
     );                                                                          // load the runtime class id of Fiber into the second integer argument register
+    if let Some(label) = wrapper_label {
+        abi::emit_symbol_address(emitter, abi::int_arg_reg_name(emitter.target, 2), &label);
+    } else {
+        abi::emit_load_int_immediate(emitter, abi::int_arg_reg_name(emitter.target, 2), 0);
+    }
+    abi::emit_pop_reg(emitter, abi::int_arg_reg_name(emitter.target, 0));       // pop the closure pointer into the first integer argument register for the active target ABI
     abi::emit_call_label(emitter, "__rt_fiber_construct");                      // delegate allocation, stack setup, and field initialisation to the runtime helper
 
     // -- closure capture pre-load: when `new Fiber(function(...) use(...))` is

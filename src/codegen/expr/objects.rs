@@ -1,6 +1,7 @@
 mod access;
 mod allocation;
 pub(crate) mod dispatch;
+mod fiber_wrapper;
 mod instanceof;
 mod nullsafe;
 mod static_properties;

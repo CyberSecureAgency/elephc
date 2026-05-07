@@ -11,7 +11,7 @@
 //! | 24     | 8    | stack_top         | high address (initial SP, 16-aligned) |
 //! | 32     | 8    | stack_size        | total bytes of the stack region       |
 //! | 40     | 8    | saved_sp          | SP saved when fiber is not running    |
-//! | 48     | 16   | callable          | closure pointer + type tag            |
+//! | 48     | 16   | callable          | closure pointer + optional entry wrapper |
 //! | 64     | 8    | caller            | Fiber* of resumer (NULL = main)       |
 //! | 72     | 16   | transfer_value    | mixed cell — value in transit         |
 //! | 88     | 8    | pending_throw     | Throwable* to rethrow on resume       |

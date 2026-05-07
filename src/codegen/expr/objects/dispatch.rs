@@ -206,7 +206,7 @@ fn emit_fiber_static_method_dispatch(
                 coerce_result_to_type(emitter, ctx, data, &actual_ty, &PhpType::Mixed);
             } else {
                 abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), 0); // default suspend value placeholder — coerced into Mixed below
-                coerce_result_to_type(emitter, ctx, data, &PhpType::Int, &PhpType::Mixed);
+                coerce_result_to_type(emitter, ctx, data, &PhpType::Void, &PhpType::Mixed);
             }
             abi::emit_push_reg(emitter, abi::int_result_reg(emitter));               // shuttle the boxed Mixed pointer through the stack to land it in arg-reg 0
             abi::emit_pop_reg(emitter, abi::int_arg_reg_name(emitter.target, 0));    // pop the Mixed pointer into the first integer argument register
@@ -254,8 +254,8 @@ fn emit_fiber_instance_method_dispatch(
                     for i in 0..crate::codegen::runtime::FIBER_START_ARGS_MAX {
                         let src = abi::int_arg_reg_name(emitter.target, (i as usize) + 1);
                         let off = crate::codegen::runtime::FIBER_START_ARGS_OFFSET + i * 8;
-                        emitter.instruction(&format!("cmp x9, #{}", i + 1));         // is this slot index still within user_arg_max?
-                        emitter.instruction(&format!("b.lt {}", skip_label));        // stop spilling once we hit the capture-reserved tail
+                        emitter.instruction(&format!("cmp x9, #{}", i + 1));    // is this slot index still within user_arg_max?
+                        emitter.instruction(&format!("b.lt {}", skip_label));   // stop spilling once we hit the capture-reserved tail
                         emitter.instruction(&format!("str {}, [x0, #{}]", src, off)); // start_args[i] = caller-supplied Mixed value
                     }
                 }
@@ -264,8 +264,8 @@ fn emit_fiber_instance_method_dispatch(
                     for i in 0..crate::codegen::runtime::FIBER_START_ARGS_MAX {
                         let src = abi::int_arg_reg_name(emitter.target, (i as usize) + 1);
                         let off = crate::codegen::runtime::FIBER_START_ARGS_OFFSET + i * 8;
-                        emitter.instruction(&format!("cmp rcx, {}", i + 1));         // is this slot index still within user_arg_max?
-                        emitter.instruction(&format!("jl {}", skip_label));          // stop spilling once we hit the capture-reserved tail
+                        emitter.instruction(&format!("cmp rcx, {}", i + 1));    // is this slot index still within user_arg_max?
+                        emitter.instruction(&format!("jl {}", skip_label));     // stop spilling once we hit the capture-reserved tail
                         emitter.instruction(&format!("mov QWORD PTR [rdi + {}], {}", off, src)); // start_args[i] = caller-supplied Mixed value
                     }
                 }

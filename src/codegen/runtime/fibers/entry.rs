@@ -56,7 +56,14 @@ pub fn emit_fiber_entry(emitter: &mut Emitter) {
     emitter.instruction(&format!("mov x20, #{}", FIBER_STATE_RUNNING));         // FIBER_STATE_RUNNING constant
     emitter.instruction(&format!("str x20, [x19, #{}]", FIBER_STATE_OFFSET));   // state = Running
 
-    // -- load the captured callable and any start() arguments, then call --
+    // -- call through a generated Fiber wrapper when one is available --
+    emitter.instruction(&format!("ldr x10, [x19, #{}]", FIBER_CALLABLE_OFFSET + 8)); // x10 = optional Fiber entry wrapper pointer
+    emitter.instruction("cbz x10, __rt_fiber_entry_call_raw");                  // fall back to legacy raw callable dispatch when no wrapper was generated
+    emitter.instruction("mov x0, x19");                                         // pass Fiber* to the wrapper so it can load start args and captures
+    emitter.instruction("blr x10");                                             // call wrapper; x0 returns a boxed Mixed terminal value
+    emitter.instruction("b __rt_fiber_entry_call_done");                        // skip the raw-call fallback after wrapper dispatch succeeds
+
+    // -- legacy raw callable dispatch for non-closure callables without wrapper metadata --
     // The seven start_args slots always hold something (Mixed-null cells when the
     // user did not pass an explicit argument), so we can unconditionally load
     // x0..x6 before the call — that exhausts the AArch64 integer arg registers
@@ -64,6 +71,7 @@ pub fn emit_fiber_entry(emitter: &mut Emitter) {
     // so float captures can ride alongside int/string captures. Closures with
     // fewer parameters simply ignore the extra registers per the caller-saved
     // convention.
+    emitter.label("__rt_fiber_entry_call_raw");
     emitter.instruction(&format!("ldr x9, [x19, #{}]", FIBER_CALLABLE_OFFSET)); // x9 = closure function pointer
     emitter.instruction(&format!("ldr x0, [x19, #{}]", FIBER_START_ARGS_OFFSET)); // x0 = start_args[0]
     emitter.instruction(&format!("ldr x1, [x19, #{}]", FIBER_START_ARGS_OFFSET + 8)); // x1 = start_args[1]
@@ -80,6 +88,7 @@ pub fn emit_fiber_entry(emitter: &mut Emitter) {
     emitter.instruction(&format!("ldr d5, [x19, #{}]", FIBER_FLOAT_ARGS_OFFSET + 40)); // d5 = float_args[5]
     emitter.instruction(&format!("ldr d6, [x19, #{}]", FIBER_FLOAT_ARGS_OFFSET + 48)); // d6 = float_args[6]
     emitter.instruction("blr x9");                                              // call the closure with up to 7 int and 7 float captured args
+    emitter.label("__rt_fiber_entry_call_done");
 
     // -- store the return value into transfer_value (lo half) and mark Terminated --
     abi::emit_load_symbol_to_reg(emitter, "x19", "_fiber_current", 0);          // reload x19 — registers were clobbered across the closure call

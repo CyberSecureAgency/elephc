@@ -38,6 +38,22 @@ echo is_null(Fiber::getCurrent()) ? "null" : "not-null";
 }
 
 #[test]
+fn test_fiber_get_current_inside_is_boxed_fiber_object() {
+    let out = compile_and_run(
+        r#"<?php
+$f = new Fiber(function(): void {
+    $cur = Fiber::getCurrent();
+    echo ($cur instanceof Fiber) ? "fiber" : "not-fiber";
+    echo "/";
+    echo $cur->isRunning() ? "running" : "not-running";
+});
+$f->start();
+"#,
+    );
+    assert_eq!(out, "fiber/running");
+}
+
+#[test]
 fn test_fiber_runs_to_completion() {
     let out = compile_and_run(
         r#"<?php
@@ -62,6 +78,20 @@ echo $r;
 "#,
     );
     assert_eq!(out, "42");
+}
+
+#[test]
+fn test_fiber_suspend_without_value_yields_null() {
+    let out = compile_and_run(
+        r#"<?php
+$f = new Fiber(function(): void {
+    Fiber::suspend();
+});
+$r = $f->start();
+echo is_null($r) ? "null" : "not-null";
+"#,
+    );
+    assert_eq!(out, "null");
 }
 
 #[test]
@@ -104,6 +134,57 @@ echo $f->resume("resume-B");
 }
 
 #[test]
+fn test_fiber_terminal_return_available_only_from_get_return() {
+    let out = compile_and_run(
+        r#"<?php
+$f = new Fiber(function(): mixed {
+    return "ret";
+});
+$v = $f->start();
+echo is_null($v) ? "null" : $v;
+echo "/";
+echo $f->getReturn();
+"#,
+    );
+    assert_eq!(out, "null/ret");
+}
+
+#[test]
+fn test_fiber_resume_returns_null_when_fiber_terminates() {
+    let out = compile_and_run(
+        r#"<?php
+$f = new Fiber(function(): mixed {
+    Fiber::suspend("yield");
+    return "ret";
+});
+echo $f->start();
+echo "/";
+$v = $f->resume("go");
+echo is_null($v) ? "null" : $v;
+echo "/";
+echo $f->getReturn();
+"#,
+    );
+    assert_eq!(out, "yield/null/ret");
+}
+
+#[test]
+fn test_fiber_int_return_is_boxed_for_get_return() {
+    let out = compile_and_run(
+        r#"<?php
+$f = new Fiber(function(): int {
+    return 42;
+});
+$v = $f->start();
+echo is_null($v) ? "null" : $v;
+echo "/";
+echo $f->getReturn();
+"#,
+    );
+    assert_eq!(out, "null/42");
+}
+
+#[test]
 fn test_fiber_stack_is_released_when_object_is_freed() {
     // Each fiber owns a 256 KB stack from the heap (default 8 MB). Reassigning
     // $f over 50 iterations drops the previous Fiber's refcount to 0; the
@@ -129,7 +210,7 @@ try { Fiber::suspend(0); echo "no-throw"; }
 catch (FiberError $e) { echo $e->getMessage(); }
 "#,
     );
-    assert_eq!(out, "Cannot call Fiber::suspend() outside of a fiber");
+    assert_eq!(out, "Cannot suspend outside of a fiber");
 }
 
 #[test]
@@ -168,7 +249,7 @@ try { $f->getReturn(); echo "no-throw"; }
 catch (FiberError $e) { echo $e->getMessage(); }
 "#,
     );
-    assert_eq!(out, "Cannot get fiber return value: The fiber has not terminated");
+    assert_eq!(out, "Cannot get fiber return value: The fiber has not returned");
 }
 
 #[test]
@@ -180,7 +261,7 @@ try { $f->throw(new FiberError("x")); echo "no-throw"; }
 catch (FiberError $e) { echo $e->getMessage(); }
 "#,
     );
-    assert_eq!(out, "Cannot throw into a fiber that is not suspended");
+    assert_eq!(out, "Cannot resume a fiber that is not suspended");
 }
 
 #[test]
@@ -229,9 +310,8 @@ echo "after-start";
 
 #[test]
 fn test_fiber_start_passes_arguments_to_closure() {
-    // start(...$args) hands up to four Mixed payloads to the closure. Closure
-    // params must be typed `mixed` to receive Mixed cells; otherwise the closure
-    // would treat the cell pointer as a raw int.
+    // start(...$args) hands up to four Mixed payloads to the closure. The
+    // Fiber entry wrapper adapts those cells to the closure's declared ABI.
     let out = compile_and_run(
         r#"<?php
 $f = new Fiber(function(mixed $a, mixed $b): void {
@@ -241,6 +321,51 @@ $f->start("hello", "world");
 "#,
     );
     assert_eq!(out, "hello/world");
+}
+
+#[test]
+fn test_fiber_start_untyped_argument_receives_value() {
+    let out = compile_and_run(
+        r#"<?php
+$f = new Fiber(function($x): void {
+    echo $x;
+});
+$f->start(42);
+"#,
+    );
+    assert_eq!(out, "42");
+}
+
+#[test]
+fn test_fiber_from_closure_variable_uses_entry_wrapper() {
+    let out = compile_and_run(
+        r#"<?php
+$fn = function($x): int {
+    echo $x;
+    return $x + 1;
+};
+$f = new Fiber($fn);
+$v = $f->start(41);
+echo "/";
+echo is_null($v) ? "null" : $v;
+echo "/";
+echo $f->getReturn();
+"#,
+    );
+    assert_eq!(out, "41/null/42");
+}
+
+#[test]
+fn test_fiber_start_typed_int_argument_receives_value() {
+    let out = compile_and_run(
+        r#"<?php
+$f = new Fiber(function(int $x): void {
+    echo $x + 1;
+});
+$f->start(41);
+"#,
+    );
+    assert_eq!(out, "42");
 }
 
 #[test]
