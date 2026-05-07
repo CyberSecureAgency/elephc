@@ -43,6 +43,52 @@ pub fn emit_object_free_deep(emitter: &mut Emitter) {
     emitter.instruction("mov x10, #1");                                         // ordinary deep-free walks suppress nested collector runs
     emitter.instruction("str x10, [x9]");                                       // store release-suppressed = 1 for child cleanup
 
+    // -- Fiber special case: release the per-fiber stack before the standard struct free path --
+    // The Fiber object has zero declared PHP properties — its 104 bytes of payload past the
+    // class_id are runtime-managed fields, not Mixed/array/string slots. Walking them via the
+    // generic property-tag descriptor would read garbage. Detect Fiber by class_id and skip
+    // straight to the struct free after returning the heap-allocated stack.
+    emitter.instruction("ldr x10, [x0]");                                       // x10 = receiver class_id
+    crate::codegen::abi::emit_load_symbol_to_reg(emitter, "x11", "_fiber_class_id", 0); // x11 = compile-time class id of the built-in Fiber class
+    emitter.instruction("cmp x10, x11");                                        // is the receiver a Fiber instance?
+    emitter.instruction("b.ne __rt_object_free_deep_not_fiber");                // skip the fiber-specific cleanup path for non-Fiber receivers
+    emitter.instruction(&format!("ldr x9, [x0, #{}]", crate::codegen::runtime::FIBER_STACK_BASE_OFFSET)); // x9 = fiber stack_base (mapping start returned by mmap)
+    emitter.instruction("cbz x9, __rt_object_free_deep_fiber_no_stack");        // skip when the stack was already released by an earlier free pass
+    emitter.instruction(&format!("ldr x10, [x0, #{}]", crate::codegen::runtime::FIBER_STACK_SIZE_OFFSET)); // x10 = total mmap'd length, exactly what munmap needs
+    emitter.instruction("mov x0, x9");                                          // pass stack_base as the mapping start to release
+    emitter.instruction("mov x1, x10");                                         // pass the mapped length so munmap unmaps the entire region
+    emitter.instruction("bl __rt_fiber_free_stack");                            // return the per-fiber stack to the kernel via munmap
+    emitter.instruction("ldr x0, [sp, #0]");                                    // reload the saved Fiber object pointer for the struct free path
+    emitter.instruction(&format!("str xzr, [x0, #{}]", crate::codegen::runtime::FIBER_STACK_BASE_OFFSET)); // null the stack_base so a double-free is a clean no-op
+    emitter.instruction(&format!("str xzr, [x0, #{}]", crate::codegen::runtime::FIBER_STACK_SIZE_OFFSET)); // null the stack_size to mirror the cleared base pointer
+    emitter.label("__rt_object_free_deep_fiber_no_stack");
+
+    // -- release captured values that ride in start_args[user_arg_max..7].
+    // Each capture was incref'd at construction by emit_fiber_capture_preload,
+    // so the matching decref keeps refcount balanced. Slots [0..user_arg_max)
+    // hold $f->start() arguments which the closure body is responsible for
+    // releasing during its own scope cleanup, so we leave them alone. We
+    // unconditionally walk every potential capture slot and gate each
+    // dereference on user_arg_max — __rt_decref_any range-checks before doing
+    // anything, so spurious calls on already-zeroed slots are a no-op.
+    let user_arg_max_off = crate::codegen::runtime::FIBER_USER_ARG_MAX_OFFSET;
+    let start_args_off = crate::codegen::runtime::FIBER_START_ARGS_OFFSET;
+    emitter.instruction(&format!("ldr x9, [x0, #{}]", user_arg_max_off));       // x9 = user_arg_max — slots at indices >= user_arg_max are captures owned by the Fiber
+    emitter.instruction("str x9, [sp, #24]");                                   // park user_arg_max in the spare loop-index slot of the cleanup frame
+    for i in 0..crate::codegen::runtime::FIBER_START_ARGS_MAX {
+        let skip_label = format!("__rt_object_free_deep_fiber_capture_skip_{}", i);
+        emitter.instruction("ldr x9, [sp, #24]");                               // reload user_arg_max — earlier __rt_decref_any clobbers x9 internally
+        emitter.instruction(&format!("cmp x9, #{}", i));                        // is slot i still inside the user-arg region (slot < user_arg_max)?
+        emitter.instruction(&format!("b.gt {}", skip_label));                   // skip user-arg slots; only decref capture slots
+        emitter.instruction("ldr x0, [sp, #0]");                                // reload the saved Fiber object pointer
+        emitter.instruction(&format!("ldr x0, [x0, #{}]", start_args_off + i * 8)); // x0 = start_args[i] (capture value or string-length high half)
+        emitter.instruction("bl __rt_decref_any");                              // release the captured heap payload if x0 points into the heap
+        emitter.label(&skip_label);
+    }
+    emitter.instruction("ldr x0, [sp, #0]");                                    // reload the Fiber pointer one last time before the struct free
+    emitter.instruction("b __rt_object_free_deep_struct");                      // skip the property-tag walk and free the Fiber struct itself
+    emitter.label("__rt_object_free_deep_not_fiber");
+
     // -- derive property count from the object payload size --
     emitter.instruction("ldr w9, [x0, #-16]");                                  // load the object payload size from the heap header
     emitter.instruction("sub x9, x9, #8");                                      // subtract the leading class_id field

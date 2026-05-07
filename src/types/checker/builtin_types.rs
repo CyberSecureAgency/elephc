@@ -32,7 +32,7 @@ pub(crate) fn inject_builtin_throwables(
     interface_map: &mut HashMap<String, InterfaceDeclInfo>,
     class_map: &mut HashMap<String, FlattenedClass>,
 ) -> Result<(), CompileError> {
-    for builtin_name in ["Throwable", "Exception"] {
+    for builtin_name in ["Throwable", "Exception", "Fiber", "FiberError"] {
         let builtin_key = php_symbol_key(builtin_name);
         if interface_map
             .keys()
@@ -43,7 +43,7 @@ pub(crate) fn inject_builtin_throwables(
         {
             return Err(CompileError::new(
                 crate::span::Span::dummy(),
-                &format!("Cannot redeclare built-in exception type: {}", builtin_name),
+                &format!("Cannot redeclare built-in type: {}", builtin_name),
             ));
         }
     }
@@ -71,6 +71,41 @@ pub(crate) fn inject_builtin_throwables(
                 builtin_exception_constructor_method(),
                 builtin_exception_get_message_method(),
             ],
+        },
+    );
+
+    // Fiber: cooperative coroutine class. Methods are placeholders here — the
+    // codegen intercepts every Fiber operation (`new Fiber(...)`, instance
+    // methods, `Fiber::suspend`, `Fiber::getCurrent`) and emits direct calls
+    // into the `__rt_fiber_*` runtime helpers. Bodies are nominal returns so
+    // the type checker sees a well-formed declaration.
+    class_map.insert(
+        "Fiber".to_string(),
+        FlattenedClass {
+            name: "Fiber".to_string(),
+            extends: None,
+            implements: Vec::new(),
+            is_abstract: false,
+            is_final: true,
+            is_readonly_class: false,
+            properties: Vec::new(),
+            methods: builtin_fiber_methods(),
+        },
+    );
+
+    // FiberError: extends the standard Exception so catch(Exception) and
+    // catch(FiberError) both behave per PHP semantics.
+    class_map.insert(
+        "FiberError".to_string(),
+        FlattenedClass {
+            name: "FiberError".to_string(),
+            extends: Some("Exception".to_string()),
+            implements: Vec::new(),
+            is_abstract: false,
+            is_final: false,
+            is_readonly_class: false,
+            properties: Vec::new(),
+            methods: Vec::new(),
         },
     );
 
@@ -153,6 +188,153 @@ fn builtin_exception_get_message_method() -> ClassMethod {
     }
 }
 
+fn fiber_method_dummy_body_return_null() -> Vec<Stmt> {
+    vec![Stmt::new(
+        StmtKind::Return(Some(Expr::new(
+            ExprKind::Null,
+            crate::span::Span::dummy(),
+        ))),
+        crate::span::Span::dummy(),
+    )]
+}
+
+fn fiber_method_dummy_body_return_false() -> Vec<Stmt> {
+    vec![Stmt::new(
+        StmtKind::Return(Some(Expr::new(
+            ExprKind::BoolLiteral(false),
+            crate::span::Span::dummy(),
+        ))),
+        crate::span::Span::dummy(),
+    )]
+}
+
+fn builtin_fiber_methods() -> Vec<ClassMethod> {
+    let span = crate::span::Span::dummy();
+    let null_default = || Some(Expr::new(ExprKind::Null, span));
+    let is_state_predicate =
+        |name: &str| ClassMethod {
+            name: name.to_string(),
+            visibility: Visibility::Public,
+            is_static: false,
+            is_abstract: false,
+            is_final: true,
+            has_body: true,
+            params: Vec::new(),
+            variadic: None,
+            return_type: None,
+            body: fiber_method_dummy_body_return_false(),
+            span,
+        };
+
+    vec![
+        // __construct(callable $callback): void
+        ClassMethod {
+            name: "__construct".to_string(),
+            visibility: Visibility::Public,
+            is_static: false,
+            is_abstract: false,
+            is_final: true,
+            has_body: true,
+            params: vec![("callback".to_string(), None, None, false)],
+            variadic: None,
+            return_type: None,
+            body: Vec::new(),
+            span,
+        },
+        // start(): mixed — bodies are dummy because codegen intercepts the call.
+        // (Variadic ...$args support is deferred — closures captured by Fiber currently
+        // receive no arguments at start time.)
+        ClassMethod {
+            name: "start".to_string(),
+            visibility: Visibility::Public,
+            is_static: false,
+            is_abstract: false,
+            is_final: true,
+            has_body: true,
+            params: Vec::new(),
+            variadic: None,
+            return_type: None,
+            body: fiber_method_dummy_body_return_null(),
+            span,
+        },
+        // resume(?$value = null): mixed
+        ClassMethod {
+            name: "resume".to_string(),
+            visibility: Visibility::Public,
+            is_static: false,
+            is_abstract: false,
+            is_final: true,
+            has_body: true,
+            params: vec![("value".to_string(), None, null_default(), false)],
+            variadic: None,
+            return_type: None,
+            body: fiber_method_dummy_body_return_null(),
+            span,
+        },
+        // throw(Throwable $exception): mixed
+        ClassMethod {
+            name: "throw".to_string(),
+            visibility: Visibility::Public,
+            is_static: false,
+            is_abstract: false,
+            is_final: true,
+            has_body: true,
+            params: vec![("exception".to_string(), None, None, false)],
+            variadic: None,
+            return_type: None,
+            body: fiber_method_dummy_body_return_null(),
+            span,
+        },
+        // getReturn(): mixed
+        ClassMethod {
+            name: "getReturn".to_string(),
+            visibility: Visibility::Public,
+            is_static: false,
+            is_abstract: false,
+            is_final: true,
+            has_body: true,
+            params: Vec::new(),
+            variadic: None,
+            return_type: None,
+            body: fiber_method_dummy_body_return_null(),
+            span,
+        },
+        // isStarted/isSuspended/isRunning/isTerminated(): bool
+        is_state_predicate("isStarted"),
+        is_state_predicate("isSuspended"),
+        is_state_predicate("isRunning"),
+        is_state_predicate("isTerminated"),
+        // static suspend($value = null): mixed
+        ClassMethod {
+            name: "suspend".to_string(),
+            visibility: Visibility::Public,
+            is_static: true,
+            is_abstract: false,
+            is_final: true,
+            has_body: true,
+            params: vec![("value".to_string(), None, null_default(), false)],
+            variadic: None,
+            return_type: None,
+            body: fiber_method_dummy_body_return_null(),
+            span,
+        },
+        // static getCurrent(): ?Fiber
+        ClassMethod {
+            name: "getCurrent".to_string(),
+            visibility: Visibility::Public,
+            is_static: true,
+            is_abstract: false,
+            is_final: true,
+            has_body: true,
+            params: Vec::new(),
+            variadic: None,
+            return_type: None,
+            body: fiber_method_dummy_body_return_null(),
+            span,
+        },
+    ]
+}
+
 fn builtin_throwable_get_message_method() -> ClassMethod {
     ClassMethod {
         name: "getMessage".to_string(),
@@ -185,6 +367,72 @@ pub(crate) fn patch_builtin_exception_signatures(checker: &mut Checker) {
         if let Some(sig) = class_info.methods.get_mut(&php_symbol_key("getMessage")) {
             sig.return_type = PhpType::Str;
         }
+    }
+}
+
+pub(crate) fn patch_builtin_fiber_signatures(checker: &mut Checker) {
+    // Values transferred in/out of a fiber are typed `mixed` so the codegen
+    // boxes scalars (int, string, …) into Mixed cells at the call site. The
+    // runtime then just shuffles 8-byte cell pointers through transfer_value;
+    // the type tag rides along inside the heap cell that the pointer addresses.
+    let throwable_ty = PhpType::Object("Throwable".to_string());
+    let Some(class_info) = checker.classes.get_mut("Fiber") else {
+        return;
+    };
+
+    if let Some(sig) = class_info.methods.get_mut("__construct") {
+        if let Some(param) = sig.params.get_mut(0) {
+            param.1 = PhpType::Callable;
+        }
+        sig.return_type = PhpType::Void;
+    }
+    if let Some(sig) = class_info.methods.get_mut("start") {
+        // Allow up to 7 Mixed arguments to be forwarded to the fiber's closure
+        // — that exhausts the AArch64 integer arg registers available after
+        // $this. Each slot has a `null` default so $f->start() with no args
+        // still type-checks, while $f->start($a, $b) fills slots 0..2 and
+        // leaves slots 2..7 at the null default. Closures with `use(...)`
+        // captures are not yet supported — captures would be passed as
+        // trailing arguments, which we cannot supply from here.
+        let span = crate::span::Span::dummy();
+        sig.params = (0..7)
+            .map(|i| (format!("arg{}", i), PhpType::Mixed))
+            .collect();
+        sig.defaults = (0..7)
+            .map(|_| Some(Expr::new(ExprKind::Null, span)))
+            .collect();
+        sig.ref_params = vec![false; 7];
+        sig.declared_params = vec![false; 7];
+        sig.return_type = PhpType::Mixed;
+    }
+    if let Some(sig) = class_info.methods.get_mut("resume") {
+        if let Some(param) = sig.params.get_mut(0) {
+            param.1 = PhpType::Mixed;
+        }
+        sig.return_type = PhpType::Mixed;
+    }
+    if let Some(sig) = class_info.methods.get_mut("throw") {
+        if let Some(param) = sig.params.get_mut(0) {
+            param.1 = throwable_ty.clone();
+        }
+        sig.return_type = PhpType::Mixed;
+    }
+    if let Some(sig) = class_info.methods.get_mut("getReturn") {
+        sig.return_type = PhpType::Mixed;
+    }
+    for predicate in ["isStarted", "isSuspended", "isRunning", "isTerminated"] {
+        if let Some(sig) = class_info.methods.get_mut(predicate) {
+            sig.return_type = PhpType::Bool;
+        }
+    }
+    if let Some(sig) = class_info.methods.get_mut("suspend") {
+        if let Some(param) = sig.params.get_mut(0) {
+            param.1 = PhpType::Mixed;
+        }
+        sig.return_type = PhpType::Mixed;
+    }
+    if let Some(sig) = class_info.methods.get_mut("getCurrent") {
+        sig.return_type = PhpType::Mixed;
     }
 }
 

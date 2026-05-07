@@ -7,8 +7,8 @@ use crate::parser::ast::{Program, StmtKind};
 use crate::types::{traits::flatten_classes, TypeEnv};
 
 use super::builtin_types::{
-    inject_builtin_throwables, patch_builtin_exception_signatures, patch_magic_method_signatures,
-    InterfaceDeclInfo,
+    inject_builtin_throwables, patch_builtin_exception_signatures,
+    patch_builtin_fiber_signatures, patch_magic_method_signatures, InterfaceDeclInfo,
 };
 use super::builtin_iterators::inject_builtin_iterators;
 use super::schema::{
@@ -140,6 +140,7 @@ pub(super) fn check_types_impl(
         }
     }
     patch_builtin_exception_signatures(&mut checker);
+    patch_builtin_fiber_signatures(&mut checker);
     patch_magic_method_signatures(&mut checker);
 
     checker.prescan_extern_decls(program, &mut errors);

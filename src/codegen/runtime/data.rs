@@ -28,6 +28,10 @@ pub(crate) fn emit_runtime_data_fixed(heap_size: usize) -> String {
     out.push_str(".comm _exc_handler_top, 8, 3\n");
     out.push_str(".comm _exc_call_frame_top, 8, 3\n");
     out.push_str(".comm _exc_value, 8, 3\n");
+    out.push_str(".comm _fiber_current, 8, 3\n");
+    out.push_str(".comm _fiber_main_saved_sp, 8, 3\n");
+    out.push_str(".comm _fiber_main_saved_exc, 8, 3\n");
+    out.push_str(".comm _fiber_main_saved_call_frame, 8, 3\n");
     out.push_str(".comm _rt_diag_suppression, 8, 3\n");
     out.push_str(&format!(".comm _heap_buf, {}, 3\n", heap_size));
     out.push_str(".comm _heap_off, 8, 3\n");
@@ -55,6 +59,11 @@ pub(crate) fn emit_runtime_data_fixed(heap_size: usize) -> String {
     out.push_str(".globl _diag_file_get_contents_failed_msg\n_diag_file_get_contents_failed_msg:\n    .ascii \"Warning: file_get_contents(): Failed to open stream\\n\"\n");
     out.push_str(".globl _diag_fopen_failed_msg\n_diag_fopen_failed_msg:\n    .ascii \"Warning: fopen(): Failed to open stream\\n\"\n");
     out.push_str(".globl _diag_define_already_defined_msg\n_diag_define_already_defined_msg:\n    .ascii \"Warning: define(): Constant already defined\\n\"\n");
+    out.push_str(".globl _fiber_msg_already_started\n_fiber_msg_already_started:\n    .ascii \"Cannot start a fiber that has already been started\"\n");
+    out.push_str(".globl _fiber_msg_not_suspended\n_fiber_msg_not_suspended:\n    .ascii \"Cannot resume a fiber that is not suspended\"\n");
+    out.push_str(".globl _fiber_msg_throw_not_suspended\n_fiber_msg_throw_not_suspended:\n    .ascii \"Cannot throw into a fiber that is not suspended\"\n");
+    out.push_str(".globl _fiber_msg_not_terminated\n_fiber_msg_not_terminated:\n    .ascii \"Cannot get fiber return value: The fiber has not terminated\"\n");
+    out.push_str(".globl _fiber_msg_suspend_outside\n_fiber_msg_suspend_outside:\n    .ascii \"Cannot call Fiber::suspend() outside of a fiber\"\n");
     out.push_str(".comm _gc_allocs, 8, 3\n");
     out.push_str(".comm _gc_frees, 8, 3\n");
     out.push_str(".comm _gc_live, 8, 3\n");
@@ -318,6 +327,26 @@ pub(crate) fn emit_runtime_data_user(
     out.push_str(".data\n");
     out.push_str(".p2align 3\n");
     emit_instanceof_target_lookup_data(&mut out, &sorted_interfaces, &sorted_classes);
+
+    // Per-program class id of the built-in `Fiber` class. The fiber runtime
+    // checks this against the receiver's class_id in __rt_object_free_deep so
+    // that a Fiber being garbage-collected releases its 256 KB stack instead
+    // of leaking it. Defaults to u64::MAX when Fiber is not in scope (which
+    // never happens in practice — Fiber is always injected as a built-in).
+    let fiber_class_id = class_id_by_name
+        .get("Fiber")
+        .copied()
+        .unwrap_or(u64::MAX);
+    out.push_str(".globl _fiber_class_id\n_fiber_class_id:\n");
+    out.push_str(&format!("    .quad {}\n", fiber_class_id));
+
+    let fiber_error_class_id = class_id_by_name
+        .get("FiberError")
+        .copied()
+        .unwrap_or(u64::MAX);
+    out.push_str(".globl _fiber_error_class_id\n_fiber_error_class_id:\n");
+    out.push_str(&format!("    .quad {}\n", fiber_error_class_id));
+
     out.push_str(".globl _interface_count\n_interface_count:\n");
     out.push_str(&format!("    .quad {}\n", sorted_interfaces.len()));
     out.push_str(".globl _interface_method_ptrs\n_interface_method_ptrs:\n");

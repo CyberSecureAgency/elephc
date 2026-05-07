@@ -2,6 +2,7 @@ use super::arrays;
 use super::buffers;
 use super::diagnostics;
 use super::exceptions;
+use super::fibers;
 use super::io;
 use super::pointers;
 use super::strings;
@@ -259,6 +260,22 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter) {
     pointers::emit_ptr_check_nonnull(emitter);
     pointers::emit_str_to_cstr(emitter);
     pointers::emit_cstr_to_str(emitter);
+
+    // Fiber runtime functions (cooperative coroutines)
+    fibers::emit_fiber_alloc_stack(emitter);
+    fibers::emit_fiber_free_stack(emitter);
+    fibers::emit_fiber_switch(emitter);
+    fibers::emit_fiber_invoke_callable_stub(emitter);
+    fibers::emit_fiber_entry(emitter);
+    fibers::emit_fiber_construct(emitter);
+    fibers::emit_fiber_throw_state_error(emitter);
+    fibers::emit_fiber_start(emitter);
+    fibers::emit_fiber_resume(emitter);
+    fibers::emit_fiber_suspend(emitter);
+    fibers::emit_fiber_throw(emitter);
+    fibers::emit_fiber_get_current(emitter);
+    fibers::emit_fiber_get_return(emitter);
+    fibers::emit_fiber_state_getter(emitter);
 }
 
 fn emit_optional_linux_crypto_decls(emitter: &mut Emitter) {
@@ -287,4 +304,32 @@ mod tests {
         assert!(!asm.contains("arc4random_uniform"));
     }
 
+    #[test]
+    fn test_aarch64_runtime_emits_fiber_routines() {
+        let mut emitter = Emitter::new(Target::new(Platform::MacOS, Arch::AArch64));
+        emit_runtime(&mut emitter);
+        let asm = emitter.output();
+
+        for sym in [
+            "__rt_fiber_alloc_stack",
+            "__rt_fiber_free_stack",
+            "__rt_fiber_switch",
+            "__rt_fiber_invoke_callable",
+            "__rt_fiber_entry",
+            "__rt_fiber_construct",
+            "__rt_fiber_start",
+            "__rt_fiber_resume",
+            "__rt_fiber_suspend",
+            "__rt_fiber_throw",
+            "__rt_fiber_get_current",
+            "__rt_fiber_get_return",
+            "__rt_fiber_state_eq",
+        ] {
+            assert!(
+                asm.contains(&format!(".globl {}\n", sym)),
+                "fiber runtime missing global symbol {}",
+                sym
+            );
+        }
+    }
 }

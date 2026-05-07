@@ -11,7 +11,8 @@ use crate::parser::ast::{Expr, StaticReceiver};
 use crate::types::PhpType;
 
 use super::super::{
-    emit_expr, restore_concat_offset_after_nested_call, save_concat_offset_before_nested_call,
+    coerce_result_to_type, emit_expr, restore_concat_offset_after_nested_call,
+    save_concat_offset_before_nested_call,
 };
 
 use enums::emit_enum_static_method_call;
@@ -177,10 +178,144 @@ pub(super) fn emit_method_call_with_pushed_args(
     let assignments = compute_register_assignments(emitter, arg_types, 1);
     abi::emit_pop_reg(emitter, abi::int_arg_reg_name(emitter.target, 0));      // pop $this into the first integer argument register for the target ABI
     let overflow_bytes = pop_args_to_registers(emitter, &assignments);
-    let ret_ty = emit_dispatch_instance_method(class_name, method, emitter, ctx);
+    let ret_ty = if class_name == "Fiber" {
+        emit_fiber_instance_method_dispatch(method, emitter, ctx)
+    } else {
+        emit_dispatch_instance_method(class_name, method, emitter, ctx)
+    };
     abi::emit_release_temporary_stack(emitter, overflow_bytes);                 // drop spilled stack arguments after the method call returns
     abi::emit_release_temporary_stack(emitter, source_temp_bytes);              // drop source-order named-argument temporaries after dispatch
     ret_ty
+}
+
+/// Codegen interception for `Fiber::suspend(...)` and `Fiber::getCurrent()`.
+fn emit_fiber_static_method_dispatch(
+    method: &str,
+    args: &[Expr],
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> PhpType {
+    emitter.comment(&format!("Fiber::{}() — runtime dispatch", method));
+    match method {
+        "suspend" => {
+            // Coerce the supplied value (or the implicit null) to Mixed so the
+            // runtime always sees an 8-byte heap-cell pointer in transfer_value.
+            if let Some(value_expr) = args.first() {
+                let actual_ty = emit_expr(value_expr, emitter, ctx, data);
+                coerce_result_to_type(emitter, ctx, data, &actual_ty, &PhpType::Mixed);
+            } else {
+                abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), 0); // default suspend value placeholder — coerced into Mixed below
+                coerce_result_to_type(emitter, ctx, data, &PhpType::Int, &PhpType::Mixed);
+            }
+            abi::emit_push_reg(emitter, abi::int_result_reg(emitter));               // shuttle the boxed Mixed pointer through the stack to land it in arg-reg 0
+            abi::emit_pop_reg(emitter, abi::int_arg_reg_name(emitter.target, 0));    // pop the Mixed pointer into the first integer argument register
+            abi::emit_call_label(emitter, "__rt_fiber_suspend");
+            PhpType::Mixed
+        }
+        "getcurrent" => {
+            abi::emit_call_label(emitter, "__rt_fiber_get_current");
+            PhpType::Mixed
+        }
+        other => {
+            emitter.comment(&format!("WARNING: unknown Fiber static method {}", other));
+            PhpType::Mixed
+        }
+    }
+}
+
+/// Codegen interception for instance method calls on `Fiber`. By the time we
+/// reach this point, `$this` is already loaded into integer arg-reg 0 and any
+/// declared arguments are in arg-regs 1..N. We bypass vtable dispatch and call
+/// the matching `__rt_fiber_*` helper directly.
+fn emit_fiber_instance_method_dispatch(
+    method: &str,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+) -> PhpType {
+    use crate::codegen::platform::Arch;
+    let arg1 = abi::int_arg_reg_name(emitter.target, 1);
+    match method {
+        "start" => {
+            // start() takes up to 7 Mixed arguments which the codegen has just
+            // loaded into integer arg-regs 1..7. Spill them into the Fiber
+            // object's start_args[0..7] slots so the trampoline can hand them
+            // to the closure on the fresh fiber stack.
+            //
+            // Honour `user_arg_max` so trailing slots that hold pre-loaded
+            // closure captures (set by `new Fiber(function() use(...))`) are
+            // not overwritten. user_arg_max defaults to 7, so fibers built
+            // from a non-capturing callable still fill every slot.
+            let max_arg_off = crate::codegen::runtime::FIBER_USER_ARG_MAX_OFFSET;
+            let skip_label = ctx.next_label("fiber_start_args_done");
+            match emitter.target.arch {
+                Arch::AArch64 => {
+                    emitter.instruction(&format!("ldr x9, [x0, #{}]", max_arg_off)); // x9 = how many start_args slots start() may write
+                    for i in 0..crate::codegen::runtime::FIBER_START_ARGS_MAX {
+                        let src = abi::int_arg_reg_name(emitter.target, (i as usize) + 1);
+                        let off = crate::codegen::runtime::FIBER_START_ARGS_OFFSET + i * 8;
+                        emitter.instruction(&format!("cmp x9, #{}", i + 1));         // is this slot index still within user_arg_max?
+                        emitter.instruction(&format!("b.lt {}", skip_label));        // stop spilling once we hit the capture-reserved tail
+                        emitter.instruction(&format!("str {}, [x0, #{}]", src, off)); // start_args[i] = caller-supplied Mixed value
+                    }
+                }
+                Arch::X86_64 => {
+                    emitter.instruction(&format!("mov rcx, QWORD PTR [rdi + {}]", max_arg_off)); // rcx = how many start_args slots start() may write
+                    for i in 0..crate::codegen::runtime::FIBER_START_ARGS_MAX {
+                        let src = abi::int_arg_reg_name(emitter.target, (i as usize) + 1);
+                        let off = crate::codegen::runtime::FIBER_START_ARGS_OFFSET + i * 8;
+                        emitter.instruction(&format!("cmp rcx, {}", i + 1));         // is this slot index still within user_arg_max?
+                        emitter.instruction(&format!("jl {}", skip_label));          // stop spilling once we hit the capture-reserved tail
+                        emitter.instruction(&format!("mov QWORD PTR [rdi + {}], {}", off, src)); // start_args[i] = caller-supplied Mixed value
+                    }
+                }
+            }
+            emitter.label(&skip_label);
+            abi::emit_call_label(emitter, "__rt_fiber_start");
+            PhpType::Mixed
+        }
+        "resume" => {
+            abi::emit_call_label(emitter, "__rt_fiber_resume");
+            PhpType::Mixed
+        }
+        "throw" => {
+            abi::emit_call_label(emitter, "__rt_fiber_throw");
+            PhpType::Mixed
+        }
+        "getreturn" => {
+            abi::emit_call_label(emitter, "__rt_fiber_get_return");
+            PhpType::Mixed
+        }
+        "isstarted" => {
+            // isStarted is true whenever the fiber state is NOT NotStarted (== 0).
+            abi::emit_load_int_immediate(emitter, arg1, 0);                     // FIBER_STATE_NOT_STARTED
+            abi::emit_call_label(emitter, "__rt_fiber_state_eq");
+            match emitter.target.arch {
+                Arch::AArch64 => emitter.instruction("eor x0, x0, #1"),         // invert: !(state == NotStarted)
+                Arch::X86_64 => emitter.instruction("xor rax, 1"),              // invert the boolean predicate result
+            }
+            PhpType::Bool
+        }
+        "isrunning" => {
+            abi::emit_load_int_immediate(emitter, arg1, 1);                     // FIBER_STATE_RUNNING
+            abi::emit_call_label(emitter, "__rt_fiber_state_eq");
+            PhpType::Bool
+        }
+        "issuspended" => {
+            abi::emit_load_int_immediate(emitter, arg1, 2);                     // FIBER_STATE_SUSPENDED
+            abi::emit_call_label(emitter, "__rt_fiber_state_eq");
+            PhpType::Bool
+        }
+        "isterminated" => {
+            abi::emit_load_int_immediate(emitter, arg1, 3);                     // FIBER_STATE_TERMINATED
+            abi::emit_call_label(emitter, "__rt_fiber_state_eq");
+            PhpType::Bool
+        }
+        other => {
+            emitter.comment(&format!("WARNING: unknown Fiber method {}", other));
+            PhpType::Mixed
+        }
+    }
 }
 
 pub(super) fn emit_method_call_with_saved_receiver_below_args(
@@ -352,6 +487,9 @@ pub(super) fn emit_static_method_call(
     };
     if ctx.enums.contains_key(&class_name) {
         return emit_enum_static_method_call(&class_name, method, args, emitter, ctx, data);
+    }
+    if class_name == "Fiber" {
+        return emit_fiber_static_method_dispatch(method, args, emitter, ctx, data);
     }
     emitter.comment(&format!("{}::{}()", class_name, method));
 

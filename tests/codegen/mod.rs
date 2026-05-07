@@ -1,4 +1,5 @@
 mod exceptions;
+mod fibers;
 mod buffers;
 mod preprocessor;
 mod namespaces;

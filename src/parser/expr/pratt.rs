@@ -54,6 +54,13 @@ pub(super) fn parse_expr_bp(
                         *pos += 1;
                         name
                     }
+                    // PHP 7+ allows reserved keywords as method/property names after `->`.
+                    // Whitelist the keywords known to appear as method names in built-in
+                    // and library APIs (e.g. `Fiber::throw`, `Generator::throw`).
+                    Some(Token::Throw) => {
+                        *pos += 1;
+                        "throw".to_string()
+                    }
                     _ => {
                         return Err(CompileError::new(
                             arrow_span,
