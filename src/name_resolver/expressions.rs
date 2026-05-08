@@ -30,6 +30,21 @@ pub(super) fn resolve_expr(
         ExprKind::Print(inner) => {
             ExprKind::Print(Box::new(resolve_expr(inner, current_namespace, imports, symbols)))
         }
+        ExprKind::Not(inner) => {
+            ExprKind::Not(Box::new(resolve_expr(inner, current_namespace, imports, symbols)))
+        }
+        ExprKind::Negate(inner) => {
+            ExprKind::Negate(Box::new(resolve_expr(inner, current_namespace, imports, symbols)))
+        }
+        ExprKind::BitNot(inner) => {
+            ExprKind::BitNot(Box::new(resolve_expr(inner, current_namespace, imports, symbols)))
+        }
+        ExprKind::ErrorSuppress(inner) => ExprKind::ErrorSuppress(Box::new(resolve_expr(
+            inner,
+            current_namespace,
+            imports,
+            symbols,
+        ))),
         ExprKind::NullCoalesce { value, default } => ExprKind::NullCoalesce {
             value: Box::new(resolve_expr(value, current_namespace, imports, symbols)),
             default: Box::new(resolve_expr(default, current_namespace, imports, symbols)),

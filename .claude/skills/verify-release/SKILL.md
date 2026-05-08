@@ -6,7 +6,7 @@ user-invocable: true
 
 # Pre-Release Verification
 
-You are a meticulous release engineer for the elephc PHP-to-ARM64 compiler. Your job is to verify that everything is consistent, documented, tested, and working before a version tag.
+You are a meticulous release engineer for the elephc PHP-to-native compiler. Your job is to verify that everything is consistent, documented, tested, and working before a version tag across the supported target matrix.
 
 ## Steps
 
@@ -22,14 +22,18 @@ Read `README.md`. Cross-check against the actual codebase:
 
 ### 2. Documentation (docs/)
 
-Docs are split across three sections: `docs/php/` (standard PHP), `docs/beyond-php/` (compiler extensions), and `docs/internals/` (compiler internals). Read the relevant pages for each category:
+Docs use the current Astro-compatible tree: `docs/README.md`, `docs/getting-started/`, `docs/php/` (standard PHP), `docs/beyond-php/` (compiler extensions), and `docs/internals/` (compiler internals). Every Markdown file must have YAML frontmatter with `title`, `description`, and `sidebar.order`, and body content must not add a top-level `#` heading.
+
+Read the relevant pages for each category:
 
 - **Data types** (`docs/php/types.md`): verify each type's "Supported" status is accurate.
 - **Operators** (`docs/php/operators.md`): verify all `BinOp` variants in `src/parser/ast.rs` are documented.
-- **Built-in functions** (`docs/php/strings.md`, `arrays.md`, `math.md`, `system-and-io.md`, `functions.md`): for EVERY function listed in the builtins codegen (`src/codegen/builtins/*/mod.rs` match arms), verify it appears in the relevant doc page with correct signature. List any missing.
+- **Built-in functions** (`docs/php/strings.md`, `arrays.md`, `math.md`, `system-and-io.md`, `functions.md`, `types.md`): for EVERY function listed in the builtins codegen (`src/codegen/builtins/*/mod.rs` match arms), verify it appears in the relevant doc page with correct signature. Pointer and buffer helpers belong under `docs/beyond-php/`.
 - **Compiler extensions** (`docs/beyond-php/*.md`): verify pointers, buffers, packed classes, extern FFI, and ifdef features match the codebase.
+- **Internals** (`docs/internals/*.md`): verify architecture, lexer, parser, type checker, codegen, runtime, optimizer, and memory model pages match the current source tree.
 - **"Not supported yet" notes**: verify none of them refer to features that have actually been implemented.
 - **Known incompatibilities**: verify they are still accurate.
+- **Cross-links**: verify relative Markdown links point to existing files. Ignore fenced code blocks and inline code spans when scanning links/headings.
 
 ### 3. ROADMAP.md Consistency
 
@@ -41,10 +45,10 @@ Read the current version section in `ROADMAP.md`:
 
 ### 4. Test Coverage
 
-Read test function names from all test files (`tests/*.rs`). For each implemented feature, check:
+Read test function names from all test files (`tests/*.rs` and `tests/**/*.rs`). For each implemented feature, check:
 
-- **Codegen tests** (`tests/codegen_tests.rs`): every built-in function should have at least 1 test. Every operator should have at least 1 test. Every statement type should have at least 1 test. List functions/features with ZERO tests.
-- **Error tests** (`tests/error_tests.rs`): every built-in function that validates argument count should have an error test. List functions missing error tests.
+- **Codegen tests** (`tests/codegen_tests.rs`, `tests/codegen/`): every built-in function should have at least 1 test. Every operator should have at least 1 test. Every statement type should have at least 1 test. List functions/features with ZERO tests.
+- **Error tests** (`tests/error_tests.rs`, `tests/error_tests/`): every built-in function that validates argument count should have an error test. List functions missing error tests.
 - **Lexer tests** (`tests/lexer_tests.rs`): every new token type should have a test.
 - **Parser tests** (`tests/parser_tests.rs`): every new AST construct should have a test.
 
@@ -65,21 +69,21 @@ Report features that have no example coverage.
 
 ### 6. Code Style Compliance
 
-Check that the codebase follows the project's mandatory conventions from CLAUDE.md:
+Check that the codebase follows the project's mandatory conventions from `AGENTS.md`:
 
 - **Assembly comment policy**: every `emitter.instruction(...)` call in `src/codegen/` MUST have an inline `//` comment. Scan all codegen files and report any instruction line WITHOUT a comment. Use this check:
   ```
   grep -rn 'emitter.instruction(' src/codegen/ | grep -v '//' | head -20
   ```
-- **Comment alignment**: the `//` on instruction lines must start at column 81. Run the alignment verification script from CLAUDE.md on all codegen files and report misaligned lines.
+- **Comment alignment**: the `//` on instruction lines must start at column 81. Run the alignment verification script from `AGENTS.md` on all codegen files and report misaligned lines.
 - **Block comments**: related instruction groups should have `// -- description --` block comments before them. Spot-check a few files for missing block comments.
-- **File organization**: builtins and runtime must follow one-file-per-function structure. Check that no file in `src/codegen/builtins/*/` or `src/codegen/runtime/*/` contains more than one `pub fn`. Report any violations.
+- **File organization**: builtins and runtime emitters should stay cohesive and avoid mixed responsibilities. Leaf builtin/runtime emitter files should usually contain one emitter function; dispatcher/re-export files (`mod.rs`), runtime data emission, tests, and tightly cohesive multi-helper runtime modules should be reviewed for responsibility boundaries rather than flagged mechanically.
 - **Zero compiler warnings**: `cargo build` must produce zero warnings.
 - **No Co-Authored-By**: verify no commit in the recent history has a Co-Authored-By line.
 
 ### 7. Full Test Suite Execution
 
-Run `cargo build` first to verify zero warnings, then run `cargo test` and report:
+Run `cargo build` first to verify zero warnings, then run `cargo test` and report. If the user explicitly asks to skip tests, do not run `cargo test` or target Docker scripts; mark the test-suite section as skipped by request and still run the non-test checks.
 
 - Total test count per test file
 - Any failures (with details)

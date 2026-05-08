@@ -1,0 +1,122 @@
+<?php
+
+// Fiber: cooperative coroutines (PHP 8.1+).
+// A fiber owns its own call stack and can suspend execution at any depth.
+// Control alternates explicitly between the caller and the fiber via
+// $f->start() / $f->resume($v) and Fiber::suspend($v).
+
+// 1) Run a fiber to completion without suspending.
+$hello = new Fiber(function(): void {
+    echo "hello from inside the fiber\n";
+});
+echo "before start\n";
+$hello->start();
+echo "after start, terminated=";
+if ($hello->isTerminated()) {
+    echo "true\n";
+} else {
+    echo "false\n";
+}
+
+// 2) Round-trip values across suspend/resume.
+//    Suspend/resume pass values as Mixed payloads, so any scalar or string
+//    flows through transparently. Echoing each Mixed cell back unboxes it
+//    via __rt_mixed_write_stdout.
+$counter = new Fiber(function(): void {
+    $a = Fiber::suspend("first");
+    echo " [got " . $a . "]";
+    $b = Fiber::suspend("second");
+    echo " [got " . $b . "]";
+    Fiber::suspend("third");
+});
+echo "round trip: ";
+echo $counter->start();              // prints "first"
+echo "/";
+echo $counter->resume("alpha");      // prints " [got alpha]second"
+echo "/";
+echo $counter->resume("beta");       // prints " [got beta]third"
+echo "\n";
+
+// 3) Cooperative scheduler over two fibers.
+//    Each fiber yields after each step; the main loop interleaves them
+//    until both terminate.
+$ping = new Fiber(function(): void {
+    Fiber::suspend("p1");
+    Fiber::suspend("p3");
+    Fiber::suspend("p5");
+});
+$pong = new Fiber(function(): void {
+    Fiber::suspend("o2");
+    Fiber::suspend("o4");
+    Fiber::suspend("o6");
+});
+
+echo "interleaved:";
+$a = $ping->start();
+$b = $pong->start();
+echo " " . $a . " " . $b;
+while (!$ping->isTerminated() || !$pong->isTerminated()) {
+    if (!$ping->isTerminated()) {
+        $a = $ping->resume("");
+        echo " " . $a;
+    }
+    if (!$pong->isTerminated()) {
+        $b = $pong->resume("");
+        echo " " . $b;
+    }
+}
+echo "\n";
+
+// 4) Fiber->throw() re-raises an exception at the pending suspend point.
+//    The fiber's own try/catch sees the exception and can recover from it.
+$err = new Fiber(function(): void {
+    try {
+        Fiber::suspend(0);
+        echo "not reached\n";
+    } catch (FiberError $e) {
+        echo "fiber caught the throw\n";
+    }
+});
+$err->start();
+$err->throw(new FiberError("delivered"));
+
+// 5) Closures with use(...) captures bind values from the surrounding scope at
+//    construction time. Each captured value rides in the fiber's slot files
+//    so $f->start() never overwrites them. Captures are incref'd at
+//    construction and decref'd when the Fiber is freed, so heap-backed
+//    captures (objects, arrays, persisted strings) survive the original
+//    variable being reassigned.
+$base = 100;
+$step = 7;
+$adder = new Fiber(function() use ($base, $step): void {
+    echo "base=" . $base . " step=" . $step . " sum=" . ($base + $step) . "\n";
+});
+$adder->start();
+
+// 6) Mixed-type captures: int, string, and float ride in their respective
+//    register files (start_args for ints/strings, float_args for floats).
+$tag = "rate";
+$count = 4;
+$rate = 0.5;
+$mixer = new Fiber(function() use ($tag, $count, $rate): void {
+    echo $tag . ": " . $count . " * " . $rate . " = " . ($count * $rate) . "\n";
+});
+$mixer->start();
+
+// 7) Reference semantics: object captures share the same heap allocation, so
+//    multiple fibers can mutate state visible to each other and to main.
+class Counter { public int $value = 0; }
+$shared = new Counter();
+$f_inc = new Fiber(function() use ($shared): void { $shared->value = $shared->value + 1; });
+$f_dbl = new Fiber(function() use ($shared): void { $shared->value = $shared->value * 2; });
+$shared->value = 5;
+$f_inc->start();        // 5 + 1 = 6
+$f_dbl->start();        // 6 * 2 = 12
+echo "shared counter ended at " . $shared->value . "\n";
+
+// 8) FiberError is a regular Exception subclass — catch it like any other.
+try {
+    throw new FiberError("manual");
+} catch (FiberError $e) {
+    echo "caught FiberError\n";
+}

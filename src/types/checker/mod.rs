@@ -38,6 +38,8 @@ pub(crate) struct Checker {
     pub closure_return_types: HashMap<String, PhpType>,
     /// Tracks known callable signatures assigned to variables.
     pub callable_sigs: HashMap<String, FunctionSig>,
+    /// Tracks capture payloads for closures assigned to variables.
+    pub callable_captures: HashMap<String, Vec<(String, PhpType)>>,
     /// Tracks first-class callable targets assigned to variables.
     pub first_class_callable_targets: HashMap<String, CallableTarget>,
     /// Interface definitions collected during first pass.

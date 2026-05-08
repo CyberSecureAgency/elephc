@@ -2,6 +2,7 @@ pub mod checker;
 pub mod traits;
 mod array_keys;
 pub(crate) mod call_args;
+pub(crate) mod fibers;
 mod ffi;
 mod model;
 mod result;

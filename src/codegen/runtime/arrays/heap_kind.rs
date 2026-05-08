@@ -11,6 +11,14 @@ pub fn emit_heap_kind(emitter: &mut Emitter) {
 
         emitter.instruction("test rax, rax");                                   // null pointers have no heap kind
         emitter.instruction("jz __rt_heap_kind_zero");                          // return heap kind 0 for null pointers
+        crate::codegen::abi::emit_symbol_address(emitter, "rcx", "_heap_buf");
+        emitter.instruction("cmp rax, rcx");                                    // reject values below the managed x86_64 heap before probing metadata
+        emitter.instruction("jb __rt_heap_kind_zero");                          // scalar integers and static data below the heap report kind 0
+        crate::codegen::abi::emit_symbol_address(emitter, "rdx", "_heap_off");
+        emitter.instruction("mov rdx, QWORD PTR [rdx]");                        // load the current x86_64 heap bump extent
+        emitter.instruction("add rdx, rcx");                                    // compute the managed heap end address
+        emitter.instruction("cmp rax, rdx");                                    // is the candidate pointer outside the live heap window?
+        emitter.instruction("jae __rt_heap_kind_zero");                         // non-heap values above the managed heap report kind 0
         emitter.instruction("mov rcx, QWORD PTR [rax - 8]");                    // load the stamped x86_64 heap kind word from the uniform header
         emitter.instruction("mov rdx, rcx");                                    // preserve the low-byte heap kind before validating the ownership marker
         emitter.instruction("shr rcx, 32");                                     // isolate the high-word heap marker from the packed heap metadata

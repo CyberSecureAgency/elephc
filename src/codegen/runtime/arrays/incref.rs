@@ -52,6 +52,14 @@ fn emit_incref_linux_x86_64(emitter: &mut Emitter) {
     emitter.label_global("__rt_incref");
     emitter.instruction("test rax, rax");                                       // ignore null pointers so borrowed non-values do not participate in refcount traffic
     emitter.instruction("jz __rt_incref_skip");                                 // null payloads do not own heap storage and therefore need no refcount update
+    crate::codegen::abi::emit_symbol_address(emitter, "r10", "_heap_buf");
+    emitter.instruction("cmp rax, r10");                                        // reject values below the managed x86_64 heap before reading a header word
+    emitter.instruction("jb __rt_incref_skip");                                 // scalar integers and static data below the heap are not refcounted
+    crate::codegen::abi::emit_symbol_address(emitter, "r11", "_heap_off");
+    emitter.instruction("mov r11, QWORD PTR [r11]");                            // load the current x86_64 heap bump extent
+    emitter.instruction("add r11, r10");                                        // compute the managed heap end address
+    emitter.instruction("cmp rax, r11");                                        // is the candidate pointer outside the live heap window?
+    emitter.instruction("jae __rt_incref_skip");                                // non-heap values above the managed heap are not refcounted
     emitter.instruction("mov r10, QWORD PTR [rax - 8]");                        // load the stamped x86_64 heap kind word from the uniform header
     emitter.instruction("shr r10, 32");                                         // isolate the high-word heap marker used by the x86_64 heap wrapper
     emitter.instruction(&format!("cmp r10d, 0x{:x}", X86_64_HEAP_MAGIC_HI32));  // verify that the payload is owned by the x86_64 heap wrapper before mutating refcount state

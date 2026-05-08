@@ -1,6 +1,6 @@
 use crate::errors::CompileError;
-use crate::parser::ast::Expr;
-use crate::types::{PhpType, TypeEnv};
+use crate::parser::ast::{Expr, ExprKind};
+use crate::types::{fibers, PhpType, TypeEnv};
 
 use super::super::super::Checker;
 
@@ -30,6 +30,9 @@ impl Checker {
                 expr.span,
                 &format!("Undefined class: {}", class_name),
             ));
+        }
+        if class_name == "Fiber" {
+            self.validate_fiber_constructor_args(args, expr, env)?;
         }
         if let Some(class_info) = self.classes.get(class_name.as_str()) {
             if class_info.is_abstract {
@@ -86,6 +89,75 @@ impl Checker {
             }
         }
         Ok(PhpType::Object(class_name))
+    }
+
+    fn validate_fiber_constructor_args(
+        &mut self,
+        args: &[Expr],
+        expr: &Expr,
+        env: &TypeEnv,
+    ) -> Result<(), CompileError> {
+        let Some(callback) = args.first() else {
+            return Ok(());
+        };
+        let Some(sig) = self.resolve_expr_callable_sig(callback, env)? else {
+            return Err(CompileError::new(
+                callback.span,
+                "Fiber callback must be a closure or known first-class callable",
+            ));
+        };
+
+        let visible_param_count = match &callback.kind {
+            ExprKind::Closure {
+                params,
+                variadic,
+                captures,
+                ..
+            } => {
+                let visible_param_count =
+                    fibers::visible_param_count(params.len(), variadic.is_some());
+                let capture_types = captures
+                    .iter()
+                    .map(|name| {
+                        (
+                            name.clone(),
+                            env.get(name).cloned().unwrap_or(PhpType::Mixed),
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                fibers::validate_capture_slots(
+                    &sig,
+                    visible_param_count,
+                    &capture_types,
+                    callback.span,
+                )?;
+                visible_param_count
+            }
+            ExprKind::Variable(name) => {
+                let capture_types = self
+                    .callable_captures
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_default();
+                let visible_param_count = sig.params.len();
+                fibers::validate_capture_slots(
+                    &sig,
+                    visible_param_count,
+                    &capture_types,
+                    callback.span,
+                )?;
+                visible_param_count
+            }
+            ExprKind::FirstClassCallable(_) => sig.params.len(),
+            _ => {
+                return Err(CompileError::new(
+                    callback.span,
+                    "Fiber callback must be a closure or known first-class callable",
+                ));
+            }
+        };
+
+        fibers::validate_callback_signature(&sig, visible_param_count, expr.span)
     }
 
     pub(crate) fn infer_enum_case_type(

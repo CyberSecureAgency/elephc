@@ -85,6 +85,14 @@ fn emit_decref_any_linux_x86_64(emitter: &mut Emitter) {
 
     emitter.instruction("test rax, rax");                                       // skip null heap-backed payload pointers so non-values do not participate in x86_64 release traffic
     emitter.instruction("jz __rt_decref_any_done");                             // null payloads own no heap storage and therefore need no release work
+    crate::codegen::abi::emit_symbol_address(emitter, "r10", "_heap_buf");
+    emitter.instruction("cmp rax, r10");                                        // reject values below the managed x86_64 heap before reading a header word
+    emitter.instruction("jb __rt_decref_any_done");                             // scalar integers and static data below the heap own no runtime storage
+    crate::codegen::abi::emit_symbol_address(emitter, "r11", "_heap_off");
+    emitter.instruction("mov r11, QWORD PTR [r11]");                            // load the current x86_64 heap bump extent
+    emitter.instruction("add r11, r10");                                        // compute the managed heap end address
+    emitter.instruction("cmp rax, r11");                                        // is the candidate pointer outside the live heap window?
+    emitter.instruction("jae __rt_decref_any_done");                            // non-heap values above the managed heap own no runtime storage
     emitter.instruction("mov r10, QWORD PTR [rax - 8]");                        // load the stamped x86_64 heap kind word from the uniform header
     emitter.instruction("mov r11, r10");                                        // preserve the full heap kind word before isolating the ownership marker
     emitter.instruction("shr r11, 32");                                         // isolate the high-word heap marker used by the x86_64 heap wrapper

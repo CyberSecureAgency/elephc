@@ -369,10 +369,12 @@ Proper type system for PHP compatibility.
 - [x] Filesystem path manipulation: `basename()`, `dirname()` including multi-level parent lookup, `pathinfo()` (component flags returning strings plus no-flag / `PATHINFO_ALL` associative-array forms), `realpath()`, `fnmatch()` with shell-glob `*` / `?` / `[...]` / `\\` support and zero flags, plus the `PATHINFO_DIRNAME` / `PATHINFO_BASENAME` / `PATHINFO_EXTENSION` / `PATHINFO_FILENAME` / `PATHINFO_ALL` constants
 - [x] Filesystem metadata coverage: scalar getters (`fileatime()`, `filectime()`, `fileperms()`, `fileowner()`, `filegroup()`, `fileinode()`, `filetype()`) with PHP-compatible `false` on stat failure, permission predicates (`is_executable()`, `is_link()`, `is_writeable()` alias of `is_writable()`), full PHP-compatible `stat()` / `lstat()` / `fstat()` arrays (numeric `0..=12` + string keys `dev`/`ino`/`mode`/`nlink`/`uid`/`gid`/`rdev`/`size`/`atime`/`mtime`/`ctime`/`blksize`/`blocks`) with PHP-compatible `false` on failure, and `clearstatcache()` as a no-op (elephc has no stat cache)
 
-## v0.20.x — PHP filesystem and runtime parity closure
+## v0.20.x — PHP filesystem, expression, call, and callable parity closure
 
 Close the small, well-scoped PHP filesystem/runtime compatibility gaps that are
-already adjacent to the current implementation.
+already adjacent to the current implementation, plus the language-level PHP
+behavior visible in everyday source code that does not require a new backend or
+product mode. This is also the series that delivered the Fibers MVP.
 
 - [x] `fnmatch()` non-zero flag parity for `FNM_PATHNAME`, `FNM_PERIOD`, `FNM_CASEFOLD`, and `FNM_NOESCAPE`
 - [x] Dynamic `pathinfo($path, $flag)` parity for runtime flags that may evaluate to `PATHINFO_ALL`; runtime exact `PATHINFO_ALL` now returns the associative-array shape while component flags return strings
@@ -380,12 +382,6 @@ already adjacent to the current implementation.
 - [x] `fopen()` failure parity — return `false` on open failure while keeping successful handles as `resource`, and make stream built-ins reject/handle the `resource|false` path without passing boxed `false` as a native descriptor
 - [x] Runtime-dynamic include paths — explicitly reject runtime-evaluated `include` / `require` path expressions beyond the current compile-time string-folder (`$path`, function calls, ternaries, property access)
 - [x] Runtime-order-aware `include_once` / `require_once` — add runtime guards inside functions, methods, loops, and conditional branches so skipped files match PHP execution order rather than only compile-time traversal order
-
-## v0.21.x — PHP expression, call, and callable parity
-
-Finish language-level PHP behavior that is visible in everyday source code and
-does not require a new backend or product mode.
-
 - [x] Include graph declaration discovery — pre-scan all statically resolvable `include` / `require` targets for function/class/interface/trait declarations before name resolution and type checking, so symbol references are not sensitive to source include order while top-level include execution order remains PHP-compatible
 - [x] Path-sensitive include declaration discovery — avoid false duplicate declaration errors when the same statically resolvable regular `include` / `require` target is reachable only through mutually exclusive control-flow paths, while still reporting duplicates for sequential loads and potentially repeated loop loads
 - [x] Runtime-loaded include function dispatch — compile include-discovered functions behind public dispatchers activated at each real include point, so direct calls and `function_exists()` follow PHP runtime load order while type checking can still see the include graph
@@ -394,10 +390,11 @@ does not require a new backend or product mode.
 - [x] Dynamic `instanceof` targets — support PHP forms such as `$obj instanceof $className` with runtime validation for class-string/object target expressions
 - [x] Full PHP list destructuring — skipped entries, nested patterns, associative-key destructuring, and non-local destructuring targets where PHP permits them
 - [x] Named-argument parity for built-ins, extern calls, and spread — extend validation/lowering outside user-defined calls and handle spread interactions
+- [x] Fibers MVP — `Fiber` and `FiberError` built-in classes, `start()` / `resume()` / `suspend()` / `throw()` / `getReturn()`, state predicates, `Fiber::getCurrent()`, closure captures, uncaught-exception propagation through the caller, guarded per-fiber `mmap` stacks, and context switching on ARM64 plus Linux x86_64
 - [ ] Full first-class callable targets — support `static::method(...)` and `$object->method(...)` in addition to function, `ClassName::`, `self::`, and `parent::` targets
 - [ ] Captured closures as callback values — forward hidden `use (...)` environments through callback-style built-ins such as `array_map`, `array_filter`, and `call_user_func`
 
-## v0.22.x — PHP array and type-model parity
+## v0.21.x — PHP array and type-model parity
 
 Tighten the PHP value model where the current static representation is still
 more restrictive than PHP.
@@ -407,14 +404,14 @@ more restrictive than PHP.
 - [ ] Runtime-value compatibility polishing v2 — continue with PHP's uninitialized typed-property state, integer overflow promotion, broader loose-comparison semantics, and future warning/notice sites as they are added
 - [ ] Broader date, regex, and JSON PHP parity — expand `strtotime()` relative formats, PCRE-compatible regex features/captures/backreferences, and `json_decode()` structured array/object decoding
 
-## v0.23.x — PHP OOP parity finish
+## v0.22.x — PHP OOP parity finish
 
 Close the remaining class/property compatibility gaps before freezing the 1.0
 language contract.
 
 - [ ] OOP property parity v2 — cover abstract properties, `readonly static` properties, instance property redeclaration rules, and the remaining by-reference constructor-promotion gaps (`readonly` and default values)
 
-## v0.24.x — Optimization and release performance pass
+## v0.23.x — Optimization and release performance pass
 
 Optimization work should now be driven by benchmarks, generated assembly size,
 and release-candidate validation rather than by speculative pass work.
@@ -497,7 +494,7 @@ post-1.0 use cases.
 | String-capable FFI callbacks | Medium | Allow C callback signatures that pass or return strings once ownership and temporary C-string lifetimes are modeled safely across callback boundaries. |
 | Generators / `yield` | High | Requires compile-time state machine transformation: every yield point becomes a switch case, all locals promoted to heap-allocated generator object. Edge cases with yield inside try/catch/finally are significant. |
 | `yield from` delegation | High | Depends on generators. Forwards iteration to an inner generator, propagating values and return. |
-| Fibers | Very high | Cooperative multitasking needs per-fiber stack allocation, custom context switch in assembly, guard pages, and GC awareness of multiple stack roots. Best suited for async I/O workloads, not the current game/systems target. |
+| Fiber parity v2 | Medium | MVP delivered in v0.20.x for ARM64 and Linux x86_64. Remaining parity work: arithmetic auto-unboxing on `mixed` payloads received from `suspend()`, true variadic `start(...$args)` beyond seven args, dynamic callback targets, by-reference callback start parameters, configurable stack sizing, and PHP-exact `FiberError` hierarchy. See `docs/php/fibers.md`. |
 | Conditional include class-like variants | High | Keep class/interface/trait/enum duplicate detection strict for now. Supporting branch-selected class-like declarations would require runtime class metadata/layout dispatch, while modern PHP can avoid the ambiguity with namespaces. |
 
 ---

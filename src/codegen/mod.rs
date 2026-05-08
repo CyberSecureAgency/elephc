@@ -107,7 +107,7 @@ pub fn generate_user_asm(
     let emitted_class_names = if target.arch == platform::Arch::X86_64
         && !program_has_dynamic_instanceof(program)
     {
-        Some(collect_required_class_names(program))
+        Some(collect_x86_emitted_class_names(program, classes))
     } else {
         None
     };
@@ -166,6 +166,46 @@ pub fn generate_user_asm(
         gc_stats,
         heap_debug,
     )
+}
+
+fn collect_x86_emitted_class_names(
+    program: &Program,
+    classes: &HashMap<String, ClassInfo>,
+) -> HashSet<String> {
+    let mut names = collect_required_class_names(program);
+    if names.contains("Fiber") {
+        names.insert("FiberError".to_string());
+    }
+    expand_emitted_class_dependencies(&mut names, classes);
+    names
+}
+
+fn expand_emitted_class_dependencies(
+    names: &mut HashSet<String>,
+    classes: &HashMap<String, ClassInfo>,
+) {
+    loop {
+        let mut changed = false;
+        let snapshot: Vec<String> = names.iter().cloned().collect();
+        for class_name in snapshot {
+            let Some(class_info) = classes.get(&class_name) else {
+                continue;
+            };
+            if let Some(parent) = &class_info.parent {
+                changed |= names.insert(parent.clone());
+            }
+            for impl_class in class_info
+                .method_impl_classes
+                .values()
+                .chain(class_info.static_method_impl_classes.values())
+            {
+                changed |= names.insert(impl_class.clone());
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
 }
 
 #[allow(dead_code)]

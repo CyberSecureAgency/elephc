@@ -494,6 +494,22 @@ Built-in functions like `array_map`, `array_filter`, `array_reduce`, `array_walk
 
 Closures that depend on hidden `use (...)` capture arguments still only work for direct `$fn(...)` calls today. Callback-style built-ins do not forward those hidden capture values, so captured closures are not yet valid drop-in callbacks there.
 
+## Fiber codegen
+
+**Files:** `src/codegen/expr/objects/allocation.rs`, `src/codegen/expr/objects/dispatch.rs`, `src/codegen/expr/objects/fiber_wrapper.rs`, `src/codegen/functions/fiber_wrapper.rs`, `src/codegen/runtime/fibers/`
+
+`Fiber` is a built-in class, but codegen does not lower it through the ordinary object constructor and method-dispatch path. `new Fiber($callable)` is intercepted and delegated to `__rt_fiber_construct`, which allocates the larger runtime-managed Fiber object, creates its guarded native stack, stores the original callable pointer, and records the generated wrapper label that adapts Fiber start values to the callback ABI.
+
+Each accepted Fiber callback gets a deferred entry wrapper emitted next to deferred closure bodies. The wrapper runs on the Fiber stack, reloads boxed `start()` values from `start_args[0..6]`, unboxes them to the callback's declared parameter types, appends any preloaded closure captures from reserved Fiber-owned slots, calls the original closure/function pointer with normal ABI materialization, and boxes the terminal return value back to `mixed`.
+
+Instance and static Fiber methods are also intercepted:
+
+- `$fiber->start(...)` spills up to seven boxed `mixed` start arguments into the Fiber object before calling `__rt_fiber_start`; it respects `user_arg_max` so closure captures stored in trailing slots are not overwritten.
+- `$fiber->resume($value)`, `$fiber->throw($exception)`, `$fiber->getReturn()`, and the state predicates branch directly to their `__rt_fiber_*` runtime helpers.
+- `Fiber::suspend($value)` and `Fiber::getCurrent()` lower to runtime helper calls instead of ordinary static method dispatch.
+
+Both AArch64 and Linux `x86_64` use the same high-level lowering. The final register moves, temporary-stack layout, direct/indirect calls, and frame setup go through the ABI module so the Fiber wrapper follows each target's calling convention rather than hardcoding ARM64 register names in shared code.
+
 ## Associative array codegen
 
 Associative arrays use a hash table stored on the heap. The codegen differs from indexed arrays at every level:

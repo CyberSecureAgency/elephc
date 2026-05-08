@@ -151,7 +151,7 @@ fn test_error_catch_requires_throwable_type() {
 fn test_error_cannot_redeclare_builtin_exception_type() {
     expect_error(
         "<?php class Exception {}",
-        "Cannot redeclare built-in exception type: Exception",
+        "Cannot redeclare built-in type: Exception",
     );
 }
 
