@@ -44,9 +44,9 @@ pub fn emit_object_free_deep(emitter: &mut Emitter) {
     emitter.instruction("str x10, [x9]");                                       // store release-suppressed = 1 for child cleanup
 
     // -- Fiber special case: release the per-fiber stack before the standard struct free path --
-    // The Fiber object has zero declared PHP properties — its 104 bytes of payload past the
-    // class_id are runtime-managed fields, not Mixed/array/string slots. Walking them via the
-    // generic property-tag descriptor would read garbage. Detect Fiber by class_id and skip
+    // The Fiber object has zero declared PHP properties. Its payload past the class_id is made
+    // of runtime-managed fields, not Mixed/array/string slots, so walking those bytes through
+    // the generic property-tag descriptor would read garbage. Detect Fiber by class_id and skip
     // straight to the struct free after returning the heap-allocated stack.
     emitter.instruction("ldr x10, [x0]");                                       // x10 = receiver class_id
     crate::codegen::abi::emit_load_symbol_to_reg(emitter, "x11", "_fiber_class_id", 0); // x11 = compile-time class id of the built-in Fiber class

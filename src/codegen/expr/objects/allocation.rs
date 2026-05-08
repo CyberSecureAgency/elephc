@@ -222,10 +222,11 @@ pub(super) fn emit_new_object(
 /// Codegen interception for `new Fiber($callable)`.
 ///
 /// The standard `emit_new_object` path would size the object as `8 + num_props * 16`,
-/// which for Fiber (zero declared properties) yields only 8 bytes — not enough for
-/// the 104-byte fiber payload. We instead delegate the entire allocation, stack
-/// setup, and field initialisation to `__rt_fiber_construct`, passing the captured
-/// closure plus the runtime class id so `instanceof Fiber` keeps working.
+/// which for Fiber (zero declared properties) yields only the object header and
+/// not enough room for the runtime-managed Fiber payload. We instead delegate the
+/// entire allocation, stack setup, and field initialisation to `__rt_fiber_construct`,
+/// passing the captured closure plus the runtime class id so `instanceof Fiber` keeps
+/// working.
 fn emit_new_fiber(
     args: &[Expr],
     emitter: &mut Emitter,

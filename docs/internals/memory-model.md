@@ -5,7 +5,7 @@ sidebar:
   order: 9
 ---
 
-elephc manages memory without calling `malloc`/`free` for PHP values directly. Storage lives on the **stack** (automatic, per-function), in fixed BSS regions, or in a compiler-managed **heap buffer** with a free-list allocator, reference counting, and a targeted cycle collector for array/hash/object graphs. The final binary still links `libSystem` for OS and libc services.
+elephc manages memory without calling `malloc`/`free` for PHP values directly. Storage lives on the **stack** (automatic, per-function), in fixed BSS regions, or in a compiler-managed **heap buffer** with a free-list allocator, reference counting, and a targeted cycle collector for array/hash/object graphs. The final binary still links the target platform's system C library for OS and libc services.
 
 This page explains where every value lives in memory at runtime.
 

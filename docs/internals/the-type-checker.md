@@ -367,6 +367,12 @@ When checking method calls, it verifies the method exists, enforces method visib
 
 When checking `new ClassName(...)`, it also rejects interfaces and abstract classes before codegen.
 
+### Built-in Fiber classes
+
+`Throwable`, `Exception`, `Fiber`, and `FiberError` are registered as built-in classes before user code is checked. `Fiber` method bodies are placeholders in `ClassInfo`: their signatures make calls type-checkable, while codegen intercepts construction, instance methods, `Fiber::suspend()`, and `Fiber::getCurrent()` and routes them to `__rt_fiber_*` helpers.
+
+`src/types/fibers.rs` owns the additional static checks for Fiber callbacks. `new Fiber(...)` must receive a closure, a known closure/callable variable, or a known first-class callable; arbitrary runtime callables are rejected. The visible callback parameter count is capped at seven start arguments, by-reference callback start parameters are rejected, and closure captures must fit in the reserved Fiber slot files: seven integer slots and seven float slots, with strings using two integer slots. Values moving through `start()`, `resume()`, `suspend()`, and `getReturn()` are typed as boxed `mixed`.
+
 ## Output: CheckResult
 
 The type checker produces a `CheckResult`:
