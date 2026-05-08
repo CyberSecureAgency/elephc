@@ -93,6 +93,7 @@ These are current implementation limits, not PHP design rules:
 | Limitation | Notes |
 |---|---|
 | `start()` is fixed-arity | `Fiber::start()` has seven optional `mixed` parameters. Calls with more than seven values are rejected, and a callback with more than seven visible start parameters is rejected. This is not true PHP variadic forwarding. |
+| Variadic callback parameters are not supported | Fiber callbacks such as `function (...$args): void {}` are rejected because the runtime currently forwards fixed `start_args` slots instead of building a PHP variadic array. |
 | Capture storage is fixed-size | Captures share a fixed slot budget with the callback ABI: seven integer slots and seven float slots. Strings consume two integer slots. Capture overflow is a compile-time error. |
 | Callback arguments cannot be by-reference | Fiber callbacks such as `function (&$value): void {}` are rejected because start arguments are boxed and stored before the stack switch. |
 | Callback targets must be statically known | `new Fiber(...)` accepts closures, variables holding known closures/callables, and known first-class callables. Arbitrary runtime callable values, such as unknown strings or dynamically computed callbacks, are rejected. |
@@ -100,5 +101,4 @@ These are current implementation limits, not PHP design rules:
 | `Fiber::getCurrent()` has imprecise internal typing | PHP exposes `?Fiber`; elephc currently represents the result as boxed `mixed` internally. Runtime checks such as `instanceof Fiber` work, but type inference is less precise than PHP's signature. |
 | `FiberError` hierarchy differs from PHP | elephc currently models `FiberError` as an `Exception` subclass. PHP models it under `Error`. |
 | Stack size is fixed | Each Fiber gets a 256 KiB usable stack plus a 16 KiB guard page. There is no user-facing stack-size configuration. Stack overflow faults through the guard page rather than raising a catchable PHP exception. |
-| Stack allocation failure is not recoverable | If the OS cannot allocate the mapped stack, the runtime does not currently raise a catchable `FiberError` from the constructor. |
 | Cooperative only | Fibers do not provide parallel execution, preemption, timers, or an event loop. Scheduling is entirely explicit through `start()`, `resume()`, `suspend()`, and `throw()`. |

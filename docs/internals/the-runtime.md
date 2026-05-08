@@ -558,7 +558,7 @@ Additionally, the runtime emits static data tables:
 - `_heap_dbg_*` summary labels — fixed strings used by `__rt_heap_debug_report` for alloc/free/live/leak output
 - `_uncaught_exc_msg` — fatal exception string written by `__rt_throw_current` when no handler exists
 - `_diag_fopen_failed_msg`, `_diag_file_get_contents_failed_msg`, `_diag_define_already_defined_msg` — suppressible runtime warning text routed through `__rt_diag_warning`
-- `_fiber_msg_already_started`, `_fiber_msg_not_suspended`, `_fiber_msg_throw_not_suspended`, `_fiber_msg_not_terminated`, `_fiber_msg_suspend_outside`, `_fiber_msg_unsupported_callable` — messages used by `FiberError` runtime paths
+- `_fiber_msg_already_started`, `_fiber_msg_not_suspended`, `_fiber_msg_throw_not_suspended`, `_fiber_msg_not_terminated`, `_fiber_msg_suspend_outside`, `_fiber_msg_unsupported_callable`, `_fiber_msg_stack_alloc_failed` — messages used by `FiberError` runtime paths
 - `_fiber_class_id`, `_fiber_error_class_id` — per-program class ids used by Fiber object cleanup and `FiberError` construction
 - `_php_uname_mode_len_msg`, `_php_uname_mode_value_msg` — fatal `php_uname()` argument diagnostics for invalid mode strings
 - `_pcre_space`, `_pcre_digit`, `_pcre_word`, `_pcre_nspace`, `_pcre_ndigit`, `_pcre_nword` — PCRE shorthand replacement strings for regex translation

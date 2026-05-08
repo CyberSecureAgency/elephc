@@ -42,6 +42,13 @@ pub(crate) fn validate_callback_signature(
     visible_param_count: usize,
     span: Span,
 ) -> Result<(), CompileError> {
+    if sig.variadic.is_some() {
+        return Err(CompileError::new(
+            span,
+            "Fiber callbacks cannot be variadic",
+        ));
+    }
+
     if visible_param_count > FIBER_START_ARG_LIMIT {
         return Err(CompileError::new(
             span,

@@ -131,6 +131,7 @@ pub fn emit_fiber_construct(emitter: &mut Emitter) {
     // -- allocate the per-fiber stack via mmap; alloc returns base/top/total --
     emitter.instruction(&format!("mov x0, #{}", FIBER_DEFAULT_STACK_SIZE));     // request the default usable fiber stack size in bytes
     emitter.instruction("bl __rt_fiber_alloc_stack");                           // x0 = stack_base (mapping start), x1 = stack_top, x2 = total mapped length
+    emitter.instruction("cbz x0, __rt_fiber_construct_stack_failed");           // abort construction if mmap failed instead of writing a fake frame at NULL
     emitter.instruction(&format!("str x0, [x21, #{}]", FIBER_STACK_BASE_OFFSET)); // stack_base = mmap mapping start (includes the guard page)
     emitter.instruction(&format!("str x1, [x21, #{}]", FIBER_STACK_TOP_OFFSET)); // stack_top = initial SP target (16-byte aligned high address)
     emitter.instruction(&format!("str x2, [x21, #{}]", FIBER_STACK_SIZE_OFFSET)); // stack_size = total mapped length, needed verbatim by munmap on free
@@ -162,6 +163,12 @@ pub fn emit_fiber_construct(emitter: &mut Emitter) {
     emitter.instruction("ldp x29, x30, [sp, #48]");                             // restore caller's frame pointer and return address
     emitter.instruction("add sp, sp, #64");                                     // release the scratch frame
     emitter.instruction("ret");                                                 // hand the new Fiber object back to the constructor caller
+
+    emitter.label("__rt_fiber_construct_stack_failed");
+    abi::emit_symbol_address(emitter, "x0", "_fiber_msg_stack_alloc_failed");   // x0 = pointer to the static stack-allocation failure message
+    emitter.instruction("mov x1, #27");                                         // x1 = error message length in bytes
+    emitter.instruction("bl __rt_fiber_throw_state_error");                     // raise FiberError instead of dereferencing a NULL stack top
+    emitter.instruction("brk #0xfffe");                                         // defensive trap: the throw helper must not return
 }
 
 /// __rt_fiber_start: switch into a fiber for the first time.
@@ -587,6 +594,8 @@ fn emit_construct_x86_64(emitter: &mut Emitter) {
     // -- allocate the per-fiber stack via mmap; alloc returns base/top/total --
     emitter.instruction(&format!("mov edi, {}", FIBER_DEFAULT_STACK_SIZE));     // request the default usable fiber stack size in bytes
     emitter.instruction("call __rt_fiber_alloc_stack");                         // rax = stack_base, rdx = stack_top, rcx = total mapped length
+    emitter.instruction("test rax, rax");                                       // did mmap return a real stack mapping?
+    emitter.instruction("jz __rt_fiber_construct_stack_failed");                // abort construction before writing a fake frame at NULL
     emitter.instruction(&format!("mov QWORD PTR [r14 + {}], rax", FIBER_STACK_BASE_OFFSET)); // stack_base = mmap mapping start
     emitter.instruction(&format!("mov QWORD PTR [r14 + {}], rdx", FIBER_STACK_TOP_OFFSET)); // stack_top = initial SP target
     emitter.instruction(&format!("mov QWORD PTR [r14 + {}], rcx", FIBER_STACK_SIZE_OFFSET)); // stack_size = total mapped length
@@ -613,6 +622,12 @@ fn emit_construct_x86_64(emitter: &mut Emitter) {
     emitter.instruction("pop r12");                                             // restore caller's r12
     emitter.instruction("pop rbp");                                             // restore caller frame pointer
     emitter.instruction("ret");                                                 // hand the new Fiber object back to the constructor caller
+
+    emitter.label("__rt_fiber_construct_stack_failed");
+    abi::emit_symbol_address(emitter, "rdi", "_fiber_msg_stack_alloc_failed");  // rdi = pointer to the static stack-allocation failure message
+    emitter.instruction("mov esi, 27");                                         // rsi = error message length in bytes
+    emitter.instruction("call __rt_fiber_throw_state_error");                   // raise FiberError instead of dereferencing a NULL stack top
+    emitter.instruction("ud2");                                                 // defensive trap: the throw helper must not return
 }
 
 fn emit_start_x86_64(emitter: &mut Emitter) {

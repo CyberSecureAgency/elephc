@@ -104,6 +104,25 @@ fn test_error_fiber_callback_rejects_by_ref_start_arg() {
 }
 
 #[test]
+fn test_error_fiber_callback_rejects_variadic_arg() {
+    expect_error(
+        "<?php $fiber = new Fiber(function(...$args): void {});",
+        "Fiber callbacks cannot be variadic",
+    );
+}
+
+#[test]
+fn test_error_fiber_variable_callback_rejects_variadic_arg() {
+    expect_error(
+        r#"<?php
+$fn = function(...$args): void {};
+$fiber = new Fiber($fn);
+"#,
+        "Fiber callbacks cannot be variadic",
+    );
+}
+
+#[test]
 fn test_error_fiber_direct_callback_rejects_capture_slot_overflow() {
     expect_error(
         r#"<?php
