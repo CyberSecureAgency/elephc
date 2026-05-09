@@ -33,22 +33,6 @@ fn test_error_first_class_callable_method_requires_stable_receiver() {
 }
 
 #[test]
-fn test_error_call_user_func_rejects_captured_first_class_method_callable() {
-    expect_error(
-        "<?php class User { public function greet($name) { return $name; } } $u = new User(); $f = $u->greet(...); call_user_func($f, \"Ada\");",
-        "call_user_func() does not support captured first-class callable targets yet",
-    );
-}
-
-#[test]
-fn test_error_array_map_rejects_captured_first_class_method_callable() {
-    expect_error(
-        "<?php class User { public function double($n) { return $n * 2; } } $u = new User(); $f = $u->double(...); array_map($f, [1, 2]);",
-        "array_map() does not support captured first-class callable targets yet",
-    );
-}
-
-#[test]
 fn test_error_direct_expr_call_rejects_captured_first_class_method_callable() {
     expect_error(
         "<?php class User { public function greet() { return \"ok\"; } } $u = new User(); echo ($u->greet(...))();",
@@ -69,6 +53,14 @@ fn test_error_parenthesized_expr_call_rejects_captured_first_class_method_callab
     expect_error(
         "<?php class User { public function greet() { return \"ok\"; } } $u = new User(); $f = $u->greet(...); echo ($f)();",
         "Direct calls of captured callable expressions are not supported yet",
+    );
+}
+
+#[test]
+fn test_error_array_reduce_rejects_captured_first_class_method_callable() {
+    expect_error(
+        "<?php class User { public function add($carry, $item) { return $carry + $item; } } $u = new User(); $f = $u->add(...); array_reduce([1, 2], $f, 0);",
+        "array_reduce() does not support captured first-class callable targets yet",
     );
 }
 

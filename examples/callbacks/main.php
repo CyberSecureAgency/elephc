@@ -43,7 +43,7 @@ $result = call_user_func("double", 21);
 echo "call_user_func(double, 21) = " . $result . "\n";
 
 class Formatter {
-    public function bracket($value) {
+    public function bracket(string $value): string {
         return "[" . $value . "]";
     }
 }
@@ -51,6 +51,11 @@ class Formatter {
 $formatter = new Formatter();
 $format = $formatter->bracket(...);
 echo "method callable: " . $format("ok") . "\n";
+$formatted = array_map($format, ["a", "b"]);
+echo "method callable array_map: ";
+foreach ($formatted as $v) { echo $v . " "; }
+echo "\n";
+echo "method callable call_user_func_array: " . call_user_func_array($format, ["cb"]) . "\n";
 
 class Labeler {
     public static function current() {

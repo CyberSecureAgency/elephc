@@ -35,13 +35,12 @@ pub(super) fn callback_returns_str(args: &[Expr], ctx: &Context) -> bool {
             CallableTarget::StaticMethod { receiver, method } => {
                 let class_name = match receiver {
                     StaticReceiver::Named(name) => Some(name.as_str().to_string()),
-                    StaticReceiver::Self_ => ctx.current_class.clone(),
+                    StaticReceiver::Self_ | StaticReceiver::Static => ctx.current_class.clone(),
                     StaticReceiver::Parent => ctx
                         .current_class
                         .as_ref()
                         .and_then(|class_name| ctx.classes.get(class_name))
                         .and_then(|class_info| class_info.parent.clone()),
-                    StaticReceiver::Static => None,
                 };
                 class_name
                     .as_ref()
@@ -50,7 +49,18 @@ pub(super) fn callback_returns_str(args: &[Expr], ctx: &Context) -> bool {
                     .map(|sig| sig.return_type == PhpType::Str)
                     .unwrap_or(false)
             }
-            CallableTarget::Method { .. } => false,
+            CallableTarget::Method { object, method } => {
+                let object_ty = crate::codegen::functions::infer_contextual_type(object, ctx);
+                let Some(class_name) = crate::codegen::functions::singular_object_class(&object_ty)
+                else {
+                    return false;
+                };
+                ctx.classes
+                    .get(class_name)
+                    .and_then(|class_info| class_info.methods.get(method))
+                    .map(|sig| sig.return_type == PhpType::Str)
+                    .unwrap_or(false)
+            }
         },
         _ => false,
     }

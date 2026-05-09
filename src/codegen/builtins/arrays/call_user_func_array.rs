@@ -7,6 +7,7 @@ use crate::codegen::abi;
 use crate::names::function_symbol;
 use crate::parser::ast::{Expr, ExprKind};
 use crate::types::PhpType;
+use super::callback_env;
 
 fn emit_array_value_type_stamp(emitter: &mut Emitter, array_reg: &str, elem_ty: &PhpType) {
     let value_type_tag = match elem_ty {
@@ -73,18 +74,23 @@ pub fn emit(
         &args[0].kind,
         ExprKind::Closure { .. } | ExprKind::FirstClassCallable(_)
     );
+    let mut captures: Vec<(String, PhpType)> = Vec::new();
     let sig = if is_callable_expr {
         emit_expr(&args[0], emitter, ctx, data);
         emitter.instruction(&format!("mov {}, {}", call_reg, result_reg));      // move the synthesized callback address into the nested-call scratch register
-        ctx.deferred_closures
+        let deferred = ctx
+            .deferred_closures
             .last()
-            .expect("call_user_func_array: missing synthesized callable signature")
+            .expect("call_user_func_array: missing synthesized callable signature");
+        captures = deferred.captures.clone();
+        deferred
             .sig
             .clone()
     } else if let ExprKind::Variable(var_name) = &args[0].kind {
         let var = ctx.variables.get(var_name).expect("undefined callback variable");
         let offset = var.stack_offset;
         abi::load_at_offset(emitter, call_reg, offset);                          // load the callback address from the callable variable slot
+        captures = ctx.closure_captures.get(var_name).cloned().unwrap_or_default();
         ctx.closure_sigs
             .get(var_name)
             .expect("call_user_func_array: callable variable signature not found")
@@ -118,10 +124,11 @@ pub fn emit(
 
     // -- extract elements from array and push them as regular call arguments --
     let mut arg_types = Vec::new();
+    let visible_param_count = sig.params.len().saturating_sub(captures.len());
     let regular_param_count = if sig.variadic.is_some() {
-        sig.params.len().saturating_sub(1)
+        visible_param_count.saturating_sub(1)
     } else {
-        sig.params.len()
+        visible_param_count
     };
     for i in 0..regular_param_count {
         let has_default = sig.defaults.get(i).and_then(|d| d.as_ref()).is_some();
@@ -171,7 +178,7 @@ pub fn emit(
     if sig.variadic.is_some() {
         let variadic_elem_ty = sig
             .params
-            .last()
+            .get(visible_param_count.saturating_sub(1))
             .and_then(|(_, ty)| match ty {
                 PhpType::Array(elem) => Some((**elem).clone()),
                 _ => None,
@@ -404,6 +411,7 @@ pub fn emit(
         emitter.label(&done_label);
         arg_types.push(PhpType::Array(Box::new(variadic_elem_ty)));
     }
+    callback_env::push_captures_as_hidden_args(&captures, emitter, ctx, &mut arg_types);
 
     let assignments = abi::build_outgoing_arg_assignments_for_target(emitter.target, &arg_types, 0);
     let overflow_bytes = abi::materialize_outgoing_args(emitter, &assignments);

@@ -170,7 +170,7 @@ $hello = $greeter->hello(...);
 echo $hello("Ada"); // Hello Ada
 ```
 
-Captured first-class callable targets (`static::method(...)` and `$obj->method(...)`) can be called directly through a local callable variable. Immediate expression calls such as `($obj->method(...))()` and callback-style built-ins such as `array_map()` and `call_user_func()` reject them until captured callable environments are forwarded through those call paths.
+Captured first-class callable targets (`static::method(...)` and `$obj->method(...)`) can be called directly through a local callable variable. They can also be passed to callback paths that forward captured callable environments, including `array_map()`, `array_filter()`, `call_user_func()`, and `call_user_func_array()`. Runtime helpers without callback environments (`array_reduce()`, `array_walk()`, `usort()`, `uksort()`, and `uasort()`) still reject captured method/static targets. Immediate expression calls such as `($obj->method(...))()` are also rejected; assign the callable to a local variable before calling it.
 
 ## Global variables
 
