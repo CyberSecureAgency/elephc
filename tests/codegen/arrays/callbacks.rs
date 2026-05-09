@@ -29,6 +29,21 @@ echo $b[0];
 }
 
 #[test]
+fn test_array_map_string_values_to_ints() {
+    let out = compile_and_run(
+        r#"<?php
+function string_len(string $value) { return strlen($value); }
+$a = ["aa", "bbbb"];
+$b = array_map("string_len", $a);
+echo $b[0];
+echo ",";
+echo $b[1];
+"#,
+    );
+    assert_eq!(out, "2,4");
+}
+
+#[test]
 fn test_array_filter() {
     let out = compile_and_run(
         r#"<?php
@@ -40,6 +55,20 @@ foreach ($b as $v) { echo $v; }
 "#,
     );
     assert_eq!(out, "3246");
+}
+
+#[test]
+fn test_array_filter_string_values() {
+    let out = compile_and_run(
+        r#"<?php
+function starts_a(string $value) { return str_starts_with($value, "a"); }
+$a = ["aa", "bb", "ab"];
+$b = array_filter($a, "starts_a");
+echo count($b);
+foreach ($b as $value) { echo $value; }
+"#,
+    );
+    assert_eq!(out, "2aaab");
 }
 
 #[test]
@@ -254,4 +283,3 @@ echo $sum;
     );
     assert_eq!(out, "142");
 }
-

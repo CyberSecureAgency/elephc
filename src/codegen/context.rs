@@ -77,6 +77,13 @@ pub struct DeferredFiberWrapper {
     pub visible_param_count: usize,
 }
 
+/// A callback wrapper that adapts callback builtins to closures with hidden captures.
+pub struct DeferredCallbackWrapper {
+    pub label: String,
+    pub visible_arg_types: Vec<PhpType>,
+    pub capture_types: Vec<PhpType>,
+}
+
 pub struct Context {
     pub variables: HashMap<String, VarInfo>,
     pub stack_offset: usize,
@@ -86,6 +93,7 @@ pub struct Context {
     pub function_variant_groups: HashSet<String>,
     pub deferred_closures: Vec<DeferredClosure>,
     pub deferred_fiber_wrappers: Vec<DeferredFiberWrapper>,
+    pub deferred_callback_wrappers: Vec<DeferredCallbackWrapper>,
     pub constants: HashMap<String, (ExprKind, PhpType)>,
     /// Variables declared with `global $var` in the current function scope.
     pub global_vars: HashSet<String>,
@@ -175,6 +183,7 @@ impl Context {
             function_variant_groups: HashSet::new(),
             deferred_closures: Vec::new(),
             deferred_fiber_wrappers: Vec::new(),
+            deferred_callback_wrappers: Vec::new(),
             constants: HashMap::new(),
             global_vars: HashSet::new(),
             static_vars: HashSet::new(),
