@@ -146,7 +146,22 @@ $double = MathBox::double(...);
 ```
 
 Supported: user-defined function names, extern function names, `ClassName::method(...)`, `self::method(...)`, `parent::method(...)`, and the registered builtin wrappers `strlen(...)`, `count(...)`, `buffer_len(...)`, `intval(...)`, `strtolower(...)`, `strtoupper(...)`, `ucfirst(...)`, `lcfirst(...)`, `strrev(...)`, `addslashes(...)`, `stripslashes(...)`, `nl2br(...)`, `bin2hex(...)`, `hex2bin(...)`, `htmlspecialchars(...)`, `htmlentities(...)`, `html_entity_decode(...)`, `urlencode(...)`, `urldecode(...)`, `rawurlencode(...)`, `rawurldecode(...)`, `base64_encode(...)`, `base64_decode(...)`, `array_sum(...)`, and `array_product(...)`.
-Not supported: `static::method(...)`, `$obj->method(...)`.
+Also supported: `static::method(...)` inside class methods, preserving late static binding for direct callable calls, and `$obj->method(...)` / `$this->method(...)` with a stable object receiver variable.
+
+```php
+<?php
+class Greeter {
+    public function hello($name) {
+        return "Hello " . $name;
+    }
+}
+
+$greeter = new Greeter();
+$hello = $greeter->hello(...);
+echo $hello("Ada"); // Hello Ada
+```
+
+Captured first-class callable targets (`static::method(...)` and `$obj->method(...)`) can be called directly through a local callable variable. Immediate expression calls such as `($obj->method(...))()` and callback-style built-ins such as `array_map()` and `call_user_func()` reject them until captured callable environments are forwarded through those call paths.
 
 ## Global variables
 

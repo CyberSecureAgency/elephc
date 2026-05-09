@@ -494,6 +494,8 @@ Built-in functions like `array_map`, `array_filter`, `array_reduce`, `array_walk
 
 Closures that depend on hidden `use (...)` capture arguments still only work for direct `$fn(...)` calls today. Callback-style built-ins do not forward those hidden capture values, so captured closures are not yet valid drop-in callbacks there.
 
+First-class callable wrappers reuse this hidden argument path when the callable target carries context. `$obj->method(...)` records the receiver variable as a hidden capture and the wrapper calls that method with the visible arguments. `static::method(...)` records the forwarded called-class id, or `$this` in an instance method, so late static binding is preserved for direct callable calls. Callback-style built-ins reject those captured first-class targets until their runtime helpers can forward hidden capture arguments.
+
 ## Fiber codegen
 
 **Files:** `src/codegen/expr/objects/allocation.rs`, `src/codegen/expr/objects/dispatch.rs`, `src/codegen/expr/objects/fiber_wrapper.rs`, `src/codegen/functions/fiber_wrapper.rs`, `src/codegen/runtime/fibers/`

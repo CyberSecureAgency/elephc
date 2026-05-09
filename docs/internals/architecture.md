@@ -335,7 +335,7 @@ Namespace syntax is preserved through parsing and include resolution, then norma
 
 Because codegen receives canonical names, namespaces do not require special cases in most later passes: mangled labels are derived centrally from the final fully-qualified name.
 
-First-class callable syntax rides on the same canonical naming pipeline. The parser emits a dedicated callable-target node, the checker validates the target statically, and codegen lowers it to a synthesized wrapper function so runtime callable values remain ordinary function pointers.
+First-class callable syntax rides on the same canonical naming pipeline. The parser emits a dedicated callable-target node, the checker validates the target statically, and codegen lowers it to a synthesized wrapper function so runtime callable values remain ordinary function pointers. Instance-method targets and `static::` targets use the same hidden-capture channel as closures to forward the receiver or called-class context into that wrapper.
 
 ## Runtime memory layout
 
