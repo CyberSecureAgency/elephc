@@ -391,7 +391,7 @@ product mode. This is also the series that delivered the Fibers MVP.
 - [x] Full PHP list destructuring — skipped entries, nested patterns, associative-key destructuring, and non-local destructuring targets where PHP permits them
 - [x] Named-argument parity for built-ins, extern calls, and spread — extend validation/lowering outside user-defined calls and handle spread interactions
 - [x] Fibers MVP — `Fiber` and `FiberError` built-in classes, `start()` / `resume()` / `suspend()` / `throw()` / `getReturn()`, state predicates, `Fiber::getCurrent()`, closure captures, uncaught-exception propagation through the caller, guarded per-fiber `mmap` stacks, and context switching on ARM64 plus Linux x86_64
-- [ ] Full first-class callable targets — support `static::method(...)` and `$object->method(...)` in addition to function, `ClassName::`, `self::`, and `parent::` targets
+- [x] Full first-class callable targets — support `static::method(...)` and `$object->method(...)` in addition to function, `ClassName::`, `self::`, and `parent::` targets
 - [x] Captured closures as callback values — forward hidden `use (...)` environments through callback-style built-ins such as `array_map`, `array_filter`, and `call_user_func`
 
 ## v0.21.x — PHP array and type-model parity
@@ -401,6 +401,7 @@ more restrictive than PHP.
 
 - [ ] Heterogeneous indexed arrays — allow mixed payloads in indexed arrays instead of requiring homogeneous indexed values
 - [ ] Mixed indexed/associative array union — model `array + array` across indexed/hash representations while preserving PHP's shared int/string key space and left-key precedence
+- [ ] Callable parity follow-up — support captured method/static first-class callables in the remaining callback runtimes (`array_reduce()`, `array_walk()`, `usort()`, `uksort()`, `uasort()`), direct callable expression calls such as `($obj->method(...))()`, non-local method receivers such as `(new Foo())->method(...)`, nullsafe first-class callables, broader builtin first-class callable wrappers, and the remaining `call_user_func_array()` by-reference callback gaps
 - [ ] Runtime-value compatibility polishing v2 — continue with PHP's uninitialized typed-property state, integer overflow promotion, broader loose-comparison semantics, and future warning/notice sites as they are added
 - [ ] Broader date, regex, and JSON PHP parity — expand `strtotime()` relative formats, PCRE-compatible regex features/captures/backreferences, and `json_decode()` structured array/object decoding
 

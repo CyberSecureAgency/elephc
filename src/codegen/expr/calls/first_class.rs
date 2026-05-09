@@ -6,6 +6,10 @@ use crate::names::Name;
 use crate::parser::ast::{CallableTarget, Expr, ExprKind, StaticReceiver, Stmt, StmtKind};
 use crate::types::{first_class_callable_builtin_sig, FunctionSig, PhpType};
 
+const FCC_CALLED_CLASS_ID_PARAM: &str = "__elephc_fcc_called_class_id";
+const FCC_THIS_PARAM: &str = "__elephc_fcc_this";
+const FCC_RECEIVER_PARAM: &str = "__elephc_fcc_receiver";
+
 fn callable_wrapper_sig(sig: &FunctionSig) -> FunctionSig {
     let Some(variadic_name) = sig.variadic.as_ref() else {
         return sig.clone();
@@ -29,10 +33,7 @@ fn callable_wrapper_sig(sig: &FunctionSig) -> FunctionSig {
     wrapper_sig
 }
 
-fn resolved_static_callable_target(
-    receiver: &StaticReceiver,
-    ctx: &Context,
-) -> Option<StaticReceiver> {
+fn resolved_static_callable_target(receiver: &StaticReceiver, ctx: &Context) -> Option<StaticReceiver> {
     match receiver {
         StaticReceiver::Named(name) => Some(StaticReceiver::Named(name.clone())),
         StaticReceiver::Self_ => ctx
@@ -48,6 +49,17 @@ fn resolved_static_callable_target(
     }
 }
 
+fn static_callable_lookup_class(receiver: &StaticReceiver, ctx: &Context) -> Option<String> {
+    match receiver {
+        StaticReceiver::Named(name) => Some(name.as_str().to_string()),
+        StaticReceiver::Self_ | StaticReceiver::Static => ctx.current_class.clone(),
+        StaticReceiver::Parent => {
+            let current_class = ctx.current_class.as_ref()?;
+            ctx.classes.get(current_class)?.parent.clone()
+        }
+    }
+}
+
 pub(super) fn first_class_callable_sig(target: &CallableTarget, ctx: &Context) -> Option<FunctionSig> {
     let sig = match target {
         CallableTarget::Function(name) => ctx
@@ -56,18 +68,138 @@ pub(super) fn first_class_callable_sig(target: &CallableTarget, ctx: &Context) -
             .cloned()
             .or_else(|| first_class_callable_builtin_sig(name.as_str())),
         CallableTarget::StaticMethod { receiver, method } => {
-            let StaticReceiver::Named(class_name) = resolved_static_callable_target(receiver, ctx)? else {
-                return None;
-            };
+            let class_name = static_callable_lookup_class(receiver, ctx)?;
             ctx.classes
-                .get(class_name.as_str())
+                .get(&class_name)
                 .and_then(|class_info| class_info.static_methods.get(method))
                 .cloned()
         }
-        CallableTarget::Method { .. } => None,
+        CallableTarget::Method { object, method } => {
+            let object_ty = crate::codegen::functions::infer_contextual_type(object, ctx);
+            let class_name = crate::codegen::functions::singular_object_class(&object_ty)?;
+            ctx.classes
+                .get(class_name)
+                .and_then(|class_info| class_info.methods.get(method))
+                .cloned()
+        }
     }?;
 
     Some(callable_wrapper_sig(&sig))
+}
+
+fn append_hidden_params_to_sig(
+    sig: &FunctionSig,
+    hidden_params: &[(String, PhpType)],
+) -> FunctionSig {
+    let mut captured_sig = sig.clone();
+    for (name, ty) in hidden_params {
+        captured_sig.params.push((name.clone(), ty.clone()));
+        captured_sig.defaults.push(None);
+        captured_sig.ref_params.push(false);
+        captured_sig.declared_params.push(true);
+    }
+    captured_sig
+}
+
+fn unique_hidden_param(base: &str, sig: &FunctionSig) -> String {
+    if !sig.params.iter().any(|(name, _)| name == base) {
+        return base.to_string();
+    }
+    let mut idx = 0usize;
+    loop {
+        let candidate = format!("{}_{}", base, idx);
+        if !sig.params.iter().any(|(name, _)| name == &candidate) {
+            return candidate;
+        }
+        idx += 1;
+    }
+}
+
+fn capture_for_static_target(ctx: &Context) -> Option<(String, PhpType)> {
+    if ctx.variables.contains_key("__elephc_called_class_id") {
+        return Some(("__elephc_called_class_id".to_string(), PhpType::Int));
+    }
+    ctx.variables
+        .get("this")
+        .map(|var| ("this".to_string(), var.ty.clone()))
+}
+
+fn capture_for_method_receiver(object: &Expr, ctx: &Context) -> Option<(String, PhpType)> {
+    match &object.kind {
+        ExprKind::Variable(name) => {
+            let ty = ctx
+                .variables
+                .get(name)
+                .map(|var| var.ty.clone())
+                .unwrap_or_else(|| crate::codegen::functions::infer_contextual_type(object, ctx));
+            Some((name.clone(), ty))
+        }
+        ExprKind::This => ctx
+            .variables
+            .get("this")
+            .map(|var| ("this".to_string(), var.ty.clone())),
+        _ => None,
+    }
+}
+
+fn normalized_target_and_captures(
+    target: &CallableTarget,
+    sig: &FunctionSig,
+    ctx: &Context,
+) -> Option<(
+    CallableTarget,
+    Vec<(String, PhpType)>,
+    Vec<(String, PhpType)>,
+)> {
+    match target {
+        CallableTarget::StaticMethod { receiver, method } => match receiver {
+            StaticReceiver::Static => {
+                let capture = capture_for_static_target(ctx)?;
+                let hidden_name = if capture.0 == "this" {
+                    FCC_THIS_PARAM.to_string()
+                } else {
+                    FCC_CALLED_CLASS_ID_PARAM.to_string()
+                };
+                let hidden_ty = capture.1.clone();
+                Some((
+                    CallableTarget::StaticMethod {
+                        receiver: StaticReceiver::Static,
+                        method: method.clone(),
+                    },
+                    vec![capture],
+                    vec![(hidden_name, hidden_ty)],
+                ))
+            }
+            _ => {
+                let receiver = resolved_static_callable_target(receiver, ctx)?;
+                Some((
+                    CallableTarget::StaticMethod {
+                        receiver,
+                        method: method.clone(),
+                    },
+                    Vec::new(),
+                    Vec::new(),
+                ))
+            }
+        },
+        CallableTarget::Method { object, method } => {
+            let capture = capture_for_method_receiver(object, ctx)?;
+            let hidden_name = unique_hidden_param(FCC_RECEIVER_PARAM, sig);
+            let hidden_ty = capture.1.clone();
+            Some((
+                CallableTarget::Method {
+                    object: Box::new(Expr::new(
+                        ExprKind::Variable(hidden_name.clone()),
+                        object.span,
+                    )),
+                    method: method.clone(),
+                },
+                vec![capture],
+                vec![(hidden_name, hidden_ty)],
+            ))
+        }
+        other => Some((other.clone(), Vec::new(), Vec::new())),
+    }
 }
 
 fn wrapper_body(target: &CallableTarget, sig: &FunctionSig) -> Vec<Stmt> {
@@ -105,7 +237,14 @@ fn wrapper_body(target: &CallableTarget, sig: &FunctionSig) -> Vec<Stmt> {
             },
             crate::span::Span::dummy(),
         ),
-        CallableTarget::Method { .. } => unreachable!("instance method callables are rejected by checker"),
+        CallableTarget::Method { object, method } => Expr::new(
+            ExprKind::MethodCall {
+                object: object.clone(),
+                method: method.clone(),
+                args,
+            },
+            crate::span::Span::dummy(),
+        ),
     };
 
     if sig.return_type == PhpType::Void {
@@ -133,31 +272,26 @@ pub(super) fn emit_first_class_callable(
         return PhpType::Callable;
     };
 
-    let normalized_target = match target {
-        CallableTarget::StaticMethod { receiver, method } => {
-            let Some(receiver) = resolved_static_callable_target(receiver, ctx) else {
-                emitter.comment("WARNING: unsupported first-class static:: callable target");
-                abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), 0);
-                return PhpType::Callable;
-            };
-            CallableTarget::StaticMethod {
-                receiver,
-                method: method.clone(),
-            }
-        }
-        other => other.clone(),
+    let Some((normalized_target, captures, hidden_params)) =
+        normalized_target_and_captures(target, &sig, ctx)
+    else {
+        emitter.comment("WARNING: unsupported first-class callable target");
+        abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), 0);
+        return PhpType::Callable;
     };
 
     let wrapper_label = ctx.next_label("fcc");
     let param_names: Vec<String> = sig.params.iter().map(|(name, _)| name.clone()).collect();
     let body = wrapper_body(&normalized_target, &sig);
+    let deferred_sig = append_hidden_params_to_sig(&sig, &hidden_params);
 
     ctx.deferred_closures.push(DeferredClosure {
         label: wrapper_label.clone(),
         params: param_names,
         body,
-        sig,
-        captures: vec![],
+        sig: deferred_sig,
+        captures,
+        current_class: ctx.current_class.clone(),
     });
 
     emitter.comment("first-class callable: load wrapper address");

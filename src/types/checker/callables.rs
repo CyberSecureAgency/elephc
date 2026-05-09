@@ -15,6 +15,77 @@ pub(crate) struct ClosureSignatureContext {
 }
 
 impl Checker {
+    pub(crate) fn first_class_callable_target_needs_runtime_capture(
+        target: &CallableTarget,
+    ) -> bool {
+        matches!(
+            target,
+            CallableTarget::Method { .. }
+                | CallableTarget::StaticMethod {
+                    receiver: StaticReceiver::Static,
+                    ..
+                }
+        )
+    }
+
+    pub(crate) fn reject_captured_first_class_callable_callback(
+        &self,
+        callback: &Expr,
+        span: crate::span::Span,
+        builtin: &str,
+    ) -> Result<(), CompileError> {
+        let target = match &callback.kind {
+            ExprKind::FirstClassCallable(target) => Some(target),
+            ExprKind::Variable(var_name) => self.first_class_callable_targets.get(var_name),
+            _ => None,
+        };
+        if target.is_some_and(Self::first_class_callable_target_needs_runtime_capture) {
+            return Err(CompileError::new(
+                span,
+                &format!(
+                    "{}() does not support captured first-class callable targets yet",
+                    builtin
+                ),
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn expr_call_callee_needs_runtime_capture(&self, callee: &Expr) -> bool {
+        match &callee.kind {
+            ExprKind::Closure { captures, .. } => !captures.is_empty(),
+            ExprKind::FirstClassCallable(target) => {
+                Self::first_class_callable_target_needs_runtime_capture(target)
+            }
+            ExprKind::Variable(var_name) => {
+                self.callable_captures
+                    .get(var_name)
+                    .is_some_and(|captures| !captures.is_empty())
+                    || self
+                        .first_class_callable_targets
+                        .get(var_name)
+                        .is_some_and(Self::first_class_callable_target_needs_runtime_capture)
+            }
+            ExprKind::Assignment { value, .. } => {
+                self.expr_call_callee_needs_runtime_capture(value)
+            }
+            ExprKind::Ternary {
+                then_expr,
+                else_expr,
+                ..
+            } => {
+                self.expr_call_callee_needs_runtime_capture(then_expr)
+                    || self.expr_call_callee_needs_runtime_capture(else_expr)
+            }
+            ExprKind::ShortTernary { value, default }
+            | ExprKind::NullCoalesce { value, default } => {
+                self.expr_call_callee_needs_runtime_capture(value)
+                    || self.expr_call_callee_needs_runtime_capture(default)
+            }
+            _ => false,
+        }
+    }
+
     pub(crate) fn prepare_closure_signature_context(
         &mut self,
         params: &[(String, Option<TypeExpr>, Option<Expr>, bool)],
@@ -203,10 +274,12 @@ impl Checker {
                         })?
                     }
                     StaticReceiver::Static => {
-                        return Err(CompileError::new(
-                            span,
-                            "First-class callable syntax does not support static:: targets yet",
-                        ));
+                        self.current_class.as_ref().cloned().ok_or_else(|| {
+                            CompileError::new(
+                                span,
+                                "Cannot use static:: in first-class callable outside class method scope",
+                            )
+                        })?
                     }
                     StaticReceiver::Parent => {
                         let current_class = self.current_class.as_ref().ok_or_else(|| {
@@ -275,15 +348,51 @@ impl Checker {
                 Ok(Self::callable_wrapper_sig(&effective_sig))
             }
             CallableTarget::Method { object, method } => {
+                if !matches!(&object.kind, ExprKind::Variable(_) | ExprKind::This) {
+                    return Err(CompileError::new(
+                        span,
+                        "First-class method callable requires a variable or $this receiver",
+                    ));
+                }
                 let object_ty = self.infer_type(object, env)?;
                 match object_ty {
-                    PhpType::Object(class_name) => Err(CompileError::new(
-                        span,
-                        &format!(
-                            "First-class instance method callables are not supported yet: {}->{}(...)",
-                            class_name, method
-                        ),
-                    )),
+                    PhpType::Object(class_name) => {
+                        let class_info = self.classes.get(&class_name).ok_or_else(|| {
+                            CompileError::new(span, &format!("Undefined class: {}", class_name))
+                        })?;
+                        let sig = class_info.methods.get(method).ok_or_else(|| {
+                            CompileError::new(
+                                span,
+                                &format!(
+                                    "Undefined method for first-class callable: {}::{}",
+                                    class_name, method
+                                ),
+                            )
+                        })?;
+                        if let Some(visibility) = class_info.method_visibilities.get(method) {
+                            let declaring_class = class_info
+                                .method_declaring_classes
+                                .get(method)
+                                .map(String::as_str)
+                                .unwrap_or(class_name.as_str());
+                            if !self.can_access_member(declaring_class, visibility) {
+                                return Err(CompileError::new(
+                                    span,
+                                    &format!(
+                                        "Cannot access {} method: {}::{}",
+                                        Self::visibility_label(visibility),
+                                        class_name,
+                                        method
+                                    ),
+                                ));
+                            }
+                        }
+                        let declared_flags =
+                            Self::declared_method_param_flags(class_info, method, false);
+                        let effective_sig =
+                            Self::callable_sig_for_declared_params(sig, &declared_flags);
+                        Ok(Self::callable_wrapper_sig(&effective_sig))
+                    }
                     _ => Err(CompileError::new(
                         span,
                         "First-class method callable requires an object receiver",
@@ -325,7 +434,17 @@ impl Checker {
                 );
                 self.infer_type(&call_expr, env)?;
             }
-            CallableTarget::Method { .. } => {}
+            CallableTarget::Method { object, method } => {
+                let call_expr = Expr::new(
+                    ExprKind::MethodCall {
+                        object: object.clone(),
+                        method: method.clone(),
+                        args: args.to_vec(),
+                    },
+                    span,
+                );
+                self.infer_type(&call_expr, env)?;
+            }
         }
         self.resolve_first_class_callable_sig(target, span, env)
     }

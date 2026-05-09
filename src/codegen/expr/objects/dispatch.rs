@@ -444,8 +444,21 @@ pub(super) fn emit_immediate_class_id(emitter: &mut Emitter, class_id: u64) {
 }
 
 pub(super) fn emit_forwarded_called_class_id(emitter: &mut Emitter, ctx: &Context) -> bool {
+    if let Some(var) = ctx.variables.get("__elephc_fcc_called_class_id") {
+        abi::load_at_offset(emitter, abi::int_result_reg(emitter), var.stack_offset); // forward the first-class callable's captured called-class id
+        return true;
+    }
     if let Some(var) = ctx.variables.get("__elephc_called_class_id") {
         abi::load_at_offset(emitter, abi::int_result_reg(emitter), var.stack_offset); // forward the hidden called-class id from the current static method frame
+        true
+    } else if let Some(var) = ctx.variables.get("__elephc_fcc_this") {
+        abi::load_at_offset(emitter, abi::int_result_reg(emitter), var.stack_offset); // load the first-class callable's captured receiver for dynamic static dispatch
+        abi::emit_load_from_address(
+            emitter,
+            abi::int_result_reg(emitter),
+            abi::int_result_reg(emitter),
+            0,
+        );
         true
     } else if let Some(var) = ctx.variables.get("this") {
         abi::load_at_offset(emitter, abi::int_result_reg(emitter), var.stack_offset); // load the implicit $this pointer for dynamic static dispatch

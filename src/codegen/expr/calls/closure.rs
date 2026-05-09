@@ -184,6 +184,7 @@ pub(super) fn emit_closure(
         body: body.to_vec(),
         sig,
         captures: capture_types,
+        current_class: ctx.current_class.clone(),
     });
 
     emitter.comment("closure: load function address");

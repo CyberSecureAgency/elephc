@@ -17,18 +17,50 @@ fn test_error_variadic_not_last() {
 }
 
 #[test]
-fn test_error_first_class_callable_rejects_instance_methods() {
+fn test_error_first_class_callable_method_requires_object_receiver() {
     expect_error(
-        "<?php class User { public function greet() { return 1; } } $u = new User(); $f = $u->greet(...);",
-        "First-class instance method callables are not supported yet",
+        "<?php $u = 1; $f = $u->greet(...);",
+        "First-class method callable requires an object receiver",
     );
 }
 
 #[test]
-fn test_error_first_class_callable_rejects_static_receiver_static() {
+fn test_error_first_class_callable_method_requires_stable_receiver() {
     expect_error(
-        "<?php class User { public static function make() { return 1; } public function run() { $f = static::make(...); } }",
-        "does not support static:: targets yet",
+        "<?php class User { public function greet() { return 1; } } $f = (new User())->greet(...);",
+        "First-class method callable requires a variable or $this receiver",
+    );
+}
+
+#[test]
+fn test_error_direct_expr_call_rejects_captured_first_class_method_callable() {
+    expect_error(
+        "<?php class User { public function greet() { return \"ok\"; } } $u = new User(); echo ($u->greet(...))();",
+        "Direct calls of captured callable expressions are not supported yet",
+    );
+}
+
+#[test]
+fn test_error_direct_expr_call_rejects_captured_static_first_class_callable() {
+    expect_error(
+        "<?php class User { public static function run() { return (static::make(...))(); } public static function make() { return 1; } }",
+        "Direct calls of captured callable expressions are not supported yet",
+    );
+}
+
+#[test]
+fn test_error_parenthesized_expr_call_rejects_captured_first_class_method_callable() {
+    expect_error(
+        "<?php class User { public function greet() { return \"ok\"; } } $u = new User(); $f = $u->greet(...); echo ($f)();",
+        "Direct calls of captured callable expressions are not supported yet",
+    );
+}
+
+#[test]
+fn test_error_array_reduce_rejects_captured_first_class_method_callable() {
+    expect_error(
+        "<?php class User { public function add($carry, $item) { return $carry + $item; } } $u = new User(); $f = $u->add(...); array_reduce([1, 2], $f, 0);",
+        "array_reduce() does not support captured first-class callable targets yet",
     );
 }
 

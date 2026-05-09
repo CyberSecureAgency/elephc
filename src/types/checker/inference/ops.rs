@@ -369,6 +369,12 @@ impl Checker {
                 ),
             ));
         }
+        if self.expr_call_callee_needs_runtime_capture(callee) {
+            return Err(CompileError::new(
+                expr.span,
+                "Direct calls of captured callable expressions are not supported yet",
+            ));
+        }
         match &callee.kind {
             ExprKind::Variable(var_name) => {
                 if let Some(sig) = self.callable_sigs.get(var_name).cloned() {

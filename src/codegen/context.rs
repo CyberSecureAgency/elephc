@@ -67,6 +67,7 @@ pub struct DeferredClosure {
     pub body: Vec<Stmt>,
     pub sig: FunctionSig,
     pub captures: Vec<(String, PhpType)>,
+    pub current_class: Option<String>,
 }
 
 /// A Fiber entry wrapper emitted next to deferred closure bodies.

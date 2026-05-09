@@ -5,7 +5,7 @@ sidebar:
   order: 7
 ---
 
-**Source:** `src/codegen/` — `mod.rs`, `driver_support.rs`, `prescan.rs`, `program_usage.rs`, `expr.rs`, `expr/`, `stmt.rs`, `stmt/`, `functions/`, `ffi.rs`, `abi/`, `platform/`, `context.rs`, `data_section.rs`, `emit.rs`
+**Source:** `src/codegen/` — `mod.rs`, `driver_support.rs`, `main_emission.rs`, `class_methods.rs`, `function_variants.rs`, `interface_wrappers.rs`, `prescan.rs`, `program_usage.rs`, `program_usage/`, `expr.rs`, `expr/`, `stmt.rs`, `stmt/`, `functions/`, `builtins/`, `runtime/`, `ffi.rs`, `abi/`, `platform/`, `context.rs`, `data_section.rs`, `emit.rs`
 
 The code generator (codegen) is the heart of the compiler. It takes the checked AST after the optimizer's local simplification passes and produces native assembly text for the selected target — the actual instructions the CPU will execute.
 
@@ -492,7 +492,9 @@ When a closure variable is called (`$fn(1, 2)`), the codegen:
 
 Built-in functions like `array_map`, `array_filter`, `array_reduce`, `array_walk`, and `usort` accept callback values. The callback function pointer is passed in a register (like any other `Callable` argument) and the runtime routine calls it via `blr`.
 
-For captured closures passed through `array_map` / `array_filter`, codegen builds a temporary callback environment containing the original closure pointer plus its hidden `use (...)` values. The runtime passes that environment to a generated callback wrapper, and the wrapper re-materializes the original visible arguments plus hidden captures before calling the closure. `call_user_func()` does not need a runtime loop, so it appends the hidden capture arguments directly at the indirect call site.
+For captured closures passed through `array_map` / `array_filter`, codegen builds a temporary callback environment containing the original closure pointer plus its hidden `use (...)` values. The runtime passes that environment to a generated callback wrapper, and the wrapper re-materializes the original visible arguments plus hidden captures before calling the closure. `call_user_func()` and `call_user_func_array()` do not need a runtime loop, so they append the hidden capture arguments directly at the indirect call site.
+
+First-class callable wrappers reuse this hidden argument path when the callable target carries context. `$obj->method(...)` records the receiver variable as a hidden capture and the wrapper calls that method with the visible arguments. `static::method(...)` records the forwarded called-class id, or `$this` in an instance method, so late static binding is preserved for direct callable calls and for callback paths that forward an environment, such as `array_map`, `array_filter`, `call_user_func`, and `call_user_func_array`.
 
 ## Fiber codegen
 

@@ -153,7 +153,8 @@ src/
 │   ├── token.rs               Token enum
 │   ├── cursor.rs              Byte-level source reader
 │   ├── scan.rs                Main scanning loop, operators
-│   └── literals.rs            String, number, variable, keyword scanning
+│   ├── literals.rs            String, number, variable, keyword scanning entry point
+│   └── literals/              Identifier, number, and string literal scanners
 │
 ├── parser/
 │   ├── mod.rs                 parse() → Program
@@ -163,17 +164,30 @@ src/
 │   └── control.rs             if, while, for, do-while, foreach, try/catch/finally
 │
 ├── types/
-│   ├── mod.rs                 PhpType enum, TypeEnv, packed layout metadata, CheckResult
+│   ├── mod.rs                 Public checker entry point and type exports
+│   ├── model.rs               PhpType enum and TypeEnv
+│   ├── result.rs              CheckResult and semantic metadata returned by the checker
+│   ├── schema.rs              Class/interface/enum/trait metadata models
+│   ├── signatures.rs          Built-in call signatures and first-class callable wrappers
+│   ├── call_args.rs           Shared named/spread call-argument planner
+│   ├── array_keys.rs          PHP array-key normalization helpers
+│   ├── ffi.rs                 C-facing extern type models
+│   ├── fibers.rs              Fiber callback validation helpers
 │   ├── traits.rs              Trait flattening and conflict-resolution helpers
+│   ├── traits/                Trait expansion, merge, and validation helpers
 │   ├── warnings/              Non-fatal diagnostics (unused vars, unreachable code)
 │   └── checker/
 │       ├── mod.rs             Type-checker orchestration boundary
 │       ├── driver/            Main checker driver and program passes
+│       ├── builtin_iterators.rs Built-in Iterator / IteratorAggregate metadata
 │       ├── builtin_types.rs   Shared builtin/type helper predicates
 │       ├── builtins/          Built-in function type signatures
+│       ├── callables.rs       Closure and first-class callable signature resolution
+│       ├── extern_decl.rs     Extern declaration validation
 │       ├── functions.rs       Function-checking module root / orchestration
 │       ├── functions/         Call validation, signature resolution, return collection
 │       ├── inference/         Focused expression and object inference helpers
+│       ├── method_pass.rs     Method pre-declaration and override checking
 │       ├── schema/            Class, interface, enum, and declaration validation
 │       ├── stmt_check.rs      Statement-checking module root
 │       ├── stmt_check/        Assignment and control-flow statement checks
@@ -184,8 +198,13 @@ src/
 ├── codegen/
 │   ├── mod.rs                 generate() orchestration
 │   ├── driver_support.rs      Pipeline glue and orchestration helpers
+│   ├── main_emission.rs       Top-level program, globals, and deferred-body emission
+│   ├── class_methods.rs       Instance/static method emission orchestration
+│   ├── function_variants.rs   Include-loaded function variant dispatchers
+│   ├── interface_wrappers.rs  Interface dispatch return-shape adapters
 │   ├── prescan.rs             Pre-pass that collects program-wide codegen metadata
 │   ├── program_usage.rs       Program-usage analysis feeding metadata emission
+│   ├── program_usage/         Required-class and variable usage scanners
 │   ├── expr.rs                Expression codegen dispatcher
 │   ├── expr/                  Expression submodules
 │   │   ├── arrays.rs          Array-expression dispatch
@@ -221,10 +240,12 @@ src/
 │   │   └── storage/           `locals.rs`, `extern_globals.rs`
 │   ├── functions/             User function emission
 │   │   ├── mod.rs             Function lowering entry point
+│   │   ├── callback_wrapper.rs Captured callback environment wrappers
 │   │   ├── cleanup.rs         Epilogue / ownership cleanup helpers
 │   │   ├── control_flow.rs    Return / early-exit lowering
+│   │   ├── fiber_wrapper.rs   Fiber callback entry wrappers
 │   │   ├── locals.rs          Local slot layout
-│   │   └── types.rs           Function-specific type helpers
+│   │   └── types/             Function-local type inference helpers
 │   ├── abi/                   Target-aware calling convention helpers
 │   │   ├── mod.rs             Public ABI helpers
 │   │   ├── bootstrap.rs       Program entry / bootstrap helpers
@@ -335,7 +356,7 @@ Namespace syntax is preserved through parsing and include resolution, then norma
 
 Because codegen receives canonical names, namespaces do not require special cases in most later passes: mangled labels are derived centrally from the final fully-qualified name.
 
-First-class callable syntax rides on the same canonical naming pipeline. The parser emits a dedicated callable-target node, the checker validates the target statically, and codegen lowers it to a synthesized wrapper function so runtime callable values remain ordinary function pointers.
+First-class callable syntax rides on the same canonical naming pipeline. The parser emits a dedicated callable-target node, the checker validates the target statically, and codegen lowers it to a synthesized wrapper function so runtime callable values remain ordinary function pointers. Instance-method targets and `static::` targets use the same hidden-capture channel as closures to forward the receiver or called-class context into that wrapper.
 
 ## Runtime memory layout
 

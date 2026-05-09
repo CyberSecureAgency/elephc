@@ -42,6 +42,40 @@ array_walk($items, "show");
 $result = call_user_func("double", 21);
 echo "call_user_func(double, 21) = " . $result . "\n";
 
+class Formatter {
+    public function bracket(string $value): string {
+        return "[" . $value . "]";
+    }
+}
+
+$formatter = new Formatter();
+$format = $formatter->bracket(...);
+echo "method callable: " . $format("ok") . "\n";
+$formatted = array_map($format, ["a", "b"]);
+echo "method callable array_map: ";
+foreach ($formatted as $v) { echo $v . " "; }
+echo "\n";
+echo "method callable call_user_func_array: " . call_user_func_array($format, ["cb"]) . "\n";
+
+class Labeler {
+    public static function current() {
+        $label = static::name(...);
+        return $label();
+    }
+
+    public static function name() {
+        return "base";
+    }
+}
+
+class LoudLabeler extends Labeler {
+    public static function name() {
+        return "loud";
+    }
+}
+
+echo "static callable: " . Labeler::current() . "/" . LoudLabeler::current() . "\n";
+
 // function_exists: check if a function is defined
 if (function_exists("double")) {
     echo "function 'double' exists\n";

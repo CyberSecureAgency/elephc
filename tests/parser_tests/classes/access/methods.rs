@@ -21,6 +21,21 @@ fn test_parse_method_call() {
 }
 
 #[test]
+fn test_parse_first_class_callable_instance_method() {
+    let stmts = parse_source("<?php $obj->run(...);");
+    match &stmts[0].kind {
+        StmtKind::ExprStmt(expr) => match &expr.kind {
+            ExprKind::FirstClassCallable(CallableTarget::Method { object, method }) => {
+                assert_eq!(method, "run");
+                assert!(matches!(object.kind, ExprKind::Variable(_)));
+            }
+            other => panic!("Expected instance method first-class callable, got {:?}", other),
+        },
+        _ => panic!("Expected ExprStmt"),
+    }
+}
+
+#[test]
 fn test_parse_static_method_call() {
     let stmts = parse_source("<?php Factory::make(1);");
     match &stmts[0].kind {
@@ -35,6 +50,21 @@ fn test_parse_static_method_call() {
                 assert_eq!(args.len(), 1);
             }
             _ => panic!("Expected StaticMethodCall"),
+        },
+        _ => panic!("Expected ExprStmt"),
+    }
+}
+
+#[test]
+fn test_parse_first_class_callable_static_method_static_receiver() {
+    let stmts = parse_source("<?php static::make(...);");
+    match &stmts[0].kind {
+        StmtKind::ExprStmt(expr) => match &expr.kind {
+            ExprKind::FirstClassCallable(CallableTarget::StaticMethod { receiver, method }) => {
+                assert_eq!(receiver, &StaticReceiver::Static);
+                assert_eq!(method, "make");
+            }
+            other => panic!("Expected static:: first-class callable, got {:?}", other),
         },
         _ => panic!("Expected ExprStmt"),
     }

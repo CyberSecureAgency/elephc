@@ -12,7 +12,7 @@ pub(super) struct CallbackEnv {
 
 pub(super) fn callback_captures(callback: &Expr, ctx: &Context) -> Vec<(String, PhpType)> {
     match &callback.kind {
-        ExprKind::Closure { .. } => ctx
+        ExprKind::Closure { .. } | ExprKind::FirstClassCallable(_) => ctx
             .deferred_closures
             .last()
             .map(|closure| closure.captures.clone())

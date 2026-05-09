@@ -79,6 +79,7 @@ pub fn emit_closure(
     label: &str,
     sig: &FunctionSig,
     body: &[crate::parser::ast::Stmt],
+    current_class: Option<&str>,
     all_functions: &HashMap<String, FunctionSig>,
     function_variant_groups: &HashSet<String>,
     constants: &HashMap<String, (ExprKind, PhpType)>,
@@ -92,7 +93,8 @@ pub fn emit_closure(
     let epilogue_label = format!("{}_epilogue", label);
     let empty_globals = HashSet::new();
     let empty_statics = HashMap::new();
-    emit_function_with_label(
+    let closure_class_name = current_class.unwrap_or("");
+    emit_function_with_label_and_class(
         emitter,
         data,
         label,
@@ -105,7 +107,7 @@ pub fn emit_closure(
         &empty_globals,
         &empty_statics,
         interfaces,
-        Some(classes),
+        Some((classes, closure_class_name)),
         packed_classes,
         extern_functions,
         extern_classes,
@@ -246,7 +248,7 @@ fn emit_function_with_label_and_class(
                 pty.clone(),
                 HeapOwnership::borrowed_alias_for_type(pty),
             );
-        } else if pname == "this" {
+        } else if pname == "this" || pname.starts_with("__elephc_fcc_") {
             ctx.alloc_var_with_static_type(pname, pty.codegen_repr(), pty.clone());
             ctx.set_var_ownership(pname, HeapOwnership::borrowed_alias_for_type(pty));
             ctx.disable_epilogue_cleanup(pname);
@@ -363,6 +365,7 @@ fn emit_function_with_label_and_class(
                 &closure.label,
                 &closure.sig,
                 &closure.body,
+                closure.current_class.as_deref(),
                 all_functions,
                 &ctx.function_variant_groups,
                 constants,

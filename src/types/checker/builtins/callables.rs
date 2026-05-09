@@ -72,6 +72,7 @@ pub(super) fn check_builtin(
                     "array_reduce() takes exactly 3 arguments",
                 ));
             }
+            checker.reject_captured_first_class_callable_callback(&args[1], span, "array_reduce")?;
             for arg in args {
                 checker.infer_type(arg, env)?;
             }
@@ -88,6 +89,7 @@ pub(super) fn check_builtin(
             if args.len() != 2 {
                 return Err(CompileError::new(span, "array_walk() takes exactly 2 arguments"));
             }
+            checker.reject_captured_first_class_callable_callback(&args[1], span, "array_walk")?;
             for arg in args {
                 checker.infer_type(arg, env)?;
             }
@@ -104,6 +106,7 @@ pub(super) fn check_builtin(
                     &format!("{}() takes exactly 2 arguments", name),
                 ));
             }
+            checker.reject_captured_first_class_callable_callback(&args[1], span, name)?;
             for arg in args {
                 checker.infer_type(arg, env)?;
             }

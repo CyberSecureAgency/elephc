@@ -227,7 +227,7 @@ pub(super) fn infer_local_type(
                 CastType::Array => PhpType::Array(Box::new(PhpType::Int)),
             }
         }
-        ExprKind::Closure { .. } => PhpType::Callable,
+        ExprKind::Closure { .. } | ExprKind::FirstClassCallable(_) => PhpType::Callable,
         ExprKind::ClosureCall { var, .. } => {
             if let Some(c) = ctx {
                 if let Some(sig) = c.closure_sigs.get(var) {
