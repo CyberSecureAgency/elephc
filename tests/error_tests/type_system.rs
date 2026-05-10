@@ -312,10 +312,42 @@ fn test_error_date_too_many_args() {
 }
 
 #[test]
-fn test_error_json_encode_too_many_args() {
+fn test_error_json_encode_flag_must_be_int() {
     expect_error(
         r#"<?php json_encode("a", "b");"#,
-        "json_encode() takes exactly 1 argument",
+        "json_encode() flags and depth must be integers",
+    );
+}
+
+#[test]
+fn test_error_json_encode_too_many_args() {
+    expect_error(
+        "<?php json_encode(1, 2, 3, 4);",
+        "json_encode() takes 1 to 3 arguments",
+    );
+}
+
+#[test]
+fn test_error_json_decode_too_many_args() {
+    expect_error(
+        r#"<?php json_decode("1", true, 1, 0, 99);"#,
+        "json_decode() takes 1 to 4 arguments",
+    );
+}
+
+#[test]
+fn test_error_json_validate_too_many_args() {
+    expect_error(
+        r#"<?php json_validate("1", 1, 0, 99);"#,
+        "json_validate() takes 1 to 3 arguments",
+    );
+}
+
+#[test]
+fn test_error_json_validate_flag_must_be_int() {
+    expect_error(
+        r#"<?php json_validate("1", "deep");"#,
+        "json_validate() depth and flags must be integers",
     );
 }
 

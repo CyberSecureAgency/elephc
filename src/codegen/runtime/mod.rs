@@ -6,6 +6,7 @@ mod emitters;
 mod exceptions;
 mod fibers;
 mod io;
+mod objects;
 mod pointers;
 mod strings;
 mod system;

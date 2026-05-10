@@ -1,5 +1,7 @@
 pub(crate) mod builtins;
 mod builtin_iterators;
+mod builtin_json;
+pub(crate) mod builtin_stdclass;
 mod builtin_types;
 mod callables;
 mod driver;

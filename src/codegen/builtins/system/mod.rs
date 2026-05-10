@@ -6,6 +6,8 @@ mod getenv;
 mod json_decode;
 mod json_encode;
 mod json_last_error;
+mod json_last_error_msg;
+mod json_validate;
 mod microtime;
 mod mktime;
 mod passthru;
@@ -57,6 +59,8 @@ pub fn emit(
         "json_encode" => json_encode::emit(name, args, emitter, ctx, data),
         "json_decode" => json_decode::emit(name, args, emitter, ctx, data),
         "json_last_error" => json_last_error::emit(name, args, emitter, ctx, data),
+        "json_last_error_msg" => json_last_error_msg::emit(name, args, emitter, ctx, data),
+        "json_validate" => json_validate::emit(name, args, emitter, ctx, data),
         "preg_match" => preg_match::emit(name, args, emitter, ctx, data),
         "preg_match_all" => preg_match_all::emit(name, args, emitter, ctx, data),
         "preg_replace" => preg_replace::emit(name, args, emitter, ctx, data),

@@ -32,6 +32,16 @@ pub(super) fn emit_new_object(
             return PhpType::Int;
         }
     };
+    if crate::types::checker::builtin_stdclass::is_stdclass(class_name) {
+        emitter.comment("new stdClass()");
+        // stdClass instances do not have static property slots; the
+        // dedicated runtime helper allocates the 16-byte payload, stamps
+        // the class_id, and seeds the dynamic-property hash. User-supplied
+        // arguments (none allowed by PHP for stdClass) are ignored here.
+        let _ = args;
+        abi::emit_call_label(emitter, "__rt_stdclass_new");                     // allocate a fresh stdClass instance with an empty property hash
+        return PhpType::Object(class_name.to_string());
+    }
     let num_props = class_info.properties.len();
     let obj_size = 8 + num_props * 16; // 8 for class_id + 16 per property
 

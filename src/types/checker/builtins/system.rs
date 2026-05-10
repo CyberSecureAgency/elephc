@@ -135,18 +135,59 @@ pub(super) fn check_builtin(
             Ok(Some(PhpType::Int))
         }
         "json_encode" => {
-            if args.len() != 1 {
-                return Err(CompileError::new(span, "json_encode() takes exactly 1 argument"));
+            if args.is_empty() || args.len() > 3 {
+                return Err(CompileError::new(
+                    span,
+                    "json_encode() takes 1 to 3 arguments",
+                ));
             }
             checker.infer_type(&args[0], env)?;
+            for extra in &args[1..] {
+                let ty = checker.infer_type(extra, env)?;
+                if !matches!(ty, PhpType::Int | PhpType::Mixed) {
+                    return Err(CompileError::new(
+                        extra.span,
+                        "json_encode() flags and depth must be integers",
+                    ));
+                }
+            }
             Ok(Some(PhpType::Str))
         }
         "json_decode" => {
-            if args.len() != 1 {
-                return Err(CompileError::new(span, "json_decode() takes exactly 1 argument"));
+            if args.is_empty() || args.len() > 4 {
+                return Err(CompileError::new(
+                    span,
+                    "json_decode() takes 1 to 4 arguments",
+                ));
             }
             checker.infer_type(&args[0], env)?;
-            Ok(Some(PhpType::Str))
+            for extra in &args[1..] {
+                checker.infer_type(extra, env)?;
+            }
+            // Returns a structural Mixed: scalars (null/bool/int/float/string)
+            // box natively; arrays and objects currently fall back to a
+            // Mixed(string) wrapping the trimmed JSON slice (full structural
+            // decode of containers is on the roadmap).
+            Ok(Some(PhpType::Mixed))
+        }
+        "json_validate" => {
+            if args.is_empty() || args.len() > 3 {
+                return Err(CompileError::new(
+                    span,
+                    "json_validate() takes 1 to 3 arguments",
+                ));
+            }
+            checker.infer_type(&args[0], env)?;
+            for extra in &args[1..] {
+                let ty = checker.infer_type(extra, env)?;
+                if !matches!(ty, PhpType::Int | PhpType::Mixed) {
+                    return Err(CompileError::new(
+                        extra.span,
+                        "json_validate() depth and flags must be integers",
+                    ));
+                }
+            }
+            Ok(Some(PhpType::Bool))
         }
         "json_last_error" => {
             if !args.is_empty() {
@@ -156,6 +197,15 @@ pub(super) fn check_builtin(
                 ));
             }
             Ok(Some(PhpType::Int))
+        }
+        "json_last_error_msg" => {
+            if !args.is_empty() {
+                return Err(CompileError::new(
+                    span,
+                    "json_last_error_msg() takes no arguments",
+                ));
+            }
+            Ok(Some(PhpType::Str))
         }
         "preg_match" | "preg_match_all" => {
             if args.len() != 2 {
