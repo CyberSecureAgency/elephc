@@ -3,7 +3,8 @@
 //! This is the narrow public surface used by codegen to attach helper assembly and data sections.
 //!
 //! Called from:
-//! - `crate::codegen::pipeline::compile()` through code generation and linking.
+//! - `crate::codegen::driver_support::generate_runtime()` while building the cached runtime object.
+//! - `crate::codegen::main_emission::finish_user_asm()` when appending user-specific runtime data.
 //!
 //! Key details:
 //! - Keep this surface small: runtime codegen imports these re-exports instead of reaching into leaf emitters directly.

@@ -3,7 +3,7 @@
 //! Owns one ordered step in building checker state and validating the program before optimization/codegen.
 //!
 //! Called from:
-//! - `crate::types::checker::driver::run()`
+//! - `crate::types::checker::driver::check_types_impl()`
 //!
 //! Key details:
 //! - Phase order controls diagnostics, available declarations, required libraries, and function-local environments.
