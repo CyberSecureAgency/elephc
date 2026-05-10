@@ -5,6 +5,7 @@ mod contains;
 mod declarations;
 mod discovery;
 mod engine;
+mod engine_includes;
 mod exprs;
 mod files;
 mod function_variants;
