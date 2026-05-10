@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `array_flip` builtin calls over associative or key-aware array data.
+//! Owns key/value payload setup and runtime hash-helper invocation for array results or lookups.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::arrays::emit()`.
+//!
+//! Key details:
+//! - Array key typing and Mixed payload tags must match the runtime hash-table representation.
+
 use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;

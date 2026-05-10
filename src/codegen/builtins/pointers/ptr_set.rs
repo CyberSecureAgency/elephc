@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits compiler-extension `ptr_set` pointer operations.
+//! Lowers raw address arithmetic, loads, or stores using the target ABI without PHP runtime boxing.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::pointers::emit()`.
+//!
+//! Key details:
+//! - Pointer builtins are elephc extensions and must keep raw memory effects explicit and target-aware.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

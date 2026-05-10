@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `strstr` string search or comparison calls.
+//! Handles string pointer/length arguments and boxes false-or-position results when PHP requires mixed output.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::strings::emit()`.
+//!
+//! Key details:
+//! - Return values must distinguish numeric position zero from PHP false.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

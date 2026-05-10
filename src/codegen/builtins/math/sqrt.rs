@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `sqrt` numeric builtin calls backed by floating-point/libm-style helpers.
+//! Marshals integer or float operands into the target ABI and records the numeric return type.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::math::emit()`.
+//!
+//! Key details:
+//! - NaN, infinity, rounding, and division edge cases must remain PHP-compatible with type-checker signatures.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

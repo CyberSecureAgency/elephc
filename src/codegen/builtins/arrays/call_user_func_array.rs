@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `call_user_func_array` builtin calls that invoke user-provided callbacks.
+//! Owns callback argument materialization, result shape selection, and runtime helper calls.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::arrays::emit()`.
+//!
+//! Key details:
+//! - Callback lowering must preserve PHP source evaluation order, captures, and callable return ownership.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `empty` checks without reducing them to ordinary boolean casts.
+//! Handles unset/null/zero/empty string and array cases according to PHP truthiness rules.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::types::emit()`.
+//!
+//! Key details:
+//! - Must distinguish undefined storage probes from evaluated expressions where PHP suppresses notices.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

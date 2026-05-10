@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits compiler-extension `ptr_is_null` null-pointer operations.
+//! Materializes or tests raw pointer sentinel values in the target integer register convention.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::pointers::emit()`.
+//!
+//! Key details:
+//! - Null pointers are raw addresses, not PHP null Mixed cells.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `function_exists` checks for builtins, user functions, and include variants.
+//! Connects codegen-visible declarations to PHP runtime boolean results.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::arrays::emit()`.
+//!
+//! Key details:
+//! - Builtin checks must reflect the canonical catalog so case-insensitive and namespace fallback behavior stays coherent.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

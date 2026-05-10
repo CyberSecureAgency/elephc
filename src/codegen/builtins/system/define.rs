@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `define` calls for compile-time and runtime constant registration.
+//! Tracks generated symbols that guard repeated defines and constant lookups.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::system::emit()`.
+//!
+//! Key details:
+//! - Constant visibility must stay consistent with resolver/type-checker handling of PHP global constants.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

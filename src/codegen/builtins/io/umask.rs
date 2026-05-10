@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `umask` filesystem mutation builtin calls.
+//! Passes path and mode/owner arguments to runtime helpers that perform observable OS operations.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::io::emit()`.
+//!
+//! Key details:
+//! - These calls are effectful and must preserve PHP-visible ordering and boolean failure results.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

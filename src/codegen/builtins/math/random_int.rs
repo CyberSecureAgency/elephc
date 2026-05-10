@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `random_int` random-number builtin calls.
+//! Delegates entropy and range handling to runtime helpers while producing PHP integer results.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::math::emit()`.
+//!
+//! Key details:
+//! - Random helpers are effectful and must not be treated as pure by callers or optimizer assumptions.
+
 use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `array_search` builtin calls for array values.
+//! Materializes arguments and delegates payload work to the matching runtime helper or inline lowering.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::arrays::emit()`.
+//!
+//! Key details:
+//! - Array element type and ownership assumptions must match the type checker and runtime layout.
+
 use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;

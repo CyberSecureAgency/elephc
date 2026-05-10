@@ -1,3 +1,13 @@
+//! Purpose:
+//! Unboxes PHP stream resources for file-handle based builtin emitters.
+//! Emits consistent fatal/type-error paths when a stream argument is not valid.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::io::*::emit() for stream builtins`.
+//!
+//! Key details:
+//! - Resource handles are runtime-owned file descriptors; validation must happen before syscall/helper use.
+
 use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;

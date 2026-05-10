@@ -1,3 +1,13 @@
+//! Purpose:
+//! Boxes filesystem stat runtime results into PHP arrays, strings, ints, or false.
+//! Centralizes result-shape handling shared by stat-family builtin emitters.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::io::*::emit() for stat-family builtins`.
+//!
+//! Key details:
+//! - False sentinels and Mixed array payloads must match PHP failure semantics and runtime GC layout.
+
 use crate::codegen::context::Context;
 use crate::codegen::emit::Emitter;
 use crate::codegen::{abi, platform::Arch};

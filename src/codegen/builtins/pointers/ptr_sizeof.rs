@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits compiler-extension `ptr_sizeof` queries for low-level types.
+//! Returns static byte sizes used by pointer arithmetic and raw memory access code.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::pointers::emit()`.
+//!
+//! Key details:
+//! - Reported sizes must match the layouts used by buffer, packed class, and ABI lowering.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `isset` checks without evaluating to ordinary truthiness.
+//! Owns null/unset sentinel handling for variables and array element probes.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::arrays::emit()`.
+//!
+//! Key details:
+//! - Must distinguish PHP null/unset semantics from false, zero, and empty string values.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `fnmatch` I/O builtin calls.
+//! Marshals PHP values into runtime helpers that interact with files, paths, streams, or stdout.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::io::emit()`.
+//!
+//! Key details:
+//! - I/O helpers are effectful and their false/null failure conventions are part of PHP compatibility.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

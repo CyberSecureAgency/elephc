@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `var_dump` diagnostic output for scalar, array, and mixed values.
+//! Owns recursive/runtime-aware formatting needed for PHP-visible stdout text.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::io::emit()`.
+//!
+//! Key details:
+//! - Output is a side effect, and refcounted values must be inspected without consuming ownership.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

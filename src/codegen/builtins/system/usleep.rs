@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `usleep` time/date builtin calls.
+//! Marshals timestamp and format arguments into runtime helpers that consult wall-clock state.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::system::emit()`.
+//!
+//! Key details:
+//! - Time calls are effectful/non-deterministic and must preserve PHP scalar return conventions.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

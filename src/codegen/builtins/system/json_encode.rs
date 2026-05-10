@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `json_encode` JSON builtin calls.
+//! Marshals PHP scalar, array, and Mixed values into runtime JSON helpers and error state.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::system::emit()`.
+//!
+//! Key details:
+//! - JSON error state is runtime-global observable state and must stay coupled to json_last_error().
+
 use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
