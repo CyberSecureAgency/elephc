@@ -1,3 +1,13 @@
+//! Purpose:
+//! Resolves individual include and require statements during resolver traversal.
+//! Parses target files, handles include_once state, and merges resolved included statements.
+//!
+//! Called from:
+//! - `crate::resolver::engine::resolve_stmts()`.
+//!
+//! Key details:
+//! - Include paths are folded in the caller's constant state and file base directory.
+
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 

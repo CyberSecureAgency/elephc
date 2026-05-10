@@ -1,3 +1,13 @@
+//! Purpose:
+//! Defines expression AST nodes for PHP expressions and elephc expression-level extensions.
+//! Carries operands, call forms, access forms, magic constants, and source spans.
+//!
+//! Called from:
+//! - `crate::parser::expr` and AST-walking passes such as resolver, name resolver, optimizer, and codegen.
+//!
+//! Key details:
+//! - Expression variants must preserve PHP evaluation shape so later passes can model side effects correctly.
+
 use crate::names::Name;
 use crate::span::Span;
 

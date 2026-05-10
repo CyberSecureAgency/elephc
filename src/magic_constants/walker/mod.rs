@@ -1,3 +1,13 @@
+//! Purpose:
+//! Defines the reusable AST walker contract for magic-constant substitution passes.
+//! Provides pass hooks for magic constants and scope entry/exit events.
+//!
+//! Called from:
+//! - `crate::magic_constants::file_pass`, `scope_pass`, and `trait_binding`.
+//!
+//! Key details:
+//! - Walkers rebuild AST nodes while preserving spans and delegating context-specific substitutions to `Pass`.
+
 mod exprs;
 mod members;
 mod stmts;

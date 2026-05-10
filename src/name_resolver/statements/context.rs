@@ -1,3 +1,13 @@
+//! Purpose:
+//! Carries namespace, import, and symbol state while resolving statement-owned children.
+//! Resolves parameters, catch clauses, static receivers, and nested block expressions.
+//!
+//! Called from:
+//! - `crate::name_resolver::statements::rewrite` and list resolution.
+//!
+//! Key details:
+//! - Context borrows shared symbol tables so nested bodies use the same PHP lookup environment.
+
 use crate::errors::CompileError;
 use crate::parser::ast::{CatchClause, Expr, StaticReceiver, Stmt, TypeExpr};
 

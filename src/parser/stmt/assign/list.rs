@@ -1,3 +1,13 @@
+//! Purpose:
+//! Parses PHP list and bracket destructuring assignment patterns.
+//! Validates positional, keyed, skipped, and append targets before lowering to ordinary statements.
+//!
+//! Called from:
+//! - `crate::parser::stmt::parse_stmt()` through assignment dispatch.
+//!
+//! Key details:
+//! - Pattern validation rejects malformed destructuring before lowerers synthesize temporary access expressions.
+
 use crate::errors::CompileError;
 use crate::lexer::Token;
 use crate::parser::ast::{Expr, ExprKind, Stmt};

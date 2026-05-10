@@ -1,13 +1,19 @@
+//! Purpose:
+//! Resolves include effects and nested declarations inside expression AST nodes.
+//! Recurses through expression children, closures, properties, method bodies, and callable targets.
+//!
+//! Called from:
+//! - `crate::resolver::stmt_exprs` and resolver engine helpers.
+//!
+//! Key details:
+//! - Expression traversal may invoke isolated resolution for nested bodies while preserving include state.
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-
 use crate::errors::CompileError;
 use crate::parser::ast::{CallableTarget, ClassMethod, Expr, ExprKind, InstanceOfTarget};
-
 use super::discovery::FunctionVariantRegistry;
 use super::engine::resolve_isolated;
 use super::state::ResolveState;
-
 pub(super) fn resolve_expr(
     expr: Expr,
     base_dir: &Path,

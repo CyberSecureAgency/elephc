@@ -1,3 +1,13 @@
+//! Purpose:
+//! Owns the main PHP token scanning loop and dispatches literal-specific scanners.
+//! Skips whitespace/comments and emits structural, operator, keyword, and literal tokens.
+//!
+//! Called from:
+//! - `crate::lexer::tokenize()`.
+//!
+//! Key details:
+//! - Multi-character operators and PHP opening tags must be recognized before shorter prefixes.
+
 use super::cursor::Cursor;
 use super::literals;
 use super::token::Token;

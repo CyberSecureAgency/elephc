@@ -1,3 +1,13 @@
+//! Purpose:
+//! Rewrites file-dependent magic constants into string literals for a single source file.
+//! Handles `__FILE__` and `__DIR__` before includes are merged into the main AST.
+//!
+//! Called from:
+//! - `crate::magic_constants::substitute_file_constants()`.
+//!
+//! Key details:
+//! - File paths are captured from the source file being walked, not from the including file.
+
 use std::path::Path;
 
 use crate::parser::ast::{ExprKind, MagicConstant, Stmt};

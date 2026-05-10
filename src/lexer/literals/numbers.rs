@@ -1,3 +1,13 @@
+//! Purpose:
+//! Scans integer and floating-point literals across PHP-supported numeric forms.
+//! Handles radix prefixes, underscores, decimal/exponent floats, and dot-started floats.
+//!
+//! Called from:
+//! - `crate::lexer::scan` through `crate::lexer::literals`.
+//!
+//! Key details:
+//! - Invalid trailing alphanumerics become lexer errors instead of being split into misleading tokens.
+
 use super::super::cursor::Cursor;
 use super::super::token::Token;
 use crate::errors::CompileError;

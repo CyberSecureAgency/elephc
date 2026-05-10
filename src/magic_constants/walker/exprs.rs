@@ -1,3 +1,13 @@
+//! Purpose:
+//! Walks expression AST nodes for magic-constant substitution passes.
+//! Recurses through calls, literals, access forms, closures, match arms, assignments, and nested statements.
+//!
+//! Called from:
+//! - `crate::magic_constants::walker::stmts` and member walkers.
+//!
+//! Key details:
+//! - Expression traversal must cover every `ExprKind` so raw magic constants cannot reach later passes.
+
 use crate::parser::ast::{Expr, ExprKind, InstanceOfTarget};
 
 use super::stmts::{walk_program, walk_stmt};

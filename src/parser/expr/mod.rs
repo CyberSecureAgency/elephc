@@ -1,3 +1,13 @@
+//! Purpose:
+//! Provides expression parser entry points and shared argument parsing.
+//! Coordinates Pratt parsing, assignment-value parsing, and call argument list parsing.
+//!
+//! Called from:
+//! - `crate::parser::stmt`, `crate::parser::control`, and nested expression parsers.
+//!
+//! Key details:
+//! - Assignment-value parsing intentionally permits assignment expressions where PHP syntax allows them.
+
 mod assignment_targets;
 mod calls;
 mod prefix;

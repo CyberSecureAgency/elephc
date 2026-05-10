@@ -1,3 +1,13 @@
+//! Purpose:
+//! Rewrites statement lists while applying `ifdef` conditions from the CLI.
+//! Chooses active conditional branches and recurses through all statement-owned child bodies.
+//!
+//! Called from:
+//! - `crate::conditional::apply()` and `crate::conditional::exprs::rewrite_expr()`.
+//!
+//! Key details:
+//! - Branch removal must happen structurally so later passes never see statements from inactive code.
+
 use std::collections::HashSet;
 
 use crate::parser::ast::{CatchClause, Stmt, StmtKind};

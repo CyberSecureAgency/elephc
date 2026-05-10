@@ -1,3 +1,13 @@
+//! Purpose:
+//! Coordinates discovery of declarations made reachable by include and require statements.
+//! Produces include metadata and function-variant registries before resolver expansion.
+//!
+//! Called from:
+//! - `crate::resolver::resolve()`.
+//!
+//! Key details:
+//! - Discovery mirrors resolver traversal enough to expose declarations without executing inactive branches twice.
+
 mod branches;
 mod exprs;
 mod includes;

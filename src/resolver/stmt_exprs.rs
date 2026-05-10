@@ -1,3 +1,13 @@
+//! Purpose:
+//! Resolves expressions and nested bodies owned by statements during include processing.
+//! Rewrites statement children after declaration/include handling has chosen the statement shell.
+//!
+//! Called from:
+//! - `crate::resolver::engine::resolve_stmts()`.
+//!
+//! Key details:
+//! - Nested declarations and closures are resolved in isolated contexts to avoid leaking local traversal state.
+
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 

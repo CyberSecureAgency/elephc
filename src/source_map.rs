@@ -1,3 +1,13 @@
+//! Purpose:
+//! Writes a compact JSON source map for generated assembly when requested by the CLI.
+//! Captures source filename, assembly path, and line mappings emitted by codegen.
+//!
+//! Called from:
+//! - `crate::pipeline::compile()` after user assembly generation.
+//!
+//! Key details:
+//! - JSON escaping is kept local so source paths and generated snippets remain valid map data.
+
 use std::fs;
 use std::path::Path;
 

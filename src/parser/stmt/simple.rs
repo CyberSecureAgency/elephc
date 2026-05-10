@@ -1,3 +1,13 @@
+//! Purpose:
+//! Parses simple statement forms with minimal nested structure.
+//! Handles includes, echo, expression statements, returns, throws, `$this` statements, and constants.
+//!
+//! Called from:
+//! - `crate::parser::stmt::parse_stmt()`.
+//!
+//! Key details:
+//! - Include statements preserve their path expression for resolver include discovery and loading.
+
 use crate::errors::CompileError;
 use crate::lexer::Token;
 use crate::parser::ast::{ExprKind, Stmt, StmtKind};

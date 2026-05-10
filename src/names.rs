@@ -1,3 +1,13 @@
+//! Purpose:
+//! Defines canonical PHP name handling and generated symbol naming helpers.
+//! Centralizes fully-qualified names, case-folded lookup keys, and assembly-safe mangling.
+//!
+//! Called from:
+//! - `crate::parser`, `crate::resolver`, `crate::name_resolver`, and codegen metadata passes.
+//!
+//! Key details:
+//! - PHP symbol lookup and emitted assembly labels depend on these transformations staying stable.
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NameKind {
     Unqualified,

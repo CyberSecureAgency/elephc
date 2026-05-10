@@ -1,3 +1,13 @@
+//! Purpose:
+//! Parses class-like member bodies for classes, interfaces, and traits.
+//! Handles properties, methods, constants, promoted constructor properties, and member modifiers.
+//!
+//! Called from:
+//! - `crate::parser::stmt::oop::declarations` and trait/interface declaration parsers.
+//!
+//! Key details:
+//! - Modifier and member parsing must preserve PHP visibility and abstract/static/final/readonly rules.
+
 use crate::errors::CompileError;
 use crate::lexer::Token;
 use crate::parser::ast::{

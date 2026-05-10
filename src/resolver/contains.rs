@@ -1,3 +1,13 @@
+//! Purpose:
+//! Scans AST subtrees to detect include and require statements.
+//! Helps resolver decide whether expensive include discovery or isolated resolution is needed.
+//!
+//! Called from:
+//! - `crate::resolver::resolve()` and resolver discovery helpers.
+//!
+//! Key details:
+//! - The scan recurses through statements, declarations, methods, closures, and expression-contained bodies.
+
 use crate::parser::ast::{
     CallableTarget, ClassMethod, Expr, ExprKind, InstanceOfTarget, Stmt, StmtKind,
 };

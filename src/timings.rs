@@ -1,3 +1,13 @@
+//! Purpose:
+//! Records optional compile-phase durations and notes for CLI timing output.
+//! Keeps timing collection lightweight when the user has not requested `--timings`.
+//!
+//! Called from:
+//! - `crate::pipeline::compile()` around each major compiler phase.
+//!
+//! Key details:
+//! - Disabled timing still accepts calls so pipeline code does not branch around every measurement.
+
 use std::time::{Duration, Instant};
 
 pub(crate) struct CompileTimings {

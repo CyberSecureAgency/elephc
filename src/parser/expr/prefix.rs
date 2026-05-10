@@ -1,3 +1,13 @@
+//! Purpose:
+//! Parses prefix and primary PHP expressions before Pratt suffix handling takes over.
+//! Covers literals, variables, names, arrays, magic constants, unary operators, and grouped expressions.
+//!
+//! Called from:
+//! - `crate::parser::expr::pratt::parse_expr_bp()`.
+//!
+//! Key details:
+//! - `__LINE__` is lowered at parse time while other magic constants remain AST nodes for later context passes.
+
 use crate::errors::CompileError;
 use crate::lexer::Token;
 use crate::names::Name;

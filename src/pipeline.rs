@@ -1,3 +1,13 @@
+//! Purpose:
+//! Orchestrates the full PHP source to native binary compilation flow.
+//! Runs frontend passes, semantic checks, optimizations, runtime preparation, codegen, and linking in order.
+//!
+//! Called from:
+//! - `crate::main()` after `crate::cli::parse_args()`.
+//!
+//! Key details:
+//! - Pass ordering is observable: magic constants and conditionals run before resolver/name resolution and type checking.
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;

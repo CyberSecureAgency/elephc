@@ -1,3 +1,13 @@
+//! Purpose:
+//! Resolves names inside class-like, function, constant, trait-use, and extern declarations.
+//! Applies namespace/import context to declaration children while preserving declaration identity.
+//!
+//! Called from:
+//! - `crate::name_resolver::statements::list::resolve_stmt_list()`.
+//!
+//! Key details:
+//! - Declaration names become canonical before type checking and codegen symbol collection.
+
 use crate::errors::CompileError;
 use crate::names::{canonical_name_for_decl, php_symbol_key};
 use crate::parser::ast::{ClassProperty, Stmt, StmtKind, TraitAdaptation, TraitUse};

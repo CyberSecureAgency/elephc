@@ -1,3 +1,13 @@
+//! Purpose:
+//! Provides the binary entry point for the elephc compiler.
+//! Wires CLI parsing to the ordered compile pipeline without owning compiler logic.
+//!
+//! Called from:
+//! - The operating system when running the `elephc` executable.
+//!
+//! Key details:
+//! - Keep startup thin so CLI validation and pipeline behavior stay in dedicated modules.
+
 mod cli;
 mod codegen;
 mod conditional;

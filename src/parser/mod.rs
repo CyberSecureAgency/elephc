@@ -1,3 +1,13 @@
+//! Purpose:
+//! Provides the public parser entry points from spanned tokens to an AST program.
+//! Coordinates statement parsing and optional recovery for collecting multiple syntax errors.
+//!
+//! Called from:
+//! - `crate::pipeline::compile()` and `crate::resolver::files::parse_file()`.
+//!
+//! Key details:
+//! - Parser output preserves spans and PHP syntax shape for later passes to rewrite safely.
+
 pub mod ast;
 mod control;
 pub mod expr;

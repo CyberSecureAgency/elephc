@@ -1,3 +1,13 @@
+//! Purpose:
+//! Resolves statement lists by expanding include/require effects into the AST.
+//! Tracks included files, declaration state, constants, and function variants across traversal.
+//!
+//! Called from:
+//! - `crate::resolver::resolve()` and isolated include-discovery resolution.
+//!
+//! Key details:
+//! - Resolver runs before namespace name canonicalization, so it preserves PHP namespace syntax context.
+
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 

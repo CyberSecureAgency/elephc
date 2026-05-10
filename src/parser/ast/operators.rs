@@ -1,3 +1,13 @@
+//! Purpose:
+//! Defines binary operator variants produced by expression parsing.
+//! Provides the AST-level operator vocabulary consumed by type checking, optimization, and codegen.
+//!
+//! Called from:
+//! - `crate::parser::expr::pratt` and assignment lowering helpers.
+//!
+//! Key details:
+//! - Variants must stay aligned with lexer tokens and PHP precedence rules in the Pratt table.
+
 // --- Operators ---
 
 #[derive(Debug, Clone, PartialEq)]

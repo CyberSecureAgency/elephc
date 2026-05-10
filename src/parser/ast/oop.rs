@@ -1,3 +1,13 @@
+//! Purpose:
+//! Defines AST records for PHP class-like declarations and members.
+//! Covers classes, interfaces, traits, enums, properties, methods, visibility, and trait adaptations.
+//!
+//! Called from:
+//! - `crate::parser::stmt::oop` and class-aware resolver, name-resolver, type, and codegen passes.
+//!
+//! Key details:
+//! - Member metadata carries spans and modifiers needed for PHP-compatible diagnostics and lowering.
+
 use crate::names::Name;
 use crate::span::Span;
 

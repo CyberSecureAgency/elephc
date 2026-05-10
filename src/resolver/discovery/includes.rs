@@ -1,3 +1,13 @@
+//! Purpose:
+//! Discovers declarations exposed by a single statically resolvable include.
+//! Parses and resolves included files enough to expose declarations and function variants.
+//!
+//! Called from:
+//! - `crate::resolver::discovery::stmts::discover_stmts()`.
+//!
+//! Key details:
+//! - Include discovery uses the caller's constants and base path but records declarations by included file.
+
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Defines include-discovery output records and accumulation behavior.
+//! Tracks discovered statements, include entries, function variants, errors, and active symbols.
+//!
+//! Called from:
+//! - `crate::resolver::discovery` walkers and function-variant rewriting.
+//!
+//! Key details:
+//! - Output merging preserves deterministic discovery order while collecting branch-specific variant metadata.
+
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 

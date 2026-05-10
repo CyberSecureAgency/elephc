@@ -1,3 +1,13 @@
+//! Purpose:
+//! Parses method and constructor parameters, including promoted properties.
+//! Produces parameter metadata plus synthetic property and assignment statements for promoted parameters.
+//!
+//! Called from:
+//! - `crate::parser::stmt::oop::body::parse_class_like_method()`.
+//!
+//! Key details:
+//! - Promoted property lowering must keep constructor assignment order and member visibility metadata aligned.
+
 use crate::errors::CompileError;
 use crate::lexer::Token;
 use crate::parser::ast::{ClassProperty, Expr, ExprKind, Stmt, StmtKind, TypeExpr, Visibility};

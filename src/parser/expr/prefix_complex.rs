@@ -1,3 +1,13 @@
+//! Purpose:
+//! Parses complex prefix expressions that need multi-token bodies or nested parser coordination.
+//! Handles match expressions, closures, arrow functions, named expressions, and object construction.
+//!
+//! Called from:
+//! - `crate::parser::expr::prefix::parse_prefix()`.
+//!
+//! Key details:
+//! - Closure bodies and parameter defaults must preserve their own spans and PHP evaluation context.
+
 use crate::errors::CompileError;
 use crate::lexer::Token;
 use crate::parser::ast::{

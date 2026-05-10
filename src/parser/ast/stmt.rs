@@ -1,3 +1,13 @@
+//! Purpose:
+//! Defines statement AST nodes for PHP programs and elephc statement-level extensions.
+//! Carries declarations, control flow, includes, namespace/use statements, and source spans.
+//!
+//! Called from:
+//! - `crate::parser::stmt`, `crate::parser::control`, and all statement-walking compiler passes.
+//!
+//! Key details:
+//! - Statement variants form the main pass contract for resolver discovery, type checking, and codegen.
+
 use crate::names::Name;
 use crate::span::Span;
 

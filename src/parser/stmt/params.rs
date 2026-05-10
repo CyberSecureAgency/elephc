@@ -1,3 +1,13 @@
+//! Purpose:
+//! Parses function parameters, return types, and reusable parsed type expressions.
+//! Handles typed parameters, defaults, by-reference markers, variadics, and name lists.
+//!
+//! Called from:
+//! - `crate::parser::stmt`, `crate::parser::control`, and closure/OOP parsers.
+//!
+//! Key details:
+//! - Type-name parsing must allow namespace-qualified PHP names without resolving them here.
+
 use crate::errors::CompileError;
 use crate::lexer::Token;
 use crate::names::Name;

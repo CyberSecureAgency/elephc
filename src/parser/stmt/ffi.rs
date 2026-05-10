@@ -1,3 +1,13 @@
+//! Purpose:
+//! Parses elephc extern declarations and C-facing type syntax.
+//! Handles extern functions, globals, classes, structs, and buffers outside standard PHP syntax.
+//!
+//! Called from:
+//! - `crate::parser::stmt::parse_extern_stmts()`.
+//!
+//! Key details:
+//! - FFI syntax is compiler-specific and should remain clearly separated from PHP-compatible parsing.
+
 use crate::errors::CompileError;
 use crate::lexer::Token;
 use crate::parser::ast::{CType, ExternField, ExternParam, Stmt, StmtKind};

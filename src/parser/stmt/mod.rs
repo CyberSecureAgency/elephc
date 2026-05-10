@@ -1,3 +1,13 @@
+//! Purpose:
+//! Dispatches PHP statement parsing and exposes shared statement parser helpers.
+//! Owns statement recovery, blocks, names, semicolons, and top-level syntax routing.
+//!
+//! Called from:
+//! - `crate::parser::parse()` and nested block/control parsers.
+//!
+//! Key details:
+//! - Recovery stops at PHP statement boundaries so follow-up diagnostics remain useful.
+
 mod assign;
 mod ffi;
 mod namespace_use;

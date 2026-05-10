@@ -1,3 +1,13 @@
+//! Purpose:
+//! Extracts and strips declarations that can be discovered from included files.
+//! Separates declaration availability from runtime execution of include statements.
+//!
+//! Called from:
+//! - `crate::resolver::discovery` and include resolution paths.
+//!
+//! Key details:
+//! - Discoverable declarations must keep namespace context and include-loaded function variant metadata.
+
 use std::path::Path;
 
 use crate::names::canonical_name_for_decl;

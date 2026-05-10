@@ -1,3 +1,13 @@
+//! Purpose:
+//! Provides byte-level source traversal while tracking line and column spans.
+//! Offers small peek/advance helpers used by lexer scanners.
+//!
+//! Called from:
+//! - `crate::lexer::scan` and `crate::lexer::literals` scanners.
+//!
+//! Key details:
+//! - Span positions are one-based and advance through newlines so diagnostics map back to PHP source.
+
 use crate::span::Span;
 
 pub struct Cursor<'a> {

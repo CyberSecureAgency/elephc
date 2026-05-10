@@ -1,3 +1,13 @@
+//! Purpose:
+//! Resolves statement lists while updating namespace and use-import context.
+//! Flattens namespace blocks and routes declarations separately from ordinary statements.
+//!
+//! Called from:
+//! - `crate::name_resolver::resolve()` and nested body resolvers.
+//!
+//! Key details:
+//! - `use` statements affect following statements in the current namespace list, matching PHP ordering.
+
 use crate::errors::CompileError;
 use crate::parser::ast::{Stmt, StmtKind};
 

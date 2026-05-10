@@ -1,3 +1,13 @@
+//! Purpose:
+//! Discovers include effects and declarations referenced inside expression trees.
+//! Recurses through nested expression-owned bodies and parameters during include discovery.
+//!
+//! Called from:
+//! - `crate::resolver::discovery::stmts` and branch discovery.
+//!
+//! Key details:
+//! - Expression discovery must stay in lockstep with resolver expression walking to avoid hidden declarations.
+
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 

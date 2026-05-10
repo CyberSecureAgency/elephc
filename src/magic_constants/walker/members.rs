@@ -1,3 +1,13 @@
+//! Purpose:
+//! Walks class properties and methods during magic-constant substitution.
+//! Applies expression and statement walkers to defaults, bodies, and promoted-property assignments.
+//!
+//! Called from:
+//! - `crate::magic_constants::walker::stmts` and trait binding passes.
+//!
+//! Key details:
+//! - Member traversal preserves declaration metadata while updating only magic-constant-bearing children.
+
 use crate::parser::ast::{ClassMethod, ClassProperty};
 
 use super::exprs::walk_expr;

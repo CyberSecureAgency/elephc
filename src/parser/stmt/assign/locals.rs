@@ -1,3 +1,13 @@
+//! Purpose:
+//! Parses local variable statement forms beyond ordinary assignment.
+//! Handles increment/decrement statements, global declarations, static locals, and typed assignments.
+//!
+//! Called from:
+//! - `crate::parser::stmt::assign::simple::parse_variable_stmt()` and statement dispatch.
+//!
+//! Key details:
+//! - Typed local syntax is a parser-level distinction that later passes use for declaration semantics.
+
 use crate::errors::CompileError;
 use crate::lexer::Token;
 use crate::parser::ast::{Expr, ExprKind, Stmt, StmtKind};

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Builds and caches the reusable runtime object that is linked beside generated user code.
+//! Keys cache entries by compiler version, target, heap size, and runtime assembly hash.
+//!
+//! Called from:
+//! - `crate::pipeline::compile()` before user assembly is linked into the final binary.
+//!
+//! Key details:
+//! - Temporary assembly/object files are renamed into place to tolerate concurrent compiler runs.
+
 use std::env;
 use std::fs;
 use std::path::PathBuf;

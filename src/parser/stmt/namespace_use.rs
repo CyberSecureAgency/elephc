@@ -1,3 +1,13 @@
+//! Purpose:
+//! Parses PHP namespace declarations and use import statements.
+//! Handles nested namespace bodies, grouped imports, aliases, and use-kind prefixes.
+//!
+//! Called from:
+//! - `crate::parser::stmt::parse_stmt()`.
+//!
+//! Key details:
+//! - Namespace and use syntax remains syntactic here; canonical resolution happens in `crate::name_resolver`.
+
 use crate::errors::CompileError;
 use crate::lexer::Token;
 use crate::names::{Name, NameKind};

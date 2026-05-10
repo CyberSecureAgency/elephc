@@ -1,3 +1,13 @@
+//! Purpose:
+//! Classifies and lowers assignment-expression targets that may have observable side effects.
+//! Builds prelude statements and temporary result targets for complex l-values.
+//!
+//! Called from:
+//! - `crate::parser::expr::pratt` when parsing assignment expressions.
+//!
+//! Key details:
+//! - Target dependencies are tracked so PHP evaluation order is preserved during lowering.
+
 use std::collections::HashSet;
 
 use crate::parser::ast::{Expr, ExprKind, InstanceOfTarget, Stmt, StmtKind};

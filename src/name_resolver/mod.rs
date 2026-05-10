@@ -1,3 +1,13 @@
+//! Purpose:
+//! Coordinates PHP namespace and import resolution across a parsed program.
+//! Rewrites names to canonical forms and flattens namespace wrapper statements.
+//!
+//! Called from:
+//! - `crate::pipeline::compile()` after include resolution and before optimization/type checking.
+//!
+//! Key details:
+//! - Builtin fallback and case-insensitive symbol lookup must match PHP visibility rules.
+
 mod expressions;
 mod names;
 mod declarations;

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Parses expression suffixes that involve calls, casts, static receivers, and first-class callables.
+//! Recognizes scoped static call forms and PHP cast syntax around grouped expressions.
+//!
+//! Called from:
+//! - `crate::parser::expr::pratt` and `crate::parser::expr::prefix`.
+//!
+//! Key details:
+//! - Callable and cast disambiguation depends on PHP token spelling and case-insensitive type names.
+
 use crate::errors::CompileError;
 use crate::lexer::Token;
 use crate::parser::ast::{CallableTarget, CastType, Expr, ExprKind, StaticReceiver};

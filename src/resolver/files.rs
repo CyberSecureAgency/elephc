@@ -1,3 +1,13 @@
+//! Purpose:
+//! Resolves include file paths and parses included PHP source files.
+//! Runs lexer, parser, and magic-constant substitution for included files.
+//!
+//! Called from:
+//! - `crate::resolver::engine_includes` and include discovery.
+//!
+//! Key details:
+//! - Included-file diagnostics are tagged with the target file and original include span.
+
 use std::path::{Path, PathBuf};
 
 use crate::errors::CompileError;

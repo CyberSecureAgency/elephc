@@ -1,3 +1,13 @@
+//! Purpose:
+//! Parses class-like declaration headers and compiler-specific packed declarations.
+//! Handles class, enum, packed, abstract, readonly, and final declaration prefixes.
+//!
+//! Called from:
+//! - `crate::parser::stmt::parse_stmt()`.
+//!
+//! Key details:
+//! - Declaration headers keep unresolved names until resolver and name resolver apply include and namespace context.
+
 use crate::errors::CompileError;
 use crate::lexer::Token;
 use crate::parser::ast::{EnumCaseDecl, PackedField, Stmt, StmtKind};

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Scans PHP variables, identifiers, keywords, constants, and compiler-extension words.
+//! Applies case-sensitive and keyword-specific token classification after collecting text.
+//!
+//! Called from:
+//! - `crate::lexer::scan` through `crate::lexer::literals`.
+//!
+//! Key details:
+//! - PHP-visible spellings and reserved words must remain compatible with the parser's syntax tables.
+
 use super::super::cursor::Cursor;
 use super::super::token::Token;
 use crate::errors::CompileError;

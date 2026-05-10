@@ -1,3 +1,13 @@
+//! Purpose:
+//! Implements Pratt parsing for PHP infix, postfix, access, call, and assignment expressions.
+//! Encodes operator precedence and associativity into binding-power tables.
+//!
+//! Called from:
+//! - `crate::parser::expr::parse_expr()` and recursive expression parsing paths.
+//!
+//! Key details:
+//! - Binding powers must match PHP precedence exactly because downstream passes trust the AST shape.
+
 use crate::errors::CompileError;
 use crate::lexer::Token;
 use crate::names::Name;

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Walks statement AST nodes for magic-constant substitution passes.
+//! Rebuilds programs, control-flow bodies, declarations, and include expressions through pass hooks.
+//!
+//! Called from:
+//! - `crate::magic_constants::walker::walk_program()`.
+//!
+//! Key details:
+//! - Scope-bearing statements must enter and exit pass context in PHP lexical order.
+
 use crate::parser::ast::{CatchClause, EnumCaseDecl, Stmt, StmtKind};
 
 use super::exprs::walk_expr;

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Analyzes whether statements and blocks guarantee function exit or other terminal control flow.
+//! Supports parser/type-checker reasoning about returns, throws, breaks, continues, and infinite loops.
+//!
+//! Called from:
+//! - `crate::types` and other frontend passes that need conservative control-flow facts.
+//!
+//! Key details:
+//! - Results are conservative because silent false positives can cause missing return or reachability bugs.
+
 use crate::parser::ast::{CatchClause, Expr, Stmt, StmtKind};
 
 #[derive(Clone, Copy, PartialEq, Eq)]

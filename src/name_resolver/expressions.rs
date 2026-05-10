@@ -1,3 +1,13 @@
+//! Purpose:
+//! Resolves names embedded in expressions and callable targets.
+//! Rewrites function, constant, class, method, enum, object, and instanceof references as needed.
+//!
+//! Called from:
+//! - `crate::name_resolver::statements` and declaration resolvers.
+//!
+//! Key details:
+//! - PHP builtin fallback applies to unqualified function calls without breaking explicit namespace references.
+
 use crate::names::php_symbol_key;
 use crate::parser::ast::{CallableTarget, Expr, ExprKind, InstanceOfTarget, StaticReceiver};
 
