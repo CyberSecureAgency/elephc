@@ -1,3 +1,12 @@
+//! Purpose:
+//! Dispatches expression AST nodes into focused lowering modules and shared coercion helpers.
+//! Defines result conventions for scalars, strings, arrays, objects, calls, and special PHP operators.
+//!
+//! Called from:
+//! - `crate::codegen::stmt`, `crate::codegen::functions`, and top-level emission
+//!
+//! Key details:
+//! - Each expression leaves its result in the type-specific ABI result registers expected by callers.
 mod arrays;
 mod assignment;
 mod binops;

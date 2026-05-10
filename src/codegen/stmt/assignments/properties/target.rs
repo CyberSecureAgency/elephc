@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers property target resolution for object, extern, and packed-field writes.
+//! Shares receiver and property metadata with object expression lowering.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::assignments::properties`
+//!
+//! Key details:
+//! - Property writes must respect declared types, visibility checks, and runtime object layout.
 use crate::codegen::context::Context;
 use crate::codegen::emit::Emitter;
 use crate::types::PhpType;

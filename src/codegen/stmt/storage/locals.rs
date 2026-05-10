@@ -1,3 +1,12 @@
+//! Purpose:
+//! Provides local slot storage helpers with optional static backing symbols.
+//! Offers a typed storage interface to assignment and expression statement paths.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::storage`
+//!
+//! Key details:
+//! - Loads and stores must use ABI value sizes and preserve refcounted ownership conventions.
 use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::emit::Emitter;

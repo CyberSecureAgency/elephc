@@ -1,3 +1,12 @@
+//! Purpose:
+//! Groups static property assignment lowering for direct writes, array mutations, and late-bound receivers.
+//! Separates receiver resolution from symbol storage and array update paths.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::assignments`
+//!
+//! Key details:
+//! - Static property access must respect visibility, inheritance, and symbol naming conventions.
 mod arrays;
 mod assign;
 mod late_bound;

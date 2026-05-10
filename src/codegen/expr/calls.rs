@@ -1,3 +1,12 @@
+//! Purpose:
+//! Dispatches function-like expression calls including direct, indirect, closure, method-adjacent, and first-class forms.
+//! Coordinates call signatures, argument lowering, and result typing for expression consumers.
+//!
+//! Called from:
+//! - `crate::codegen::expr::emit_expr()`
+//!
+//! Key details:
+//! - Argument evaluation must preserve PHP source order before ABI materialization happens in call-argument helpers.
 pub(crate) mod args;
 mod closure;
 mod first_class;

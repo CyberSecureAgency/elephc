@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers extern declarations and calls into target ABI-compatible assembly boundaries.
+//! Handles C-facing symbols, argument movement, return values, and required library metadata.
+//!
+//! Called from:
+//! - `crate::codegen::generate()` and extern call expression lowering
+//!
+//! Key details:
+//! - Extern lowering follows platform ABI rules and must not use PHP call normalization for C-only details.
 use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;

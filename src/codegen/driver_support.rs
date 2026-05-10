@@ -1,3 +1,12 @@
+//! Purpose:
+//! Provides support emitters that bridge generated user code with runtime value conventions.
+//! Boxes runtime payloads, emits runtime assembly fragments, and normalizes helper call results.
+//!
+//! Called from:
+//! - `crate::codegen::generate()` and runtime-facing codegen helpers
+//!
+//! Key details:
+//! - Mixed boxing and target register choices must match the runtime object layout exactly.
 use crate::parser::ast::Expr;
 use crate::types::{ClassInfo, EnumInfo, PhpType};
 

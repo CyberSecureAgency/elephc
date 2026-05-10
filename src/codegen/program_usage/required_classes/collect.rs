@@ -1,3 +1,12 @@
+//! Purpose:
+//! Walks statements and expressions to find class names that require emitted metadata.
+//! Covers allocations, static access, catch clauses, instanceof, and type-driven references.
+//!
+//! Called from:
+//! - `crate::codegen::program_usage::required_classes`
+//!
+//! Key details:
+//! - Missing a recursive AST case can omit class tables and break later object dispatch.
 use std::collections::HashSet;
 
 use crate::parser::ast::{Expr, ExprKind, InstanceOfTarget, Program, Stmt, StmtKind};

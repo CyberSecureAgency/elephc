@@ -1,3 +1,12 @@
+//! Purpose:
+//! Dispatches array element assignment to associative, indexed, buffer, and specialized paths.
+//! Chooses the storage strategy from the target expression and inferred container type.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::arrays`
+//!
+//! Key details:
+//! - Write paths must evaluate targets and values once while preserving container ownership updates.
 mod assoc;
 mod buffer;
 mod indexed;

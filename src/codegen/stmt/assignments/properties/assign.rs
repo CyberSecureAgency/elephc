@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers direct object property assignment including nullable and magic-set paths.
+//! Shares receiver and property metadata with object expression lowering.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::assignments::properties`
+//!
+//! Key details:
+//! - Property writes must respect declared types, visibility checks, and runtime object layout.
 use super::{magic_set, references, storage, target};
 use crate::codegen::abi;
 use crate::codegen::context::Context;

@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers array reads used by match expressions with PHP comparison semantics.
+//! Produces expression results while preserving container ownership and bounds/null behavior.
+//!
+//! Called from:
+//! - `crate::codegen::expr::arrays::access`
+//!
+//! Key details:
+//! - Element layout and boxed Mixed handling must stay aligned with array runtime helpers.
 use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;

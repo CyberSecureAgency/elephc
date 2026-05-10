@@ -1,3 +1,12 @@
+//! Purpose:
+//! Emits native callback wrappers that adapt external callbacks into PHP-callable function bodies.
+//! Moves callback arguments through compiler ABI slots and returns runtime-compatible values.
+//!
+//! Called from:
+//! - `crate::codegen::functions` when FFI callback metadata is required
+//!
+//! Key details:
+//! - Wrapper signatures must satisfy both the external ABI and the internal PHP function lowering contract.
 use crate::codegen::context::DeferredCallbackWrapper;
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;

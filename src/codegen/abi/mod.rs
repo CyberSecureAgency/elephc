@@ -1,3 +1,12 @@
+//! Purpose:
+//! Collects target ABI helpers for frames, registers, calls, symbols, bootstrap, and values.
+//! Provides the stable API used by higher-level codegen without exposing architecture details.
+//!
+//! Called from:
+//! - `crate::codegen::*` expression, statement, function, and runtime-facing emitters
+//!
+//! Key details:
+//! - Shared lowering should go through this module instead of hardcoding platform registers or stack rules.
 mod bootstrap;
 mod calls;
 mod frame;

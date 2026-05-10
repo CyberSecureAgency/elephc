@@ -1,3 +1,12 @@
+//! Purpose:
+//! Defines shared data structures for named-argument source tracking and final argument sources.
+//! Connects source-order evaluation, temporary storage, prefix spreads, and variadic construction.
+//!
+//! Called from:
+//! - `crate::codegen::expr::calls::args`
+//!
+//! Key details:
+//! - Named argument lowering must consume the shared semantic plan instead of rebuilding matching rules.
 mod final_args;
 mod prefix;
 mod source_order;

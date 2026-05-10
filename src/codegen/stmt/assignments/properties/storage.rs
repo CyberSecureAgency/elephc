@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers low-level property slot load/store helpers.
+//! Shares receiver and property metadata with object expression lowering.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::assignments::properties`
+//!
+//! Key details:
+//! - Property writes must respect declared types, visibility checks, and runtime object layout.
 use crate::codegen::abi;
 use crate::codegen::emit::Emitter;
 use crate::types::PhpType;

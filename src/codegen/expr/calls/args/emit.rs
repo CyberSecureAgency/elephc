@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers top-level call-argument emission from prepared semantic plans.
+//! Converts evaluated PHP argument expressions into temporary values ready for ABI assignment.
+//!
+//! Called from:
+//! - `crate::codegen::expr::calls::args`
+//!
+//! Key details:
+//! - Argument checks must happen at PHP-observable points without skipping later side effects.
 use crate::codegen::emit::Emitter;
 use crate::codegen::{context::Context, data_section::DataSection};
 use crate::parser::ast::{Expr, ExprKind};

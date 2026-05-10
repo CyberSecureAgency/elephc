@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers target-specific instruction snippets shared by binary operators.
+//! Keeps operator-specific conversions and result register setup out of the dispatcher.
+//!
+//! Called from:
+//! - `crate::codegen::expr::binops`
+//!
+//! Key details:
+//! - Runtime calls and target instructions must preserve left/right evaluation order and scratch register assumptions.
 use crate::codegen::{abi, emit::Emitter, platform::Arch};
 use crate::parser::ast::BinOp;
 use crate::types::PhpType;

@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers local variable assignment, compound assignment, and null-coalescing local writes.
+//! Evaluates values, coerces to local slot types, and updates ownership for overwritten locals.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::assignments`
+//!
+//! Key details:
+//! - Local writes must release replaced heap values only when the frame owns the previous value.
 use super::super::super::abi;
 use super::super::super::context::Context;
 use super::super::super::data_section::DataSection;

@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers indexed array mutation through static property storage.
+//! Works with static property symbols and class metadata instead of local frame slots.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::assignments::static_properties`
+//!
+//! Key details:
+//! - Late-bound receivers and visibility checks must match PHP inheritance semantics before storage is updated.
 use super::super::late_bound::{self, StaticPropertyBranch};
 use crate::codegen::abi;
 use crate::codegen::context::Context;

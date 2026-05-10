@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers preevaluation and normalization before ABI materialization.
+//! Converts evaluated PHP argument expressions into temporary values ready for ABI assignment.
+//!
+//! Called from:
+//! - `crate::codegen::expr::calls::args`
+//!
+//! Key details:
+//! - Argument checks must happen at PHP-observable points without skipping later side effects.
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

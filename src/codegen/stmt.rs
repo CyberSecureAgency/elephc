@@ -1,3 +1,12 @@
+//! Purpose:
+//! Dispatches statement AST nodes into focused lowering modules for assignments, arrays, control flow, IO, and includes.
+//! Owns statement-level cleanup and fallthrough behavior for generated program bodies.
+//!
+//! Called from:
+//! - `crate::codegen::main_emission` and `crate::codegen::functions`
+//!
+//! Key details:
+//! - Statements must preserve PHP source order while maintaining local ownership and loop/try context state.
 mod assignments;
 mod arrays;
 mod control_flow;

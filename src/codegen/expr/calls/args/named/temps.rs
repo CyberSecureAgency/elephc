@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers hidden temporary slots for named-argument preevaluation.
+//! Works with the shared call-argument plan to preserve PHP named-argument semantics.
+//!
+//! Called from:
+//! - `crate::codegen::expr::calls::args::named`
+//!
+//! Key details:
+//! - Side effects occur in source order, while final argument materialization follows parameter and ABI order.
 use crate::codegen::emit::Emitter;
 use crate::codegen::{abi, context::Context, data_section::DataSection};
 use crate::parser::ast::{Expr, ExprKind};

@@ -1,3 +1,12 @@
+//! Purpose:
+//! Coordinates try, catch, finally, throw, and pending-control-flow lowering.
+//! Builds handler records and emits protected bodies with cleanup-aware exits.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::control_flow`
+//!
+//! Key details:
+//! - Finally blocks must run for returns, branches, throws, and normal fallthrough without losing pending results.
 mod catches;
 mod finally;
 mod handlers;

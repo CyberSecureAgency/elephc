@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers target, index, container, and value preparation for indexed array assignment.
+//! Works as one phase of the indexed array assignment pipeline.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::arrays::assign::indexed`
+//!
+//! Key details:
+//! - Each phase depends on the prepared state and must preserve registers needed by later phases.
 use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;

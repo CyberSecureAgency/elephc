@@ -1,3 +1,12 @@
+//! Purpose:
+//! Walks the AST to answer whether a named variable is referenced by codegen-relevant constructs.
+//! Supports storage and optimization decisions that depend on variable visibility.
+//!
+//! Called from:
+//! - `crate::codegen::program_usage`
+//!
+//! Key details:
+//! - The traversal must include nested expressions, control-flow bodies, and instanceof targets.
 use crate::parser::ast::{Expr, ExprKind, InstanceOfTarget, Program, Stmt, StmtKind};
 
 pub(in crate::codegen) fn program_uses_variable(program: &Program, needle: &str) -> bool {

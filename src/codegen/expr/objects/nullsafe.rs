@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers nullsafe property and method chains with short-circuit results.
+//! Produces object-related expression results while respecting runtime metadata and ownership rules.
+//!
+//! Called from:
+//! - `crate::codegen::expr::objects`
+//!
+//! Key details:
+//! - Object handles, property storage, and class ids must stay consistent with emitted class tables.
 use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;

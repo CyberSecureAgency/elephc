@@ -1,3 +1,12 @@
+//! Purpose:
+//! Computes builtin return and parameter types needed by code generation.
+//! Keeps emission-time type decisions separate from instruction lowering.
+//!
+//! Called from:
+//! - `crate::codegen::functions::types`
+//!
+//! Key details:
+//! - Results must agree with `crate::types` so local slots and runtime value shapes are selected correctly.
 use crate::codegen::context::Context;
 use crate::parser::ast::{BinOp, Expr, ExprKind};
 use crate::types::{array_key_type_from_value_type, FunctionSig, PhpType};

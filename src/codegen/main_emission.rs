@@ -1,3 +1,12 @@
+//! Purpose:
+//! Emits the synthetic program entry body after frontend passes have produced a flat statement list.
+//! Allocates main-frame storage, initializes globals, and lowers top-level statements in order.
+//!
+//! Called from:
+//! - `crate::codegen::generate()`
+//!
+//! Key details:
+//! - Frame sizing must account for locals, hidden temporaries, try handlers, and process argument globals before emission.
 use std::collections::{HashMap, HashSet};
 
 use crate::codegen::context::{Context, HeapOwnership};

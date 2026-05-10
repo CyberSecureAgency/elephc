@@ -1,3 +1,12 @@
+//! Purpose:
+//! Contains ABI regression tests for symbols helper behavior.
+//! Checks emitted assembly fragments rather than running linked programs.
+//!
+//! Called from:
+//! - `crate::codegen::abi::tests` through Rust test harness
+//!
+//! Key details:
+//! - Assertions pin register, stack, relocation, and platform-specific instruction choices.
 use super::*;
 
 #[test]

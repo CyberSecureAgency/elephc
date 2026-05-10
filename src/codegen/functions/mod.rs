@@ -1,3 +1,12 @@
+//! Purpose:
+//! Coordinates user function emission, wrappers, local layout, and return cleanup.
+//! Builds function frames from type signatures and statement bodies.
+//!
+//! Called from:
+//! - `crate::codegen::generate()` after top-level metadata is available
+//!
+//! Key details:
+//! - Parameter slots, hidden locals, and cleanup paths must agree with call lowering and ownership tracking.
 mod cleanup;
 mod callback_wrapper;
 mod control_flow;

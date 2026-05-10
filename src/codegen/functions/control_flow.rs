@@ -1,3 +1,12 @@
+//! Purpose:
+//! Builds return and exit control-flow labels used while emitting function bodies.
+//! Centralizes branch destinations for normal completion, explicit returns, and cleanup callbacks.
+//!
+//! Called from:
+//! - `crate::codegen::functions` during function body emission
+//!
+//! Key details:
+//! - All early exits must route through the same cleanup-aware labels to keep ownership balanced.
 use std::collections::HashMap;
 
 use crate::codegen::context::{Context, HeapOwnership, TRY_HANDLER_SLOT_SIZE};

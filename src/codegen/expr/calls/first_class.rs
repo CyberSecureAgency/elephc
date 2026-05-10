@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers first-class callable creation for functions, methods, and builtins.
+//! Resolves the callable shape, prepares arguments, and leaves the call result for expression consumers.
+//!
+//! Called from:
+//! - `crate::codegen::expr::calls`
+//!
+//! Key details:
+//! - Callable metadata and argument signatures must stay synchronized with type checking and runtime dispatch.
 use crate::codegen::abi;
 use crate::codegen::context::{Context, DeferredClosure};
 use crate::codegen::data_section::DataSection;

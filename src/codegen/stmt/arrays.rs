@@ -1,3 +1,12 @@
+//! Purpose:
+//! Groups statement-level array mutation lowering for assignments, pushes, and unpacking.
+//! Routes array write forms to container-specific helpers.
+//!
+//! Called from:
+//! - `crate::codegen::stmt`
+//!
+//! Key details:
+//! - Array mutations must respect copy-on-write, element ownership, and runtime layout conventions.
 mod assign;
 mod push;
 mod unpack;

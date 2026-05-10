@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers capacity and length extension before out-of-range indexed writes.
+//! Works as one phase of the indexed array assignment pipeline.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::arrays::assign::indexed`
+//!
+//! Key details:
+//! - Each phase depends on the prepared state and must preserve registers needed by later phases.
 use crate::codegen::context::Context;
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;

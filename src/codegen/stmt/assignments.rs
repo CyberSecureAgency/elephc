@@ -1,3 +1,12 @@
+//! Purpose:
+//! Groups assignment statement lowering for locals, object properties, and static properties.
+//! Provides a single statement-dispatch surface for PHP write operations.
+//!
+//! Called from:
+//! - `crate::codegen::stmt`
+//!
+//! Key details:
+//! - Assignment paths must preserve write side effects and update ownership for overwritten storage.
 mod locals;
 mod properties;
 mod static_properties;

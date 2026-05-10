@@ -1,3 +1,12 @@
+//! Purpose:
+//! Groups object expression lowering for allocation, access, dispatch, static properties, nullsafe, and instanceof.
+//! Provides the object-facing API used by the main expression dispatcher.
+//!
+//! Called from:
+//! - `crate::codegen::expr::emit_expr()`
+//!
+//! Key details:
+//! - Object results are refcounted handles whose metadata must match class tables and vtable layout.
 mod access;
 mod allocation;
 pub(crate) mod dispatch;

@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers deferred wrapper registration for object methods used as fiber callables.
+//! Produces object-related expression results while respecting runtime metadata and ownership rules.
+//!
+//! Called from:
+//! - `crate::codegen::expr::objects`
+//!
+//! Key details:
+//! - Object handles, property storage, and class ids must stay consistent with emitted class tables.
 use crate::codegen::context::{Context, DeferredFiberWrapper};
 use crate::parser::ast::{Expr, ExprKind};
 use crate::types::fibers;

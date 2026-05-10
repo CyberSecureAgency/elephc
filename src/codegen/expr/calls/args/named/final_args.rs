@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers final ABI argument pushes from named-source descriptors.
+//! Works with the shared call-argument plan to preserve PHP named-argument semantics.
+//!
+//! Called from:
+//! - `crate::codegen::expr::calls::args::named`
+//!
+//! Key details:
+//! - Side effects occur in source order, while final argument materialization follows parameter and ABI order.
 use crate::codegen::emit::Emitter;
 use crate::codegen::{context::Context, data_section::DataSection};
 use crate::types::{FunctionSig, PhpType};

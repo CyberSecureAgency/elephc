@@ -1,3 +1,12 @@
+//! Purpose:
+//! Groups statement lowering for branching, loops, foreach, try/catch/finally, and exits.
+//! Maintains control-flow context shared by nested statement emitters.
+//!
+//! Called from:
+//! - `crate::codegen::stmt`
+//!
+//! Key details:
+//! - Branch targets must preserve cleanup behavior for loops, switches, finally blocks, and pending returns.
 mod branching;
 mod exceptions;
 mod foreach;

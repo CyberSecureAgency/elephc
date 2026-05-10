@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers array mutation paths that target object properties.
+//! Shares receiver and property metadata with object expression lowering.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::assignments::properties`
+//!
+//! Key details:
+//! - Property writes must respect declared types, visibility checks, and runtime object layout.
 use super::target;
 
 mod indexed;

@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers foreach over associative arrays with key/value slot updates.
+//! Maintains loop labels and body emission while advancing the iterable source.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::control_flow::foreach`
+//!
+//! Key details:
+//! - Iterator state and iterable heap ownership must stay valid across break, continue, and loop completion.
 use crate::codegen::context::{Context, HeapOwnership, LoopLabels};
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

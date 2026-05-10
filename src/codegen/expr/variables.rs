@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers variable reads from locals, globals, static storage, and special compiler-managed slots.
+//! Loads values into the standard expression result registers for downstream consumers.
+//!
+//! Called from:
+//! - `crate::codegen::expr::emit_expr()`
+//!
+//! Key details:
+//! - Variable reads must respect slot ownership and static/global symbol storage conventions.
 use crate::codegen::platform::Arch;
 
 use super::super::abi;

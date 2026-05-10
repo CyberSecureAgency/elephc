@@ -1,3 +1,12 @@
+//! Purpose:
+//! Owns stack-frame setup, teardown, frame-slot addressing, and generic memory loads/stores.
+//! Provides target-specific helpers for local slots, caller stack access, and cleanup callbacks.
+//!
+//! Called from:
+//! - `crate::codegen::functions`, `crate::codegen::main_emission`, and ABI call helpers
+//!
+//! Key details:
+//! - Frame offsets and stack alignment are shared contracts with local collection and call materialization.
 use crate::codegen::{emit::Emitter, platform::Arch};
 use crate::types::PhpType;
 

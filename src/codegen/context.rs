@@ -1,3 +1,12 @@
+//! Purpose:
+//! Carries mutable codegen state such as local slots, labels, class metadata, and ownership facts.
+//! Provides the shared bookkeeping used while lowering expressions, statements, functions, and wrappers.
+//!
+//! Called from:
+//! - `crate::codegen::generate()` and nested codegen emitters
+//!
+//! Key details:
+//! - Ownership states must remain conservative across branches, temporaries, and cleanup paths.
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 

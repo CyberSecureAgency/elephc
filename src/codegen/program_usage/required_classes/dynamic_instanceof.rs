@@ -1,3 +1,12 @@
+//! Purpose:
+//! Detects instanceof expressions whose target is computed at runtime.
+//! Signals when codegen must keep broader class metadata available for dynamic checks.
+//!
+//! Called from:
+//! - `crate::codegen::program_usage::required_classes`
+//!
+//! Key details:
+//! - Dynamic targets require conservative metadata retention because the concrete class is not known statically.
 use crate::parser::ast::{Expr, ExprKind, InstanceOfTarget, Program, Stmt, StmtKind};
 
 pub(in crate::codegen) fn program_has_dynamic_instanceof(program: &Program) -> bool {

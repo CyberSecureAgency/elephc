@@ -1,3 +1,12 @@
+//! Purpose:
+//! Groups object property assignment lowering for direct writes, references, magic setters, and array mutations.
+//! Keeps property target resolution separate from value storage mechanics.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::assignments`
+//!
+//! Key details:
+//! - Property writes must honor visibility, nullable receivers, magic methods, and declared property types.
 mod arrays;
 mod assign;
 mod magic_set;

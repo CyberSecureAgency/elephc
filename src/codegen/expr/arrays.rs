@@ -1,3 +1,12 @@
+//! Purpose:
+//! Groups array expression lowering for literals, associative arrays, spreads, and element access.
+//! Keeps array construction and read paths behind one expression-module interface.
+//!
+//! Called from:
+//! - `crate::codegen::expr::emit_expr()`
+//!
+//! Key details:
+//! - Array values are refcounted heap objects and must preserve ownership across literal and access results.
 mod access;
 mod assoc;
 mod indexed;

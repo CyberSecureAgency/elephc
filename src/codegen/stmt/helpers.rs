@@ -1,3 +1,12 @@
+//! Purpose:
+//! Provides shared statement lowering utilities for array headers, truthiness, and cleanup-sensitive value handling.
+//! Keeps repeated low-level snippets out of individual statement emitters.
+//!
+//! Called from:
+//! - `crate::codegen::stmt` submodules
+//!
+//! Key details:
+//! - Helpers must state register clobbers through code structure and preserve heap ownership assumptions.
 use crate::codegen::platform::Arch;
 use crate::parser::ast::Expr;
 use crate::types::PhpType;

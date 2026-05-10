@@ -1,3 +1,12 @@
+//! Purpose:
+//! Groups statement storage helpers for locals and external globals.
+//! Provides type-directed load/store helpers used by assignment and IO paths.
+//!
+//! Called from:
+//! - `crate::codegen::stmt` and assignment emitters
+//!
+//! Key details:
+//! - Storage helpers must match ABI value layout and static symbol ownership conventions.
 mod extern_globals;
 mod locals;
 

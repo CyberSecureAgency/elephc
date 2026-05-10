@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers echo and output-oriented statements into target-specific write calls.
+//! Coerces expression results to strings and emits stdout writes.
+//!
+//! Called from:
+//! - `crate::codegen::stmt`
+//!
+//! Key details:
+//! - String temporaries must stay alive through the write and be released only when this path owns them.
 use super::super::abi;
 use super::super::context::Context;
 use super::super::data_section::DataSection;

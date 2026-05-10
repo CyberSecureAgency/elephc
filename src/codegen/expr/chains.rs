@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers chained property, method, and array accesses that share a left-to-right receiver path.
+//! Maintains intermediate receiver values while walking nested PHP access expressions.
+//!
+//! Called from:
+//! - `crate::codegen::expr::emit_expr()`
+//!
+//! Key details:
+//! - Each chain step must preserve nullability, ownership, and side-effect order for subsequent steps.
 use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;

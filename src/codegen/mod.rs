@@ -1,3 +1,12 @@
+//! Purpose:
+//! Coordinates assembly generation for complete programs and re-exports shared codegen helpers.
+//! Builds class metadata, emits user code, and assembles the runtime-facing sections.
+//!
+//! Called from:
+//! - `crate::pipeline::compile()` through `crate::codegen::generate()`
+//!
+//! Key details:
+//! - Keeps frontend type metadata, runtime cache assumptions, and target-specific emission ordered before linking.
 mod abi;
 mod builtins;
 mod class_methods;

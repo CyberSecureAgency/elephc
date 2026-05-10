@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers associative array literals with normalized keys and runtime hash insertion.
+//! Builds heap array values and leaves the resulting handle in expression result registers.
+//!
+//! Called from:
+//! - `crate::codegen::expr::arrays`
+//!
+//! Key details:
+//! - Literal emission must evaluate elements in source order and retain heap elements inserted into arrays.
 use super::super::super::context::Context;
 use super::super::super::data_section::DataSection;
 use super::super::super::emit::Emitter;

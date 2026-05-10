@@ -1,3 +1,12 @@
+//! Purpose:
+//! Emits deferred fiber wrapper functions for callable bodies that execute inside runtime fibers.
+//! Stitches closure captures, parameters, and resume results into normal function emission.
+//!
+//! Called from:
+//! - `crate::codegen::functions` after deferred fiber wrappers are registered
+//!
+//! Key details:
+//! - Wrapper frames must preserve captured values and follow the same cleanup rules as user functions.
 use crate::codegen::context::DeferredFiberWrapper;
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;

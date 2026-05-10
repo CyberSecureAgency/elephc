@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers if and elseif branching with shared exit labels.
+//! Emits labels and condition checks while delegating nested body statements.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::control_flow::branching`
+//!
+//! Key details:
+//! - Branch bodies share surrounding loop, switch, and finally context for cleanup-sensitive exits.
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

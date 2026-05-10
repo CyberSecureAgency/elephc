@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers PHP array union expressions and optimized empty-array cases.
+//! Keeps operator-specific conversions and result register setup out of the dispatcher.
+//!
+//! Called from:
+//! - `crate::codegen::expr::binops`
+//!
+//! Key details:
+//! - Runtime calls and target instructions must preserve left/right evaluation order and scratch register assumptions.
 use super::super::super::context::Context;
 use super::super::super::data_section::DataSection;
 use super::super::super::emit::Emitter;

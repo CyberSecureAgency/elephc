@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers scalar literals and constants into target result registers or data-section labels.
+//! Handles integers, floats, booleans, nulls, strings, and compile-time constant references.
+//!
+//! Called from:
+//! - `crate::codegen::expr::emit_expr()`
+//!
+//! Key details:
+//! - Literal storage must match data-section labels and the result conventions expected by coercion helpers.
 use crate::codegen::platform::Arch;
 
 use super::super::abi;

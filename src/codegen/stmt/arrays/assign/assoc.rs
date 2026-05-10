@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers associative array element assignment with normalized keys and hash writes.
+//! Evaluates assignment operands and writes the coerced value into the selected container.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::arrays::assign`
+//!
+//! Key details:
+//! - Container mutation must follow copy-on-write and element ownership expectations.
 use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;

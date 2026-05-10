@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers break and continue lowering with nested depth and cleanup handling.
+//! Works with loop labels stored in codegen context during nested body emission.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::control_flow::loops`
+//!
+//! Key details:
+//! - Loop exits must jump to the correct depth while preserving cleanup for skipped constructs.
 use crate::codegen::context::{Context, HeapOwnership};
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

@@ -1,3 +1,12 @@
+//! Purpose:
+//! Lowers direct user-defined and builtin function calls.
+//! Resolves the callable shape, prepares arguments, and leaves the call result for expression consumers.
+//!
+//! Called from:
+//! - `crate::codegen::expr::calls`
+//!
+//! Key details:
+//! - Callable metadata and argument signatures must stay synchronized with type checking and runtime dispatch.
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
