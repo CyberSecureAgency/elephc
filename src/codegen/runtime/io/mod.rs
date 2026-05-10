@@ -16,6 +16,7 @@ mod fs;
 mod getcwd;
 mod glob;
 mod modify;
+mod modify_x86_64;
 mod pathinfo_array;
 mod pathinfo_str;
 mod realpath;
