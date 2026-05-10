@@ -1,7 +1,8 @@
 use super::super::context::Context;
 use super::super::data_section::DataSection;
 use super::super::emit::Emitter;
-use super::{emit_null_coalesce, emit_strict_compare, BinOp, Expr, PhpType};
+use super::compare::{emit_null_coalesce, emit_strict_compare};
+use super::{BinOp, Expr, PhpType};
 
 mod arithmetic;
 mod array_union;

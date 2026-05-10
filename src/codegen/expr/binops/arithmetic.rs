@@ -7,8 +7,9 @@ use super::target::{
 };
 use super::super::{
     coerce_null_to_zero, coerce_to_string, coerce_to_truthiness, emit_expr,
-    expr_result_heap_ownership, BinOp, Expr, HeapOwnership, PhpType,
+    expr_result_heap_ownership, BinOp, Expr, PhpType,
 };
+use crate::codegen::context::HeapOwnership;
 
 pub(super) fn emit_logical_binop(
     left: &Expr,

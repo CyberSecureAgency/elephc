@@ -1,7 +1,7 @@
-use super::super::context::Context;
+use super::super::context::{Context, HeapOwnership};
 use super::super::data_section::DataSection;
 use super::super::emit::Emitter;
-use super::{expr_result_heap_ownership, Expr, HeapOwnership, PhpType};
+use super::{expr_result_heap_ownership, Expr, PhpType};
 
 pub(super) fn retain_borrowed_heap_arg(emitter: &mut Emitter, expr: &Expr, ty: &PhpType) {
     if ty.is_refcounted() && expr_result_heap_ownership(expr) != HeapOwnership::Owned {
@@ -33,7 +33,7 @@ pub(super) fn widen_codegen_type(a: &PhpType, b: &PhpType) -> PhpType {
     a.clone()
 }
 
-pub(super) fn coerce_result_to_type(
+pub(crate) fn coerce_result_to_type(
     emitter: &mut Emitter,
     ctx: &mut Context,
     data: &mut DataSection,

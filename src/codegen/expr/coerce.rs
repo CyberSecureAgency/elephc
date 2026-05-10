@@ -6,7 +6,7 @@ use crate::types::PhpType;
 
 /// Coerce a value to string (x1=ptr, x2=len) for concatenation.
 /// PHP behavior: false -> "", true -> "1", null -> "", int -> itoa
-pub(super) fn coerce_to_string(
+pub fn coerce_to_string(
     emitter: &mut Emitter,
     ctx: &mut Context,
     data: &mut DataSection,
@@ -139,7 +139,7 @@ fn emit_missing_tostring_fatal(emitter: &mut Emitter, data: &mut DataSection, cl
 /// Replace null sentinel with 0 in x0 (for arithmetic/comparison with null).
 /// Handles both compile-time null (Void type) and runtime null (variable
 /// that was assigned null - sentinel value in x0).
-pub(super) fn coerce_null_to_zero(emitter: &mut Emitter, ty: &PhpType) {
+pub fn coerce_null_to_zero(emitter: &mut Emitter, ty: &PhpType) {
     if *ty == PhpType::Void {
         match emitter.target.arch {
             Arch::AArch64 => {
@@ -178,7 +178,7 @@ pub(super) fn coerce_null_to_zero(emitter: &mut Emitter, ty: &PhpType) {
 /// Coerce any type to a truthiness value in x0 for use in conditions
 /// (if, while, for, ternary, &&, ||). For strings, PHP treats both ""
 /// and "0" as falsy. For other types, x0 already holds the truthiness.
-pub(super) fn coerce_to_truthiness(emitter: &mut Emitter, ctx: &mut Context, ty: &PhpType) {
+pub fn coerce_to_truthiness(emitter: &mut Emitter, ctx: &mut Context, ty: &PhpType) {
     coerce_null_to_zero(emitter, ty);
     if *ty == PhpType::Str {
         // -- PHP string truthiness: "" and "0" are falsy, everything else truthy --

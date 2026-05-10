@@ -1,7 +1,7 @@
 use crate::codegen::context::HeapOwnership;
 use crate::parser::ast::{Expr, ExprKind};
 
-pub(super) fn expr_result_heap_ownership(expr: &Expr) -> HeapOwnership {
+pub(crate) fn expr_result_heap_ownership(expr: &Expr) -> HeapOwnership {
     match &expr.kind {
         ExprKind::Variable(_)
         | ExprKind::ArrayAccess { .. }

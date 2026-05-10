@@ -353,7 +353,7 @@ pub(super) fn emit_enum_case(
     PhpType::Object(enum_name.to_string())
 }
 
-pub(super) fn push_magic_property_name_arg(
+pub(crate) fn push_magic_property_name_arg(
     property: &str,
     emitter: &mut Emitter,
     data: &mut DataSection,
@@ -387,7 +387,7 @@ pub(super) fn emit_nullsafe_method_call(
     nullsafe::emit_nullsafe_method_call(object, method, args, emitter, ctx, data)
 }
 
-pub(super) fn emit_method_call_with_pushed_args(
+pub(crate) fn emit_method_call_with_pushed_args(
     class_name: &str,
     method: &str,
     arg_types: &[PhpType],
