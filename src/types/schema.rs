@@ -23,6 +23,8 @@ pub struct InterfaceInfo {
     pub method_declaring_interfaces: HashMap<String, String>,
     pub method_order: Vec<String>,
     pub method_slots: HashMap<String, usize>,
+    /// Interface constants (PHP 5.0+). Inherited from parent interfaces.
+    pub constants: HashMap<String, crate::parser::ast::Expr>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -32,6 +34,14 @@ pub struct ClassInfo {
     pub is_abstract: bool,
     pub is_final: bool,
     pub is_readonly_class: bool,
+    /// `true` if the class declaration carries the PHP 8.2
+    /// `#[\AllowDynamicProperties]` attribute or inherits it from a parent.
+    /// Codegen routes undeclared property storage through a per-object
+    /// side-table when this flag is set.
+    pub allow_dynamic_properties: bool,
+    /// User-declared class constants (PHP 7.1+). Maps the constant name to
+    /// its value expression — codegen inlines the literal at access time.
+    pub constants: HashMap<String, crate::parser::ast::Expr>,
     pub properties: Vec<(String, PhpType)>,
     pub property_offsets: HashMap<String, usize>,
     pub property_declaring_classes: HashMap<String, String>,

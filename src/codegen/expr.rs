@@ -194,9 +194,6 @@ pub fn emit_expr(
             emit_expr(&synthetic_expr, emitter, ctx, data);
             ty
         }
-        ExprKind::EnumCase { enum_name, case_name } => {
-            objects::emit_enum_case(enum_name.as_str(), case_name, emitter, ctx)
-        }
         ExprKind::BinaryOp { left, op, right } => emit_binop(left, op, right, emitter, ctx, data),
         ExprKind::InstanceOf { value, target } => {
             objects::emit_instanceof(value, target, emitter, ctx, data)
@@ -245,6 +242,9 @@ pub fn emit_expr(
         }
         ExprKind::ClassConstant { receiver } => {
             objects::emit_class_constant(receiver, emitter, ctx, data)
+        }
+        ExprKind::ScopedConstantAccess { receiver, name } => {
+            objects::emit_scoped_constant_access(receiver, name, emitter, ctx, data)
         }
         ExprKind::NewScopedObject { receiver, args } => {
             objects::emit_new_scoped_object(receiver, args, emitter, ctx, data)

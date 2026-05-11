@@ -51,6 +51,7 @@ pub(crate) fn inject_builtin_iterators(
                 builtin_iterator_method("rewind", TypeExpr::Void),
             ],
             span: crate::span::Span::dummy(),
+        constants: Vec::new(),
         },
     );
 
@@ -64,6 +65,7 @@ pub(crate) fn inject_builtin_iterators(
                 TypeExpr::Named(Name::unqualified("Iterator")),
             )],
             span: crate::span::Span::dummy(),
+        constants: Vec::new(),
         },
     );
 
@@ -83,5 +85,6 @@ fn builtin_iterator_method(name: &str, return_type: TypeExpr) -> ClassMethod {
         return_type: Some(return_type),
         body: Vec::new(),
         span: crate::span::Span::dummy(),
+        attributes: Vec::new(),
     }
 }

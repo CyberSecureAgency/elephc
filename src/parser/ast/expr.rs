@@ -110,10 +110,6 @@ pub enum ExprKind {
         args: Vec<Expr>,
     },
     ConstRef(Name),
-    EnumCase {
-        enum_name: Name,
-        case_name: String,
-    },
     NewObject {
         class_name: Name,
         args: Vec<Expr>,
@@ -160,6 +156,13 @@ pub enum ExprKind {
     /// `Static` resolves the called class via late static binding.
     ClassConstant {
         receiver: StaticReceiver,
+    },
+    /// Access to a user-declared class constant: `MyClass::FOO`,
+    /// `self::FOO`, `parent::FOO`, `static::FOO`. Resolved at type-check
+    /// time by looking up the constant in the receiver's class info.
+    ScopedConstantAccess {
+        receiver: StaticReceiver,
+        name: String,
     },
     /// `new self()`, `new static()`, `new parent()`. Distinct from `NewObject`
     /// which uses a fixed class name; this variant carries a `StaticReceiver`

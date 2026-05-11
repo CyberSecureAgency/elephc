@@ -33,6 +33,7 @@ impl Checker {
             return_type: PhpType::Int,
             declared_return: decl.return_type.is_some(),
             ref_params: decl.ref_params.clone(),
+            deprecation: None,
             declared_params: decl
                 .param_types
                 .iter()
@@ -122,6 +123,9 @@ impl Checker {
                 .chain(decl.variadic.iter().map(|_| false))
                 .collect(),
             variadic: decl.variadic.clone(),
+            deprecation: crate::types::checker::schema::validation::extract_deprecation(
+                &decl.attributes,
+            ),
         };
         self.functions.insert(name.to_string(), sig);
 

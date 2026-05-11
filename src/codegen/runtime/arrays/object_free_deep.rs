@@ -156,6 +156,26 @@ pub fn emit_object_free_deep(emitter: &mut Emitter) {
 
     // -- free the object storage itself --
     emitter.label("__rt_object_free_deep_struct");
+
+    // -- if the object carries a #[\AllowDynamicProperties] hashtable, free it --
+    // The presence of the dyn_props slot is encoded in the payload size: the
+    // base layout is `8 + num_props * 16` (always a multiple of 16 plus 8 for
+    // the class_id field), so an extra 8-byte tail signals an ADP slot at
+    // offset `size - 16` from the object payload start.
+    emitter.instruction("ldr x0, [sp, #0]");                                    // reload the object pointer for the dyn_props check
+    emitter.instruction("ldr w9, [x0, #-16]");                                  // load the object payload size from the heap header
+    emitter.instruction("sub x9, x9, #8");                                      // subtract the leading class_id field
+    emitter.instruction("and x10, x9, #15");                                    // isolate the low 4 bits of the property region size
+    emitter.instruction("cmp x10, #8");                                         // 8 leftover bytes signal a dyn_props pointer slot
+    emitter.instruction("b.ne __rt_object_free_deep_no_dyn_props");             // no dyn_props tail → skip hashtable cleanup
+    emitter.instruction("sub x9, x9, #8");                                      // back out the dyn_props slot from the property region size
+    emitter.instruction("add x9, x9, #8");                                      // re-add the leading class_id offset to land on the dyn_props slot
+    emitter.instruction("ldr x11, [x0, x9]");                                   // load the dyn_props hashtable pointer from the slot
+    emitter.instruction("cbz x11, __rt_object_free_deep_no_dyn_props");         // null hashtables (lazy init never happened) need no cleanup
+    emitter.instruction("mov x0, x11");                                         // pass the hashtable pointer to the uniform decref helper
+    emitter.instruction("bl __rt_decref_any");                                  // release the dyn_props hashtable through the uniform helper
+
+    emitter.label("__rt_object_free_deep_no_dyn_props");
     crate::codegen::abi::emit_symbol_address(emitter, "x9", "_gc_release_suppressed");
     emitter.instruction("str xzr, [x9]");                                       // clear release suppression before freeing the object storage
     emitter.instruction("ldr x0, [sp, #0]");                                    // reload the object pointer before freeing it
@@ -263,6 +283,24 @@ fn emit_object_free_deep_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("jmp __rt_object_free_deep_loop");                      // continue scanning property slots until the whole object payload is released
 
     emitter.label("__rt_object_free_deep_struct");
+
+    // -- if the object carries a #[\AllowDynamicProperties] hashtable, free it --
+    emitter.instruction("mov rax, QWORD PTR [rbp - 8]");                        // reload the object pointer for the dyn_props check
+    emitter.instruction("mov r10d, DWORD PTR [rax - 16]");                      // load the object payload size from the heap header
+    emitter.instruction("sub r10, 8");                                          // subtract the leading class_id field
+    emitter.instruction("mov r11, r10");                                        // copy the property region size before isolating the low nibble
+    emitter.instruction("and r11, 15");                                         // isolate the low 4 bits of the property region size
+    emitter.instruction("cmp r11, 8");                                          // 8 leftover bytes signal a dyn_props pointer slot
+    emitter.instruction("jne __rt_object_free_deep_no_dyn_props");              // no dyn_props tail → skip hashtable cleanup
+    emitter.instruction("sub r10, 8");                                          // back out the dyn_props slot from the property region size
+    emitter.instruction("add r10, 8");                                          // re-add the leading class_id offset to land on the dyn_props slot
+    emitter.instruction("mov r11, QWORD PTR [rax + r10]");                      // load the dyn_props hashtable pointer from the slot
+    emitter.instruction("test r11, r11");                                       // null hashtables (lazy init never happened) need no cleanup
+    emitter.instruction("jz __rt_object_free_deep_no_dyn_props");               // skip cleanup for null dyn_props slot
+    emitter.instruction("mov rax, r11");                                        // pass the hashtable pointer to the uniform decref helper
+    emitter.instruction("call __rt_decref_any");                                // release the dyn_props hashtable through the uniform helper
+
+    emitter.label("__rt_object_free_deep_no_dyn_props");
     emitter.instruction("mov rax, QWORD PTR [rbp - 8]");                        // reload the object pointer after finishing the optional property cleanup pass
     crate::codegen::abi::emit_symbol_address(emitter, "r10", "_gc_release_suppressed");
     emitter.instruction("mov QWORD PTR [r10], 0");                              // re-enable targeted collector runs now that the object deep-free walk is complete

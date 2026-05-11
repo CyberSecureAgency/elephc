@@ -44,6 +44,7 @@ pub fn infer_contextual_type(expr: &Expr, ctx: &Context) -> PhpType {
         ref_params: Vec::new(),
         declared_params: Vec::new(),
         variadic: None,
+        deprecation: None,
     };
     infer_local_type(expr, &empty_sig, Some(ctx))
 }
@@ -281,7 +282,6 @@ pub(super) fn infer_local_type(
         ExprKind::ConstRef(name) => ctx
             .and_then(|c| c.constants.get(name.as_str()).map(|(_, ty)| ty.clone()))
             .unwrap_or(PhpType::Int),
-        ExprKind::EnumCase { enum_name, .. } => PhpType::Object(enum_name.as_str().to_string()),
         ExprKind::Spread(inner) => infer_local_type(inner, sig, ctx),
         ExprKind::NamedArg { value, .. } => infer_local_type(value, sig, ctx),
         ExprKind::NewObject { class_name, .. } => PhpType::Object(class_name.as_str().to_string()),

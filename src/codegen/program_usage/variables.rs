@@ -281,9 +281,8 @@ fn expr_uses_variable(expr: &Expr, needle: &str) -> bool {
         | ExprKind::BoolLiteral(_)
         | ExprKind::Null
         | ExprKind::ConstRef(_)
-        | ExprKind::EnumCase { .. }
         | ExprKind::This => false,
-        ExprKind::ClassConstant { .. } => false,
+        ExprKind::ClassConstant { .. } | ExprKind::ScopedConstantAccess { .. } => false,
         ExprKind::NewScopedObject { args, .. } => {
             args.iter().any(|arg| expr_uses_variable(arg, needle))
         }

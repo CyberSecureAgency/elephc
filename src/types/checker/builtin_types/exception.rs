@@ -31,6 +31,7 @@ pub(super) fn builtin_exception_message_property() -> ClassProperty {
             crate::span::Span::dummy(),
         )),
         span: crate::span::Span::dummy(),
+        attributes: Vec::new(),
     }
 }
 
@@ -65,6 +66,7 @@ pub(super) fn builtin_exception_constructor_method() -> ClassMethod {
             crate::span::Span::dummy(),
         )],
         span: crate::span::Span::dummy(),
+        attributes: Vec::new(),
     }
 }
 
@@ -90,6 +92,7 @@ pub(super) fn builtin_exception_get_message_method() -> ClassMethod {
             crate::span::Span::dummy(),
         )],
         span: crate::span::Span::dummy(),
+        attributes: Vec::new(),
     }
 }
 
@@ -106,6 +109,7 @@ pub(super) fn builtin_throwable_get_message_method() -> ClassMethod {
         return_type: None,
         body: Vec::new(),
         span: crate::span::Span::dummy(),
+        attributes: Vec::new(),
     }
 }
 

@@ -225,11 +225,11 @@ fn expr_has_dynamic_instanceof(expr: &Expr) -> bool {
         | ExprKind::PreDecrement(_)
         | ExprKind::PostDecrement(_)
         | ExprKind::ConstRef(_)
-        | ExprKind::EnumCase { .. }
         | ExprKind::StaticPropertyAccess { .. }
         | ExprKind::FirstClassCallable(_)
         | ExprKind::This
-        | ExprKind::ClassConstant { .. } => false,
+        | ExprKind::ClassConstant { .. }
+        | ExprKind::ScopedConstantAccess { .. } => false,
         ExprKind::MagicConstant(_) => {
             unreachable!("MagicConstant must be lowered before codegen analysis")
         }

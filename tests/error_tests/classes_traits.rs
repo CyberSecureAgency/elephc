@@ -183,3 +183,77 @@ fn test_error_new_static_validates_child_constructor() {
         "Constructor 'Child::__construct' expects 1 arguments, got 0",
     );
 }
+
+// --- #[\Override] enforcement (PHP 8.3) ---
+
+#[test]
+fn test_error_override_attribute_with_no_parent_method() {
+    expect_error(
+        "<?php class Base {} class Child extends Base { #[\\Override] public function nope(): void {} }",
+        "no matching parent method",
+    );
+}
+
+#[test]
+fn test_error_override_attribute_on_root_class() {
+    expect_error(
+        "<?php class Solo { #[\\Override] public function alone(): void {} }",
+        "no matching parent method",
+    );
+}
+
+#[test]
+fn test_error_override_attribute_on_misspelled_method() {
+    expect_error(
+        "<?php class Base { public function fetchAll(): void {} } class Child extends Base { #[\\Override] public function fetchAl(): void {} }",
+        "no matching parent method",
+    );
+}
+
+#[test]
+fn test_error_override_attribute_unqualified_form_is_recognized() {
+    expect_error(
+        "<?php class Base {} class Child extends Base { #[Override] public function nope(): void {} }",
+        "no matching parent method",
+    );
+}
+
+#[test]
+fn test_error_override_attribute_import_alias_is_recognized() {
+    expect_error(
+        "<?php use Override as MustOverride; class Base {} class Child extends Base { #[MustOverride] public function nope(): void {} }",
+        "no matching parent method",
+    );
+}
+
+#[test]
+fn test_override_attribute_qualified_lookalike_is_not_builtin() {
+    check_source(
+        "<?php class Solo { #[Foo\\Override] public function alone(): void {} }",
+    )
+    .expect("qualified user attribute should not enforce #[\\Override]");
+}
+
+#[test]
+fn test_override_attribute_namespaced_unqualified_lookalike_is_not_builtin() {
+    check_source(
+        "<?php namespace N; class Solo { #[Override] public function alone(): void {} }",
+    )
+    .expect("namespaced user attribute should not enforce #[\\Override]");
+}
+
+#[test]
+fn test_error_override_attribute_on_static_with_no_parent() {
+    expect_error(
+        "<?php class Base {} class Child extends Base { #[\\Override] public static function gone(): void {} }",
+        "no matching parent method",
+    );
+}
+
+#[test]
+fn test_allow_dynamic_properties_namespaced_unqualified_lookalike_is_not_builtin() {
+    expect_error(
+        "<?php namespace N; #[AllowDynamicProperties] class Bag {} $b = new Bag(); $b->x = 1;",
+        "Undefined property: N\\Bag::x",
+    );
+}

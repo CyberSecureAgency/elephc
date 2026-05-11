@@ -183,6 +183,7 @@ impl Checker {
                     ref_params: closure_sig.ref_params,
                     declared_params: closure_sig.declared_params,
                     variadic: variadic.clone(),
+                    deprecation: None,
                 }))
             }
             ExprKind::FirstClassCallable(target) => self

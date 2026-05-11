@@ -23,6 +23,10 @@ pub struct FunctionSig {
     pub ref_params: Vec<bool>,
     pub declared_params: Vec<bool>,
     pub variadic: Option<String>,
+    /// `Some(message)` if the declaration carried PHP 8.4 `#[\Deprecated]`.
+    /// `Some("")` indicates the attribute was present without an explicit
+    /// reason. `None` means the function/method is not deprecated.
+    pub deprecation: Option<String>,
 }
 
 pub(crate) fn callable_wrapper_sig(sig: &FunctionSig) -> FunctionSig {
@@ -300,6 +304,7 @@ pub(crate) fn first_class_callable_builtin_sig(name: &str) -> Option<FunctionSig
             ref_params: vec![false],
             declared_params: vec![true],
             variadic: None,
+            deprecation: None,
         }),
         "count" => Some(FunctionSig {
             params: vec![(
@@ -315,6 +320,7 @@ pub(crate) fn first_class_callable_builtin_sig(name: &str) -> Option<FunctionSig
             ref_params: vec![false],
             declared_params: vec![true],
             variadic: None,
+            deprecation: None,
         }),
         "buffer_len" => Some(FunctionSig {
             params: vec![("buffer".to_string(), PhpType::Buffer(Box::new(PhpType::Int)))],
@@ -324,6 +330,7 @@ pub(crate) fn first_class_callable_builtin_sig(name: &str) -> Option<FunctionSig
             ref_params: vec![false],
             declared_params: vec![true],
             variadic: None,
+            deprecation: None,
         }),
         _ => general_first_class_callable_builtin_sig(name),
     }
@@ -410,6 +417,7 @@ fn make_sig(params: &[&str], defaults: Vec<Option<Expr>>, variadic: Option<&str>
         ref_params: vec![false; params.len()],
         declared_params: vec![false; params.len()],
         variadic: variadic.map(str::to_string),
+        deprecation: None,
     }
 }
 
@@ -442,6 +450,7 @@ mod tests {
             declared_params: vec![false; params.len()],
             params,
             variadic: Some("values".to_string()),
+            deprecation: None,
         }
     }
 

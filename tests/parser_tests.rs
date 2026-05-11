@@ -81,3 +81,5 @@ mod extensions;
 mod magic_constants;
 #[path = "parser_tests/never.rs"]
 mod never;
+#[path = "parser_tests/attributes.rs"]
+mod attributes;

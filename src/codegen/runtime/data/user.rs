@@ -396,6 +396,8 @@ mod tests {
             is_abstract: false,
             is_final: false,
             is_readonly_class: false,
+            allow_dynamic_properties: false,
+            constants: HashMap::new(),
             properties: Vec::new(),
             property_offsets: HashMap::new(),
             property_declaring_classes: HashMap::new(),

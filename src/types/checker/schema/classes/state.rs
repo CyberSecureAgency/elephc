@@ -16,6 +16,7 @@ use crate::types::{ClassInfo, FunctionSig, PhpType};
 
 #[derive(Default)]
 pub(super) struct ClassBuildState {
+    pub(super) allow_dynamic_properties: bool,
     pub(super) prop_types: Vec<(String, PhpType)>,
     pub(super) property_offsets: HashMap<String, usize>,
     pub(super) property_declaring_classes: HashMap<String, String>,
@@ -57,6 +58,7 @@ impl ClassBuildState {
             state.inherit_methods(parent);
             state.inherit_static_methods(parent);
             state.interfaces = parent.interfaces.clone();
+            state.allow_dynamic_properties = parent.allow_dynamic_properties;
         }
         state
     }
@@ -73,6 +75,13 @@ impl ClassBuildState {
             is_abstract: class.is_abstract,
             is_final: class.is_final,
             is_readonly_class: class.is_readonly_class,
+            allow_dynamic_properties: self.allow_dynamic_properties
+                || class_has_allow_dynamic_properties(class),
+            constants: class
+                .constants
+                .iter()
+                .map(|c| (c.name.clone(), c.value.clone()))
+                .collect(),
             properties: self.prop_types,
             property_offsets: self.property_offsets,
             property_declaring_classes: self.property_declaring_classes,
@@ -108,6 +117,22 @@ impl ClassBuildState {
         }
     }
 
+}
+
+/// Returns `true` if the class declaration carries the PHP 8.2
+/// `#[\AllowDynamicProperties]` marker attribute.
+pub(super) fn class_has_allow_dynamic_properties(class: &FlattenedClass) -> bool {
+    class.attributes.iter().any(|group| {
+        group.attributes.iter().any(|attr| {
+            super::super::validation::matches_global_builtin_attribute(
+                attr,
+                "AllowDynamicProperties",
+            )
+        })
+    })
+}
+
+impl ClassBuildState {
     fn inherit_properties(&mut self, parent: &ClassInfo) {
         for (index, (name, ty)) in parent.properties.iter().enumerate() {
             self.prop_types.push((name.clone(), ty.clone()));

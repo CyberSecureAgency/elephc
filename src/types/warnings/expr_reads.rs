@@ -159,7 +159,7 @@ pub(super) fn collect_expr_reads(
         }
         ExprKind::StaticPropertyAccess { .. } => {},
         ExprKind::BufferNew { len, .. } => collect_expr_reads(len, scope, warnings),
-        ExprKind::ClassConstant { .. } => {}
+        ExprKind::ClassConstant { .. } | ExprKind::ScopedConstantAccess { .. } => {}
         ExprKind::NewScopedObject { args, .. } => {
             for arg in args {
                 collect_expr_reads(arg, scope, warnings);
@@ -171,7 +171,6 @@ pub(super) fn collect_expr_reads(
         | ExprKind::BoolLiteral(_)
         | ExprKind::Null
         | ExprKind::ConstRef(_)
-        | ExprKind::EnumCase { .. }
         | ExprKind::FirstClassCallable(_)
         | ExprKind::This => {}
         ExprKind::MagicConstant(_) => {

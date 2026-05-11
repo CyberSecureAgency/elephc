@@ -43,6 +43,15 @@ impl Checker {
         caller_env: &TypeEnv,
     ) -> Result<PhpType, CompileError> {
         if let Some(sig) = self.functions.get(name).cloned() {
+            if let Some(reason) = sig.deprecation.as_deref() {
+                let message = if reason.is_empty() {
+                    format!("Call to deprecated function: {}()", name)
+                } else {
+                    format!("Call to deprecated function: {}() — {}", name, reason)
+                };
+                self.warnings
+                    .push(crate::errors::CompileWarning::new(span, &message));
+            }
             let effective_sig = Self::callable_sig_for_declared_params(&sig, &sig.declared_params);
             let normalized_args = self.normalize_named_call_args(
                 &effective_sig,
@@ -97,6 +106,7 @@ impl Checker {
             ref_params: decl.ref_params.clone(),
             declared_params: decl.param_types.iter().map(|type_ann| type_ann.is_some()).collect(),
             variadic: decl.variadic.clone(),
+            deprecation: None,
         };
         let normalized_args = self.normalize_named_call_args(
             &normalization_sig,

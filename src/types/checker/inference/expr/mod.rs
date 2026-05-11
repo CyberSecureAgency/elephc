@@ -408,10 +408,6 @@ impl Checker {
             ExprKind::NewObject { class_name, args } => {
                 self.infer_new_object_type(class_name.as_str(), args, expr, env)
             }
-            ExprKind::EnumCase {
-                enum_name,
-                case_name,
-            } => self.infer_enum_case_type(enum_name.as_str(), case_name, expr),
             ExprKind::PropertyAccess { object, property } => {
                 self.infer_property_access_type(object, property, expr, env)
             }
@@ -444,6 +440,9 @@ impl Checker {
             ExprKind::ClassConstant { receiver } => {
                 self.validate_class_constant_receiver(receiver, expr.span)?;
                 Ok(PhpType::Str)
+            }
+            ExprKind::ScopedConstantAccess { receiver, name } => {
+                self.infer_scoped_constant_access(receiver, name, expr)
             }
             ExprKind::NewScopedObject { receiver, args } => {
                 let class_name = match receiver {

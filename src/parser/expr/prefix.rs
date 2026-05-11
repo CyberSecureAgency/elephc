@@ -16,7 +16,8 @@ use crate::span::Span;
 
 use super::calls::{parse_scoped_static_call, peek_cast};
 use super::prefix_complex::{
-    parse_arrow_closure, parse_closure, parse_match_expr, parse_named_expr, parse_new_object,
+    parse_arrow_closure, parse_attributed_closure, parse_closure, parse_match_expr,
+    parse_named_expr, parse_new_object,
 };
 use super::pratt::parse_expr_bp;
 use super::{parse_args, parse_expr};
@@ -200,6 +201,7 @@ pub(super) fn parse_prefix(
         Token::Match => parse_match_expr(tokens, pos, span),
         Token::Function => parse_closure(tokens, pos, span, false),
         Token::Fn => parse_arrow_closure(tokens, pos, span, false),
+        Token::AttrOpen => parse_attributed_closure(tokens, pos, span),
         Token::Identifier(_) | Token::Backslash => parse_named_expr(tokens, pos, span),
         Token::Self_ => {
             *pos += 1;

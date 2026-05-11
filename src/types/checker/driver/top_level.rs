@@ -191,7 +191,6 @@ impl Checker {
             }
             ExprKind::Closure { .. }
             | ExprKind::FirstClassCallable(_)
-            | ExprKind::EnumCase { .. }
             | ExprKind::StaticPropertyAccess { .. }
             | ExprKind::BoolLiteral(_)
             | ExprKind::Null
@@ -206,7 +205,7 @@ impl Checker {
             | ExprKind::ConstRef(_)
             | ExprKind::This
             | ExprKind::BufferNew { .. } => false,
-            ExprKind::ClassConstant { .. } => false,
+            ExprKind::ClassConstant { .. } | ExprKind::ScopedConstantAccess { .. } => false,
             ExprKind::NewScopedObject { args, .. } => {
                 args.iter().any(Self::expr_contains_method_call)
             }

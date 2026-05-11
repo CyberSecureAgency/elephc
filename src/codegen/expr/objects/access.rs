@@ -233,6 +233,16 @@ pub(super) fn emit_loaded_object_property_access(
                     ctx,
                 );
             }
+            if class_info.allow_dynamic_properties {
+                let dyn_slot_offset = 8 + class_info.properties.len() * 16;
+                return crate::codegen::stmt::emit_dynamic_property_get(
+                    property,
+                    dyn_slot_offset,
+                    emitter,
+                    ctx,
+                    data,
+                );
+            }
             emitter.comment(&format!("WARNING: undefined property {}", property));
             return PhpType::Int;
         }

@@ -90,6 +90,9 @@ pub(crate) struct Checker {
     pub break_continue_depth: usize,
     /// Active break/continue depth at each enclosing finally block boundary.
     pub finally_break_continue_bases: Vec<usize>,
+    /// Warnings raised during type checking (e.g. `#[\Deprecated]` call
+    /// sites). Merged with the AST-only warnings before being returned.
+    pub warnings: Vec<crate::errors::CompileWarning>,
 }
 
 #[derive(Clone)]
@@ -102,6 +105,9 @@ pub(crate) struct FnDecl {
     pub return_type: Option<TypeExpr>,
     pub span: crate::span::Span,
     pub body: Vec<crate::parser::ast::Stmt>,
+    /// Attribute groups attached to the original `function` declaration.
+    /// Currently consulted only for `#[\Deprecated]`.
+    pub attributes: Vec<crate::parser::ast::AttributeGroup>,
 }
 
 pub fn check_types(program: &Program, target_platform: Platform) -> Result<CheckResult, CompileError> {
@@ -109,6 +115,9 @@ pub fn check_types(program: &Program, target_platform: Platform) -> Result<Check
 
     propagate_abstract_return_types(&mut checker);
     validate_magic_method_contracts(&checker)?;
+
+    let mut warnings = crate::types::warnings::collect_warnings(program);
+    warnings.extend(checker.warnings);
 
     Ok(CheckResult {
         global_env,
@@ -121,6 +130,6 @@ pub fn check_types(program: &Program, target_platform: Platform) -> Result<Check
         extern_classes: checker.extern_classes,
         extern_globals: checker.extern_globals,
         required_libraries: checker.required_libraries,
-        warnings: crate::types::warnings::collect_warnings(program),
+        warnings,
     })
 }

@@ -154,11 +154,11 @@ pub(super) fn discover_expr(
         | ExprKind::PreDecrement(_)
         | ExprKind::PostDecrement(_)
         | ExprKind::ConstRef(_)
-        | ExprKind::EnumCase { .. }
         | ExprKind::StaticPropertyAccess { .. }
         | ExprKind::FirstClassCallable(_)
         | ExprKind::This
         | ExprKind::ClassConstant { .. }
+        | ExprKind::ScopedConstantAccess { .. }
         | ExprKind::MagicConstant(_) => {}
     }
     Ok(())

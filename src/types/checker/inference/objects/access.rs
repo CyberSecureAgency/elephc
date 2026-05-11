@@ -120,6 +120,12 @@ impl Checker {
             if let Some(sig) = class_info.methods.get("__get") {
                 return Ok(sig.return_type.clone());
             }
+            if class_info.allow_dynamic_properties {
+                // PHP 8.2 #[\AllowDynamicProperties]: undeclared property
+                // reads are dispatched to the side-table hashtable; the
+                // value is statically `Mixed` because we cannot infer it.
+                return Ok(PhpType::Mixed);
+            }
             return Err(CompileError::new(
                 expr.span,
                 &format!("Undefined property: {}::{}", class_name, property),

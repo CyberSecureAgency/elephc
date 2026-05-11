@@ -343,6 +343,11 @@ fn collect_required_class_names_in_expr(expr: &Expr, names: &mut HashSet<String>
                 names.insert(name.as_str().to_string());
             }
         }
+        ExprKind::ScopedConstantAccess { receiver, .. } => {
+            if let crate::parser::ast::StaticReceiver::Named(name) = receiver {
+                names.insert(name.as_str().to_string());
+            }
+        }
         ExprKind::NewScopedObject { receiver, args } => {
             if let crate::parser::ast::StaticReceiver::Named(name) = receiver {
                 names.insert(name.as_str().to_string());
@@ -362,7 +367,6 @@ fn collect_required_class_names_in_expr(expr: &Expr, names: &mut HashSet<String>
         | ExprKind::PreDecrement(_)
         | ExprKind::PostDecrement(_)
         | ExprKind::ConstRef(_)
-        | ExprKind::EnumCase { .. }
         | ExprKind::This => {}
         ExprKind::MagicConstant(_) => {
             unreachable!("MagicConstant must be lowered before codegen analysis")

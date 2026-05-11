@@ -112,6 +112,7 @@ pub enum Token {
     This,           // $this
     Extern,         // extern
     Packed,         // packed
+    AttrOpen,       // #[ (start of attribute group)
 
     // Operators
     Assign,         // =

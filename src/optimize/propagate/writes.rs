@@ -269,7 +269,6 @@ pub(crate) fn expr_local_writes(expr: &Expr) -> Option<HashSet<String>> {
         | ExprKind::BoolLiteral(_)
         | ExprKind::Null
         | ExprKind::ConstRef(_)
-        | ExprKind::EnumCase { .. }
         | ExprKind::StaticPropertyAccess { .. }
         | ExprKind::This
         | ExprKind::FirstClassCallable(_)
@@ -373,7 +372,7 @@ pub(crate) fn expr_local_writes(expr: &Expr) -> Option<HashSet<String>> {
         | ExprKind::BufferNew { .. } => None,
         ExprKind::PropertyAccess { object, .. }
         | ExprKind::NullsafePropertyAccess { object, .. } => expr_local_writes(object),
-        ExprKind::ClassConstant { .. } => Some(HashSet::new()),
+        ExprKind::ClassConstant { .. } | ExprKind::ScopedConstantAccess { .. } => Some(HashSet::new()),
     }
 }
 

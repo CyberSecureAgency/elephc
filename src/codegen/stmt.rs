@@ -36,6 +36,7 @@ pub(crate) use null_coalesce_assign::{
 pub(crate) use arrays::emit_array_assign_stmt;
 pub(crate) use assignments::{
     emit_assign_stmt,
+    emit_dynamic_property_get,
     emit_property_array_assign_stmt,
     emit_property_assign_stmt,
     emit_static_property_array_assign_stmt,
