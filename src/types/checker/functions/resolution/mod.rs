@@ -163,6 +163,15 @@ impl Checker {
                             &format!("Function '{}' parameter ${}", name, decl.params[i]),
                         )?;
                         param_types.push((decl.params[i].clone(), declared_ty));
+                    } else if matches!(ty, PhpType::Never) {
+                        let param_ty = decl
+                            .defaults
+                            .get(i)
+                            .and_then(|default| default.as_ref())
+                            .map(|default| self.infer_type(default, caller_env))
+                            .transpose()?
+                            .unwrap_or(PhpType::Int);
+                        param_types.push((decl.params[i].clone(), param_ty));
                     } else {
                         param_types.push((decl.params[i].clone(), ty.clone()));
                     }
