@@ -18,7 +18,6 @@ use super::common::{declared_target_ty, emit_ref_arg_variable_address, push_arg_
 use super::named;
 use super::normalize::{has_named_args, prepare_call_args};
 use super::spread::{emit_spread_into_named_params, emit_spread_tail_variadic_array_arg};
-use super::spread_checks::emit_spread_length_checks;
 use super::variadic::{emit_empty_variadic_array_arg, emit_variadic_array_arg_from_exprs};
 use super::EmittedCallArgs;
 
@@ -51,7 +50,6 @@ pub(crate) fn emit_pushed_call_args(
     }
 
     let prepared = prepare_call_args(sig, args_exprs, regular_param_count);
-    emit_spread_length_checks(&prepared.spread_length_checks, emitter, ctx, data);
     let mut arg_types = emit_pushed_non_variadic_args(
         &prepared.all_args,
         sig,
