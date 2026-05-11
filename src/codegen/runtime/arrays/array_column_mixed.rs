@@ -107,7 +107,8 @@ fn emit_array_column_mixed_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov rsi, 8");                                          // boxed Mixed slots store one pointer each
     emitter.instruction("call __rt_array_new");                                 // allocate the result indexed array
     emitter.instruction("mov r10, QWORD PTR [rax - 8]");                        // load result array metadata word
-    emitter.instruction("and r10, 0xffffffff000080ff");                         // preserve heap marker, indexed-array kind, and persistent COW metadata
+    emitter.instruction("mov r11, 0xffffffff000080ff");                         // materialize the x86_64 result-array metadata preservation mask
+    emitter.instruction("and r10, r11");                                        // preserve heap marker, indexed-array kind, and persistent COW metadata
     emitter.instruction("or r10, 0x700");                                       // stamp runtime value_type 7 = boxed Mixed
     emitter.instruction("mov QWORD PTR [rax - 8], r10");                        // persist the Mixed-valued result array metadata
     emitter.instruction("mov QWORD PTR [rbp - 40], rax");                       // save result array pointer across hash lookups

@@ -202,7 +202,6 @@ fn emit_mixed_array_literal(
             crate::codegen::emit_box_current_expr_value_as_mixed_for_container(
                 emitter, elem, &ty,
             );
-            ty = PhpType::Mixed;
         } else if !boxed_iterable {
             retain_borrowed_heap_arg(emitter, elem, &ty);
         }
@@ -238,7 +237,6 @@ fn emit_mixed_array_literal_linux_x86_64(
             crate::codegen::emit_box_current_expr_value_as_mixed_for_container(
                 emitter, elem, &ty,
             );
-            ty = PhpType::Mixed;
         } else if !boxed_iterable {
             retain_borrowed_heap_arg(emitter, elem, &ty);
         }
