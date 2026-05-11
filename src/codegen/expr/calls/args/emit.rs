@@ -33,9 +33,10 @@ pub(crate) fn emit_pushed_call_args(
 ) -> EmittedCallArgs {
     let expanded_args = call_args::expand_static_assoc_spread_args(args_exprs);
     let args_exprs = expanded_args.as_slice();
+    let has_named = has_named_args(args_exprs);
 
     if let Some(sig) = sig {
-        if has_named_args(args_exprs) {
+        if has_named {
             return named::emit_source_order_named_call_args(
                 args_exprs,
                 sig,
@@ -48,6 +49,11 @@ pub(crate) fn emit_pushed_call_args(
             );
         }
     }
+
+    debug_assert!(
+        sig.is_some() || !has_named,
+        "codegen reached named-arg call without a known signature; checker should have rejected this"
+    );
 
     let prepared = prepare_call_args(sig, args_exprs, regular_param_count);
     let mut arg_types = emit_pushed_non_variadic_args(
