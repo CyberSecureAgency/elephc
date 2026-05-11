@@ -99,11 +99,8 @@ pub(super) fn emit_dynamic_property_set(
     }
 
     // -- now: result reg = boxed Mixed cell ptr; object_reg = $this --
-    emitter.instruction(&format!(
-        "mov {}, {}",
-        boxed_reg,
-        abi::int_result_reg(emitter)
-    )); // keep the boxed Mixed pointer in a callee-stable scratch across hashtable args setup
+    let keep_boxed_ptr = format!("mov {}, {}", boxed_reg, abi::int_result_reg(emitter));
+    emitter.instruction(&keep_boxed_ptr);                                       // keep the boxed Mixed pointer in a stable scratch across hashtable setup
 
     let (label, key_len) = data.add_string(property.as_bytes());
 
