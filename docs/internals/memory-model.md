@@ -437,7 +437,7 @@ _float_1: .quad 0x4000000000000000    ; 2.0
 
 These are **read-only** — the program never modifies them. When a string operation needs to work with a literal, it reads from the data section and writes the result to the [string buffer](#the-string-buffer).
 
-The runtime data layer is split into `emit_runtime_data_fixed()` (shared buffers, diagnostics, lookup tables) and `emit_runtime_data_user()` (per-program globals, statics, enum-case slots, and metadata). Together they emit these static data tables:
+The runtime data layer is split into fixed shared data, user-program data, and dynamic `instanceof` lookup formatting under `src/codegen/runtime/data/`. Together they emit these static data tables:
 - `_fmt_g` — printf format string for float-to-string conversion (`%.14G`)
 - `_b64_encode_tbl` — 64-byte Base64 encoding lookup table
 - `_b64_decode_tbl` — 256-byte Base64 decoding lookup table

@@ -163,7 +163,31 @@ fn array_union_type_syntactic(a: &PhpType, b: &PhpType) -> Option<PhpType> {
             };
             Some(PhpType::AssocArray { key, value })
         }
+        (PhpType::Array(left_value), PhpType::AssocArray { key, value }) => {
+            Some(PhpType::AssocArray {
+                key: Box::new(merge_array_key_types(PhpType::Int, *key.clone())),
+                value: Box::new(array_union_value_type_syntactic(left_value, value)),
+            })
+        }
+        (PhpType::AssocArray { key, value }, PhpType::Array(right_value)) => {
+            Some(PhpType::AssocArray {
+                key: Box::new(merge_array_key_types(*key.clone(), PhpType::Int)),
+                value: Box::new(array_union_value_type_syntactic(value, right_value)),
+            })
+        }
         _ => None,
+    }
+}
+
+fn array_union_value_type_syntactic(left: &PhpType, right: &PhpType) -> PhpType {
+    if left == right {
+        left.clone()
+    } else if matches!(left, PhpType::Never) {
+        right.clone()
+    } else if matches!(right, PhpType::Never) {
+        left.clone()
+    } else {
+        PhpType::Mixed
     }
 }
 
@@ -349,5 +373,48 @@ pub fn infer_expr_type_syntactic(expr: &Expr) -> PhpType {
         },
         ExprKind::InstanceOf { .. } => PhpType::Bool,
         _ => PhpType::Int,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_syntactic_indexed_plus_assoc_array_union_type() {
+        let ty = array_union_type_syntactic(
+            &PhpType::Array(Box::new(PhpType::Str)),
+            &PhpType::AssocArray {
+                key: Box::new(PhpType::Str),
+                value: Box::new(PhpType::Str),
+            },
+        );
+
+        assert_eq!(
+            ty,
+            Some(PhpType::AssocArray {
+                key: Box::new(PhpType::Mixed),
+                value: Box::new(PhpType::Str),
+            })
+        );
+    }
+
+    #[test]
+    fn test_syntactic_assoc_plus_indexed_array_union_type() {
+        let ty = array_union_type_syntactic(
+            &PhpType::AssocArray {
+                key: Box::new(PhpType::Int),
+                value: Box::new(PhpType::Str),
+            },
+            &PhpType::Array(Box::new(PhpType::Int)),
+        );
+
+        assert_eq!(
+            ty,
+            Some(PhpType::AssocArray {
+                key: Box::new(PhpType::Int),
+                value: Box::new(PhpType::Mixed),
+            })
+        );
     }
 }

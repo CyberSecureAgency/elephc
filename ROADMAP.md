@@ -407,7 +407,7 @@ more restrictive than PHP.
 - [x] Generators / `yield` MVP — `Generator` built-in class with `yield`, `yield $k => $v`, generator functions and captured generator closures, `$x = yield` resume assignment, boxed `Generator::send()` payload delivery, `Generator::throw()`, `Generator::getReturn()`, terminal `return <expr>`, state-machine codegen backed by heap-allocated `GeneratorFrame` objects on ARM64 and Linux x86_64, and yield-context validation that rejects `yield` outside functions or inside `try`/`catch`/`finally`
 - [x] `yield from` delegation — forward iteration through compile-time array literals, direct generator calls, and local generator variables, including case-insensitive `from` parsing and cleanup of owned direct-call delegates after completion
 - [ ] PHP attributes runtime introspection — implement `ReflectionClass::getAttributes()`, `ReflectionMethod::getAttributes()`, `ReflectionProperty::getAttributes()`, plus the `ReflectionAttribute` shape exposing `getName()`, `getArguments()`, `newInstance()`. Currently the parser preserves attribute groups in the AST and the checker enforces `#[\Override]` + `#[\Deprecated]`, but Reflection lookups (`new ReflectionClass(...)->getAttributes()`) return `Undefined class: ReflectionClass`.
-- [ ] Mixed indexed/associative array union — model `array + array` across indexed/hash representations while preserving PHP's shared int/string key space and left-key precedence
+- [x] Mixed indexed/associative array union — model `array + array` across indexed/hash representations while preserving PHP's shared int/string key space and left-key precedence
 - [ ] Callable parity follow-up — support captured method/static first-class callables in the remaining callback runtimes (`array_reduce()`, `array_walk()`, `usort()`, `uksort()`, `uasort()`), direct callable expression calls such as `($obj->method(...))()`, non-local method receivers such as `(new Foo())->method(...)`, nullsafe first-class callables, broader builtin first-class callable wrappers, and the remaining `call_user_func_array()` by-reference callback gaps
 - [ ] Runtime-value compatibility polishing v2 — continue with PHP's uninitialized typed-property state, integer overflow promotion, broader loose-comparison semantics, and future warning/notice sites as they are added
 - [ ] Broader date, regex, and JSON PHP parity — expand `strtotime()` relative formats, PCRE-compatible regex features/captures/backreferences, and `json_decode()` structured array/object decoding
@@ -425,8 +425,6 @@ This section was reorganized when the EIR plan landed. The items that
 required an intermediate representation were absorbed into v0.24.x (EIR
 introduction + register allocation) and v0.25.x (EIR optimization passes).
 The remaining release-track and AST-level optimizer items moved to v0.26.x.
-See `docs/internals/the-ir.md` and the plan series in `~/Downloads/elephc-plans/`
-for the rationale.
 
 The v0.23.x label is preserved here so that any external references stay
 resolvable. No new work is planned under this label.
