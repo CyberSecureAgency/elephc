@@ -277,12 +277,12 @@ src/
 │   │
 │   └── runtime/               Runtime routines and target-specific emission helpers
 │       ├── mod.rs             Emits all runtime functions into assembly
-│       ├── data.rs            Emits runtime .data / .bss symbols and metadata tables
+│       ├── data/              Emits runtime .data / .bss symbols and metadata tables (4 files)
 │       ├── diagnostics.rs     Suppressible runtime-warning channel used by `@`
 │       ├── emitters.rs        Shared emit helpers used across runtime categories
 │       ├── x86_minimal.rs     Minimal x86_64 runtime slice for the Linux x86_64 target
 │       ├── strings/           itoa, concat, resource display, ftoa, sprintf, md5, sha1, str_persist, ... (56 files)
-│       ├── arrays/            heap_alloc, heap_free, array_free_deep, array_grow, hash_grow, hash_*, mixed boxing/freeing, mixed instanceof, sort, usort, refcount, gc/decref dispatch, ... (115 files)
+│       ├── arrays/            heap_alloc, heap_free, array_free_deep, array_grow, hash_grow, hash_*, mixed boxing/freeing, mixed instanceof, sort, usort, refcount, gc/decref dispatch, ... (117 files)
 │       ├── io/                fopen, fgets, fread, stat, scandir, ... (28 files)
 │       ├── buffers/           buffer_new, buffer_len, bounds_fail, use_after_free helpers (5 files incl. mod.rs)
 │       ├── exceptions.rs      Exception runtime module root / re-exports
@@ -385,7 +385,7 @@ Offset  Size  Field
 
 ### Runtime BSS and data symbols
 
-The runtime data emission in `src/codegen/runtime/data.rs` is split into `emit_runtime_data_fixed()` (shared heap buffers, diagnostics, lookup tables) and `emit_runtime_data_user()` (globals, statics, enum-case storage, and metadata derived from the user's program):
+The runtime data emission in `src/codegen/runtime/data/` is split into fixed data (`fixed.rs`), user-program metadata (`user.rs`), and dynamic `instanceof` lookup names (`instanceof.rs`):
 
 | Symbol group | Symbols | Purpose |
 |---|---|---|

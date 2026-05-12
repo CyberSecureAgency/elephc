@@ -5,7 +5,7 @@ sidebar:
   order: 8
 ---
 
-**Source:** `src/codegen/runtime/` — `mod.rs`, `emitters.rs`, `data.rs`, `x86_minimal.rs`, `strings/`, `arrays/`, `buffers/`, `exceptions.rs`, `exceptions/`, `io/`, `system/`, `pointers/`, `fibers/`
+**Source:** `src/codegen/runtime/` — `mod.rs`, `emitters.rs`, `data/`, `x86_minimal.rs`, `strings/`, `arrays/`, `buffers/`, `exceptions.rs`, `exceptions/`, `io/`, `system/`, `pointers/`, `fibers/`
 
 The runtime is a collection of **hand-written assembly routines** that handle operations too complex for inline code generation. When the [code generator](the-codegen.md) needs to convert an integer to a string or concatenate two strings, it emits a `bl __rt_itoa` or `bl __rt_concat` — a call to a runtime routine.
 
@@ -170,7 +170,7 @@ Each routine follows the same pattern — inputs in registers, output in standar
 
 ## Array routines
 
-**Source:** `src/codegen/runtime/arrays/` (112 files)
+**Source:** `src/codegen/runtime/arrays/` (117 files)
 
 ### Core allocation
 
@@ -510,7 +510,7 @@ Every routine in the selected target runtime slice is linked into the binary, ev
 
 ## Runtime data
 
-The runtime data layer is split between `emit_runtime_data_fixed()` (shared buffers, error strings, lookup tables) and `emit_runtime_data_user()` (per-program globals, statics, enum-case slots, and metadata tables). Together they declare global buffers using `.comm` and static data tables:
+The runtime data layer lives in `src/codegen/runtime/data/`. `fixed.rs` emits shared buffers, error strings, and lookup tables; `user.rs` emits per-program globals, statics, enum-case slots, and metadata tables; `instanceof.rs` formats dynamic `instanceof` lookup names. Together they declare global buffers using `.comm` and static data tables:
 
 ```asm
 .comm _concat_buf, 65536     ; 64KB string buffer
