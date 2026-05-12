@@ -425,8 +425,6 @@ This section was reorganized when the EIR plan landed. The items that
 required an intermediate representation were absorbed into v0.24.x (EIR
 introduction + register allocation) and v0.25.x (EIR optimization passes).
 The remaining release-track and AST-level optimizer items moved to v0.26.x.
-See `docs/internals/the-ir.md` and the plan series in `~/Downloads/elephc-plans/`
-for the rationale.
 
 The v0.23.x label is preserved here so that any external references stay
 resolvable. No new work is planned under this label.
