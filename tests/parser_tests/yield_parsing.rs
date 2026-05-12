@@ -1,3 +1,13 @@
+//! Purpose:
+//! Parser tests for `yield`, `yield from`, and assignment-shaped yield expressions.
+//!
+//! Called from:
+//! - `cargo test` through Rust's test harness.
+//!
+//! Key details:
+//! - `from` is parsed contextually after `yield` and must follow PHP's
+//!   case-insensitive keyword behavior.
+
 use super::*;
 
 #[test]
@@ -48,6 +58,20 @@ fn test_parse_yield_key_value() {
 #[test]
 fn test_parse_yield_from() {
     let stmts = parse_source("<?php yield from $g;");
+    match &stmts[0].kind {
+        StmtKind::ExprStmt(expr) => match &expr.kind {
+            ExprKind::YieldFrom(inner) => {
+                assert_eq!(inner.kind, ExprKind::Variable("g".to_string()));
+            }
+            other => panic!("expected YieldFrom, got {:?}", other),
+        },
+        other => panic!("expected ExprStmt, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_parse_yield_from_case_insensitive_from() {
+    let stmts = parse_source("<?php yield FROM $g;");
     match &stmts[0].kind {
         StmtKind::ExprStmt(expr) => match &expr.kind {
             ExprKind::YieldFrom(inner) => {

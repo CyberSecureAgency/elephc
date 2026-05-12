@@ -61,6 +61,21 @@ foreach (outer() as $v) { echo $v; echo " "; }
 }
 
 #[test]
+fn test_generator_yield_from_case_insensitive_from_keyword() {
+    let out = compile_and_run(
+        r#"<?php
+function inner() { yield 1; yield 2; }
+function outer() {
+    yield 0;
+    yield FROM inner();
+}
+foreach (outer() as $v) { echo $v; echo " "; }
+"#,
+    );
+    assert_eq!(out, "0 1 2 ");
+}
+
+#[test]
 fn test_generator_yield_from_with_arg_passing() {
     let out = compile_and_run(
         r#"<?php

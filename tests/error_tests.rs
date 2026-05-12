@@ -282,3 +282,14 @@ fn test_error_yield_from_outside_function() {
         "yield can only be used inside a function or method body",
     );
 }
+
+#[test]
+fn test_error_yield_from_rejects_non_generator_call() {
+    expect_error(
+        "<?php
+function not_gen(): int { return 1; }
+function gen() { yield from not_gen(); }
+",
+        "yield from expects an array literal or Generator, got Int",
+    );
+}

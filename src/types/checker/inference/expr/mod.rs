@@ -495,7 +495,23 @@ impl Checker {
                 Ok(PhpType::Mixed)
             }
             ExprKind::YieldFrom(inner) => {
-                self.infer_type(inner, env)?;
+                let inner_ty = self.infer_type(inner, env)?;
+                let supported = match &inner.kind {
+                    ExprKind::ArrayLiteral(_) => true,
+                    ExprKind::FunctionCall { .. } | ExprKind::Variable(_) => {
+                        self.type_accepts(&PhpType::Object("Generator".to_string()), &inner_ty)
+                    }
+                    _ => false,
+                };
+                if !supported {
+                    return Err(CompileError::new(
+                        inner.span,
+                        &format!(
+                            "yield from expects an array literal or Generator, got {:?}",
+                            inner_ty
+                        ),
+                    ));
+                }
                 Ok(PhpType::Mixed)
             }
             ExprKind::MagicConstant(_) => {

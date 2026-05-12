@@ -257,7 +257,7 @@ fn parse_yield(
     }
 
     if let Token::Identifier(name) = &tokens[*pos].0 {
-        if name == "from" {
+        if name.eq_ignore_ascii_case("from") {
             *pos += 1;
             let inner = parse_expr_bp(tokens, pos, 0)?;
             return Ok(Expr::new(ExprKind::YieldFrom(Box::new(inner)), span));
