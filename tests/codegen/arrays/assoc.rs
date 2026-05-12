@@ -230,6 +230,42 @@ echo $result[0][0] . "|" . $result[1][0] . "|" . $result["meta"][0];
 }
 
 #[test]
+fn test_indexed_plus_assoc_array_union_inside_function_foreach() {
+    let out = compile_and_run(
+        r#"<?php
+function render(): void {
+    $left = ["zero", "one"];
+    $right = [0 => "skip", "name" => "alice"];
+    $result = $left + $right;
+    foreach ($result as $k => $v) {
+        echo $k . "=" . $v . ";";
+    }
+}
+render();
+"#,
+    );
+    assert_eq!(out, "0=zero;1=one;name=alice;");
+}
+
+#[test]
+fn test_assoc_plus_indexed_array_union_inside_function_foreach() {
+    let out = compile_and_run(
+        r#"<?php
+function render(): void {
+    $left = ["0" => "zero-left", "name" => "left"];
+    $right = ["zero-right", "one-right"];
+    $result = $left + $right;
+    foreach ($result as $k => $v) {
+        echo $k . "=" . $v . ";";
+    }
+}
+render();
+"#,
+    );
+    assert_eq!(out, "0=zero-left;name=left;1=one-right;");
+}
+
+#[test]
 fn test_assoc_foreach_key_value() {
     let out = compile_and_run(
         r#"<?php
