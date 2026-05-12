@@ -65,4 +65,5 @@ pub(crate) use preg_split::emit_preg_split;
 pub(crate) use preg_strip::emit_preg_strip;
 pub(crate) use shell_exec::emit_shell_exec;
 pub(crate) use strtotime::emit_strtotime;
+pub(crate) use strtotime::emit_strtotime_data;
 pub(crate) use time::emit_time;

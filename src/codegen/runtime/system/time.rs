@@ -9,9 +9,11 @@
 //! - System helpers must preserve PHP-visible behavior while crossing libc, syscall, JSON, regex, and date formatter boundaries.
 
 use crate::codegen::emit::Emitter;
-use crate::codegen::platform::Arch;
+use crate::codegen::platform::{Arch, Platform};
 
-/// __rt_time: get current Unix timestamp via gettimeofday syscall.
+/// __rt_time: get current Unix timestamp.
+/// macOS ARM64 routes through libc `time(NULL)` so that libsystem's lazy TLS/errno init runs before any subsequent libc call (notably `localtime`).
+/// Linux ARM64 uses the raw `gettimeofday` syscall — there is no comparable init hazard on glibc.
 /// Output: x0 = seconds since epoch
 pub(crate) fn emit_time(emitter: &mut Emitter) {
     if emitter.target.arch == Arch::X86_64 {
@@ -19,6 +21,34 @@ pub(crate) fn emit_time(emitter: &mut Emitter) {
         return;
     }
 
+    if emitter.platform == Platform::MacOS {
+        emit_time_macos_arm64(emitter);
+        return;
+    }
+
+    emit_time_linux_arm64(emitter);
+}
+
+fn emit_time_macos_arm64(emitter: &mut Emitter) {
+    emitter.blank();
+    emitter.comment("--- runtime: time ---");
+    emitter.label_global("__rt_time");
+
+    // -- set up minimal frame and call libc time(NULL) --
+    // Going through libc rather than a raw `svc` ensures libsystem's TLS/__findenv state is
+    // initialized before any later `localtime` chain runs. Raw syscalls bypass that init
+    // path and reproducibly crash deeper inside libc when `tzset` first reads `environ`.
+    emitter.instruction("sub sp, sp, #16");                                     // allocate frame (16 bytes, 16-aligned)
+    emitter.instruction("stp x29, x30, [sp]");                                  // save frame pointer and return address
+    emitter.instruction("mov x29, sp");                                         // new frame pointer
+    emitter.instruction("mov x0, #0");                                          // x0 = NULL (no out-param needed)
+    emitter.bl_c("time");                                                       // libc time(NULL) → x0 = Unix timestamp
+    emitter.instruction("ldp x29, x30, [sp]");                                  // restore frame pointer and return address
+    emitter.instruction("add sp, sp, #16");                                     // tear down frame
+    emitter.instruction("ret");                                                 // return to caller
+}
+
+fn emit_time_linux_arm64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: time ---");
     emitter.label_global("__rt_time");

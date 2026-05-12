@@ -139,6 +139,7 @@ pub(crate) fn emit_runtime_data_fixed(heap_size: usize) -> String {
     out.push_str(".globl _pcre_nword\n_pcre_nword:\n    .ascii \"[^[:alnum:]_]\"\n");
     out.push_str(&system::emit_json_data());
     out.push_str(&system::emit_date_data());
+    out.push_str(&system::emit_strtotime_data());
     out.push_str(&emit_php_uname_data());
 
     out

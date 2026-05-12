@@ -1,43 +1,35 @@
 //! Purpose:
-//! Emits the `__rt_strtotime`, `__rt_strtotime_fail` runtime helper assembly for strtotime.
-//! Keeps PHP builtin semantics, libc/syscall boundaries, and target-specific ABI variants in one focused emitter.
+//! Emits the ISO `YYYY-MM-DD[ HH:MM:SS]` parser sub-routine consumed by the `__rt_strtotime` dispatcher.
+//! Parses fixed-offset ASCII digits and builds a `struct tm` in the dispatcher-owned scratch slot.
 //!
 //! Called from:
-//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::system`.
+//! - `crate::codegen::runtime::system::strtotime::mod::emit_strtotime()` via the dispatcher's first-byte digit branch.
 //!
 //! Key details:
-//! - The parser accepts a supported PHP date/time subset and feeds normalized fields into the runtime mktime helper.
+//! - Entry label `__rt_strtotime_iso_entry` (ARM64) / `__rt_strtotime_iso_entry_linux_x86_64` (x86_64) expects the dispatcher frame already set up.
+//! - Inputs come from `[sp+48]` (trimmed ptr) and `[sp+56]` (trimmed len); the result `struct tm` is built at `[sp+0..47]`.
+//! - All exits branch to the shared `__rt_strtotime_ret` / `__rt_strtotime_fail` epilogues owned by the dispatcher (`mod.rs`).
 
 use crate::codegen::{emit::Emitter, platform::Arch};
 
-/// __rt_strtotime: parse a date/time string into a Unix timestamp.
-/// Input:  x1=string ptr, x2=string len
-/// Output: x0=Unix timestamp (or -1 on failure)
-///
-/// Supports formats:
-///   "YYYY-MM-DD HH:MM:SS"  (19 chars)
-///   "YYYY-MM-DD"           (10 chars)
-///
-/// Parses digits manually, builds struct tm, calls _mktime.
-pub fn emit_strtotime(emitter: &mut Emitter) {
+/// Emit the ISO date sub-routine on both targets.
+pub(crate) fn emit_iso_date(emitter: &mut Emitter) {
     if emitter.target.arch == Arch::X86_64 {
-        emit_strtotime_linux_x86_64(emitter);
+        emit_iso_date_linux_x86_64(emitter);
         return;
     }
 
+    emit_iso_date_arm64(emitter);
+}
+
+fn emit_iso_date_arm64(emitter: &mut Emitter) {
     emitter.blank();
-    emitter.comment("--- runtime: strtotime ---");
-    emitter.label_global("__rt_strtotime");
+    emitter.comment("--- strtotime: ISO date sub-routine ---");
+    emitter.label("__rt_strtotime_iso_entry");
 
-    // -- set up stack frame --
-    // Stack: [sp+0..47] = struct tm, [sp+48..55] = string ptr, [sp+56..63] = string len
-    emitter.instruction("sub sp, sp, #96");                                     // allocate 96 bytes on the stack
-    emitter.instruction("stp x29, x30, [sp, #80]");                             // save frame pointer and return address
-    emitter.instruction("add x29, sp, #80");                                    // set new frame pointer
-
-    // -- save inputs --
-    emitter.instruction("str x1, [sp, #48]");                                   // save string ptr
-    emitter.instruction("str x2, [sp, #56]");                                   // save string len
+    // -- reload trimmed ptr/len from dispatcher slots --
+    emitter.instruction("ldr x1, [sp, #48]");                                   // reload trimmed input pointer
+    emitter.instruction("ldr x2, [sp, #56]");                                   // reload trimmed input length
 
     // -- validate minimum length (10 for YYYY-MM-DD) --
     emitter.instruction("cmp x2, #10");                                         // need at least 10 chars
@@ -87,9 +79,8 @@ pub fn emit_strtotime(emitter: &mut Emitter) {
     emitter.instruction("str w9, [sp, #12]");                                   // store tm_mday
 
     // -- check if time component exists (length >= 19 for "YYYY-MM-DD HH:MM:SS") --
-    emitter.instruction("ldr x2, [sp, #56]");                                   // reload string length
     emitter.instruction("cmp x2, #19");                                         // check for full datetime
-    emitter.instruction("b.lt __rt_strtotime_notime");                          // no time component
+    emitter.instruction("b.lt __rt_strtotime_iso_notime");                      // no time component
 
     // -- parse HH (2 digits at offset 11) --
     emitter.instruction("ldrb w9, [x1, #11]");                                  // load 1st hour digit
@@ -120,133 +111,109 @@ pub fn emit_strtotime(emitter: &mut Emitter) {
     emitter.instruction("sub w10, w10, #48");                                   // convert from ASCII
     emitter.instruction("add w9, w9, w10");                                     // w9 = second
     emitter.instruction("str w9, [sp, #0]");                                    // store tm_sec
-    emitter.instruction("b __rt_strtotime_mktime");                             // proceed to mktime
+    emitter.instruction("b __rt_strtotime_iso_mktime");                         // proceed to mktime
 
     // -- no time component, default to 00:00:00 --
-    emitter.label("__rt_strtotime_notime");
+    emitter.label("__rt_strtotime_iso_notime");
     emitter.instruction("str wzr, [sp, #0]");                                   // tm_sec = 0
     emitter.instruction("str wzr, [sp, #4]");                                   // tm_min = 0
     emitter.instruction("str wzr, [sp, #8]");                                   // tm_hour = 0
 
     // -- fill remaining tm fields and call mktime --
-    emitter.label("__rt_strtotime_mktime");
+    emitter.label("__rt_strtotime_iso_mktime");
     emitter.instruction("str wzr, [sp, #24]");                                  // tm_wday = 0
     emitter.instruction("str wzr, [sp, #28]");                                  // tm_yday = 0
     emitter.instruction("mov w9, #-1");                                         // tm_isdst = -1
     emitter.instruction("str w9, [sp, #32]");                                   // store tm_isdst
-
-    // -- call mktime --
     emitter.instruction("mov x0, sp");                                          // x0 = pointer to struct tm
-    emitter.bl_c("mktime");                                          // mktime(&tm) → x0=timestamp
-    emitter.instruction("b __rt_strtotime_ret");                                // return result
-
-    // -- failure: return -1 --
-    emitter.label("__rt_strtotime_fail");
-    emitter.instruction("mov x0, #-1");                                         // return -1 on failure
-
-    // -- tear down and return --
-    emitter.label("__rt_strtotime_ret");
-    emitter.instruction("ldp x29, x30, [sp, #80]");                             // restore frame pointer and return address
-    emitter.instruction("add sp, sp, #96");                                     // deallocate stack frame
-    emitter.instruction("ret");                                                 // return to caller
+    emitter.bl_c("mktime");                                                     // mktime(&tm) → x0=timestamp
+    emitter.instruction("b __rt_strtotime_ret");                                // return through shared epilogue
 }
 
-fn emit_strtotime_linux_x86_64(emitter: &mut Emitter) {
+fn emit_iso_date_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
-    emitter.comment("--- runtime: strtotime ---");
-    emitter.label_global("__rt_strtotime");
+    emitter.comment("--- strtotime: ISO date sub-routine ---");
+    emitter.label("__rt_strtotime_iso_entry_linux_x86_64");
 
-    emitter.instruction("push rbp");                                            // preserve the caller frame pointer before building the temporary libc struct tm
-    emitter.instruction("mov rbp, rsp");                                        // establish a stable frame base for the saved input string and scratch struct tm storage
-    emitter.instruction("sub rsp, 80");                                         // reserve aligned stack space for the saved input pair and the leading struct tm fields
+    // -- reload trimmed ptr/len from dispatcher slots --
+    emitter.instruction("mov rdi, QWORD PTR [rsp + 48]");                       // reload trimmed input pointer from dispatcher slot
+    emitter.instruction("mov rsi, QWORD PTR [rsp + 56]");                       // reload trimmed input length from dispatcher slot
+    emitter.instruction("cmp rsi, 10");                                         // require at least the YYYY-MM-DD prefix
+    emitter.instruction("jb __rt_strtotime_fail_linux_x86_64");                 // reject too-short inputs through the shared fail label
 
-    emitter.instruction("mov QWORD PTR [rbp - 8], rdi");                        // save the input string pointer so every parse step can reload it without depending on caller-saved registers
-    emitter.instruction("mov QWORD PTR [rbp - 16], rsi");                       // save the input string length so the optional time-component check can reload it later
-    emitter.instruction("cmp rsi, 10");                                         // require at least the YYYY-MM-DD prefix before attempting any parsing
-    emitter.instruction("jb __rt_strtotime_fail_linux_x86_64");                 // reject inputs shorter than the minimum supported ISO date format
-
-    emitter.instruction("mov r8, QWORD PTR [rbp - 8]");                         // reload the date-string pointer before parsing the four-digit Gregorian year
+    emitter.instruction("mov r8, rdi");                                         // pin the date-string pointer for repeated relative byte loads
     emitter.instruction("movzx eax, BYTE PTR [r8 + 0]");                        // load the first year digit from the date string
     emitter.instruction("sub eax, 48");                                         // convert the first year digit from ASCII to its numeric value
     emitter.instruction("imul eax, eax, 1000");                                 // place the first year digit into the thousands column
     emitter.instruction("movzx ecx, BYTE PTR [r8 + 1]");                        // load the second year digit from the date string
     emitter.instruction("sub ecx, 48");                                         // convert the second year digit from ASCII to its numeric value
     emitter.instruction("imul ecx, ecx, 100");                                  // place the second year digit into the hundreds column
-    emitter.instruction("add eax, ecx");                                        // accumulate the hundreds contribution into the parsed year value
+    emitter.instruction("add eax, ecx");                                        // accumulate the hundreds contribution
     emitter.instruction("movzx ecx, BYTE PTR [r8 + 2]");                        // load the third year digit from the date string
     emitter.instruction("sub ecx, 48");                                         // convert the third year digit from ASCII to its numeric value
     emitter.instruction("imul ecx, ecx, 10");                                   // place the third year digit into the tens column
-    emitter.instruction("add eax, ecx");                                        // accumulate the tens contribution into the parsed year value
+    emitter.instruction("add eax, ecx");                                        // accumulate the tens contribution
     emitter.instruction("movzx ecx, BYTE PTR [r8 + 3]");                        // load the fourth year digit from the date string
     emitter.instruction("sub ecx, 48");                                         // convert the fourth year digit from ASCII to its numeric value
-    emitter.instruction("add eax, ecx");                                        // finish assembling the full Gregorian year from the four ASCII digits
-    emitter.instruction("sub eax, 1900");                                       // convert the Gregorian year to libc's year-since-1900 struct tm encoding
+    emitter.instruction("add eax, ecx");                                        // finish assembling the full Gregorian year
+    emitter.instruction("sub eax, 1900");                                       // convert the Gregorian year to libc's tm_year encoding
     emitter.instruction("mov DWORD PTR [rsp + 20], eax");                       // tm_year = parsed year - 1900
 
-    emitter.instruction("movzx eax, BYTE PTR [r8 + 5]");                        // load the first month digit from the YYYY-MM-DD input
+    emitter.instruction("movzx eax, BYTE PTR [r8 + 5]");                        // load the first month digit
     emitter.instruction("sub eax, 48");                                         // convert the first month digit from ASCII to its numeric value
     emitter.instruction("imul eax, eax, 10");                                   // place the first month digit into the tens column
-    emitter.instruction("movzx ecx, BYTE PTR [r8 + 6]");                        // load the second month digit from the YYYY-MM-DD input
+    emitter.instruction("movzx ecx, BYTE PTR [r8 + 6]");                        // load the second month digit
     emitter.instruction("sub ecx, 48");                                         // convert the second month digit from ASCII to its numeric value
-    emitter.instruction("add eax, ecx");                                        // finish assembling the 1-based calendar month
-    emitter.instruction("sub eax, 1");                                          // convert the calendar month from PHP's 1-12 range to libc's 0-11 tm_mon encoding
+    emitter.instruction("add eax, ecx");                                        // finish assembling the calendar month
+    emitter.instruction("sub eax, 1");                                          // convert the month from PHP's 1-12 to libc's 0-11 tm_mon
     emitter.instruction("mov DWORD PTR [rsp + 16], eax");                       // tm_mon = parsed month - 1
 
-    emitter.instruction("movzx eax, BYTE PTR [r8 + 8]");                        // load the first day-of-month digit from the YYYY-MM-DD input
+    emitter.instruction("movzx eax, BYTE PTR [r8 + 8]");                        // load the first day-of-month digit
     emitter.instruction("sub eax, 48");                                         // convert the first day-of-month digit from ASCII to its numeric value
     emitter.instruction("imul eax, eax, 10");                                   // place the first day-of-month digit into the tens column
-    emitter.instruction("movzx ecx, BYTE PTR [r8 + 9]");                        // load the second day-of-month digit from the YYYY-MM-DD input
+    emitter.instruction("movzx ecx, BYTE PTR [r8 + 9]");                        // load the second day-of-month digit
     emitter.instruction("sub ecx, 48");                                         // convert the second day-of-month digit from ASCII to its numeric value
     emitter.instruction("add eax, ecx");                                        // finish assembling the day-of-month component
     emitter.instruction("mov DWORD PTR [rsp + 12], eax");                       // tm_mday = parsed day-of-month
 
-    emitter.instruction("mov r9, QWORD PTR [rbp - 16]");                        // reload the input string length before checking for an optional time-of-day suffix
-    emitter.instruction("cmp r9, 19");                                          // the full YYYY-MM-DD HH:MM:SS form requires at least 19 bytes
-    emitter.instruction("jb __rt_strtotime_notime_linux_x86_64");               // fall back to midnight when the optional time-of-day suffix is absent
+    emitter.instruction("cmp rsi, 19");                                         // the full YYYY-MM-DD HH:MM:SS form requires at least 19 bytes
+    emitter.instruction("jb __rt_strtotime_iso_notime_linux_x86_64");           // fall back to midnight when the time suffix is absent
 
-    emitter.instruction("movzx eax, BYTE PTR [r8 + 11]");                       // load the first hour digit from the HH:MM:SS suffix
+    emitter.instruction("movzx eax, BYTE PTR [r8 + 11]");                       // load the first hour digit
     emitter.instruction("sub eax, 48");                                         // convert the first hour digit from ASCII to its numeric value
     emitter.instruction("imul eax, eax, 10");                                   // place the first hour digit into the tens column
-    emitter.instruction("movzx ecx, BYTE PTR [r8 + 12]");                       // load the second hour digit from the HH:MM:SS suffix
+    emitter.instruction("movzx ecx, BYTE PTR [r8 + 12]");                       // load the second hour digit
     emitter.instruction("sub ecx, 48");                                         // convert the second hour digit from ASCII to its numeric value
     emitter.instruction("add eax, ecx");                                        // finish assembling the hour component
     emitter.instruction("mov DWORD PTR [rsp + 8], eax");                        // tm_hour = parsed hour
 
-    emitter.instruction("movzx eax, BYTE PTR [r8 + 14]");                       // load the first minute digit from the HH:MM:SS suffix
+    emitter.instruction("movzx eax, BYTE PTR [r8 + 14]");                       // load the first minute digit
     emitter.instruction("sub eax, 48");                                         // convert the first minute digit from ASCII to its numeric value
     emitter.instruction("imul eax, eax, 10");                                   // place the first minute digit into the tens column
-    emitter.instruction("movzx ecx, BYTE PTR [r8 + 15]");                       // load the second minute digit from the HH:MM:SS suffix
+    emitter.instruction("movzx ecx, BYTE PTR [r8 + 15]");                       // load the second minute digit
     emitter.instruction("sub ecx, 48");                                         // convert the second minute digit from ASCII to its numeric value
     emitter.instruction("add eax, ecx");                                        // finish assembling the minute component
     emitter.instruction("mov DWORD PTR [rsp + 4], eax");                        // tm_min = parsed minute
 
-    emitter.instruction("movzx eax, BYTE PTR [r8 + 17]");                       // load the first second digit from the HH:MM:SS suffix
+    emitter.instruction("movzx eax, BYTE PTR [r8 + 17]");                       // load the first second digit
     emitter.instruction("sub eax, 48");                                         // convert the first second digit from ASCII to its numeric value
     emitter.instruction("imul eax, eax, 10");                                   // place the first second digit into the tens column
-    emitter.instruction("movzx ecx, BYTE PTR [r8 + 18]");                       // load the second second digit from the HH:MM:SS suffix
+    emitter.instruction("movzx ecx, BYTE PTR [r8 + 18]");                       // load the second second digit
     emitter.instruction("sub ecx, 48");                                         // convert the second second digit from ASCII to its numeric value
     emitter.instruction("add eax, ecx");                                        // finish assembling the second component
     emitter.instruction("mov DWORD PTR [rsp + 0], eax");                        // tm_sec = parsed second
-    emitter.instruction("jmp __rt_strtotime_mktime_linux_x86_64");              // skip the midnight-default path after parsing the full time-of-day suffix
+    emitter.instruction("jmp __rt_strtotime_iso_mktime_linux_x86_64");          // skip the midnight-default path
 
-    emitter.label("__rt_strtotime_notime_linux_x86_64");
-    emitter.instruction("mov DWORD PTR [rsp + 0], 0");                          // default tm_sec to zero when the supported input contains only a calendar date
-    emitter.instruction("mov DWORD PTR [rsp + 4], 0");                          // default tm_min to zero when the supported input contains only a calendar date
-    emitter.instruction("mov DWORD PTR [rsp + 8], 0");                          // default tm_hour to zero when the supported input contains only a calendar date
+    emitter.label("__rt_strtotime_iso_notime_linux_x86_64");
+    emitter.instruction("mov DWORD PTR [rsp + 0], 0");                          // default tm_sec to zero when the date-only form was given
+    emitter.instruction("mov DWORD PTR [rsp + 4], 0");                          // default tm_min to zero when the date-only form was given
+    emitter.instruction("mov DWORD PTR [rsp + 8], 0");                          // default tm_hour to zero when the date-only form was given
 
-    emitter.label("__rt_strtotime_mktime_linux_x86_64");
-    emitter.instruction("mov DWORD PTR [rsp + 24], 0");                         // tm_wday = 0 because libc mktime() ignores the caller-supplied weekday field
-    emitter.instruction("mov DWORD PTR [rsp + 28], 0");                         // tm_yday = 0 because libc mktime() ignores the caller-supplied yearday field
-    emitter.instruction("mov DWORD PTR [rsp + 32], -1");                        // tm_isdst = -1 so libc mktime() infers daylight-saving time automatically
-    emitter.instruction("mov rdi, rsp");                                        // pass the temporary struct tm as the first SysV integer argument to libc mktime()
-    emitter.instruction("call mktime");                                         // convert the parsed calendar/time components into a Unix timestamp through libc
-    emitter.instruction("jmp __rt_strtotime_ret_linux_x86_64");                 // return the parsed Unix timestamp through the standard x86_64 integer result register
-
-    emitter.label("__rt_strtotime_fail_linux_x86_64");
-    emitter.instruction("mov rax, -1");                                         // return -1 when the input string is shorter than the supported ISO date formats
-
-    emitter.label("__rt_strtotime_ret_linux_x86_64");
-    emitter.instruction("add rsp, 80");                                         // release the saved input pair and temporary struct tm storage before returning
-    emitter.instruction("pop rbp");                                             // restore the caller frame pointer before returning the Unix timestamp
-    emitter.instruction("ret");                                                 // return either the parsed Unix timestamp or -1 through the standard x86_64 integer result register
+    emitter.label("__rt_strtotime_iso_mktime_linux_x86_64");
+    emitter.instruction("mov DWORD PTR [rsp + 24], 0");                         // tm_wday = 0 (mktime ignores)
+    emitter.instruction("mov DWORD PTR [rsp + 28], 0");                         // tm_yday = 0 (mktime ignores)
+    emitter.instruction("mov DWORD PTR [rsp + 32], -1");                        // tm_isdst = -1 so libc mktime infers DST automatically
+    emitter.instruction("mov rdi, rsp");                                        // pass &tm as the first SysV argument to libc mktime
+    emitter.instruction("call mktime");                                         // convert the parsed components into a Unix timestamp
+    emitter.instruction("jmp __rt_strtotime_ret_linux_x86_64");                 // return through the shared epilogue
 }
