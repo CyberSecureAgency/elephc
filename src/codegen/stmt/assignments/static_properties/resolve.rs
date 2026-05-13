@@ -1,3 +1,13 @@
+//! Purpose:
+//! Lowers static receiver and property metadata resolution.
+//! Works with static property symbols and class metadata instead of local frame slots.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::assignments::static_properties`
+//!
+//! Key details:
+//! - Late-bound receivers and visibility checks must match PHP inheritance semantics before storage is updated.
+
 use crate::codegen::context::Context;
 use crate::codegen::emit::Emitter;
 use crate::parser::ast::StaticReceiver;

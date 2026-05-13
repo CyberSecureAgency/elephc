@@ -1,3 +1,12 @@
+//! Purpose:
+//! Groups the object-oriented PHP integration test submodules into the parent suite.
+//!
+//! Called from:
+//! - `cargo test` through Rust's test harness.
+//!
+//! Key details:
+//! - Submodules group focused fixtures for instanceof, traits, inheritance, interfaces, class modifiers and properties, and related suites.
+
 use crate::support::*;
 
 #[path = "oop/instanceof.rs"]
@@ -16,3 +25,7 @@ mod callables;
 mod union_types;
 #[path = "oop/misc.rs"]
 mod misc;
+#[path = "oop/attributes.rs"]
+mod attributes;
+#[path = "oop/constants.rs"]
+mod constants;

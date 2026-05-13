@@ -1,3 +1,13 @@
+//! Purpose:
+//! Lowers catch-clause matching and exception variable binding.
+//! Participates in the exception-control pipeline around protected statement bodies.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::control_flow::exceptions`
+//!
+//! Key details:
+//! - Pending control-flow state must survive handler transitions and be replayed after finally blocks.
+
 use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;

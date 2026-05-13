@@ -1,3 +1,13 @@
+//! Purpose:
+//! Dispatches foreach lowering for indexed arrays, associative arrays, runtime Mixed iterables, and Iterator objects.
+//! Prepares iterable values, loop labels, and key/value storage before body emission.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::control_flow`
+//!
+//! Key details:
+//! - Iterable temporaries must remain live for the loop and be released after all exit paths.
+
 mod assoc;
 mod indexed;
 mod iterator;

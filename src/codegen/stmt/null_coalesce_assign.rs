@@ -1,3 +1,13 @@
+//! Purpose:
+//! Recognizes and lowers null-coalescing assignment forms that need specialized read-before-write behavior.
+//! Avoids duplicating complex lvalue evaluation for locals, properties, arrays, and static properties.
+//!
+//! Called from:
+//! - `crate::codegen::stmt` and assignment emitters
+//!
+//! Key details:
+//! - The left-hand side must be evaluated once and only assigned when the observed value is null.
+
 use super::super::abi;
 use super::super::emit::Emitter;
 use crate::parser::ast::{Expr, ExprKind, StaticReceiver};

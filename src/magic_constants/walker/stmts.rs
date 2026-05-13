@@ -1,3 +1,13 @@
+//! Purpose:
+//! Walks statement AST nodes for magic-constant substitution passes.
+//! Rebuilds programs, control-flow bodies, declarations, and include expressions through pass hooks.
+//!
+//! Called from:
+//! - `crate::magic_constants::walker::walk_program()`.
+//!
+//! Key details:
+//! - Scope-bearing statements must enter and exit pass context in PHP lexical order.
+
 use crate::parser::ast::{CatchClause, EnumCaseDecl, Stmt, StmtKind};
 
 use super::exprs::walk_expr;
@@ -10,6 +20,7 @@ pub(in crate::magic_constants) fn walk_program<P: Pass>(stmts: Vec<Stmt>, pass: 
 
 pub(super) fn walk_stmt<P: Pass>(stmt: Stmt, pass: &mut P) -> Stmt {
     let span = stmt.span;
+    let attributes = stmt.attributes.clone();
     let kind = match stmt.kind {
         StmtKind::Synthetic(stmts) => StmtKind::Synthetic(walk_program(stmts, pass)),
         StmtKind::IncludeOnceMark { label } => StmtKind::IncludeOnceMark { label },
@@ -243,6 +254,7 @@ pub(super) fn walk_stmt<P: Pass>(stmt: Stmt, pass: &mut P) -> Stmt {
             trait_uses,
             properties,
             methods,
+        constants,
         } => {
             pass.enter_class(&name);
             let new_properties = properties
@@ -264,6 +276,7 @@ pub(super) fn walk_stmt<P: Pass>(stmt: Stmt, pass: &mut P) -> Stmt {
                 trait_uses,
                 properties: new_properties,
                 methods: new_methods,
+            constants,
             }
         }
         StmtKind::TraitDecl {
@@ -271,6 +284,7 @@ pub(super) fn walk_stmt<P: Pass>(stmt: Stmt, pass: &mut P) -> Stmt {
             trait_uses,
             properties,
             methods,
+        constants,
         } => {
             pass.enter_trait(&name);
             let new_properties = properties
@@ -287,12 +301,14 @@ pub(super) fn walk_stmt<P: Pass>(stmt: Stmt, pass: &mut P) -> Stmt {
                 trait_uses,
                 properties: new_properties,
                 methods: new_methods,
+            constants,
             }
         }
         StmtKind::InterfaceDecl {
             name,
             extends,
             methods,
+        constants,
         } => StmtKind::InterfaceDecl {
             name,
             extends,
@@ -300,6 +316,7 @@ pub(super) fn walk_stmt<P: Pass>(stmt: Stmt, pass: &mut P) -> Stmt {
                 .into_iter()
                 .map(|m| walk_class_method(m, pass))
                 .collect(),
+        constants,
         },
         StmtKind::EnumDecl {
             name,
@@ -314,6 +331,7 @@ pub(super) fn walk_stmt<P: Pass>(stmt: Stmt, pass: &mut P) -> Stmt {
                     name: case.name,
                     value: case.value.map(|e| walk_expr(e, pass)),
                     span: case.span,
+                    attributes: case.attributes,
                 })
                 .collect(),
         },
@@ -349,5 +367,5 @@ pub(super) fn walk_stmt<P: Pass>(stmt: Stmt, pass: &mut P) -> Stmt {
         | StmtKind::ExternClassDecl { .. }
         | StmtKind::ExternGlobalDecl { .. }) => other,
     };
-    Stmt { kind, span }
+    Stmt { kind, span, attributes }
 }

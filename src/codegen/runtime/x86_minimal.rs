@@ -1,8 +1,19 @@
+//! Purpose:
+//! Emits the current minimal Linux x86_64 runtime surface from the category emitters.
+//! This keeps x86_64 output intentionally narrow while target-specific helpers are being completed.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` for Linux x86_64 targets.
+//!
+//! Key details:
+//! - The allowlist must stay explicit so unsupported x86_64 helpers are not emitted accidentally.
+
 use super::arrays;
 use super::buffers;
 use super::diagnostics;
 use super::exceptions;
 use super::fibers;
+use super::generators;
 use super::io;
 use super::objects;
 use super::pointers;
@@ -104,7 +115,10 @@ pub(super) fn emit_runtime_linux_x86_64_minimal(emitter: &mut Emitter) {
     arrays::emit_array_push_int(emitter);
     arrays::emit_array_push_refcounted(emitter);
     arrays::emit_array_push_str(emitter);
+    arrays::emit_array_to_mixed(emitter);
     arrays::emit_array_union(emitter);
+    arrays::emit_array_hash_union(emitter);
+    arrays::emit_hash_array_union(emitter);
     arrays::emit_array_merge_into(emitter);
     arrays::emit_array_merge_into_refcounted(emitter);
     arrays::emit_range(emitter);
@@ -161,6 +175,7 @@ pub(super) fn emit_runtime_linux_x86_64_minimal(emitter: &mut Emitter) {
     arrays::emit_array_key_exists(emitter);
     arrays::emit_array_search(emitter);
     arrays::emit_array_column(emitter);
+    arrays::emit_array_column_mixed(emitter);
     arrays::emit_array_column_ref(emitter);
     arrays::emit_array_column_str(emitter);
     arrays::emit_mixed_is_empty(emitter);
@@ -230,6 +245,7 @@ pub(super) fn emit_runtime_linux_x86_64_minimal(emitter: &mut Emitter) {
     exceptions::emit_exception_matches(emitter);
     exceptions::emit_throw_current(emitter);
     exceptions::emit_rethrow_current(emitter);
+    generators::emit_generator_runtime(emitter);
     fibers::emit_fiber_alloc_stack(emitter);
     fibers::emit_fiber_free_stack(emitter);
     fibers::emit_fiber_switch(emitter);
@@ -312,6 +328,8 @@ mod tests {
         assert!(asm.contains("__rt_exception_matches:\n"));
         assert!(asm.contains("__rt_throw_current:\n"));
         assert!(asm.contains("__rt_rethrow_current:\n"));
+        assert!(asm.contains("__rt_gen_current:\n"));
+        assert!(asm.contains("__rt_gen_send:\n"));
         assert!(asm.contains("__rt_fiber_alloc_stack:\n"));
         assert!(asm.contains("__rt_fiber_free_stack:\n"));
         assert!(asm.contains("__rt_fiber_switch:\n"));
@@ -350,6 +368,8 @@ mod tests {
         assert!(asm.contains("__rt_array_push_refcounted:\n"));
         assert!(asm.contains("__rt_array_push_str:\n"));
         assert!(asm.contains("__rt_array_union:\n"));
+        assert!(asm.contains("__rt_array_hash_union:\n"));
+        assert!(asm.contains("__rt_hash_array_union:\n"));
         assert!(asm.contains("__rt_array_merge_into:\n"));
         assert!(asm.contains("__rt_array_merge_into_refcounted:\n"));
         assert!(asm.contains("__rt_range:\n"));
@@ -383,6 +403,7 @@ mod tests {
         assert!(asm.contains("__rt_array_fill_keys:\n"));
         assert!(asm.contains("__rt_array_fill_keys_refcounted:\n"));
         assert!(asm.contains("__rt_array_column:\n"));
+        assert!(asm.contains("__rt_array_column_mixed:\n"));
         assert!(asm.contains("__rt_array_column_ref:\n"));
         assert!(asm.contains("__rt_array_column_str:\n"));
         assert!(asm.contains("__rt_mixed_is_empty:\n"));

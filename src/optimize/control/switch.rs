@@ -1,3 +1,13 @@
+//! Purpose:
+//! Implements optimizer control-flow switch logic.
+//! Supports normalization, reachability, path analysis, and structural rewrites used by pruning and DCE.
+//!
+//! Called from:
+//! - `crate::optimize::control`
+//!
+//! Key details:
+//! - Control-flow helpers must treat terminal effects, switch fallthrough, and exception paths conservatively.
+
 use super::*;
 
 pub(crate) fn prune_switch_stmt(
@@ -29,6 +39,7 @@ pub(crate) fn prune_switch_stmt(
                 default,
             },
             span,
+            attributes: Vec::new(),
         }];
     }
 
@@ -58,6 +69,7 @@ pub(crate) fn prune_switch_stmt(
                 default,
             },
             span,
+            attributes: Vec::new(),
         }];
     };
 
@@ -74,6 +86,7 @@ pub(crate) fn prune_switch_stmt(
                         default,
                     },
                     span,
+                    attributes: Vec::new(),
                 }];
             }
             CaseMatch::NoMatch => {}

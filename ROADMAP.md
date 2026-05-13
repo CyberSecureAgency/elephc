@@ -428,8 +428,15 @@ product mode. This is also the series that delivered the Fibers MVP.
 Tighten the PHP value model where the current static representation is still
 more restrictive than PHP.
 
-- [ ] Heterogeneous indexed arrays — allow mixed payloads in indexed arrays instead of requiring homogeneous indexed values
-- [ ] Mixed indexed/associative array union — model `array + array` across indexed/hash representations while preserving PHP's shared int/string key space and left-key precedence
+- [x] Heterogeneous indexed arrays — allow mixed payloads in indexed arrays instead of requiring homogeneous indexed values
+- [x] PHP 8.0 attribute syntax — `#[Name]`, `#[Name(args)]`, stacked groups (`#[A] #[B]`), comma-separated within a group (`#[A, B(1)]`), qualified names (`#[\Ns\Name]`). Lexer adds `Token::AttrOpen` for `#[` ; bare `#` becomes a PHP-style line comment (no longer ambiguous). Parser invokes `parse_attribute_lists` at every site PHP allows: top-level statements, class/trait/interface members, enum cases, function/method parameters, closures, arrow functions. Attributes preserved in the AST via `attributes: Vec<AttributeGroup>` on `Stmt`, `ClassProperty`, `ClassMethod`, `EnumCaseDecl`, plus per-`ClassConst` storage on the new `ClassConst` AST type. Class-like declarations gain `constants: Vec<ClassConst>`.
+- [x] `#[\Override]` enforcement — methods marked `#[\Override]` must override a parent-chain method; otherwise the type checker emits the PHP-faithful error `"<Class>::<method>() has #[\Override] attribute, but no matching parent method was found"`.
+- [x] `#[\Deprecated]` warning — calls to functions/methods marked deprecated emit `"Call to deprecated function: <name>()"` warnings, optionally appending the user-supplied reason. Reason extraction lives in `types::checker::schema::validation::extract_deprecation` and threads through `FunctionSig::deprecation`.
+- [x] User-defined `#[Attribute]` declarations — classes marked `#[Attribute]` parse without error and accept argument lists at usage sites (`#[MyAttribute("test")] class C {}`).
+- [x] Generators / `yield` MVP — `Generator` built-in class with `yield`, `yield $k => $v`, generator functions and captured generator closures, `$x = yield` resume assignment, boxed `Generator::send()` payload delivery, `Generator::throw()`, `Generator::getReturn()`, terminal `return <expr>`, state-machine codegen backed by heap-allocated `GeneratorFrame` objects on ARM64 and Linux x86_64, and yield-context validation that rejects `yield` outside functions or inside `try`/`catch`/`finally`
+- [x] `yield from` delegation — forward iteration through compile-time array literals, direct generator calls, and local generator variables, including case-insensitive `from` parsing and cleanup of owned direct-call delegates after completion
+- [ ] PHP attributes runtime introspection — implement `ReflectionClass::getAttributes()`, `ReflectionMethod::getAttributes()`, `ReflectionProperty::getAttributes()`, plus `ReflectionAttribute::newInstance()`. Class declarations currently expose limited metadata through `class_attribute_names()`, `class_attribute_args()`, and `class_get_attributes()` with `ReflectionAttribute::getName()` / `getArguments()`, but Reflection lookups (`new ReflectionClass(...)->getAttributes()`) return `Undefined class: ReflectionClass`.
+- [x] Mixed indexed/associative array union — model `array + array` across indexed/hash representations while preserving PHP's shared int/string key space and left-key precedence
 - [ ] Callable parity follow-up — support captured method/static first-class callables in the remaining callback runtimes (`array_reduce()`, `array_walk()`, `usort()`, `uksort()`, `uasort()`), direct callable expression calls such as `($obj->method(...))()`, non-local method receivers such as `(new Foo())->method(...)`, nullsafe first-class callables, broader builtin first-class callable wrappers, and the remaining `call_user_func_array()` by-reference callback gaps
 - [ ] Runtime-value compatibility polishing v2 — continue with PHP's uninitialized typed-property state, integer overflow promotion, broader loose-comparison semantics, and future warning/notice sites as they are added
 - [ ] Broader date and regex PHP parity — expand `strtotime()` relative formats and PCRE-compatible regex features/captures/backreferences (JSON parity now closed: see v0.8.x base + v0.20.x polish)
@@ -447,26 +454,79 @@ language contract.
 
 - [ ] OOP property parity v2 — cover abstract properties, `readonly static` properties, instance property redeclaration rules, and the remaining by-reference constructor-promotion gaps (`readonly` and default values)
 
-## v0.23.x — Optimization and release performance pass
+## v0.23.x — Optimization and release performance pass (superseded)
+
+This section was reorganized when the EIR plan landed. The items that
+required an intermediate representation were absorbed into v0.24.x (EIR
+introduction + register allocation) and v0.25.x (EIR optimization passes).
+The remaining release-track and AST-level optimizer items moved to v0.26.x.
+
+The v0.23.x label is preserved here so that any external references stay
+resolvable. No new work is planned under this label.
+
+## v0.24.x — EIR introduction and register allocation
+
+Introduce a domain-specific intermediate representation (EIR) between the
+AST-level optimizer and the assembly emitter, then add a real register
+allocator.
+
+EIR is a custom, PHP-shaped IR — not Cranelift or LLVM. It preserves the
+hand-written-and-commented assembly philosophy while removing the
+structural ceiling on optimization that the direct AST → ASM emitter
+imposed. See `docs/internals/the-ir.md`.
+
+- [ ] EIR design specification (`docs/internals/the-ir.md`) — types, instructions, terminators, effects, ownership, textual format
+- [ ] `src/ir/` module — types, instructions, builder, validator, printer
+- [ ] AST → EIR lowering pass — every `ExprKind`/`StmtKind` variant
+- [ ] `--emit-ir` CLI flag for diagnostics and snapshot testing
+- [ ] EIR → ASM backend producing semantically equivalent output to the legacy backend (no optimizations yet)
+- [ ] `--ir-backend` CLI flag (opt-in stable)
+- [ ] Two-week soak period to collect external feedback
+- [ ] Default backend switch from AST to EIR
+- [ ] Deprecation warning on `--ast-backend`
+- [ ] Linear-scan register allocator (Poletto-Sarkar) with separate int / float pools and callee-saved preservation across calls
+- [ ] Register-pressure mitigations: caller-saved reuse for non-call-crossing intervals; better spill heuristic
+
+Expected outcome: feature parity at end of v0.24.0; ≥15% performance
+improvement on compute benchmarks at end of v0.24.x.
+
+## v0.25.x — EIR optimization passes
+
+Build the IR-level passes that the AST optimizer could not reach.
+
+- [ ] Identity arithmetic folding (`x + 0`, `x * 1`, `x ^ x`, etc.)
+- [ ] Peephole patterns: redundant load/store, box/unbox cancellation, string-literal concat folding, paired acquire/release cancellation
+- [ ] Dead instruction elimination over the IR CFG (absorbs former v0.23 "Dead code elimination v3")
+- [ ] Dead store elimination over PHP local slots
+- [ ] Branch simplification (constant-condition `CondBr`, empty-block jump threading, unreachable block removal)
+- [ ] Common subexpression elimination — per-block, then dominance-aware cross-block (absorbs former v0.23 "Constant propagation v4")
+- [ ] Loop detection and natural-loop construction (back edges, headers, preheaders)
+- [ ] Loop-invariant code motion for pure operations
+- [ ] Small-function inliner (size threshold 24 instructions, non-recursive, no try/catch, no generators/fibers) (absorbs former v0.23 "Inline small functions")
+- [ ] Pipeline integration in fixed-point order
+
+Expected outcome: additional 10–20% performance gain on loop-heavy and
+call-heavy benchmarks; cumulative ≥30% improvement vs end-of-v0.23
+baseline.
+
+## v0.26.x — Performance closure, legacy cleanup, and release stabilization
 
 Optimization work should now be driven by benchmarks, generated assembly size,
 and release-candidate validation rather than by speculative pass work.
 
+- [ ] Remove legacy AST → ASM backend (`src/codegen/expr/`, `stmt/`, `class_methods.rs`, `functions/`, related modules)
+- [ ] Rename `src/codegen_ir/` to `src/codegen/`
+- [ ] Move historical codegen doc to `docs/internals/legacy-codegen.md`; refresh `docs/internals/the-codegen.md` to describe the IR pipeline
 - [ ] Source maps v2 — richer mappings for functions / expressions / labels and a more stable machine-readable schema for external tooling
-- [ ] Peephole optimization (redundant load/store elimination)
-- [ ] Dead code elimination v3 — fuller fixed-point/basic-block pass beyond the current path-aware AST pruning
-- [ ] Constant propagation v4 — full fixed-point / basic-block propagation across arbitrary loops and general path merges once there are measured cases that justify the extra pass complexity
 - [ ] Memory-model-aware propagation for heap-backed locals and targeted runtime invalidations beyond `unset($var)` and the currently modeled local writes
-- [ ] Purity / may-throw v2 for dynamic instance dispatch, richer property/array reads, and less pessimistic builtin modeling
+- [ ] Purity / may-throw v2 for dynamic instance dispatch, richer property/array reads, and less pessimistic builtin modeling (feeds the EIR effects table)
 - [ ] Guard reasoning v2 for dead-code elimination — broader range reasoning and multi-variable facts beyond current strict-scalar, boolean, loose-comparison, and safe relational-complement guards
 - [ ] Exception-aware DCE v2 — exact thrown-type / handler reachability, nested try rethrow modeling, and less conservative finally-path invalidation
 - [ ] Control-flow normalization v2 — broader canonicalization of nested block/control shells before CFG-aware optimization passes
 - [ ] Composite conditional include function variants — extend include-graph exclusivity from one direct `if` / `elseif` / `else` chain to nested/composed conditional paths where declarations are pairwise exclusive only after combining multiple branch decisions
 - [ ] Switch-aware conditional include function variants — extend include-graph exclusivity beyond `if` / `elseif` / `else` to `switch` cases once fall-through, `break`, and terminating case bodies are modeled precisely; revisit `match` only if include-like statement lowering ever appears inside match arms
 - [ ] Runtime routine dead stripping — include or link only runtime helpers reachable from the generated program instead of carrying the whole target runtime slice
-- [ ] Register allocation (reduce stack spills)
-- [ ] Inline small functions
-- [ ] Tail-call optimization
+- [ ] Tail-call optimization — direct tail self- and mutual-recursion lowering on top of EIR (`Br` to function entry with parameter rebinding)
 - [ ] Performance within 2x of C -O0 on compute benchmarks
 - [ ] Real-world CLI tools compiled as validation
 - [ ] Apple notarization for direct downloads (codesign + notarytool)
@@ -528,8 +588,7 @@ post-1.0 use cases.
 |---|---|---|
 | Buffer ergonomics v2 | Medium | Consider dynamic resize/push/pop, `foreach`, array conversion, and automatic cleanup for `buffer<T>` while keeping the hot-path POD contract explicit. |
 | String-capable FFI callbacks | Medium | Allow C callback signatures that pass or return strings once ownership and temporary C-string lifetimes are modeled safely across callback boundaries. |
-| Generators / `yield` | High | Requires compile-time state machine transformation: every yield point becomes a switch case, all locals promoted to heap-allocated generator object. Edge cases with yield inside try/catch/finally are significant. |
-| `yield from` delegation | High | Depends on generators. Forwards iteration to an inner generator, propagating values and return. |
+| Generator parity v2 | Medium | MVP delivered in v0.21.x for ARM64 and Linux x86_64. Remaining parity work: `yield` inside `try`/`catch`/`finally`, dynamic `yield from` arrays beyond the compile-time literal form, broader dynamic `yield from` Iterator targets, exception propagation through `Generator::throw` to caller-visible finally paths, and PHP-exact `Generator` interface inheritance with `Iterator`. See `docs/php/generators.md`. |
 | Fiber parity v2 | Medium | MVP delivered in v0.20.x for ARM64 and Linux x86_64. Remaining parity work: arithmetic auto-unboxing on `mixed` payloads received from `suspend()`, true variadic `start(...$args)` beyond seven args, dynamic callback targets, by-reference callback start parameters, configurable stack sizing, and PHP-exact `FiberError` hierarchy. See `docs/php/fibers.md`. |
 | Conditional include class-like variants | High | Keep class/interface/trait/enum duplicate detection strict for now. Supporting branch-selected class-like declarations would require runtime class metadata/layout dispatch, while modern PHP can avoid the ambiguity with namespaces. |
 

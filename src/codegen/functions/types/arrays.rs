@@ -1,5 +1,15 @@
+//! Purpose:
+//! Computes array and iterable element types needed by code generation.
+//! Keeps emission-time type decisions separate from instruction lowering.
+//!
+//! Called from:
+//! - `crate::codegen::functions::types`
+//!
+//! Key details:
+//! - Results must agree with `crate::types` so local slots and runtime value shapes are selected correctly.
+
 use crate::parser::ast::{Expr, ExprKind};
-use crate::types::PhpType;
+use crate::types::{merge_array_key_types, PhpType};
 
 pub(super) fn wider_of(a: &PhpType, b: &PhpType) -> PhpType {
     if a == b {
@@ -60,7 +70,31 @@ pub(super) fn array_union_type(a: &PhpType, b: &PhpType) -> Option<PhpType> {
             };
             Some(PhpType::AssocArray { key, value })
         }
+        (PhpType::Array(left_value), PhpType::AssocArray { key, value }) => {
+            Some(PhpType::AssocArray {
+                key: Box::new(merge_array_key_types(PhpType::Int, *key.clone())),
+                value: Box::new(array_union_value_type(left_value, value)),
+            })
+        }
+        (PhpType::AssocArray { key, value }, PhpType::Array(right_value)) => {
+            Some(PhpType::AssocArray {
+                key: Box::new(merge_array_key_types(*key.clone(), PhpType::Int)),
+                value: Box::new(array_union_value_type(value, right_value)),
+            })
+        }
         _ => None,
+    }
+}
+
+fn array_union_value_type(left: &PhpType, right: &PhpType) -> PhpType {
+    if left == right {
+        left.clone()
+    } else if matches!(left, PhpType::Never) {
+        right.clone()
+    } else if matches!(right, PhpType::Never) {
+        left.clone()
+    } else {
+        PhpType::Mixed
     }
 }
 

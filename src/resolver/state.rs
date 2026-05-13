@@ -1,3 +1,13 @@
+//! Purpose:
+//! Stores resolver state for namespace context, defined constants, and include bookkeeping.
+//! Provides helpers for constant lookup and PHP-style define/import normalization.
+//!
+//! Called from:
+//! - `crate::resolver::engine`, discovery walkers, and include path folding.
+//!
+//! Key details:
+//! - Constant lookup happens before name resolution, so namespace strings come from raw AST names.
+
 use std::collections::HashMap;
 
 use crate::names::{Name, NameKind};

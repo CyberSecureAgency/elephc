@@ -1,3 +1,13 @@
+//! Purpose:
+//! Lowers null coalescing expressions with short-circuit reads.
+//! Keeps comparison-specific branching and register normalization out of generic expression code.
+//!
+//! Called from:
+//! - `crate::codegen::expr::compare`
+//!
+//! Key details:
+//! - Null, type-tag, and string comparisons must follow PHP semantics before emitting boolean results.
+
 use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;

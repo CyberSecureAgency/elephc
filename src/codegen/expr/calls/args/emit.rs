@@ -1,3 +1,13 @@
+//! Purpose:
+//! Lowers top-level call-argument emission from prepared semantic plans.
+//! Converts evaluated PHP argument expressions into temporary values ready for ABI assignment.
+//!
+//! Called from:
+//! - `crate::codegen::expr::calls::args`
+//!
+//! Key details:
+//! - Argument checks must happen at PHP-observable points without skipping later side effects.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::{context::Context, data_section::DataSection};
 use crate::parser::ast::{Expr, ExprKind};
@@ -8,7 +18,6 @@ use super::common::{declared_target_ty, emit_ref_arg_variable_address, push_arg_
 use super::named;
 use super::normalize::{has_named_args, prepare_call_args};
 use super::spread::{emit_spread_into_named_params, emit_spread_tail_variadic_array_arg};
-use super::spread_checks::emit_spread_length_checks;
 use super::variadic::{emit_empty_variadic_array_arg, emit_variadic_array_arg_from_exprs};
 use super::EmittedCallArgs;
 
@@ -24,9 +33,10 @@ pub(crate) fn emit_pushed_call_args(
 ) -> EmittedCallArgs {
     let expanded_args = call_args::expand_static_assoc_spread_args(args_exprs);
     let args_exprs = expanded_args.as_slice();
+    let has_named = has_named_args(args_exprs);
 
     if let Some(sig) = sig {
-        if has_named_args(args_exprs) {
+        if has_named {
             return named::emit_source_order_named_call_args(
                 args_exprs,
                 sig,
@@ -40,8 +50,12 @@ pub(crate) fn emit_pushed_call_args(
         }
     }
 
+    debug_assert!(
+        sig.is_some() || !has_named,
+        "codegen reached named-arg call without a known signature; checker should have rejected this"
+    );
+
     let prepared = prepare_call_args(sig, args_exprs, regular_param_count);
-    emit_spread_length_checks(&prepared.spread_length_checks, emitter, ctx, data);
     let mut arg_types = emit_pushed_non_variadic_args(
         &prepared.all_args,
         sig,

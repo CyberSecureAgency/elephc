@@ -1,3 +1,13 @@
+//! Purpose:
+//! Resolves expressions and nested bodies owned by statements during include processing.
+//! Rewrites statement children after declaration/include handling has chosen the statement shell.
+//!
+//! Called from:
+//! - `crate::resolver::engine::resolve_stmts()`.
+//!
+//! Key details:
+//! - Nested declarations and closures are resolved in isolated contexts to avoid leaking local traversal state.
+
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
@@ -18,6 +28,7 @@ pub(super) fn resolve_stmt_exprs(
     function_variants: &FunctionVariantRegistry,
 ) -> Result<Stmt, CompileError> {
     let span = stmt.span;
+    let attributes = stmt.attributes.clone();
     let kind = match stmt.kind {
         StmtKind::Synthetic(stmts) => StmtKind::Synthetic(resolve_isolated(
             stmts,
@@ -351,6 +362,7 @@ pub(super) fn resolve_stmt_exprs(
             trait_uses,
             properties,
             methods,
+        constants,
         } => StmtKind::ClassDecl {
             name,
             extends,
@@ -375,11 +387,13 @@ pub(super) fn resolve_stmt_exprs(
                 state,
                 function_variants,
             )?,
+        constants,
         },
         StmtKind::InterfaceDecl {
             name,
             extends,
             methods,
+        constants,
         } => StmtKind::InterfaceDecl {
             name,
             extends,
@@ -391,12 +405,14 @@ pub(super) fn resolve_stmt_exprs(
                 state,
                 function_variants,
             )?,
+        constants,
         },
         StmtKind::TraitDecl {
             name,
             trait_uses,
             properties,
             methods,
+        constants,
         } => StmtKind::TraitDecl {
             name,
             trait_uses,
@@ -416,6 +432,7 @@ pub(super) fn resolve_stmt_exprs(
                 state,
                 function_variants,
             )?,
+        constants,
         },
         StmtKind::EnumDecl {
             name,
@@ -465,5 +482,5 @@ pub(super) fn resolve_stmt_exprs(
         | StmtKind::ExternClassDecl { .. }
         | StmtKind::ExternGlobalDecl { .. }) => other,
     };
-    Ok(Stmt::new(kind, span))
+    Ok(Stmt::with_attributes(kind, span, attributes))
 }

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Implements namespace/import name resolution helpers for types, classes, functions, and constants.
+//! Handles alias registration, special names, class constants, and builtin fallbacks.
+//!
+//! Called from:
+//! - `crate::name_resolver::expressions`, declarations, and statement context resolution.
+//!
+//! Key details:
+//! - PHP class-like names are resolved differently from function and constant fallback lookups.
+
 use crate::errors::CompileError;
 use crate::names::{php_symbol_key, Name};
 use crate::parser::ast::{TypeExpr, UseItem, UseKind};

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Collects runtime data-section emitters and shared diagnostic string constants.
+//! The module separates cacheable fixed data from user-program metadata emitted during compilation.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emit_runtime_data_fixed()` and `crate::codegen::runtime::emit_runtime_data_user()`.
+//!
+//! Key details:
+//! - Symbol names and table layouts are link-time ABI shared with generated code and runtime helper labels.
+
 mod fixed;
 mod instanceof;
 mod user;

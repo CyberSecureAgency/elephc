@@ -1,3 +1,13 @@
+//! Purpose:
+//! Provides shared expression lowering utilities for strings, arrays, nullable values, and runtime checks.
+//! Keeps repeated assembly snippets out of individual expression feature emitters.
+//!
+//! Called from:
+//! - `crate::codegen::expr` submodules
+//!
+//! Key details:
+//! - Helpers must document and preserve the result registers and scratch registers they clobber.
+
 use super::super::context::{Context, HeapOwnership};
 use super::super::data_section::DataSection;
 use super::super::emit::Emitter;

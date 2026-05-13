@@ -1,3 +1,13 @@
+//! Purpose:
+//! Walks the AST to answer whether a named variable is referenced by codegen-relevant constructs.
+//! Supports storage and optimization decisions that depend on variable visibility.
+//!
+//! Called from:
+//! - `crate::codegen::program_usage`
+//!
+//! Key details:
+//! - The traversal must include nested expressions, control-flow bodies, and instanceof targets.
+
 use crate::parser::ast::{Expr, ExprKind, InstanceOfTarget, Program, Stmt, StmtKind};
 
 pub(in crate::codegen) fn program_uses_variable(program: &Program, needle: &str) -> bool {
@@ -271,12 +281,16 @@ fn expr_uses_variable(expr: &Expr, needle: &str) -> bool {
         | ExprKind::BoolLiteral(_)
         | ExprKind::Null
         | ExprKind::ConstRef(_)
-        | ExprKind::EnumCase { .. }
         | ExprKind::This => false,
-        ExprKind::ClassConstant { .. } => false,
+        ExprKind::ClassConstant { .. } | ExprKind::ScopedConstantAccess { .. } => false,
         ExprKind::NewScopedObject { args, .. } => {
             args.iter().any(|arg| expr_uses_variable(arg, needle))
         }
+        ExprKind::Yield { key, value } => {
+            key.as_ref().is_some_and(|k| expr_uses_variable(k, needle))
+                || value.as_ref().is_some_and(|v| expr_uses_variable(v, needle))
+        }
+        ExprKind::YieldFrom(inner) => expr_uses_variable(inner, needle),
         ExprKind::MagicConstant(_) => {
             unreachable!("MagicConstant must be lowered before codegen analysis")
         }

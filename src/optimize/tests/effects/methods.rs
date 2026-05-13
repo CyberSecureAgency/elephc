@@ -1,3 +1,13 @@
+//! Purpose:
+//! Regression tests for optimizer effects methods behavior over parser AST fixtures.
+//! Documents the pass contracts that must survive control-flow, effect, and scalar rewrites.
+//!
+//! Called from:
+//! - `crate::optimize::tests` through Rust's test harness
+//!
+//! Key details:
+//! - Fixtures are intentionally small and structural; expected AST equality captures observable optimizer semantics.
+
 use super::*;
 
 #[test]
@@ -33,7 +43,9 @@ fn test_program_static_method_effects_recognize_pure_static_methods() {
                     Span::dummy(),
                 )],
                 span: Span::dummy(),
+                attributes: Vec::new(),
             }],
+        constants: Vec::new(),
         },
         Span::dummy(),
     )];
@@ -80,6 +92,7 @@ fn test_program_static_method_effects_resolve_self_receiver() {
                         Span::dummy(),
                     )],
                     span: Span::dummy(),
+                    attributes: Vec::new(),
                 },
                 ClassMethod {
                     name: "relay".to_string(),
@@ -103,8 +116,10 @@ fn test_program_static_method_effects_resolve_self_receiver() {
                         Span::dummy(),
                     )],
                     span: Span::dummy(),
+                    attributes: Vec::new(),
                 },
             ],
+        constants: Vec::new(),
         },
         Span::dummy(),
     )];
@@ -151,7 +166,9 @@ fn test_program_static_method_effects_resolve_parent_receiver() {
                         Span::dummy(),
                     )],
                     span: Span::dummy(),
+                    attributes: Vec::new(),
                 }],
+            constants: Vec::new(),
             },
             Span::dummy(),
         ),
@@ -187,7 +204,9 @@ fn test_program_static_method_effects_resolve_parent_receiver() {
                         Span::dummy(),
                     )],
                     span: Span::dummy(),
+                    attributes: Vec::new(),
                 }],
+            constants: Vec::new(),
             },
             Span::dummy(),
         ),
@@ -234,7 +253,9 @@ fn test_program_private_instance_method_effects_recognize_private_methods() {
                     Span::dummy(),
                 )],
                 span: Span::dummy(),
+                attributes: Vec::new(),
             }],
+        constants: Vec::new(),
         },
         Span::dummy(),
     )];

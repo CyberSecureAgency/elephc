@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_gc_collect_cycles`, `__rt_gc_collect_cycles_done` runtime helper assembly for gc collect cycles Linux x86 64.
+//! Keeps PHP array/hash storage, heap ownership, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::arrays`.
+//!
+//! Key details:
+//! - GC helpers must honor cycle-collection suppression, mark bits, and parent/child references without double-releasing values.
+
 use crate::codegen::emit::Emitter;
 
 pub(super) fn emit_gc_collect_cycles_linux_x86_64(emitter: &mut Emitter) {

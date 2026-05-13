@@ -1,3 +1,13 @@
+//! Purpose:
+//! Parses PHP control-flow statements and inline loop/header expressions.
+//! Covers if/ifdef, loops, foreach, try/catch/finally, switch, and control headers.
+//!
+//! Called from:
+//! - `crate::parser::stmt::parse_stmt()`.
+//!
+//! Key details:
+//! - Control parsers must preserve PHP statement nesting and spans for later flow and diagnostic passes.
+
 use crate::errors::CompileError;
 use crate::lexer::Token;
 use crate::parser::ast::{BinOp, CatchClause, Expr, ExprKind, Stmt, StmtKind};

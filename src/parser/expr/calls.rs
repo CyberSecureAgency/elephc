@@ -1,3 +1,13 @@
+//! Purpose:
+//! Parses expression suffixes that involve calls, casts, static receivers, and first-class callables.
+//! Recognizes scoped static call forms and PHP cast syntax around grouped expressions.
+//!
+//! Called from:
+//! - `crate::parser::expr::pratt` and `crate::parser::expr::prefix`.
+//!
+//! Key details:
+//! - Callable and cast disambiguation depends on PHP token spelling and case-insensitive type names.
+
 use crate::errors::CompileError;
 use crate::lexer::Token;
 use crate::parser::ast::{CallableTarget, CastType, Expr, ExprKind, StaticReceiver};
@@ -44,10 +54,15 @@ pub(super) fn parse_scoped_static_call(
             ))
         }
     };
+    // If a `(` follows, this is a static method call; otherwise it's a
+    // user-declared class-constant access (`MyClass::FOO`).
     if *pos >= tokens.len() || tokens[*pos].0 != Token::LParen {
-        return Err(CompileError::new(
+        return Ok(Expr::new(
+            ExprKind::ScopedConstantAccess {
+                receiver,
+                name: method,
+            },
             span,
-            &format!("Expected '(' after {} method name", receiver_name),
         ));
     }
     *pos += 1;

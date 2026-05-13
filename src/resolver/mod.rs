@@ -1,3 +1,13 @@
+//! Purpose:
+//! Coordinates include/require resolution before namespace canonicalization.
+//! Loads included files, discovers declarations, and rewrites include-loaded function variants.
+//!
+//! Called from:
+//! - `crate::pipeline::compile()` after conditionals and before `crate::name_resolver::resolve()`.
+//!
+//! Key details:
+//! - Includes are resolved in source-file context so declarations are available before type checking.
+
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 

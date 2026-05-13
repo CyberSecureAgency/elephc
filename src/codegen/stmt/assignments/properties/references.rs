@@ -1,3 +1,13 @@
+//! Purpose:
+//! Lowers property writes through reference-like lvalue contexts.
+//! Shares receiver and property metadata with object expression lowering.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::assignments::properties`
+//!
+//! Key details:
+//! - Property writes must respect declared types, visibility checks, and runtime object layout.
+
 use super::{storage, target};
 use crate::codegen::abi;
 use crate::codegen::context::Context;
@@ -52,7 +62,7 @@ pub(super) fn emit_property_reference_bind(
     let obj_ty = emit_expr(object, emitter, ctx, data);
     let target = match target::resolve_property_assign_target(&obj_ty, property, None, emitter, ctx) {
         target::PropertyAssignResolution::Resolved(target) => target,
-        target::PropertyAssignResolution::UseMagicSet(_) | target::PropertyAssignResolution::Abort => {
+        target::PropertyAssignResolution::UseMagicSet(_) | target::PropertyAssignResolution::UseDynamicProperty { .. } | target::PropertyAssignResolution::Abort => {
             emitter.comment("WARNING: reference property bind requires a concrete property");
             return;
         }
@@ -81,7 +91,7 @@ pub(super) fn emit_property_reference_write(
     let obj_ty = emit_expr(object, emitter, ctx, data);
     let target = match target::resolve_property_assign_target(&obj_ty, property, None, emitter, ctx) {
         target::PropertyAssignResolution::Resolved(target) => target,
-        target::PropertyAssignResolution::UseMagicSet(_) | target::PropertyAssignResolution::Abort => {
+        target::PropertyAssignResolution::UseMagicSet(_) | target::PropertyAssignResolution::UseDynamicProperty { .. } | target::PropertyAssignResolution::Abort => {
             emitter.comment("WARNING: reference property write requires a concrete property");
             return;
         }

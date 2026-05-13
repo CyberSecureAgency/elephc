@@ -1,3 +1,13 @@
+//! Purpose:
+//! Defines AST records for elephc extern declarations and packed data layouts.
+//! Represents C-facing scalar, pointer, buffer, function, global, and struct field metadata.
+//!
+//! Called from:
+//! - `crate::parser::stmt::ffi` and downstream type/codegen FFI handling.
+//!
+//! Key details:
+//! - These nodes describe compiler extensions, not PHP syntax, and must stay explicit in the AST.
+
 use crate::span::Span;
 
 use super::TypeExpr;

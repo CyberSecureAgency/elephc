@@ -1,3 +1,13 @@
+//! Purpose:
+//! Type-checks the arrays PHP builtin family.
+//! Validates arity, argument types, warning-producing cases, and inferred return types for direct calls.
+//!
+//! Called from:
+//! - `crate::types::checker::builtins::check_builtin()`
+//!
+//! Key details:
+//! - Signatures, callable aliases, optimizer effects, and codegen builtin dispatch must remain in lockstep.
+
 use crate::errors::CompileError;
 use crate::parser::ast::Expr;
 use crate::types::{array_key_type_from_value_type, PhpType, TypeEnv};
@@ -113,10 +123,8 @@ pub(super) fn check_builtin(
             }
             let arr_ty = checker.infer_type(&args[0], env)?;
             let val_ty = checker.infer_type(&args[1], env)?;
-            if let PhpType::Array(elem_ty) = arr_ty {
-                if *elem_ty != val_ty {
-                    return Err(CompileError::new(span, "array_push() type mismatch"));
-                }
+            if let PhpType::Array(_) = arr_ty {
+                let _ = val_ty;
             } else {
                 return Err(CompileError::new(
                     span,

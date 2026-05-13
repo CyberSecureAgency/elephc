@@ -1,3 +1,13 @@
+//! Purpose:
+//! Selects assembler and linker commands for each supported target platform.
+//! Builds the external command lines used after assembly generation.
+//!
+//! Called from:
+//! - `crate::pipeline::compile()` after codegen emits assembly
+//!
+//! Key details:
+//! - Tool choices must match the object format and transformed assembly produced for the target.
+
 use std::process::Command;
 use std::sync::OnceLock;
 

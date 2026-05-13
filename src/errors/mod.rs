@@ -1,3 +1,13 @@
+//! Purpose:
+//! Defines compiler diagnostic types and public reporting entry points.
+//! Carries error, warning, file, and source-span data from all frontend and analysis passes.
+//!
+//! Called from:
+//! - Compiler passes that construct diagnostics and `crate::pipeline::compile()` when reporting them.
+//!
+//! Key details:
+//! - Diagnostics keep optional file data so included-file errors can point at their real source.
+
 mod report;
 
 use crate::span::Span;

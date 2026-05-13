@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_sscanf`, `__rt_array_new` runtime helper assembly for sscanf parsing.
+//! Keeps PHP byte-string pointer/length behavior and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::strings`.
+//!
+//! Key details:
+//! - Parsing helpers build runtime arrays from scanner output and must keep tokenization behavior PHP-compatible for supported formats.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 

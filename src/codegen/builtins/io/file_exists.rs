@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `file_exists` filesystem metadata builtin calls.
+//! Delegates platform stat work to runtime helpers and boxes PHP false-or-value results.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::io::emit()`.
+//!
+//! Key details:
+//! - Filesystem state is observable, so emitters must preserve call order and failure sentinels.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

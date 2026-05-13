@@ -1,3 +1,13 @@
+//! Purpose:
+//! Lowers positional and named spread argument expansion.
+//! Converts evaluated PHP argument expressions into temporary values ready for ABI assignment.
+//!
+//! Called from:
+//! - `crate::codegen::expr::calls::args`
+//!
+//! Key details:
+//! - Argument checks must happen at PHP-observable points without skipping later side effects.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::{abi, context::Context, data_section::DataSection, functions};
 use crate::parser::ast::Expr;

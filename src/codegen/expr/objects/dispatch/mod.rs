@@ -1,3 +1,13 @@
+//! Purpose:
+//! Groups object dispatch helpers for methods, static calls, interfaces, enums, fibers, and vtables.
+//! Keeps receiver preparation and call target selection isolated from object expression dispatch.
+//!
+//! Called from:
+//! - `crate::codegen::expr::objects`
+//!
+//! Key details:
+//! - Dispatch paths must share receiver ownership and ABI argument conventions with normal call lowering.
+
 mod enums;
 mod fiber;
 mod interface;

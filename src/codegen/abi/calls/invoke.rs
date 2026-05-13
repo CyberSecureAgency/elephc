@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits direct and indirect call instructions for the active target architecture.
+//! Keeps call-site syntax separate from argument materialization and result handling.
+//!
+//! Called from:
+//! - `crate::codegen::expr::calls`, wrappers, and runtime-facing helper emitters
+//!
+//! Key details:
+//! - The caller is responsible for ABI setup; these helpers only transfer control to a label or register.
+
 use crate::codegen::{emit::Emitter, platform::Arch};
 
 pub fn emit_call_label(emitter: &mut Emitter, label: &str) {

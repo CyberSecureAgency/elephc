@@ -1,3 +1,13 @@
+//! Purpose:
+//! Owns command-line argument parsing for compiler options and target selection.
+//! Converts user flags into a single configuration object for the compile pipeline.
+//!
+//! Called from:
+//! - `crate::main()` before invoking `crate::pipeline::compile()`.
+//!
+//! Key details:
+//! - Exits immediately on invalid CLI state so later compiler stages receive normalized options.
+
 use std::collections::HashSet;
 use std::process;
 

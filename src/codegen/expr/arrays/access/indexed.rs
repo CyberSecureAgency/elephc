@@ -1,3 +1,13 @@
+//! Purpose:
+//! Lowers indexed and associative array element reads including nullable and Mixed results.
+//! Produces expression results while preserving container ownership and bounds/null behavior.
+//!
+//! Called from:
+//! - `crate::codegen::expr::arrays::access`
+//!
+//! Key details:
+//! - Element layout and boxed Mixed handling must stay aligned with array runtime helpers.
+
 use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
@@ -439,7 +449,7 @@ pub(crate) fn emit_array_access_with_loaded_base(
     }
 
     emitter.label(&null_label);
-    if boxed_indexed_base {
+    if boxed_indexed_base || matches!(elem_ty, PhpType::Mixed | PhpType::Union(_)) {
         objects_boxed_null_for_array_access(emitter);
     } else {
         abi::emit_load_int_immediate(emitter, result_reg, 0x7fff_ffff_ffff_fffe); // materialize the runtime null sentinel for out-of-bounds access

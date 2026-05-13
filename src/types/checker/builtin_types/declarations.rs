@@ -1,3 +1,14 @@
+//! Purpose:
+//! Builds and patches checker metadata for PHP builtin declarations types.
+//! Supplies synthetic declarations or contract validation for classes and interfaces that user code may reference.
+//!
+//! Called from:
+//! - `crate::types::checker::builtin_types`
+//! - `crate::types::checker::driver::init`
+//!
+//! Key details:
+//! - Dummy AST members carry type contracts only; runtime behavior is implemented elsewhere.
+
 use std::collections::HashMap;
 
 use crate::errors::CompileError;
@@ -16,6 +27,7 @@ pub(crate) struct InterfaceDeclInfo {
     pub extends: Vec<String>,
     pub methods: Vec<crate::parser::ast::ClassMethod>,
     pub span: crate::span::Span,
+    pub constants: Vec<crate::parser::ast::ClassConst>,
 }
 
 impl Clone for InterfaceDeclInfo {
@@ -25,6 +37,7 @@ impl Clone for InterfaceDeclInfo {
             extends: self.extends.clone(),
             methods: self.methods.clone(),
             span: self.span,
+            constants: self.constants.clone(),
         }
     }
 }
@@ -63,6 +76,7 @@ pub(crate) fn inject_builtin_throwables(
             extends: Vec::new(),
             methods: vec![builtin_throwable_get_message_method()],
             span: crate::span::Span::dummy(),
+            constants: Vec::new(),
         },
     );
     class_map.insert(
@@ -83,6 +97,8 @@ pub(crate) fn inject_builtin_throwables(
                 builtin_exception_get_message_method(),
                 builtin_exception_get_code_method(),
             ],
+            attributes: Vec::new(),
+            constants: Vec::new(),
         },
     );
     // RuntimeException and JsonException inherit message + code + constructor
@@ -99,6 +115,8 @@ pub(crate) fn inject_builtin_throwables(
             is_readonly_class: false,
             properties: Vec::new(),
             methods: Vec::new(),
+            attributes: Vec::new(),
+            constants: Vec::new(),
         },
     );
     class_map.insert(
@@ -112,6 +130,8 @@ pub(crate) fn inject_builtin_throwables(
             is_readonly_class: false,
             properties: Vec::new(),
             methods: Vec::new(),
+            attributes: Vec::new(),
+            constants: Vec::new(),
         },
     );
 
@@ -131,6 +151,8 @@ pub(crate) fn inject_builtin_throwables(
             is_readonly_class: false,
             properties: Vec::new(),
             methods: builtin_fiber_methods(),
+            attributes: Vec::new(),
+            constants: Vec::new(),
         },
     );
 
@@ -147,6 +169,8 @@ pub(crate) fn inject_builtin_throwables(
             is_readonly_class: false,
             properties: Vec::new(),
             methods: Vec::new(),
+            attributes: Vec::new(),
+            constants: Vec::new(),
         },
     );
 

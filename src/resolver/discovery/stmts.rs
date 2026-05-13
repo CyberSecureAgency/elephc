@@ -1,3 +1,13 @@
+//! Purpose:
+//! Walks statements to discover include-reachable declarations before full resolver expansion.
+//! Handles namespace context, constant definitions, includes, branches, and class-like members.
+//!
+//! Called from:
+//! - `crate::resolver::discovery::discover_include_declarations()`.
+//!
+//! Key details:
+//! - Discovery follows PHP statement order so constants and namespace context affect later include paths.
+
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 

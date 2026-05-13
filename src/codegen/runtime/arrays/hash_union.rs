@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_hash_union`, `__rt_hash_clone_shallow` runtime helper assembly for hash union.
+//! Keeps PHP array/hash storage, heap ownership, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::arrays`.
+//!
+//! Key details:
+//! - Hash helpers must normalize PHP keys and preserve bucket layout, ownership, and iteration conventions.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 

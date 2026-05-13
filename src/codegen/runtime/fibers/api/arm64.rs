@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_fiber_throw_state_error`, `__rt_heap_alloc` runtime helper assembly for arm64.
+//! Keeps emitted runtime labels and generated code call sites aligned across supported targets.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()`.
+//!
+//! Key details:
+//! - Runtime labels, registers, and data symbols here are ABI shared with generated assembly call sites.
+
 use crate::codegen::abi;
 use crate::codegen::emit::Emitter;
 

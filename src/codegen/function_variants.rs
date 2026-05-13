@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits include-aware function variant thunks and active-symbol checks for resolved includes.
+//! Keeps multiple discovered function bodies callable through a stable PHP function name.
+//!
+//! Called from:
+//! - `crate::codegen::generate()` after resolver-provided variant metadata
+//!
+//! Key details:
+//! - Variant symbols are coupled to include statements and must preserve PHP load-order behavior.
+
 use std::collections::HashMap;
 
 use crate::codegen::platform::Arch;

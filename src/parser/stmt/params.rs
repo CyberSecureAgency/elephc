@@ -1,3 +1,13 @@
+//! Purpose:
+//! Parses function parameters, return types, and reusable parsed type expressions.
+//! Handles typed parameters, defaults, by-reference markers, variadics, and name lists.
+//!
+//! Called from:
+//! - `crate::parser::stmt`, `crate::parser::control`, and closure/OOP parsers.
+//!
+//! Key details:
+//! - Type-name parsing must allow namespace-qualified PHP names without resolving them here.
+
 use crate::errors::CompileError;
 use crate::lexer::Token;
 use crate::names::Name;
@@ -219,6 +229,8 @@ pub(super) fn parse_params(
                 "Expected ',' between parameters",
             )?;
         }
+        // PHP 8.0 parameter attributes (`function f(#[Sensitive] $s)`).
+        crate::parser::consume_attribute_lists(tokens, pos)?;
         if variadic.is_some() {
             return Err(CompileError::new(
                 span,

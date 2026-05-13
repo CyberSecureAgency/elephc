@@ -1,3 +1,13 @@
+//! Purpose:
+//! Walks statements and expressions to find class names that require emitted metadata.
+//! Covers allocations, static access, catch clauses, instanceof, and type-driven references.
+//!
+//! Called from:
+//! - `crate::codegen::program_usage::required_classes`
+//!
+//! Key details:
+//! - Missing a recursive AST case can omit class tables and break later object dispatch.
+
 use std::collections::HashSet;
 
 use crate::parser::ast::{Expr, ExprKind, InstanceOfTarget, Program, Stmt, StmtKind};
@@ -333,6 +343,11 @@ fn collect_required_class_names_in_expr(expr: &Expr, names: &mut HashSet<String>
                 names.insert(name.as_str().to_string());
             }
         }
+        ExprKind::ScopedConstantAccess { receiver, .. } => {
+            if let crate::parser::ast::StaticReceiver::Named(name) = receiver {
+                names.insert(name.as_str().to_string());
+            }
+        }
         ExprKind::NewScopedObject { receiver, args } => {
             if let crate::parser::ast::StaticReceiver::Named(name) = receiver {
                 names.insert(name.as_str().to_string());
@@ -352,8 +367,16 @@ fn collect_required_class_names_in_expr(expr: &Expr, names: &mut HashSet<String>
         | ExprKind::PreDecrement(_)
         | ExprKind::PostDecrement(_)
         | ExprKind::ConstRef(_)
-        | ExprKind::EnumCase { .. }
         | ExprKind::This => {}
+        ExprKind::Yield { key, value } => {
+            if let Some(k) = key {
+                collect_required_class_names_in_expr(k, names);
+            }
+            if let Some(v) = value {
+                collect_required_class_names_in_expr(v, names);
+            }
+        }
+        ExprKind::YieldFrom(inner) => collect_required_class_names_in_expr(inner, names),
         ExprKind::MagicConstant(_) => {
             unreachable!("MagicConstant must be lowered before codegen analysis")
         }

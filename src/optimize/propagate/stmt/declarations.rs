@@ -1,3 +1,13 @@
+//! Purpose:
+//! Propagates constants through statement declarations cases.
+//! Maintains scalar environments while preserving declarations and control-flow side effects.
+//!
+//! Called from:
+//! - `crate::optimize::propagate::stmt`
+//!
+//! Key details:
+//! - Statement propagation must invalidate aliases and writes before substituting values across observable boundaries.
+
 use super::*;
 
 pub(crate) fn propagate_params(
@@ -29,6 +39,7 @@ pub(super) fn propagate_property(property: ClassProperty) -> ClassProperty {
             .default
             .map(|expr| propagate_expr(expr, &HashMap::new())),
         span: property.span,
+        attributes: property.attributes,
     }
 }
 
@@ -47,5 +58,6 @@ pub(super) fn propagate_enum_case(case: EnumCaseDecl) -> EnumCaseDecl {
             .value
             .map(|expr| propagate_expr(expr, &HashMap::new())),
         span: case.span,
+        attributes: case.attributes,
     }
 }

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Rebinds trait-origin `__CLASS__` magic constant placeholders to the concrete class name.
+//! Walks trait properties and methods after they are being applied to a class.
+//!
+//! Called from:
+//! - `crate::magic_constants::bind_trait_class_constants()`.
+//!
+//! Key details:
+//! - `__METHOD__` and `__TRAIT__` keep trait identity while only `__CLASS__` is rebound.
+
 use crate::parser::ast::{ClassMethod, ClassProperty, ExprKind, MagicConstant};
 use crate::span::Span;
 

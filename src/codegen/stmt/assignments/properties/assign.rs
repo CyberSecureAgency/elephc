@@ -1,4 +1,14 @@
-use super::{magic_set, references, storage, target};
+//! Purpose:
+//! Lowers direct object property assignment including nullable and magic-set paths.
+//! Shares receiver and property metadata with object expression lowering.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::assignments::properties`
+//!
+//! Key details:
+//! - Property writes must respect declared types, visibility checks, and runtime object layout.
+
+use super::{dynamic_props, magic_set, references, storage, target};
 use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
@@ -108,6 +118,20 @@ pub(crate) fn emit_property_assign_stmt(
         target::PropertyAssignResolution::Resolved(target) => target,
         target::PropertyAssignResolution::UseMagicSet(class_name) => {
             magic_set::emit_magic_set_call(&class_name, property, &val_ty, emitter, ctx, data);
+            return;
+        }
+        target::PropertyAssignResolution::UseDynamicProperty {
+            class_name: _,
+            dyn_slot_offset,
+        } => {
+            dynamic_props::emit_dynamic_property_set(
+                property,
+                &val_ty,
+                dyn_slot_offset,
+                emitter,
+                ctx,
+                data,
+            );
             return;
         }
         target::PropertyAssignResolution::Abort => {
@@ -250,6 +274,21 @@ fn emit_nullable_property_assign_stmt(
         target::PropertyAssignResolution::UseMagicSet(class_name) => {
             magic_set::emit_magic_set_call(&class_name, property, &val_ty, emitter, ctx, data);
             abi::emit_release_temporary_stack(emitter, 16);                     // discard the saved nullable receiver after __set consumes the RHS
+            return;
+        }
+        target::PropertyAssignResolution::UseDynamicProperty {
+            class_name: _,
+            dyn_slot_offset,
+        } => {
+            dynamic_props::emit_dynamic_property_set(
+                property,
+                &val_ty,
+                dyn_slot_offset,
+                emitter,
+                ctx,
+                data,
+            );
+            abi::emit_release_temporary_stack(emitter, 16);                     // discard the saved nullable receiver after dynamic-property storage consumes the RHS
             return;
         }
         target::PropertyAssignResolution::Abort => {

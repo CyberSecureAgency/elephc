@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_hash_free_deep`, `__rt_hash_free_deep_done` runtime helper assembly for hash free deep.
+//! Keeps PHP array/hash storage, heap ownership, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::arrays`.
+//!
+//! Key details:
+//! - Deep free helpers recursively release owned child storage and must match the heap kind/tag layout exactly.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 

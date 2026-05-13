@@ -1,3 +1,13 @@
+//! Purpose:
+//! Parses PHP trait use declarations and adaptation clauses.
+//! Handles insteadof and as adaptations, aliases, visibility changes, and scoped trait targets.
+//!
+//! Called from:
+//! - `crate::parser::stmt::oop::body::parse_class_like_body()`.
+//!
+//! Key details:
+//! - Trait adaptation names remain syntactic until class flattening and name resolution bind them.
+
 use crate::errors::CompileError;
 use crate::lexer::Token;
 use crate::names::Name;

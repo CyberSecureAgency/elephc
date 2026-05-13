@@ -39,6 +39,8 @@ pub(crate) fn inject_builtin_stdclass(
             is_readonly_class: false,
             properties: Vec::new(),
             methods: Vec::new(),
+            attributes: Vec::new(),
+            constants: Vec::new(),
         },
     );
 

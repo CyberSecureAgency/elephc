@@ -1,3 +1,14 @@
+//! Purpose:
+//! Type-checks callable first class behavior.
+//! Infers callable signatures and validates invocation details that affect later lowering and optimizer effects.
+//!
+//! Called from:
+//! - `crate::types::checker::callables`
+//! - `crate::types::checker::inference`
+//!
+//! Key details:
+//! - Closure captures, first-class callable syntax, and extern calls must agree with shared call argument planning.
+
 use crate::errors::CompileError;
 use crate::parser::ast::{CallableTarget, Expr, ExprKind, StaticReceiver};
 use crate::types::{FunctionSig, PhpType, TypeEnv};
@@ -37,6 +48,7 @@ impl Checker {
                         ref_params: vec![false; sig.params.len()],
                         declared_params: vec![true; sig.params.len()],
                         variadic: None,
+                        deprecation: None,
                     });
                 }
                 if crate::name_resolver::is_builtin_function(function_name) {
@@ -217,7 +229,12 @@ impl Checker {
                 }
                 let normalized_args =
                     self.normalize_named_call_args(&base_sig, args, span, "first-class callable")?;
-                self.check_function_call(name.as_str(), &normalized_args, span, env)?;
+                self.check_function_call_pre_normalized(
+                    name.as_str(),
+                    &normalized_args,
+                    span,
+                    env,
+                )?;
                 self.specialize_untyped_function_params(name.as_str(), &normalized_args, env)?;
             }
             CallableTarget::StaticMethod { receiver, method } => {

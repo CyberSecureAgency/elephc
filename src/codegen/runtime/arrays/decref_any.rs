@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_decref_any`, `__rt_decref_any_done` runtime helper assembly for decref any.
+//! Keeps PHP array/hash storage, heap ownership, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::arrays`.
+//!
+//! Key details:
+//! - Decrement helpers are release paths for refcounted values and must balance recursive frees with GC cycle collection.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 

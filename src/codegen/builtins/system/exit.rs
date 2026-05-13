@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `exit` process-control or shell execution builtin calls.
+//! Marshals command/status arguments into runtime helpers with PHP-visible output and exit behavior.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::system::emit()`.
+//!
+//! Key details:
+//! - Process calls are effectful and may terminate or emit output, so lowering must preserve evaluation order.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Parses complex prefix expressions that need multi-token bodies or nested parser coordination.
+//! Handles match expressions, closures, arrow functions, named expressions, and object construction.
+//!
+//! Called from:
+//! - `crate::parser::expr::prefix::parse_prefix()`.
+//!
+//! Key details:
+//! - Closure bodies and parameter defaults must preserve their own spans and PHP evaluation context.
+
 use crate::errors::CompileError;
 use crate::lexer::Token;
 use crate::parser::ast::{
@@ -80,6 +90,39 @@ pub(super) fn parse_match_expr(
         },
         span,
     ))
+}
+
+pub(super) fn parse_attributed_closure(
+    tokens: &[(Token, Span)],
+    pos: &mut usize,
+    span: Span,
+) -> Result<Expr, CompileError> {
+    // PHP 8.0 allows `#[Foo] function() {…}`, `#[Foo] fn() => …`, and the
+    // static variants. Attributes parse for shape only and are discarded.
+    crate::parser::consume_attribute_lists(tokens, pos)?;
+    let span = tokens.get(*pos).map(|(_, s)| *s).unwrap_or(span);
+    match tokens.get(*pos).map(|(t, _)| t) {
+        Some(Token::Function) => parse_closure(tokens, pos, span, false),
+        Some(Token::Fn) => parse_arrow_closure(tokens, pos, span, false),
+        Some(Token::Static) => match tokens.get(*pos + 1).map(|(t, _)| t) {
+            Some(Token::Function) => {
+                *pos += 1;
+                parse_closure(tokens, pos, span, true)
+            }
+            Some(Token::Fn) => {
+                *pos += 1;
+                parse_arrow_closure(tokens, pos, span, true)
+            }
+            _ => Err(CompileError::new(
+                span,
+                "Expected closure or arrow function after attribute group",
+            )),
+        },
+        _ => Err(CompileError::new(
+            span,
+            "Expected closure or arrow function after attribute group",
+        )),
+    }
 }
 
 pub(super) fn parse_closure(
@@ -219,6 +262,8 @@ fn parse_closure_params(
             }
             *pos += 1;
         }
+        // PHP 8.0 closure-parameter attributes (`fn(#[X] $a) => …`).
+        crate::parser::consume_attribute_lists(tokens, pos)?;
         if variadic.is_some() {
             return Err(CompileError::new(
                 span,
@@ -407,10 +452,13 @@ pub(super) fn parse_named_expr(
                 ))
             }
         } else {
+            // `Foo::BAR` (no parens) is either an enum case access or a
+            // user-declared class constant. Disambiguation is done by the
+            // type checker, which falls back from enum lookup to class const.
             Ok(Expr::new(
-                ExprKind::EnumCase {
-                    enum_name: name,
-                    case_name: member,
+                ExprKind::ScopedConstantAccess {
+                    receiver: StaticReceiver::Named(name),
+                    name: member,
                 },
                 span,
             ))

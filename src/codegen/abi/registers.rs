@@ -1,3 +1,13 @@
+//! Purpose:
+//! Defines target register names, argument cursors, and outgoing argument assignment planning.
+//! Abstracts integer, float, string-pair, scratch, and result-register conventions.
+//!
+//! Called from:
+//! - `crate::codegen::abi` helpers and all higher-level emitters using ABI registers
+//!
+//! Key details:
+//! - Register allocation here models platform ABI limits and must stay in sync with call stack spill logic.
+
 use crate::codegen::{
     emit::Emitter,
     platform::{Arch, Platform, Target},

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Lowers array unpacking assignments from source arrays into destination arrays.
+//! Handles statement-level array mutation after expression operands are evaluated.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::arrays`
+//!
+//! Key details:
+//! - Mutation paths must preserve source-order side effects and update heap ownership consistently.
+
 use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;

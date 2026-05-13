@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits runtime diagnostic setup used by expression paths that can fail or throw.
+//! Keeps line, file, and fatal-message preparation close to the lowering sites that need it.
+//!
+//! Called from:
+//! - `crate::codegen::expr` and runtime error call sites
+//!
+//! Key details:
+//! - Diagnostic state must be set before helper calls that can unwind or terminate execution.
+
 use super::super::abi;
 use super::super::context::Context;
 use super::super::data_section::DataSection;

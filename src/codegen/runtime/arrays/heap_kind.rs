@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_heap_kind`, `__rt_heap_kind_zero` runtime helper assembly for heap kind.
+//! Keeps PHP array/hash storage, heap ownership, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::arrays`.
+//!
+//! Key details:
+//! - Heap helpers own allocator metadata, debug accounting, and free-list invariants used by all refcounted runtime values.
+
 use crate::codegen::{emit::Emitter, platform::Arch};
 
 /// heap_kind: return the uniform heap kind tag for a heap-backed value.

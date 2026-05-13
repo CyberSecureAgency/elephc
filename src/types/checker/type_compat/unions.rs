@@ -1,3 +1,13 @@
+//! Purpose:
+//! Checks type compatibility for unions cases.
+//! Supports the central assignability predicate used by declarations, calls, returns, and assignments.
+//!
+//! Called from:
+//! - `crate::types::checker::type_compat`
+//!
+//! Key details:
+//! - Rules here define accepted programs, so PHP covariance, inheritance, and extension-specific constraints must stay explicit.
+
 use crate::types::PhpType;
 
 use super::super::Checker;
@@ -38,7 +48,12 @@ impl Checker {
                 .iter()
                 .any(|member| self.type_accepts(member, actual)),
             PhpType::Array(expected_elem) => match actual {
-                PhpType::Array(actual_elem) => self.type_accepts(expected_elem.as_ref(), actual_elem.as_ref()),
+                PhpType::Array(actual_elem) if matches!(actual_elem.as_ref(), PhpType::Never) => {
+                    true
+                }
+                PhpType::Array(actual_elem) => {
+                    self.type_accepts(expected_elem.as_ref(), actual_elem.as_ref())
+                }
                 PhpType::AssocArray { .. } => matches!(expected_elem.as_ref(), PhpType::Mixed),
                 _ => false,
             },
@@ -128,6 +143,16 @@ impl Checker {
         if existing == new_ty {
             return Some(existing.clone());
         }
+        if matches!(existing, PhpType::Array(inner) if matches!(inner.as_ref(), PhpType::Never))
+            && matches!(new_ty, PhpType::Array(_) | PhpType::AssocArray { .. })
+        {
+            return Some(new_ty.clone());
+        }
+        if matches!(new_ty, PhpType::Array(inner) if matches!(inner.as_ref(), PhpType::Never))
+            && matches!(existing, PhpType::Array(_) | PhpType::AssocArray { .. })
+        {
+            return Some(existing.clone());
+        }
         if matches!(existing, PhpType::Mixed) || matches!(new_ty, PhpType::Mixed) {
             return Some(PhpType::Mixed);
         }
@@ -177,6 +202,12 @@ impl Checker {
         new_ty: &PhpType,
     ) -> Option<PhpType> {
         if existing == new_ty {
+            return Some(existing.clone());
+        }
+        if matches!(existing, PhpType::Never) {
+            return Some(new_ty.clone());
+        }
+        if matches!(new_ty, PhpType::Never) {
             return Some(existing.clone());
         }
         if matches!(existing, PhpType::Mixed) || matches!(new_ty, PhpType::Mixed) {

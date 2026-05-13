@@ -1,3 +1,13 @@
+//! Purpose:
+//! Collects file, directory, path, stat, CSV, glob, and descriptor runtime emitters.
+//! The module owns re-export wiring for helpers that adapt PHP I/O builtins to libc and runtime arrays.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` during the I/O runtime section.
+//!
+//! Key details:
+//! - I/O helpers bridge PHP strings, resources, descriptors, and libc calls while returning runtime arrays or pointer/length strings.
+
 mod basename;
 mod cstr;
 mod dirname;

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_php_uname`, `__rt_php_uname_mode_len_fail` runtime helper assembly for php uname.
+//! Keeps PHP builtin semantics, libc/syscall boundaries, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::system`.
+//!
+//! Key details:
+//! - The helper reads target uname fields through fixed offsets and validates PHP mode strings before copying output.
+
 use crate::codegen::{
     abi,
     emit::Emitter,

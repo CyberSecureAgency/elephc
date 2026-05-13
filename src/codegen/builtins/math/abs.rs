@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `abs` numeric builtin calls.
+//! Handles scalar argument lowering and returns the PHP numeric type promised by signature checking.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::math::emit()`.
+//!
+//! Key details:
+//! - Integer-vs-float result selection must stay aligned with PHP semantics and local type inference.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

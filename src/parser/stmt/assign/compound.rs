@@ -1,3 +1,13 @@
+//! Purpose:
+//! Parses direct variable compound assignment statements.
+//! Maps compound assignment tokens into binary operations plus assignment statement values.
+//!
+//! Called from:
+//! - `crate::parser::stmt::assign::simple::parse_variable_stmt()`.
+//!
+//! Key details:
+//! - Compound lowering must preserve PHP's read-modify-write semantics for the target variable.
+
 use crate::errors::CompileError;
 use crate::lexer::Token;
 use crate::parser::ast::{BinOp, Expr, ExprKind, Stmt, StmtKind};

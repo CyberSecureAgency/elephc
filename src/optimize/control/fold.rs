@@ -1,7 +1,18 @@
+//! Purpose:
+//! Implements optimizer control-flow fold logic.
+//! Supports normalization, reachability, path analysis, and structural rewrites used by pruning and DCE.
+//!
+//! Called from:
+//! - `crate::optimize::control`
+//!
+//! Key details:
+//! - Control-flow helpers must treat terminal effects, switch fallthrough, and exception paths conservatively.
+
 use super::*;
 
 pub(crate) fn fold_stmt(stmt: Stmt) -> Stmt {
     let span = stmt.span;
+    let attributes = stmt.attributes.clone();
     let kind = match stmt.kind {
         StmtKind::Synthetic(stmts) => StmtKind::Synthetic(fold_block(stmts)),
         StmtKind::IncludeOnceMark { label } => StmtKind::IncludeOnceMark { label },
@@ -178,6 +189,7 @@ pub(crate) fn fold_stmt(stmt: Stmt) -> Stmt {
             trait_uses,
             properties,
             methods,
+        constants,
         } => StmtKind::ClassDecl {
             name,
             extends,
@@ -188,6 +200,7 @@ pub(crate) fn fold_stmt(stmt: Stmt) -> Stmt {
             trait_uses,
             properties: properties.into_iter().map(fold_property).collect(),
             methods: methods.into_iter().map(fold_method).collect(),
+        constants,
         },
         StmtKind::EnumDecl {
             name,
@@ -203,21 +216,25 @@ pub(crate) fn fold_stmt(stmt: Stmt) -> Stmt {
             name,
             extends,
             methods,
+        constants,
         } => StmtKind::InterfaceDecl {
             name,
             extends,
             methods: methods.into_iter().map(fold_method).collect(),
+        constants,
         },
         StmtKind::TraitDecl {
             name,
             trait_uses,
             properties,
             methods,
+        constants,
         } => StmtKind::TraitDecl {
             name,
             trait_uses,
             properties: properties.into_iter().map(fold_property).collect(),
             methods: methods.into_iter().map(fold_method).collect(),
+        constants,
         },
         StmtKind::PropertyAssign {
             object,
@@ -299,7 +316,7 @@ pub(crate) fn fold_stmt(stmt: Stmt) -> Stmt {
             StmtKind::FunctionVariantMark { name, variant }
         }
     };
-    Stmt { kind, span }
+    Stmt { kind, span, attributes }
 }
 
 pub(crate) fn fold_block(body: Vec<Stmt>) -> Vec<Stmt> {

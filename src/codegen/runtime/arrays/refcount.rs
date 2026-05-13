@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits runtime helper assembly for refcount through `emit_refcount`.
+//! Keeps PHP array/hash storage, heap ownership, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::arrays`.
+//!
+//! Key details:
+//! - Array, hash, heap, GC, and Mixed helpers must preserve runtime layout, refcounts, and COW rules before mutating shared storage.
+
 use crate::codegen::emit::Emitter;
 
 use super::decref_array::emit_decref_array;

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `array_pad` builtin calls that allocate or reshape array values.
+//! Coordinates element type selection with runtime helpers that build indexed or associative arrays.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::arrays::emit()`.
+//!
+//! Key details:
+//! - Returned arrays must use the payload layout expected by later codegen and GC/refcount paths.
+
 use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;

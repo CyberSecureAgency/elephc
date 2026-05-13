@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `is_iterable` type predicate calls.
+//! Inspects static or boxed runtime value representation and returns a PHP boolean.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::types::emit()`.
+//!
+//! Key details:
+//! - Predicate behavior must match PHP sentinel, Mixed tag, and object/interface layout conventions.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Implements the checker driver init phase.
+//! Owns one ordered step in building checker state and validating the program before optimization/codegen.
+//!
+//! Called from:
+//! - `crate::types::checker::driver::check_types_impl()`
+//!
+//! Key details:
+//! - Phase order controls diagnostics, available declarations, required libraries, and function-local environments.
+
 use std::collections::{HashMap, HashSet};
 
 use crate::codegen::platform::Platform;
@@ -55,6 +65,7 @@ impl Checker {
             active_statics: HashSet::new(),
             break_continue_depth: 0,
             finally_break_continue_bases: Vec::new(),
+            warnings: Vec::new(),
         }
     }
 }

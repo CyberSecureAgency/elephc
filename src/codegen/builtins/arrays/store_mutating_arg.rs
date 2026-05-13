@@ -1,3 +1,13 @@
+//! Purpose:
+//! Stores a possibly replaced array pointer back into the original mutating argument storage.
+//! Handles variable and addressable array arguments after COW or growth routines run.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::arrays::*::emit() for mutating array builtins`.
+//!
+//! Key details:
+//! - Must match call-argument by-ref semantics so PHP-visible mutations update the caller slot.
+
 use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::emit::Emitter;

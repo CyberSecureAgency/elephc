@@ -1,3 +1,13 @@
+//! Purpose:
+//! Plans and materializes outgoing call arguments into target registers and stack spill slots.
+//! Copies preevaluated argument values from temporary storage into ABI-visible locations.
+//!
+//! Called from:
+//! - `crate::codegen::expr::calls::args` and wrapper emitters
+//!
+//! Key details:
+//! - Stack reservation and register ordering must preserve live values while matching target ABI limits.
+
 use crate::codegen::{
     emit::Emitter,
     platform::{Arch, Target},

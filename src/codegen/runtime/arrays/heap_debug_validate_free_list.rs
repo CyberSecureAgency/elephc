@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_heap_debug_validate_free_list`, `__rt_heap_debug_validate_free_list_loop` runtime helper assembly for heap debug validate free list.
+//! Keeps PHP array/hash storage, heap ownership, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::arrays`.
+//!
+//! Key details:
+//! - Date helpers consume fixed lookup tables and target libc time fields, so symbol names and field offsets must stay coupled.
+
 use crate::codegen::{emit::Emitter, platform::Arch};
 
 /// heap_debug_validate_free_list: verify ordered free-list state and small-bin caches.

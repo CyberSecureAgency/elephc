@@ -1,3 +1,13 @@
+//! Purpose:
+//! Discovers include effects inside class properties, methods, and parameter defaults.
+//! Bridges declaration-member AST nodes into expression and branch discovery.
+//!
+//! Called from:
+//! - `crate::resolver::discovery::stmts`.
+//!
+//! Key details:
+//! - Member discovery must not lose declarations reachable from default expressions or method bodies.
+
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 

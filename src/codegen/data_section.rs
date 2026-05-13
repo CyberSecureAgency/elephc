@@ -1,3 +1,13 @@
+//! Purpose:
+//! Collects constants and common storage declarations before serializing the assembly data section.
+//! Deduplicates string, float, and common symbols used by expression and runtime-facing emitters.
+//!
+//! Called from:
+//! - `crate::codegen::generate()` and expression/statement emitters
+//!
+//! Key details:
+//! - Labels must stay stable within one compilation because code emission references them before final serialization.
+
 use std::collections::HashMap;
 
 pub struct DataSection {

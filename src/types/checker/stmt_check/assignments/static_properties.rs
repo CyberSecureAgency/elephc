@@ -1,3 +1,13 @@
+//! Purpose:
+//! Type-checks assignment static properties forms.
+//! Updates type environments and validates storage-specific rules for locals, arrays, and properties.
+//!
+//! Called from:
+//! - `crate::types::checker::stmt_check::assignments`
+//!
+//! Key details:
+//! - Assignment checking must distinguish value writes, by-reference mutation, nullable access, and declared property contracts.
+
 use crate::errors::CompileError;
 use crate::parser::ast::{Expr, StaticReceiver};
 use crate::span::Span;
@@ -68,7 +78,7 @@ pub(super) fn check_static_property_array_push(
             } else {
                 let merged_ty = checker
                     .merge_array_element_type(&elem_ty, &val_ty)
-                    .unwrap_or(val_ty.clone());
+                    .unwrap_or(PhpType::Mixed);
                 PhpType::Array(Box::new(merged_ty))
             }
         }
@@ -131,7 +141,7 @@ pub(super) fn check_static_property_array_assign(
             } else {
                 let merged_ty = checker
                     .merge_array_element_type(&elem_ty, &val_ty)
-                    .unwrap_or(val_ty.clone());
+                    .unwrap_or(PhpType::Mixed);
                 PhpType::Array(Box::new(merged_ty))
             }
         }

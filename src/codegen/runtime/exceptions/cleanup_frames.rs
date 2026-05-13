@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_exception_cleanup_frames`, `__rt_exception_cleanup_frames_loop` runtime helper assembly for cleanup frames.
+//! Keeps exception object matching, unwinding state, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::exceptions`.
+//!
+//! Key details:
+//! - Exception matching and unwinding must keep handler-stack, call-frame cleanup, and class metadata invariants aligned.
+
 use crate::codegen::{abi, emit::Emitter};
 use crate::codegen::platform::Arch;
 

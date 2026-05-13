@@ -1,3 +1,13 @@
+//! Purpose:
+//! Discovers include declarations across conditional and branch-like AST regions.
+//! Merges isolated branch outputs while tracking mutually exclusive declaration groups.
+//!
+//! Called from:
+//! - `crate::resolver::discovery::stmts` and expression discovery helpers.
+//!
+//! Key details:
+//! - Constant branch truthiness is used only when it can be determined statically and conservatively.
+
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 

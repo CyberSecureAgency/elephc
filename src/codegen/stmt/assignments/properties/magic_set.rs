@@ -1,3 +1,13 @@
+//! Purpose:
+//! Lowers __set dispatch for inaccessible or dynamic property writes.
+//! Shares receiver and property metadata with object expression lowering.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::assignments::properties`
+//!
+//! Key details:
+//! - Property writes must respect declared types, visibility checks, and runtime object layout.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

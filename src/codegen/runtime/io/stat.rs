@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_file_exists`, `__rt_cstr` runtime helper assembly for stat.
+//! Keeps PHP filesystem/resource behavior, libc calls, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::io`.
+//!
+//! Key details:
+//! - I/O helpers bridge PHP strings, resources, descriptors, and libc calls while returning runtime arrays or pointer/length strings.
+
 use crate::codegen::{emit::Emitter, platform::Arch};
 
 /// Stat-related helpers: file_exists, is_file, is_dir, is_readable, is_writable,

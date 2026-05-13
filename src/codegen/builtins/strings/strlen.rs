@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `strlen` string builtin calls.
+//! Coordinates string argument registers and runtime helper calls for PHP-compatible results.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::strings::emit()`.
+//!
+//! Key details:
+//! - String ABI uses pointer/length pairs, with boxed results only where PHP returns mixed values.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

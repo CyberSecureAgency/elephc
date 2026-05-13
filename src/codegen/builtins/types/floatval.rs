@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `floatval` type conversion or type-name builtin calls.
+//! Applies PHP scalar conversion rules or materializes runtime type names for values.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::types::emit()`.
+//!
+//! Key details:
+//! - Conversion results must stay aligned with type-checker signatures and boxed Mixed handling.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

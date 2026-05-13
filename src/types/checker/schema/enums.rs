@@ -1,3 +1,13 @@
+//! Purpose:
+//! Validates schema enums declarations for the checker.
+//! Turns parsed declarations into canonical metadata and rejects invalid contracts before code generation.
+//!
+//! Called from:
+//! - `crate::types::checker::schema`
+//!
+//! Key details:
+//! - Declaration metadata must align with name resolution, inheritance flattening, and runtime/codegen expectations.
+
 use std::collections::{HashMap, HashSet};
 
 use crate::errors::CompileError;
@@ -213,6 +223,7 @@ pub(crate) fn build_enum_info(
             ref_params: Vec::new(),
             declared_params: Vec::new(),
             variadic: None,
+            deprecation: None,
         },
     );
     static_method_visibilities.insert("cases".to_string(), Visibility::Public);
@@ -237,6 +248,7 @@ pub(crate) fn build_enum_info(
                     ref_params: vec![false],
                     declared_params: vec![true],
                     variadic: None,
+                    deprecation: None,
                 },
             );
             static_method_visibilities.insert(method_name.to_string(), Visibility::Public);
@@ -253,6 +265,10 @@ pub(crate) fn build_enum_info(
             is_abstract: false,
             is_final: true,
             is_readonly_class: true,
+            allow_dynamic_properties: false,
+            constants: HashMap::new(),
+            attribute_names: Vec::new(),
+            attribute_args: Vec::new(),
             properties,
             property_offsets,
             property_declaring_classes,

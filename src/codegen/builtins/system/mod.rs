@@ -1,3 +1,16 @@
+//! Purpose:
+//! Dispatches process, environment, time, JSON, regex, and constant builtins to their focused codegen emitters.
+//! Keeps the public builtin category surface small while leaf files own lowering details.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::emit_builtin_call()`.
+//!
+//! Key details:
+//! - Dispatcher names must stay aligned with the builtin catalog and signature normalization layer.
+
+mod class_attribute_args;
+mod class_attribute_names;
+mod class_get_attributes;
 mod date;
 mod define;
 mod exec_fn;
@@ -28,6 +41,7 @@ mod usleep;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
+use crate::names::php_symbol_key;
 use crate::parser::ast::Expr;
 use crate::types::PhpType;
 
@@ -49,6 +63,9 @@ pub fn emit(
         "putenv" => putenv::emit(name, args, emitter, ctx, data),
         "php_uname" => php_uname::emit(name, args, emitter, ctx, data),
         "phpversion" => phpversion::emit(name, args, emitter, ctx, data),
+        "class_attribute_args" => class_attribute_args::emit(name, args, emitter, ctx, data),
+        "class_attribute_names" => class_attribute_names::emit(name, args, emitter, ctx, data),
+        "class_get_attributes" => class_get_attributes::emit(name, args, emitter, ctx, data),
         "exec" => exec_fn::emit(name, args, emitter, ctx, data),
         "shell_exec" => shell_exec::emit(name, args, emitter, ctx, data),
         "system" => system_fn::emit(name, args, emitter, ctx, data),
@@ -67,4 +84,12 @@ pub fn emit(
         "preg_split" => preg_split::emit(name, args, emitter, ctx, data),
         _ => None,
     }
+}
+
+fn resolve_class_name<'a>(ctx: &'a Context, class_name: &str) -> Option<&'a str> {
+    let class_key = php_symbol_key(class_name.trim_start_matches('\\'));
+    ctx.classes
+        .keys()
+        .find(|existing| php_symbol_key(existing) == class_key)
+        .map(String::as_str)
 }

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Routes normalized PHP builtin calls from expression codegen into category dispatchers.
+//! Owns shared named/spread argument lowering before builtin-specific emitters see arguments.
+//!
+//! Called from:
+//! - `crate::codegen::expr::emit_expr()`.
+//!
+//! Key details:
+//! - Builtin names arrive after type/catalog resolution, including PHP case-insensitive and namespace fallback behavior.
+
 mod arrays;
 mod io;
 mod math;

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Provides shared argument materialization helpers for string builtin emitters.
+//! Normalizes PHP string operands into the pointer/length register convention used by runtime helpers.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::strings::*::emit()`.
+//!
+//! Key details:
+//! - Helpers must preserve temporary ownership while leaving string results in the ABI registers expected by callers.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

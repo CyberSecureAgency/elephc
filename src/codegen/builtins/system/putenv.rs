@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `putenv` environment/platform information builtin calls.
+//! Delegates host environment lookup or platform string construction to runtime helpers.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::system::emit()`.
+//!
+//! Key details:
+//! - Environment and platform state are observable and must not be folded as compile-time constants here.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits function-scope cleanup for owned locals and structured exit paths.
+//! Balances refcounted values before normal returns and exceptional control transfers leave a frame.
+//!
+//! Called from:
+//! - `crate::codegen::functions` and return/throw statement lowering
+//!
+//! Key details:
+//! - Cleanup must follow ownership metadata and avoid releasing borrowed aliases or persistent values.
+
 use crate::codegen::context::{Context, HeapOwnership};
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;

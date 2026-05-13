@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_buffer_new`, `__rt_heap_alloc` runtime helper assembly for buffer allocation.
+//! Keeps compiler buffer extension checks and fatal paths aligned with generated pointer operations.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::buffers`.
+//!
+//! Key details:
+//! - Buffer helpers enforce extension ownership rules, including live headers, bounds checks, and fatal paths before unsafe access.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 

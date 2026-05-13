@@ -1,6 +1,17 @@
+//! Purpose:
+//! Collects array, hash, heap, GC, iterable, and Mixed runtime emitters.
+//! The module owns re-export wiring for helpers that are emitted by the runtime orchestrator.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` during the array runtime section.
+//!
+//! Key details:
+//! - Array, hash, heap, GC, and Mixed helpers must preserve runtime layout, refcounts, and COW rules before mutating shared storage.
+
 mod array_chunk;
 mod array_chunk_refcounted;
 mod array_column;
+mod array_column_mixed;
 mod array_column_ref;
 mod array_column_str;
 mod array_combine;
@@ -20,6 +31,7 @@ mod array_flip;
 mod array_flip_string;
 mod array_free_deep;
 mod array_grow;
+mod array_hash_union;
 mod array_intersect;
 mod array_intersect_refcounted;
 mod array_intersect_key;
@@ -50,6 +62,7 @@ mod array_slice_refcounted;
 mod array_splice;
 mod array_splice_refcounted;
 mod array_sum;
+mod array_to_mixed;
 mod array_union;
 mod array_unique;
 mod array_unique_refcounted;
@@ -71,6 +84,7 @@ mod hash_fnv1a;
 mod hash_free_deep;
 mod hash_get;
 mod hash_grow;
+mod hash_array_union;
 mod hash_key_eq;
 mod hash_key_hash;
 mod hash_normalize_key;
@@ -115,6 +129,7 @@ mod usort;
 pub use array_chunk::emit_array_chunk;
 pub use array_chunk_refcounted::emit_array_chunk_refcounted;
 pub use array_column::emit_array_column;
+pub use array_column_mixed::emit_array_column_mixed;
 pub use array_column_ref::emit_array_column_ref;
 pub use array_column_str::emit_array_column_str;
 pub use array_combine::emit_array_combine;
@@ -134,6 +149,7 @@ pub use array_flip::emit_array_flip;
 pub use array_flip_string::emit_array_flip_string;
 pub use array_free_deep::emit_array_free_deep;
 pub use array_grow::emit_array_grow;
+pub use array_hash_union::emit_array_hash_union;
 pub use array_intersect::emit_array_intersect;
 pub use array_intersect_refcounted::emit_array_intersect_refcounted;
 pub use array_intersect_key::emit_array_intersect_key;
@@ -164,6 +180,7 @@ pub use array_slice_refcounted::emit_array_slice_refcounted;
 pub use array_splice::emit_array_splice;
 pub use array_splice_refcounted::emit_array_splice_refcounted;
 pub use array_sum::emit_array_sum;
+pub use array_to_mixed::emit_array_to_mixed;
 pub use array_union::emit_array_union;
 pub use array_unique::emit_array_unique;
 pub use array_unique_refcounted::emit_array_unique_refcounted;
@@ -184,6 +201,7 @@ pub use hash_fnv1a::emit_hash_fnv1a;
 pub use hash_free_deep::emit_hash_free_deep;
 pub use hash_get::emit_hash_get;
 pub use hash_grow::emit_hash_grow;
+pub use hash_array_union::emit_hash_array_union;
 pub use hash_key_eq::emit_hash_key_eq;
 pub use hash_key_hash::emit_hash_key_hash;
 pub use hash_normalize_key::emit_hash_normalize_key;

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Lowers while, do-while, and for loop label emission.
+//! Works with loop labels stored in codegen context during nested body emission.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::control_flow::loops`
+//!
+//! Key details:
+//! - Loop exits must jump to the correct depth while preserving cleanup for skipped constructs.
+
 use crate::codegen::context::{Context, LoopLabels};
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

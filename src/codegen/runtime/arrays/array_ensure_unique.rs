@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_array_ensure_unique`, `__rt_array_ensure_unique_done` runtime helper assembly for array ensure unique.
+//! Keeps PHP array/hash storage, heap ownership, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::arrays`.
+//!
+//! Key details:
+//! - COW helpers must clone shared storage before mutation while leaving unique arrays and hashes untouched.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 

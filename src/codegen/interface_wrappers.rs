@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits wrapper functions that adapt interface dispatch entries to concrete method implementations.
+//! Materializes receiver and argument forwarding for interface vtable calls.
+//!
+//! Called from:
+//! - `crate::codegen::generate()` after class metadata collection
+//!
+//! Key details:
+//! - Wrapper ABI order must match both interface slots and concrete method codegen signatures.
+
 use std::collections::{HashMap, HashSet};
 
 use crate::codegen::emit::Emitter;

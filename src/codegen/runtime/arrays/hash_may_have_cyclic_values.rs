@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_hash_may_have_cyclic_values`, `__rt_hash_may_have_cyclic_values_no` runtime helper assembly for hash may have cyclic values.
+//! Keeps PHP array/hash storage, heap ownership, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::arrays`.
+//!
+//! Key details:
+//! - Hash helpers must normalize PHP keys and preserve bucket layout, ownership, and iteration conventions.
+
 use crate::codegen::{emit::Emitter, platform::Arch};
 
 /// hash_may_have_cyclic_values: detect whether any entry can participate in a cycle.

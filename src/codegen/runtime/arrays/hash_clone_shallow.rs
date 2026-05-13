@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_hash_clone_shallow`, `__rt_hash_new` runtime helper assembly for hash clone shallow.
+//! Keeps PHP array/hash storage, heap ownership, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::arrays`.
+//!
+//! Key details:
+//! - Clone helpers duplicate container headers and child references without deep-copying unless the runtime contract requires it.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 

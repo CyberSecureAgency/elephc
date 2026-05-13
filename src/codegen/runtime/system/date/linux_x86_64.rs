@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_date`, `__rt_date_have_time_linux_x86_64` runtime helper assembly for linux Linux x86 64.
+//! Keeps PHP builtin semantics, libc/syscall boundaries, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::system::date::emit_date()` for Linux x86_64 targets.
+//!
+//! Key details:
+//! - Formatting reads libc tm fields and fixed date tables using Linux x86_64 register conventions.
+
 use crate::codegen::emit::Emitter;
 
 pub(super) fn emit_date_linux_x86_64(emitter: &mut Emitter) {

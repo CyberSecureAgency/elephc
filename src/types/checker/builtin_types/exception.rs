@@ -1,3 +1,14 @@
+//! Purpose:
+//! Builds and patches checker metadata for PHP builtin exception types.
+//! Supplies synthetic declarations or contract validation for classes and interfaces that user code may reference.
+//!
+//! Called from:
+//! - `crate::types::checker::builtin_types`
+//! - `crate::types::checker::driver::init`
+//!
+//! Key details:
+//! - Dummy AST members carry type contracts only; runtime behavior is implemented elsewhere.
+
 use crate::names::php_symbol_key;
 use crate::parser::ast::{
     ClassMethod, ClassProperty, Expr, ExprKind, Stmt, StmtKind, TypeExpr, Visibility,
@@ -20,6 +31,7 @@ pub(super) fn builtin_exception_message_property() -> ClassProperty {
             crate::span::Span::dummy(),
         )),
         span: crate::span::Span::dummy(),
+        attributes: Vec::new(),
     }
 }
 
@@ -78,6 +90,7 @@ pub(super) fn builtin_exception_constructor_method() -> ClassMethod {
             ),
         ],
         span: crate::span::Span::dummy(),
+        attributes: Vec::new(),
     }
 }
 
@@ -95,6 +108,7 @@ pub(super) fn builtin_exception_code_property() -> ClassProperty {
             crate::span::Span::dummy(),
         )),
         span: crate::span::Span::dummy(),
+        attributes: Vec::new(),
     }
 }
 
@@ -120,6 +134,7 @@ pub(super) fn builtin_exception_get_code_method() -> ClassMethod {
             crate::span::Span::dummy(),
         )],
         span: crate::span::Span::dummy(),
+        attributes: Vec::new(),
     }
 }
 
@@ -145,6 +160,7 @@ pub(super) fn builtin_exception_get_message_method() -> ClassMethod {
             crate::span::Span::dummy(),
         )],
         span: crate::span::Span::dummy(),
+        attributes: Vec::new(),
     }
 }
 
@@ -161,6 +177,7 @@ pub(super) fn builtin_throwable_get_message_method() -> ClassMethod {
         return_type: None,
         body: Vec::new(),
         span: crate::span::Span::dummy(),
+        attributes: Vec::new(),
     }
 }
 

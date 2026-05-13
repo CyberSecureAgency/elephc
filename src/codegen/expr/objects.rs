@@ -1,3 +1,13 @@
+//! Purpose:
+//! Groups object expression lowering for allocation, access, dispatch, static properties, nullsafe, and instanceof.
+//! Provides the object-facing API used by the main expression dispatcher.
+//!
+//! Called from:
+//! - `crate::codegen::expr::emit_expr()`
+//!
+//! Key details:
+//! - Object results are refcounted handles whose metadata must match class tables and vtable layout.
+
 mod access;
 mod allocation;
 pub(crate) mod dispatch;
@@ -15,7 +25,7 @@ use crate::codegen::platform::Arch;
 use crate::parser::ast::{Expr, InstanceOfTarget, StaticReceiver};
 use crate::types::PhpType;
 
-pub(super) fn emit_new_object(
+pub(crate) fn emit_new_object(
     class_name: &str,
     args: &[Expr],
     emitter: &mut Emitter,
@@ -54,6 +64,60 @@ pub(super) fn emit_class_constant(
 
     let name = resolve_scoped_receiver_to_class(receiver, ctx).unwrap_or_default();
     scalars::emit_string_literal(&name, emitter, data)
+}
+
+pub(super) fn emit_scoped_constant_access(
+    receiver: &StaticReceiver,
+    name: &str,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> PhpType {
+    let class_name = resolve_scoped_receiver_to_class(receiver, ctx)
+        .expect("ScopedConstantAccess on `static` not supported yet");
+    // Enum case: dispatch to the existing enum codegen.
+    if ctx.enums.contains_key(&class_name) {
+        return emit_enum_case(&class_name, name, emitter, ctx);
+    }
+    // Class constant: walk parent chain.
+    let mut current: Option<String> = Some(class_name.clone());
+    let mut value: Option<Expr> = None;
+    while let Some(cn) = current.as_deref() {
+        if let Some(info) = ctx.classes.get(cn) {
+            if let Some(v) = info.constants.get(name).cloned() {
+                value = Some(v);
+                break;
+            }
+            current = info.parent.clone();
+        } else {
+            break;
+        }
+    }
+    if value.is_none() {
+        // Search interfaces (and parent interfaces) the class implements.
+        let mut visited: std::collections::HashSet<String> = Default::default();
+        let mut queue: Vec<String> = ctx
+            .classes
+            .get(&class_name)
+            .map(|info| info.interfaces.clone())
+            .unwrap_or_default();
+        // Direct interface receiver: include the receiver itself.
+        queue.push(class_name.clone());
+        while let Some(iface_name) = queue.pop() {
+            if !visited.insert(iface_name.clone()) {
+                continue;
+            }
+            if let Some(info) = ctx.interfaces.get(&iface_name) {
+                if let Some(v) = info.constants.get(name).cloned() {
+                    value = Some(v);
+                    break;
+                }
+                queue.extend(info.parents.iter().cloned());
+            }
+        }
+    }
+    let value = value.expect("type checker rejected unresolved class constant");
+    super::emit_expr(&value, emitter, ctx, data)
 }
 
 pub(super) fn emit_new_scoped_object(

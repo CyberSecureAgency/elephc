@@ -1,3 +1,13 @@
+//! Purpose:
+//! Provides type-directed load, store, branch, jump, conversion, and refcount helpers for result values.
+//! Normalizes scalar, string, array, object, and Mixed value movement across emitters.
+//!
+//! Called from:
+//! - `crate::codegen::expr`, `crate::codegen::stmt`, and function cleanup emitters
+//!
+//! Key details:
+//! - Refcounted values require balanced retain/release behavior around borrowed and owned temporaries.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 use crate::types::PhpType;

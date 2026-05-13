@@ -1,3 +1,13 @@
+//! Purpose:
+//! Collects runtime emitters for system builtins, JSON, dates, regex, argv, and fatal helpers.
+//! The module owns re-export wiring for helpers that bridge PHP semantics to libc or emitted state machines.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` during the system runtime section.
+//!
+//! Key details:
+//! - System helpers must preserve PHP-visible behavior while crossing libc, syscall, JSON, regex, and date formatter boundaries.
+
 mod build_argv;
 mod date;
 mod date_data;

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Lowers static method call target selection and invocation.
+//! Shares receiver preparation and ABI call conventions with the object call dispatcher.
+//!
+//! Called from:
+//! - `crate::codegen::expr::objects::dispatch`
+//!
+//! Key details:
+//! - Receiver ownership, late/static binding, and vtable slot layout must match class metadata emission.
+
 use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;

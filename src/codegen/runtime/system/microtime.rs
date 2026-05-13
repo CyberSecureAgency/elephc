@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_microtime` runtime helper assembly for microtime.
+//! Keeps PHP builtin semantics, libc/syscall boundaries, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::system`.
+//!
+//! Key details:
+//! - System helpers must preserve PHP-visible behavior while crossing libc, syscall, JSON, regex, and date formatter boundaries.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 

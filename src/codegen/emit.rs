@@ -1,3 +1,13 @@
+//! Purpose:
+//! Owns the assembly text builder and target-aware syntax helpers used by all emitters.
+//! Centralizes labels, directives, relocation forms, comments, and raw text output.
+//!
+//! Called from:
+//! - `crate::codegen::generate()` and all `crate::codegen::*` emitters
+//!
+//! Key details:
+//! - Instruction comments are emitted by callers; this module preserves target syntax and output ordering.
+
 use std::fmt::Write;
 
 use super::platform::{Arch, Platform, Target};

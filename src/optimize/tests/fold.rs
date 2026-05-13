@@ -1,3 +1,13 @@
+//! Purpose:
+//! Regression tests for optimizer fold behavior over parser AST fixtures.
+//! Documents the pass contracts that must survive control-flow, effect, and scalar rewrites.
+//!
+//! Called from:
+//! - `crate::optimize::tests` through Rust's test harness
+//!
+//! Key details:
+//! - Fixtures are intentionally small and structural; expected AST equality captures observable optimizer semantics.
+
 use super::*;
 
 #[test]
@@ -83,6 +93,7 @@ fn test_fold_string_concat_and_property_default() {
             Span::dummy(),
         )),
         span: Span::dummy(),
+        attributes: Vec::new(),
     };
 
     let folded = fold_constants(vec![Stmt::new(
@@ -96,6 +107,7 @@ fn test_fold_string_concat_and_property_default() {
             trait_uses: Vec::new(),
             properties: vec![property],
             methods: Vec::new(),
+        constants: Vec::new(),
         },
         Span::dummy(),
     )]);

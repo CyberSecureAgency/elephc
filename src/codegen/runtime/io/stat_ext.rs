@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_filesize`, `__rt_filemtime` runtime helper assembly for stat ext.
+//! Keeps PHP filesystem/resource behavior, libc calls, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::io`.
+//!
+//! Key details:
+//! - I/O helpers bridge PHP strings, resources, descriptors, and libc calls while returning runtime arrays or pointer/length strings.
+
 use crate::codegen::{emit::Emitter, platform::Arch};
 
 /// Extra stat-derived metadata helpers: fileatime/filectime/fileperms/fileowner/

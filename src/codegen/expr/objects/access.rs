@@ -1,3 +1,13 @@
+//! Purpose:
+//! Lowers property reads, magic access paths, and nullable object field loads.
+//! Produces object-related expression results while respecting runtime metadata and ownership rules.
+//!
+//! Called from:
+//! - `crate::codegen::expr::objects`
+//!
+//! Key details:
+//! - Object handles, property storage, and class ids must stay consistent with emitted class tables.
+
 use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
@@ -292,6 +302,16 @@ pub(super) fn emit_loaded_object_property_access(
                     &[PhpType::Str],
                     emitter,
                     ctx,
+                );
+            }
+            if class_info.allow_dynamic_properties {
+                let dyn_slot_offset = 8 + class_info.properties.len() * 16;
+                return crate::codegen::stmt::emit_dynamic_property_get(
+                    property,
+                    dyn_slot_offset,
+                    emitter,
+                    ctx,
+                    data,
                 );
             }
             emitter.comment(&format!("WARNING: undefined property {}", property));

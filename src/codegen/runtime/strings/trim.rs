@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_trim`, `__rt_ltrim` runtime helper assembly for trim.
+//! Keeps PHP byte-string pointer/length behavior and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::strings`.
+//!
+//! Key details:
+//! - Trim helpers scan byte ranges without copying unless the returned pointer/length slice changes.
+
 use crate::codegen::{emit::Emitter, platform::Arch};
 
 /// trim: strip whitespace from both ends. Returns adjusted ptr+len (no copy needed).

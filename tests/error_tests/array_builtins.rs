@@ -1,3 +1,12 @@
+//! Purpose:
+//! Integration or regression tests for diagnostic coverage of array builtins, including array mixed type checks, array union operand checks, and indexed array union compatible element types.
+//!
+//! Called from:
+//! - `cargo test` through Rust's test harness.
+//!
+//! Key details:
+//! - Invalid PHP snippets are checked through shared diagnostic helpers for messages, spans, and recovery behavior.
+
 use super::*;
 
 #[test]
@@ -9,10 +18,10 @@ fn test_assoc_array_mixed_type_checks() {
 }
 
 #[test]
-fn test_error_array_union_requires_same_container_kind() {
+fn test_error_array_union_requires_array_operands() {
     expect_error(
-        r#"<?php $result = [1, 2] + ["a" => 3];"#,
-        "Array union requires both operands to be arrays of the same kind",
+        r#"<?php $result = [1, 2] + 3;"#,
+        "Array union requires both operands to be arrays",
     );
 }
 
@@ -385,10 +394,10 @@ fn test_error_static_property_array_push_requires_array() {
 }
 
 #[test]
-fn test_error_array_literal_rejects_unrelated_object_types() {
-    expect_error(
-        "<?php class Dog {} class Car {} $items = [new Dog(), new Car()];",
-        "Array element type mismatch",
+fn test_indexed_array_unrelated_object_values_widen_to_mixed() {
+    assert!(
+        check_source("<?php class Dog {} class Car {} $items = [new Dog(), new Car()];").is_ok(),
+        "heterogeneous indexed-array values should widen to mixed",
     );
 }
 

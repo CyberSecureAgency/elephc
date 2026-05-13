@@ -1,3 +1,12 @@
+//! Purpose:
+//! Integration or regression tests for end-to-end codegen coverage of runtime GC copy-on-write and cycle handling, including GC local alias survives original unset, copy-on-write indexed array alias write does not mutate source, and copy-on-write assoc array alias write does not mutate source.
+//!
+//! Called from:
+//! - `cargo test` through Rust's test harness.
+//!
+//! Key details:
+//! - Inline PHP fixtures are compiled to native binaries and assertions compare stdout or expected failures.
+
 use crate::support::*;
 
 #[test]
@@ -371,8 +380,10 @@ unset($b);
     let (cyclic_allocs, cyclic_frees) = parse_gc_stats(&cyclic.stderr);
     assert_eq!(acyclic.stdout, "");
     assert_eq!(cyclic.stdout, "");
-    assert_eq!(cyclic_allocs, acyclic_allocs + 1);
-    assert_eq!(cyclic_frees, acyclic_frees + 1);
+    // The second array-to-array assignment forms a cycle and now converts the
+    // second indexed int array to boxed Mixed slots before storing the peer.
+    assert_eq!(cyclic_allocs, acyclic_allocs + 3);
+    assert_eq!(cyclic_frees, acyclic_frees + 3);
 }
 
 #[test]

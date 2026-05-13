@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits runtime diagnostic suppression and warning-output helpers.
+//! The helpers implement PHP-style @ suppression depth and stderr warning writes for each target ABI.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` before PHP-visible helper emission.
+//!
+//! Key details:
+//! - Suppression depth lives in _rt_diag_suppression and warning output must follow each target syscall ABI.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 

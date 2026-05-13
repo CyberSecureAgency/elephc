@@ -1,3 +1,13 @@
+//! Purpose:
+//! Coordinates assembly generation for complete programs and re-exports shared codegen helpers.
+//! Builds class metadata, emits user code, and assembles the runtime-facing sections.
+//!
+//! Called from:
+//! - `crate::pipeline::compile()` through `crate::codegen::generate()`
+//!
+//! Key details:
+//! - Keeps frontend type metadata, runtime cache assumptions, and target-specific emission ordered before linking.
+
 mod abi;
 mod builtins;
 mod class_methods;
@@ -31,8 +41,10 @@ use emit::Emitter;
 use interface_wrappers::emit_interface_return_wrappers;
 use main_emission::emit_main_and_finalize;
 pub(crate) use driver_support::{
-    emit_box_current_value_as_mixed, emit_box_iterable_value_for_mixed_container,
-    emit_box_runtime_payload_as_mixed, emit_normalized_hash_key, runtime_value_tag,
+    emit_box_current_expr_value_as_mixed_for_container, emit_box_current_value_as_mixed,
+    emit_box_iterable_value_for_mixed_container, emit_box_runtime_payload_as_mixed,
+    emit_normalized_hash_key, emit_release_pushed_refcounted_temp_after_array_push,
+    runtime_value_tag,
 };
 pub use driver_support::generate_runtime;
 use platform::Target;

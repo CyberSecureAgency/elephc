@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits compiler-extension `buffer_len` operations for runtime buffer values.
+//! Keeps buffer pointer/length ABI handling near array-like builtin dispatch.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::arrays::emit()`.
+//!
+//! Key details:
+//! - Buffer helpers operate on raw runtime handles and must not treat them as PHP arrays.
+
 use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;

@@ -1,4 +1,12 @@
-//! Fiber runtime — cooperative coroutines (PHP 8.1 Fiber semantics).
+//! Purpose:
+//! Emits runtime support for PHP 8.1-style cooperative Fibers.
+//! Owns object layout constants, stack allocation, context switching, and public API helper wiring.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()`.
+//!
+//! Key details:
+//! - Fiber state, saved registers, stack ownership, and transfer values must stay consistent across suspend/resume/throw paths.
 //!
 //! Object layout (allocated via __rt_heap_alloc, "object instance" kind):
 //!

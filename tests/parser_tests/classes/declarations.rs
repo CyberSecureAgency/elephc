@@ -1,3 +1,12 @@
+//! Purpose:
+//! Integration or regression tests for parser AST coverage of class declarations, including class decl, new object, and class decl with extends.
+//!
+//! Called from:
+//! - `cargo test` through Rust's test harness.
+//!
+//! Key details:
+//! - Inline PHP snippets are parsed and assertions inspect AST shape, precedence, or expected parse failures.
+
 use super::*;
 
 #[test]
@@ -80,6 +89,7 @@ fn test_parse_interface_decl() {
             name,
             extends,
             methods,
+            ..
         } => {
             assert_eq!(name, "Named");
             assert_eq!(

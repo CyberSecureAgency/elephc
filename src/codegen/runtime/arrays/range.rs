@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_range`, `__rt_range_descending` runtime helper assembly for range.
+//! Keeps PHP array/hash storage, heap ownership, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::arrays`.
+//!
+//! Key details:
+//! - Range allocation must size the output array before filling so capacity and heap accounting stay consistent.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 

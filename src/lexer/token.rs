@@ -1,3 +1,13 @@
+//! Purpose:
+//! Defines the complete token vocabulary accepted by the PHP frontend.
+//! Represents PHP keywords, literals, operators, punctuation, magic constants, and extensions.
+//!
+//! Called from:
+//! - `crate::lexer::scan` when emitting tokens and `crate::parser` when matching syntax.
+//!
+//! Key details:
+//! - Token names must track PHP-compatible spelling and precedence-sensitive operators exactly.
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     // Structural
@@ -102,6 +112,8 @@ pub enum Token {
     This,           // $this
     Extern,         // extern
     Packed,         // packed
+    Yield,          // yield (also: `yield from`; `from` parsed contextually)
+    AttrOpen,       // #[ (start of attribute group)
 
     // Operators
     Assign,         // =

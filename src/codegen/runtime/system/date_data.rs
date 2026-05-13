@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits fixed date-format lookup tables for the system date helpers.
+//! Month and weekday names here are addressed directly by the generated __rt_date formatters.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::system::emit_date_data()` during fixed data emission.
+//!
+//! Key details:
+//! - Data symbol names are consumed directly by __rt_date and must not drift from formatter lookups.
+
 /// Emit day and month name lookup tables as data.
 pub(crate) fn emit_date_data() -> String {
     let mut out = String::new();

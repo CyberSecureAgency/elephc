@@ -1,3 +1,13 @@
+//! Purpose:
+//! Owns assembler and linker process invocation for generated user and runtime objects.
+//! Translates target metadata plus user link options into platform-specific tool commands.
+//!
+//! Called from:
+//! - `crate::pipeline::compile()` after codegen writes assembly and prepares the runtime object.
+//!
+//! Key details:
+//! - Target-specific command flags must stay aligned with `crate::codegen::platform::Target`.
+
 use std::path::Path;
 use std::process::{self, Command};
 

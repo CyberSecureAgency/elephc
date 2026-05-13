@@ -1,3 +1,13 @@
+//! Purpose:
+//! Rewrites statement lists while applying `ifdef` conditions from the CLI.
+//! Chooses active conditional branches and recurses through all statement-owned child bodies.
+//!
+//! Called from:
+//! - `crate::conditional::apply()` and `crate::conditional::exprs::rewrite_expr()`.
+//!
+//! Key details:
+//! - Branch removal must happen structurally so later passes never see statements from inactive code.
+
 use std::collections::HashSet;
 
 use crate::parser::ast::{CatchClause, Stmt, StmtKind};
@@ -21,7 +31,11 @@ pub(super) fn apply_stmts(stmts: Vec<Stmt>, defines: &HashSet<String>) -> Vec<St
                 result.extend(apply_stmts(selected, defines));
             }
             other => {
-                result.push(Stmt::new(rewrite_stmt_kind(other, defines), stmt.span));
+                result.push(Stmt::with_attributes(
+                    rewrite_stmt_kind(other, defines),
+                    stmt.span,
+                    stmt.attributes,
+                ));
             }
         }
     }
@@ -194,6 +208,7 @@ fn rewrite_stmt_kind(kind: StmtKind, defines: &HashSet<String>) -> StmtKind {
             trait_uses,
             properties,
             methods,
+        constants,
         } => StmtKind::ClassDecl {
             name,
             extends,
@@ -217,6 +232,7 @@ fn rewrite_stmt_kind(kind: StmtKind, defines: &HashSet<String>) -> StmtKind {
                     method
                 })
                 .collect(),
+        constants,
         },
         StmtKind::EnumDecl {
             name,
@@ -237,16 +253,19 @@ fn rewrite_stmt_kind(kind: StmtKind, defines: &HashSet<String>) -> StmtKind {
             name,
             extends,
             methods,
+        constants,
         } => StmtKind::InterfaceDecl {
             name,
             extends,
             methods,
+        constants,
         },
         StmtKind::TraitDecl {
             name,
             trait_uses,
             properties,
             methods,
+        constants,
         } => StmtKind::TraitDecl {
             name,
             trait_uses,
@@ -265,6 +284,7 @@ fn rewrite_stmt_kind(kind: StmtKind, defines: &HashSet<String>) -> StmtKind {
                     method
                 })
                 .collect(),
+        constants,
         },
         StmtKind::PropertyAssign {
             object,

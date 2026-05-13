@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_preg_match_all`, `__rt_preg_strip` runtime helper assembly for preg match all.
+//! Keeps PHP builtin semantics, libc/syscall boundaries, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::system`.
+//!
+//! Key details:
+//! - Regex helpers translate PHP PCRE-flavored inputs to POSIX/libc calls and must preserve match array construction.
+
 use crate::codegen::{emit::Emitter, platform::Arch};
 
 /// __rt_preg_match_all: count all non-overlapping matches of regex in subject.

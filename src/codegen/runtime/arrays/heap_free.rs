@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_heap_free`, `__rt_heap_free_done` runtime helper assembly for heap free.
+//! Keeps PHP array/hash storage, heap ownership, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::arrays`.
+//!
+//! Key details:
+//! - Heap helpers own allocator metadata, debug accounting, and free-list invariants used by all refcounted runtime values.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 

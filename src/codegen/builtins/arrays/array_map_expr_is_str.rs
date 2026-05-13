@@ -1,3 +1,13 @@
+//! Purpose:
+//! Classifies array_map callback expressions whose return value can be treated as a string.
+//! Keeps AST-level callback inspection separate from array_map emission mechanics.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::arrays::array_map_callback_returns_str::callback_returns_str()`.
+//!
+//! Key details:
+//! - Only use syntactic facts here; semantic callable validation remains in the type checker.
+
 use crate::parser::ast::{BinOp, Expr, ExprKind};
 
 /// Check if an expression produces a string result.

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_strtotime`, `__rt_strtotime_fail` runtime helper assembly for strtotime.
+//! Keeps PHP builtin semantics, libc/syscall boundaries, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::system`.
+//!
+//! Key details:
+//! - The parser accepts a supported PHP date/time subset and feeds normalized fields into the runtime mktime helper.
+
 use crate::codegen::{emit::Emitter, platform::Arch};
 
 /// __rt_strtotime: parse a date/time string into a Unix timestamp.

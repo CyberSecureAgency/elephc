@@ -1,3 +1,13 @@
+//! Purpose:
+//! Builds user-program runtime metadata as assembly text.
+//! This owns class, interface, vtable, enum, static-property, and source-location tables generated from analysis.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::data::emit_runtime_data_user()`.
+//!
+//! Key details:
+//! - User data is program-specific and must match class ids, static property slots, and generated call sites.
+
 use std::collections::{HashMap, HashSet};
 
 use crate::names::{
@@ -6,6 +16,8 @@ use crate::names::{
 };
 use crate::parser::ast::Visibility;
 use crate::types::{ClassInfo, EnumInfo, InterfaceInfo, PhpType};
+
+use super::instanceof::escaped_ascii;
 
 /// Emit the user-dependent data section — globals, statics, class metadata.
 /// This changes per program and cannot be cached.
@@ -76,6 +88,10 @@ pub(crate) fn emit_runtime_data_user(
 
     let mut sorted_interfaces: Vec<(&String, &InterfaceInfo)> = interfaces.iter().collect();
     sorted_interfaces.sort_by_key(|(_, interface_info)| interface_info.interface_id);
+    let all_class_id_by_name: HashMap<String, u64> = classes
+        .iter()
+        .map(|(name, class_info)| (name.clone(), class_info.class_id))
+        .collect();
     let mut sorted_classes: Vec<(&String, &ClassInfo)> = classes.iter().collect();
     if let Some(allowed_class_names) = allowed_class_names {
         sorted_classes.retain(|(class_name, _)| allowed_class_names.contains(*class_name));
@@ -100,19 +116,26 @@ pub(crate) fn emit_runtime_data_user(
     // that a Fiber being garbage-collected releases its 256 KB stack instead
     // of leaking it. Defaults to u64::MAX when Fiber is not in scope (which
     // never happens in practice — Fiber is always injected as a built-in).
-    let fiber_class_id = class_id_by_name
+    let fiber_class_id = all_class_id_by_name
         .get("Fiber")
         .copied()
         .unwrap_or(u64::MAX);
     out.push_str(".globl _fiber_class_id\n_fiber_class_id:\n");
     out.push_str(&format!("    .quad {}\n", fiber_class_id));
 
-    let fiber_error_class_id = class_id_by_name
+    let fiber_error_class_id = all_class_id_by_name
         .get("FiberError")
         .copied()
         .unwrap_or(u64::MAX);
     out.push_str(".globl _fiber_error_class_id\n_fiber_error_class_id:\n");
     out.push_str(&format!("    .quad {}\n", fiber_error_class_id));
+
+    let generator_class_id = all_class_id_by_name
+        .get("Generator")
+        .copied()
+        .unwrap_or(u64::MAX);
+    out.push_str(".globl _generator_class_id\n_generator_class_id:\n");
+    out.push_str(&format!("    .quad {}\n", generator_class_id));
 
     out.push_str(".globl _interface_count\n_interface_count:\n");
     out.push_str(&format!("    .quad {}\n", sorted_interfaces.len()));
@@ -229,6 +252,131 @@ pub(crate) fn emit_runtime_data_user(
         ".globl _class_static_vtable_missing\n_class_static_vtable_missing:\n",
     );
     out.push_str("    .quad 0\n");
+
+    // -- attribute metadata (PHP 8 attributes, future ReflectionClass) --
+    // Per-class layout: count followed by (name_ptr, name_len) pairs.
+    // Top-level pointer table indexes by class_id.
+    out.push_str(".p2align 3\n");
+    out.push_str(".globl _class_attribute_count\n_class_attribute_count:\n");
+    out.push_str(&format!(
+        "    .quad {}\n",
+        max_class_id.map_or(0, |class_id| class_id + 1)
+    ));
+    out.push_str(".globl _class_attribute_ptrs\n_class_attribute_ptrs:\n");
+    if let Some(max_class_id) = max_class_id {
+        for class_id in 0..=max_class_id {
+            let has_attrs = class_info_by_id
+                .get(&class_id)
+                .is_some_and(|info| !info.attribute_names.is_empty());
+            if has_attrs {
+                out.push_str(&format!("    .quad _class_attributes_{}\n", class_id));
+            } else {
+                out.push_str("    .quad _class_attributes_missing\n");
+            }
+        }
+    }
+    out.push_str(".globl _class_attributes_missing\n_class_attributes_missing:\n");
+    out.push_str("    .quad 0\n"); // count = 0
+
+    // Per-class attribute payloads. The per-class table holds 32-byte
+    // entries: `(name_ptr, name_len, args_count, args_ptr)`. The args_ptr
+    // points to a block of 24-byte tagged-arg entries — one per literal
+    // argument captured at parse time. Each entry is laid out as
+    // `(tag, lo, hi)` matching the runtime mixed-cell ABI:
+    //
+    //   tag 0 = int   (lo = i64 value,         hi = 0)
+    //   tag 1 = str   (lo = .ascii label addr, hi = byte length)
+    //   tag 3 = bool  (lo = 0 or 1,            hi = 0)
+    //   tag 8 = null  (lo = 0,                 hi = 0)
+    //
+    // Unsupported args are represented as absent metadata by
+    // `collect_attribute_args`; reflection helpers reject queries that would
+    // need those payloads before codegen reaches this table. Float and other
+    // mixed-cell payloads are reserved for future iterations.
+    if let Some(max_class_id) = max_class_id {
+        let mut name_id = 0u64;
+        let mut arg_str_id = 0u64;
+        let mut args_block_id = 0u64;
+        for class_id in 0..=max_class_id {
+            let Some(info) = class_info_by_id.get(&class_id) else {
+                continue;
+            };
+            if info.attribute_names.is_empty() {
+                continue;
+            }
+            let mut entries = Vec::with_capacity(info.attribute_names.len());
+            for (idx, name) in info.attribute_names.iter().enumerate() {
+                let name_label = format!("_attr_name_{}", name_id);
+                name_id += 1;
+                out.push_str(&format!(".globl {0}\n{0}:\n", name_label));
+                out.push_str(&format!("    .ascii \"{}\"\n", escaped_ascii(name)));
+
+                let empty_fallback = Vec::new();
+                let args = info
+                    .attribute_args
+                    .get(idx)
+                    .and_then(Option::as_ref)
+                    .unwrap_or(&empty_fallback);
+                let args_label = if args.is_empty() {
+                    None
+                } else {
+                    // Intern any string-arg payload first so the per-arg
+                    // table can reference it by label, then emit the tagged
+                    // (tag, lo, hi) rows in source order.
+                    let mut arg_rows = Vec::with_capacity(args.len());
+                    for arg in args {
+                        match arg {
+                            crate::types::AttrArgValue::Str(value) => {
+                                let label = format!("_attr_arg_str_{}", arg_str_id);
+                                arg_str_id += 1;
+                                out.push_str(&format!(".globl {0}\n{0}:\n", label));
+                                out.push_str(&format!(
+                                    "    .ascii \"{}\"\n",
+                                    escaped_ascii(value)
+                                ));
+                                arg_rows.push((1u64, label, value.len() as u64));
+                            }
+                            crate::types::AttrArgValue::Int(value) => {
+                                arg_rows.push((0u64, format!("{}", *value as u64), 0u64));
+                            }
+                            crate::types::AttrArgValue::Bool(value) => {
+                                arg_rows.push((3u64, format!("{}", *value as u64), 0u64));
+                            }
+                            crate::types::AttrArgValue::Null => {
+                                arg_rows.push((8u64, "0".to_string(), 0u64));
+                            }
+                        }
+                    }
+                    out.push_str("    .p2align 3\n");
+                    let block_label = format!("_attr_args_{}", args_block_id);
+                    args_block_id += 1;
+                    out.push_str(&format!(".globl {0}\n{0}:\n", block_label));
+                    for (tag, lo, hi) in arg_rows {
+                        out.push_str(&format!("    .quad {}\n", tag));
+                        out.push_str(&format!("    .quad {}\n", lo));
+                        out.push_str(&format!("    .quad {}\n", hi));
+                    }
+                    Some(block_label)
+                };
+                entries.push((name_label, name.len(), args.len(), args_label));
+            }
+            out.push_str("    .p2align 3\n");
+            out.push_str(&format!(
+                ".globl _class_attributes_{0}\n_class_attributes_{0}:\n",
+                class_id
+            ));
+            out.push_str(&format!("    .quad {}\n", info.attribute_names.len()));
+            for (name_label, name_len, args_count, args_label) in entries {
+                out.push_str(&format!("    .quad {}\n", name_label));
+                out.push_str(&format!("    .quad {}\n", name_len));
+                out.push_str(&format!("    .quad {}\n", args_count));
+                out.push_str(&format!(
+                    "    .quad {}\n",
+                    args_label.as_deref().unwrap_or("0")
+                ));
+            }
+        }
+    }
 
     for (_, interface_info) in &sorted_interfaces {
         out.push_str(&format!(
@@ -503,6 +651,10 @@ mod tests {
             is_abstract: false,
             is_final: false,
             is_readonly_class: false,
+            allow_dynamic_properties: false,
+            constants: HashMap::new(),
+            attribute_names: Vec::new(),
+            attribute_args: Vec::new(),
             properties: Vec::new(),
             property_offsets: HashMap::new(),
             property_declaring_classes: HashMap::new(),

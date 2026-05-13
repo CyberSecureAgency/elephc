@@ -1,3 +1,13 @@
+//! Purpose:
+//! Generates stable labels used to track `include_once` and `require_once` execution.
+//! Converts file paths into assembly-safe identifiers for resolver/runtime coordination.
+//!
+//! Called from:
+//! - `crate::resolver::engine_includes::resolve_include_stmt()`.
+//!
+//! Key details:
+//! - Labels must be deterministic for a canonical path so repeated includes share one guard.
+
 use std::path::Path;
 
 pub(super) fn include_once_label(path: &Path) -> String {

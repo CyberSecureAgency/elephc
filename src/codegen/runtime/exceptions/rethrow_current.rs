@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_rethrow_current`, `__rt_throw_current` runtime helper assembly for rethrow current.
+//! Keeps exception object matching, unwinding state, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::exceptions`.
+//!
+//! Key details:
+//! - Exception matching and unwinding must keep handler-stack, call-frame cleanup, and class metadata invariants aligned.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 

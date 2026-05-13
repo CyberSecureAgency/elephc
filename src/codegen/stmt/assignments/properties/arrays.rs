@@ -1,3 +1,13 @@
+//! Purpose:
+//! Lowers array mutation paths that target object properties.
+//! Shares receiver and property metadata with object expression lowering.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::assignments::properties`
+//!
+//! Key details:
+//! - Property writes must respect declared types, visibility checks, and runtime object layout.
+
 use super::target;
 
 mod indexed;
@@ -27,7 +37,7 @@ pub(crate) fn emit_property_array_push_stmt(
     let obj_ty = emit_expr(object, emitter, ctx, data);
     let target = match target::resolve_property_assign_target(&obj_ty, property, None, emitter, ctx) {
         target::PropertyAssignResolution::Resolved(target) => target,
-        target::PropertyAssignResolution::UseMagicSet(_) | target::PropertyAssignResolution::Abort => {
+        target::PropertyAssignResolution::UseMagicSet(_) | target::PropertyAssignResolution::UseDynamicProperty { .. } | target::PropertyAssignResolution::Abort => {
             emitter.comment("WARNING: property array push requires a concrete array property");
             return;
         }

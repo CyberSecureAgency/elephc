@@ -1,3 +1,13 @@
+//! Purpose:
+//! Lowers parsed list destructuring patterns into ordinary assignment statements.
+//! Creates temporary value access expressions for positional and keyed destructuring entries.
+//!
+//! Called from:
+//! - `crate::parser::stmt::assign::list::parse_list_unpack()`.
+//!
+//! Key details:
+//! - Lowering preserves assignment target spans and skips invalid append targets that cannot be represented safely.
+
 use crate::parser::ast::{Expr, ExprKind, Stmt, StmtKind};
 use crate::span::Span;
 

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Collects runtime emitters for the compiler pointer extension.
+//! The module owns re-export wiring for pointer formatting, null checks, and C-string conversion helpers.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` during the pointer runtime section.
+//!
+//! Key details:
+//! - Pointer helpers must keep null checks and C-string conversions aligned with the pointer extension ABI.
+
 mod cstr_to_str;
 mod ptoa;
 mod ptr_check_nonnull;

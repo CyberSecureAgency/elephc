@@ -1,3 +1,13 @@
+//! Purpose:
+//! Stores function entry parameters from ABI registers or caller stack into compiler local slots.
+//! Handles scalar, float, string-pair, and aggregate parameter shapes for each target.
+//!
+//! Called from:
+//! - `crate::codegen::functions` during function and wrapper prologue emission
+//!
+//! Key details:
+//! - Incoming cursor state must match outgoing assignment rules or calls will corrupt frame slots.
+
 use crate::codegen::{
     emit::Emitter,
     platform::Arch,

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Owns the main PHP token scanning loop and dispatches literal-specific scanners.
+//! Skips whitespace/comments and emits structural, operator, keyword, and literal tokens.
+//!
+//! Called from:
+//! - `crate::lexer::tokenize()`.
+//!
+//! Key details:
+//! - Multi-character operators and PHP opening tags must be recognized before shorter prefixes.
+
 use super::cursor::Cursor;
 use super::literals;
 use super::token::Token;
@@ -60,6 +70,14 @@ fn skip_whitespace_and_comments(cursor: &mut Cursor) {
         }
 
         if cursor.remaining().starts_with("//") {
+            while let Some(ch) = cursor.advance() {
+                if ch == '\n' { break; }
+            }
+            continue;
+        }
+
+        if cursor.remaining().starts_with('#') && !cursor.remaining().starts_with("#[") {
+            // PHP line comment introduced by `#` (but `#[` opens an attribute group).
             while let Some(ch) = cursor.advance() {
                 if ch == '\n' { break; }
             }
@@ -247,6 +265,16 @@ fn scan_token(cursor: &mut Cursor) -> Result<Token, CompileError> {
         // '"' is handled in the main loop (interpolation support)
         '\'' => literals::scan_single_string(cursor),
         '@' => { cursor.advance(); Ok(Token::At) }
+        '#' => {
+            if cursor.remaining().starts_with("#[") {
+                cursor.advance(); // consume '#'
+                cursor.advance(); // consume '['
+                Ok(Token::AttrOpen)
+            } else {
+                // Bare '#' that wasn't consumed by skip_whitespace_and_comments
+                Err(CompileError::new(cursor.span(), "Unexpected '#'"))
+            }
+        }
         '$' => literals::scan_variable(cursor),
         '0'..='9' => literals::scan_number(cursor),
         'a'..='z' | 'A'..='Z' | '_' => literals::scan_keyword(cursor),

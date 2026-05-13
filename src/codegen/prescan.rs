@@ -1,3 +1,13 @@
+//! Purpose:
+//! Scans the typed program before emission to discover globals, constants, and static storage needs.
+//! Seeds codegen context with symbols that later passes reference from generated assembly.
+//!
+//! Called from:
+//! - `crate::codegen::generate()` before main and function emission
+//!
+//! Key details:
+//! - The scan must mirror AST constructs that can allocate storage without evaluating program side effects.
+
 use std::collections::{HashMap, HashSet};
 
 use crate::codegen::platform::Platform;

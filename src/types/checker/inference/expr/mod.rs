@@ -1,18 +1,25 @@
+//! Purpose:
+//! Dispatches expression inference for assignments, class references, closures, and side-effecting forms.
+//! Feeds statement checking, function call validation, and optimizer-visible type metadata.
+//!
+//! Called from:
+//! - `crate::types::checker::Checker::infer_type()`
+//!
+//! Key details:
+//! - Inference must preserve PHP evaluation errors and avoid treating effectful expressions as pure type facts.
+
 use crate::errors::CompileError;
 use crate::parser::ast::{Expr, ExprKind};
 use crate::types::{
     merge_array_key_types, normalized_array_key_type, packed_type_size, PhpType, TypeEnv,
 };
-
 mod assignments;
 mod class_refs;
 mod effects;
 mod static_closure;
-
 use super::super::Checker;
 use super::syntactic::wider_type_syntactic;
 use static_closure::body_must_not_use_this;
-
 impl Checker {
     pub fn infer_type(&mut self, expr: &Expr, env: &TypeEnv) -> Result<PhpType, CompileError> {
         match &expr.kind {
@@ -111,7 +118,7 @@ impl Checker {
             }
             ExprKind::ArrayLiteral(elems) => {
                 if elems.is_empty() {
-                    return Ok(PhpType::Array(Box::new(PhpType::Int)));
+                    return Ok(PhpType::Array(Box::new(PhpType::Never)));
                 }
                 let mut elem_ty = self.infer_type(&elems[0], env)?;
                 for elem in &elems[1..] {
@@ -121,13 +128,7 @@ impl Checker {
                             elem_ty = merged_ty;
                             continue;
                         }
-                        return Err(CompileError::new(
-                            elem.span,
-                            &format!(
-                                "Array element type mismatch: expected {:?}, got {:?}",
-                                elem_ty, ty
-                            ),
-                        ));
+                        elem_ty = PhpType::Mixed;
                     }
                 }
                 Ok(PhpType::Array(Box::new(elem_ty)))
@@ -415,10 +416,6 @@ impl Checker {
             ExprKind::NewObject { class_name, args } => {
                 self.infer_new_object_type(class_name.as_str(), args, expr, env)
             }
-            ExprKind::EnumCase {
-                enum_name,
-                case_name,
-            } => self.infer_enum_case_type(enum_name.as_str(), case_name, expr),
             ExprKind::PropertyAccess { object, property } => {
                 self.infer_property_access_type(object, property, expr, env)
             }
@@ -451,6 +448,9 @@ impl Checker {
             ExprKind::ClassConstant { receiver } => {
                 self.validate_class_constant_receiver(receiver, expr.span)?;
                 Ok(PhpType::Str)
+            }
+            ExprKind::ScopedConstantAccess { receiver, name } => {
+                self.infer_scoped_constant_access(receiver, name, expr)
             }
             ExprKind::NewScopedObject { receiver, args } => {
                 let class_name = match receiver {
@@ -492,6 +492,35 @@ impl Checker {
                     crate::parser::ast::StaticReceiver::Named(name) => name.as_canonical(),
                 };
                 self.infer_new_object_type(&class_name, args, expr, env)
+            }
+            ExprKind::Yield { key, value } => {
+                if let Some(k) = key {
+                    self.infer_type(k, env)?;
+                }
+                if let Some(v) = value {
+                    self.infer_type(v, env)?;
+                }
+                Ok(PhpType::Mixed)
+            }
+            ExprKind::YieldFrom(inner) => {
+                let inner_ty = self.infer_type(inner, env)?;
+                let supported = match &inner.kind {
+                    ExprKind::ArrayLiteral(_) => true,
+                    ExprKind::FunctionCall { .. } | ExprKind::Variable(_) => {
+                        self.type_accepts(&PhpType::Object("Generator".to_string()), &inner_ty)
+                    }
+                    _ => false,
+                };
+                if !supported {
+                    return Err(CompileError::new(
+                        inner.span,
+                        &format!(
+                            "yield from expects an array literal or Generator, got {:?}",
+                            inner_ty
+                        ),
+                    ));
+                }
+                Ok(PhpType::Mixed)
             }
             ExprKind::MagicConstant(_) => {
                 unreachable!("MagicConstant must be lowered before type inference")

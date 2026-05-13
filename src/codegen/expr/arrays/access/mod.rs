@@ -1,3 +1,13 @@
+//! Purpose:
+//! Dispatches array access expression lowering across indexed arrays, buffers, and match-specific reads.
+//! Keeps container-specific addressing details out of the main expression dispatcher.
+//!
+//! Called from:
+//! - `crate::codegen::expr::arrays`
+//!
+//! Key details:
+//! - Access paths must agree on nullable, boxed Mixed, and borrowed-result ownership conventions.
+
 mod buffer;
 mod indexed;
 mod match_expr;

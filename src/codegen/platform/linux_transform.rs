@@ -1,3 +1,13 @@
+//! Purpose:
+//! Rewrites generated assembly where Linux syntax or relocation rules differ from the default target.
+//! Keeps target post-processing separate from high-level codegen emitters.
+//!
+//! Called from:
+//! - `crate::codegen::platform::toolchain` before Linux assembly is assembled
+//!
+//! Key details:
+//! - Transforms must preserve labels and comments while changing only platform-sensitive syntax.
+
 /// macOS syscall number → Linux aarch64 syscall number.
 #[allow(dead_code)]
 pub(super) fn map_syscall(macos_num: u32) -> u32 {

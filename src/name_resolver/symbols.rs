@@ -1,3 +1,13 @@
+//! Purpose:
+//! Collects declared symbols needed for PHP namespace fallback and redeclaration-aware lookup.
+//! Records functions, constants, and class-like declarations using case-folded lookup keys.
+//!
+//! Called from:
+//! - `crate::name_resolver::resolve()` before rewriting references.
+//!
+//! Key details:
+//! - Builtin class-like symbols are seeded so unresolved user names can still bind to PHP builtins.
+
 use crate::names::{canonical_name_for_decl, php_symbol_key};
 use crate::parser::ast::{Stmt, StmtKind};
 

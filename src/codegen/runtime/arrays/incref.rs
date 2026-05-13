@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_incref`, `__rt_incref_skip` runtime helper assembly for incref.
+//! Keeps PHP array/hash storage, heap ownership, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::arrays`.
+//!
+//! Key details:
+//! - Increment helpers must recognize runtime heap kinds and avoid touching persistent or null-like values.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 

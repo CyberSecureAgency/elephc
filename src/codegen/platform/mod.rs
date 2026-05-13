@@ -1,3 +1,13 @@
+//! Purpose:
+//! Collects platform target descriptions, toolchain selection, and Linux assembly transforms.
+//! Provides target metadata used before and after user assembly emission.
+//!
+//! Called from:
+//! - `crate::codegen::generate()` and pipeline linking support
+//!
+//! Key details:
+//! - Target identity controls assembly syntax, object format, and post-processing assumptions.
+
 mod linux_transform;
 mod target;
 mod toolchain;

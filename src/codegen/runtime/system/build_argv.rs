@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_build_argv`, `__rt_array_new` runtime helper assembly for build argv.
+//! Keeps PHP builtin semantics, libc/syscall boundaries, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::system`.
+//!
+//! Key details:
+//! - The helper constructs PHP $argv arrays from OS argc/argv without taking ownership of OS-provided storage.
+
 use crate::codegen::{abi, emit::Emitter, platform::Arch};
 
 /// build_argv: create a PHP $argv array from OS argc/argv.

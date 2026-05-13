@@ -1,3 +1,13 @@
+//! Purpose:
+//! Provides small stack scratch helpers for preserving registers and staging temporary call values.
+//! Handles typed result pushes, pops, address calculations, and stack slot transfers.
+//!
+//! Called from:
+//! - `crate::codegen::abi::calls::outgoing` and expression/statement emitters
+//!
+//! Key details:
+//! - Temporary stack adjustments must remain balanced across nested calls and target alignment rules.
+
 use crate::codegen::{emit::Emitter, platform::Arch};
 use crate::types::PhpType;
 

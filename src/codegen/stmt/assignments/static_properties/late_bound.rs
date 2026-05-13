@@ -1,3 +1,13 @@
+//! Purpose:
+//! Lowers late static binding and visibility branch emission.
+//! Works with static property symbols and class metadata instead of local frame slots.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::assignments::static_properties`
+//!
+//! Key details:
+//! - Late-bound receivers and visibility checks must match PHP inheritance semantics before storage is updated.
+
 use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::emit::Emitter;

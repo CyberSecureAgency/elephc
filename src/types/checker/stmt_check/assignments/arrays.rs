@@ -1,3 +1,13 @@
+//! Purpose:
+//! Type-checks assignment arrays forms.
+//! Updates type environments and validates storage-specific rules for locals, arrays, and properties.
+//!
+//! Called from:
+//! - `crate::types::checker::stmt_check::assignments`
+//!
+//! Key details:
+//! - Assignment checking must distinguish value writes, by-reference mutation, nullable access, and declared property contracts.
+
 use crate::errors::CompileError;
 use crate::parser::ast::Expr;
 use crate::span::Span;
@@ -29,7 +39,7 @@ pub(super) fn check_array_assign(
         if **elem_ty != val_ty {
             let merged_ty = checker
                 .merge_array_element_type(elem_ty, &val_ty)
-                .unwrap_or(val_ty);
+                .unwrap_or(PhpType::Mixed);
             env.insert(array.to_string(), PhpType::Array(Box::new(merged_ty)));
         }
     } else if let PhpType::AssocArray {
@@ -95,7 +105,7 @@ pub(super) fn check_array_push(
         if **elem_ty != val_ty {
             let merged_ty = checker
                 .merge_array_element_type(elem_ty, &val_ty)
-                .unwrap_or(val_ty);
+                .unwrap_or(PhpType::Mixed);
             env.insert(array.to_string(), PhpType::Array(Box::new(merged_ty)));
         }
     } else if matches!(arr_ty, PhpType::Buffer(_)) {

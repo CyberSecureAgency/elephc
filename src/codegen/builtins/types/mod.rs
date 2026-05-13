@@ -1,3 +1,13 @@
+//! Purpose:
+//! Dispatches type predicate, conversion, and variable-state PHP builtins to their focused codegen emitters.
+//! Keeps the public builtin category surface small while leaf files own lowering details.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::emit_builtin_call()`.
+//!
+//! Key details:
+//! - Dispatcher names must stay aligned with the builtin catalog and signature normalization layer.
+
 mod boolval;
 mod empty;
 mod floatval;

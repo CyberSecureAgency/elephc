@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_str_repeat`, `__rt_str_repeat_loop` runtime helper assembly for str repeat.
+//! Keeps PHP byte-string pointer/length behavior and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::strings`.
+//!
+//! Key details:
+//! - String helpers scan or transform byte ranges and return target ABI pointer/length pairs for generated call sites.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 

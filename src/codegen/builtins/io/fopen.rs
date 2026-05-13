@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `fopen` file input builtin calls.
+//! Coordinates path or stream arguments with runtime helpers that allocate returned strings or arrays.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::io::emit()`.
+//!
+//! Key details:
+//! - Failure paths must distinguish PHP false from empty string or empty array results.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

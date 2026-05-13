@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_rawurlencode`, `__rt_rawurlencode_loop` runtime helper assembly for rawurlencode.
+//! Keeps PHP byte-string pointer/length behavior and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::strings`.
+//!
+//! Key details:
+//! - URL encoding helpers are emitted byte scanners that must preserve PHP escaping rules for supported encodings.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 

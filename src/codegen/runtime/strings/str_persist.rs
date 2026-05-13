@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_str_persist`, `__rt_str_persist_done` runtime helper assembly for heap-backed string persistence.
+//! Keeps PHP byte-string pointer/length behavior and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::strings`.
+//!
+//! Key details:
+//! - String helpers scan or transform byte ranges and return target ABI pointer/length pairs for generated call sites.
+
 use crate::codegen::{emit::Emitter, platform::Arch};
 
 const X86_64_HEAP_MAGIC_HI32: u64 = 0x454C5048;

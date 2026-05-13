@@ -1,3 +1,13 @@
+//! Purpose:
+//! Groups iterative loop lowering and loop-exit handling for break and continue.
+//! Keeps loop label management separate from other control-flow statements.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::control_flow`
+//!
+//! Key details:
+//! - Break and continue must respect nested loop depth and cleanup skipped switch/loop stack state.
+
 mod exits;
 mod iterative;
 

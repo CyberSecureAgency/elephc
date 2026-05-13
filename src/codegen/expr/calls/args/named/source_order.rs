@@ -1,3 +1,13 @@
+//! Purpose:
+//! Lowers source-order evaluation for named and spread arguments.
+//! Works with the shared call-argument plan to preserve PHP named-argument semantics.
+//!
+//! Called from:
+//! - `crate::codegen::expr::calls::args::named`
+//!
+//! Key details:
+//! - Side effects occur in source order, while final argument materialization follows parameter and ABI order.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::{context::Context, data_section::DataSection};
 use crate::parser::ast::{Expr, ExprKind};
@@ -263,12 +273,17 @@ fn emit_source_order_named_spread_call_args(
             call_args::PlannedRegularArg::SpreadElement {
                 prefix_element_idx,
                 default,
+                guaranteed_present,
                 ..
             } => {
                 slot_sources.push(Some(FinalArgSource::PrefixElement {
                     prefix_temp_idx,
                     element_idx: *prefix_element_idx,
-                    default: default.clone(),
+                    default: if *guaranteed_present {
+                        None
+                    } else {
+                        default.clone()
+                    },
                 }));
             }
             call_args::PlannedRegularArg::Default(default) => {

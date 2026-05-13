@@ -1,3 +1,13 @@
+//! Purpose:
+//! Scans PHP string literal forms, including interpolation-aware double strings and heredocs.
+//! Emits string tokens plus interpolation boundary tokens that the parser can consume.
+//!
+//! Called from:
+//! - `crate::lexer::scan` through `crate::lexer::literals`.
+//!
+//! Key details:
+//! - Escape and interpolation behavior must preserve PHP-compatible text and source spans.
+
 use super::super::cursor::Cursor;
 use super::super::token::Token;
 use crate::errors::CompileError;

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_heap_debug_fail` runtime helper assembly for heap debug fail.
+//! Keeps PHP array/hash storage, heap ownership, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::arrays`.
+//!
+//! Key details:
+//! - Heap helpers own allocator metadata, debug accounting, and free-list invariants used by all refcounted runtime values.
+
 use crate::codegen::{emit::Emitter, platform::Arch};
 
 /// heap_debug_fail: print a heap-debug fatal error to stderr and terminate.

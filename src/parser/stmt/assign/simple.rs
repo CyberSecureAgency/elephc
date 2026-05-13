@@ -1,3 +1,13 @@
+//! Purpose:
+//! Parses statements that begin with a PHP variable token.
+//! Routes variable syntax to compound assignment, postfix assignment, or expression-statement parsing.
+//!
+//! Called from:
+//! - `crate::parser::stmt::parse_stmt()`.
+//!
+//! Key details:
+//! - Variable-leading statements are ambiguous, so dispatch order protects assignment-specific syntax first.
+
 use super::{compound, postfix};
 use crate::errors::CompileError;
 use crate::lexer::Token;

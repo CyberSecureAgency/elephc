@@ -1,3 +1,13 @@
+//! Purpose:
+//! Lowers closure invocation expressions and captured environment handling.
+//! Resolves the callable shape, prepares arguments, and leaves the call result for expression consumers.
+//!
+//! Called from:
+//! - `crate::codegen::expr::calls`
+//!
+//! Key details:
+//! - Callable metadata and argument signatures must stay synchronized with type checking and runtime dispatch.
+
 use crate::codegen::abi;
 use crate::codegen::context::{Context, DeferredClosure};
 use crate::codegen::data_section::DataSection;
@@ -8,11 +18,28 @@ use crate::types::{FunctionSig, PhpType};
 
 use super::args;
 
-fn infer_closure_return_type(body: &[Stmt], sig: &FunctionSig) -> PhpType {
-    fn collect_return_types(stmt: &Stmt, sig: &FunctionSig, return_types: &mut Vec<PhpType>) {
+fn infer_closure_return_type(
+    body: &[Stmt],
+    sig: &FunctionSig,
+    capture_types: &[(String, PhpType)],
+) -> PhpType {
+    if crate::types::checker::yield_validation::body_contains_yield(body) {
+        return PhpType::Object("Generator".to_string());
+    }
+
+    fn collect_return_types(
+        stmt: &Stmt,
+        sig: &FunctionSig,
+        capture_ctx: &Context,
+        return_types: &mut Vec<PhpType>,
+    ) {
         match &stmt.kind {
             StmtKind::Return(Some(expr)) => {
-                return_types.push(crate::codegen::functions::infer_local_type_pub(expr, sig));
+                return_types.push(crate::codegen::functions::infer_local_type_with_ctx(
+                    expr,
+                    sig,
+                    capture_ctx,
+                ));
             }
             StmtKind::Return(None) => {
                 return_types.push(PhpType::Void);
@@ -24,16 +51,16 @@ fn infer_closure_return_type(body: &[Stmt], sig: &FunctionSig) -> PhpType {
                 ..
             } => {
                 for stmt in then_body {
-                    collect_return_types(stmt, sig, return_types);
+                    collect_return_types(stmt, sig, capture_ctx, return_types);
                 }
                 for (_, body) in elseif_clauses {
                     for stmt in body {
-                        collect_return_types(stmt, sig, return_types);
+                        collect_return_types(stmt, sig, capture_ctx, return_types);
                     }
                 }
                 if let Some(body) = else_body {
                     for stmt in body {
-                        collect_return_types(stmt, sig, return_types);
+                        collect_return_types(stmt, sig, capture_ctx, return_types);
                     }
                 }
             }
@@ -42,7 +69,7 @@ fn infer_closure_return_type(body: &[Stmt], sig: &FunctionSig) -> PhpType {
             | StmtKind::For { body, .. }
             | StmtKind::Foreach { body, .. } => {
                 for stmt in body {
-                    collect_return_types(stmt, sig, return_types);
+                    collect_return_types(stmt, sig, capture_ctx, return_types);
                 }
             }
             StmtKind::Try {
@@ -51,28 +78,28 @@ fn infer_closure_return_type(body: &[Stmt], sig: &FunctionSig) -> PhpType {
                 finally_body,
             } => {
                 for stmt in try_body {
-                    collect_return_types(stmt, sig, return_types);
+                    collect_return_types(stmt, sig, capture_ctx, return_types);
                 }
                 for catch_clause in catches {
                     for stmt in &catch_clause.body {
-                        collect_return_types(stmt, sig, return_types);
+                        collect_return_types(stmt, sig, capture_ctx, return_types);
                     }
                 }
                 if let Some(body) = finally_body {
                     for stmt in body {
-                        collect_return_types(stmt, sig, return_types);
+                        collect_return_types(stmt, sig, capture_ctx, return_types);
                     }
                 }
             }
             StmtKind::Switch { cases, default, .. } => {
                 for (_, body) in cases {
                     for stmt in body {
-                        collect_return_types(stmt, sig, return_types);
+                        collect_return_types(stmt, sig, capture_ctx, return_types);
                     }
                 }
                 if let Some(body) = default {
                     for stmt in body {
-                        collect_return_types(stmt, sig, return_types);
+                        collect_return_types(stmt, sig, capture_ctx, return_types);
                     }
                 }
             }
@@ -80,9 +107,14 @@ fn infer_closure_return_type(body: &[Stmt], sig: &FunctionSig) -> PhpType {
         }
     }
 
+    let mut capture_ctx = Context::new();
+    for (name, ty) in capture_types {
+        capture_ctx.alloc_var_with_static_type(name, ty.codegen_repr(), ty.clone());
+    }
+
     let mut return_types = Vec::new();
     for stmt in body {
-        collect_return_types(stmt, sig, &mut return_types);
+        collect_return_types(stmt, sig, &capture_ctx, &mut return_types);
     }
     if return_types.is_empty() {
         return PhpType::Int;
@@ -132,17 +164,11 @@ pub(super) fn emit_closure(
             PhpType::Array(Box::new(PhpType::Int)),
         ));
     }
-    for (cap_name, cap_ty) in &capture_types {
-        param_types.push((cap_name.clone(), cap_ty.clone()));
-    }
     let mut defaults: Vec<Option<Expr>> = params
         .iter()
         .map(|(_, _, default, _)| default.clone())
         .collect();
     if variadic.is_some() {
-        defaults.push(None);
-    }
-    for _ in &capture_types {
         defaults.push(None);
     }
     let mut ref_params: Vec<bool> = params.iter().map(|(_, _, _, is_ref)| *is_ref).collect();
@@ -152,8 +178,6 @@ pub(super) fn emit_closure(
         ref_params.push(false);
         declared_params.push(false);
     }
-    ref_params.extend(std::iter::repeat_n(false, capture_types.len()));
-    declared_params.extend(std::iter::repeat_n(false, capture_types.len()));
     let preliminary_sig = FunctionSig {
         params: param_types.clone(),
         defaults: defaults.clone(),
@@ -162,11 +186,12 @@ pub(super) fn emit_closure(
         ref_params: ref_params.clone(),
         declared_params: declared_params.clone(),
         variadic: variadic.clone(),
+        deprecation: None,
     };
     let resolved_return_type = return_type
         .as_ref()
         .map(|type_ann| functions::codegen_static_type(type_ann, ctx))
-        .unwrap_or_else(|| infer_closure_return_type(body, &preliminary_sig));
+        .unwrap_or_else(|| infer_closure_return_type(body, &preliminary_sig, &capture_types));
     let sig = FunctionSig {
         params: param_types,
         defaults,
@@ -175,6 +200,7 @@ pub(super) fn emit_closure(
         ref_params,
         declared_params,
         variadic: variadic.clone(),
+        deprecation: None,
     };
 
     let param_names: Vec<String> = params.iter().map(|(n, _, _, _)| n.clone()).collect();
@@ -183,7 +209,8 @@ pub(super) fn emit_closure(
         params: param_names,
         body: body.to_vec(),
         sig,
-        captures: capture_types,
+        captures: capture_types.clone(),
+        hidden_params: capture_types,
         current_class: ctx.current_class.clone(),
     });
 
@@ -208,10 +235,7 @@ pub(super) fn emit_closure_call(
 
     let sig = ctx.closure_sigs.get(var).cloned();
     let captures = ctx.closure_captures.get(var).cloned().unwrap_or_default();
-    let visible_param_count = sig
-        .as_ref()
-        .map(|s| s.params.len() - captures.len())
-        .unwrap_or(args_exprs.len());
+    let visible_param_count = sig.as_ref().map(|s| s.params.len()).unwrap_or(args_exprs.len());
     let regular_param_count = sig
         .as_ref()
         .map(|s| if s.variadic.is_some() { visible_param_count.saturating_sub(1) } else { visible_param_count })
@@ -230,7 +254,7 @@ pub(super) fn emit_closure_call(
 
     if let Some(cached_sig) = ctx.closure_sigs.get(var).cloned() {
         for deferred in &mut ctx.deferred_closures {
-            if deferred.sig.params == cached_sig.params {
+            if deferred.sig.params == cached_sig.params && deferred.captures == captures {
                 for (i, ty) in arg_types.iter().enumerate() {
                     if i < deferred.sig.params.len()
                         && !deferred

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Lowers PHP ternary and elvis expressions with branch labels and merged result storage.
+//! Preserves short-circuit behavior while producing one expression result for callers.
+//!
+//! Called from:
+//! - `crate::codegen::expr::emit_expr()`
+//!
+//! Key details:
+//! - Only the selected branch may run, and branch result types must be coerced into a common register shape.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
@@ -80,6 +90,7 @@ fn infer_branch_result_type(left: &Expr, right: &Expr, ctx: &Context) -> PhpType
         ref_params: vec![],
         declared_params: vec![],
         variadic: None,
+        deprecation: None,
     };
     let left_ty = functions::infer_local_type_with_ctx(left, &dummy_sig, ctx);
     let right_ty = functions::infer_local_type_with_ctx(right, &dummy_sig, ctx);

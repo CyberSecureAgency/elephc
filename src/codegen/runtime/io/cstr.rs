@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_cstr`, `__rt_cstr_loop` runtime helper assembly for C-string conversion scratch storage.
+//! Keeps PHP filesystem/resource behavior, libc calls, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::io`.
+//!
+//! Key details:
+//! - I/O helpers bridge PHP strings, resources, descriptors, and libc calls while returning runtime arrays or pointer/length strings.
+
 use crate::codegen::{abi, emit::Emitter, platform::Arch};
 
 /// cstr: convert an elephc string (x1=ptr, x2=len) to a null-terminated C string.

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Rewrites scope-dependent magic constants according to lexical PHP context.
+//! Tracks namespaces, functions, classes, traits, and methods while walking one file's AST.
+//!
+//! Called from:
+//! - `crate::magic_constants::substitute_scope_constants_in_file()`.
+//!
+//! Key details:
+//! - Trait-origin `__CLASS__` uses a placeholder so concrete class binding can happen after trait flattening.
+
 use std::path::Path;
 
 use crate::names::Name;

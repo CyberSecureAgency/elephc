@@ -1,3 +1,13 @@
+//! Purpose:
+//! Determines when array_map callback lowering should allocate string element storage.
+//! Bridges callable targets, closure metadata, and inferred PHP return types for result arrays.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::arrays::array_map::emit()`.
+//!
+//! Key details:
+//! - Return-type guesses must stay conservative so runtime array payload shape remains valid.
+
 use crate::codegen::context::Context;
 use crate::parser::ast::{CallableTarget, Expr, ExprKind, StaticReceiver, StmtKind};
 use crate::types::PhpType;

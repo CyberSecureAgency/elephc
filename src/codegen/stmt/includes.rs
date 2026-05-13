@@ -1,3 +1,13 @@
+//! Purpose:
+//! Lowers include and require statements using resolver-produced labels and active variant symbols.
+//! Marks loaded files and invokes include bodies at the correct PHP-observable point.
+//!
+//! Called from:
+//! - `crate::codegen::stmt`
+//!
+//! Key details:
+//! - Include state controls function variant activation and must preserve PHP load-order semantics.
+
 use super::super::abi;
 use super::super::context::Context;
 use super::super::data_section::DataSection;

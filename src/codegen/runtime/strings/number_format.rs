@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_number_format`, `__rt_nf_count` runtime helper assembly for number format.
+//! Keeps PHP byte-string pointer/length behavior and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::strings`.
+//!
+//! Key details:
+//! - String helpers use PHP pointer/length pairs and target ABI return registers; heap-backed results must remain refcount-compatible.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 

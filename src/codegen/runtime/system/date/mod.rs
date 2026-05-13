@@ -1,3 +1,13 @@
+//! Purpose:
+//! Dispatches the date() runtime emitter to the active target implementation.
+//! The module keeps the public __rt_date emission entry stable while target formatters diverge.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::system::emit_date()`.
+//!
+//! Key details:
+//! - The public label stays __rt_date while architecture-specific emitters own register and libc details.
+
 mod arm64;
 mod linux_x86_64;
 

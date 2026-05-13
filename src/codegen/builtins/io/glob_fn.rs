@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `glob` path-oriented builtin calls.
+//! Marshals path strings into runtime helpers that normalize, split, or enumerate filesystem paths.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::io::emit()`.
+//!
+//! Key details:
+//! - Returned strings and arrays must use runtime allocation/layout compatible with PHP false-on-failure behavior.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `shuffle` builtin calls that mutate array arguments in place.
+//! Handles COW preparation and writes any replacement array pointer back to caller storage.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::arrays::emit()`.
+//!
+//! Key details:
+//! - Mutating/ref-like arguments must avoid value-temp preevaluation so PHP-visible storage is updated.
+
 use crate::codegen::abi;
 use super::ensure_unique_arg::emit_ensure_unique_arg;
 use super::store_mutating_arg::emit_store_mutating_arg;

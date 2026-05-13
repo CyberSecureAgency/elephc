@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_htmlspecialchars`, `__rt_htmlsc_loop` runtime helper assembly for htmlspecialchars.
+//! Keeps PHP byte-string pointer/length behavior and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::strings`.
+//!
+//! Key details:
+//! - HTML escaping helpers are emitted scanners that must keep entity tables and quote handling in sync with PHP semantics.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 

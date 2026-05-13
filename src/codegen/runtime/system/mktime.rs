@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_mktime` runtime helper assembly for mktime.
+//! Keeps PHP builtin semantics, libc/syscall boundaries, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::system`.
+//!
+//! Key details:
+//! - The helper normalizes date/time fields through target libc conventions while returning PHP-style timestamps.
+
 use crate::codegen::{emit::Emitter, platform::Arch};
 
 /// __rt_mktime: create a Unix timestamp from date components.

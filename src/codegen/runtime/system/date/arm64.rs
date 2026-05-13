@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_date`, `__rt_date_have_time` runtime helper assembly for arm64.
+//! Keeps PHP builtin semantics, libc/syscall boundaries, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::system::date::emit_date()` for AArch64 targets.
+//!
+//! Key details:
+//! - Formatting reads libc tm fields and fixed date tables using AArch64 pointer/length return conventions.
+
 use crate::codegen::emit::Emitter;
 
 pub(super) fn emit_date_arm64(emitter: &mut Emitter) {
@@ -63,35 +73,27 @@ pub(super) fn emit_date_arm64(emitter: &mut Emitter) {
     // Y = 4-digit year
     emitter.instruction("cmp w15, #89");                                        // compare with 'Y' (89)
     emitter.instruction("b.eq __rt_date_fmt_Y");                                // handle year
-
     // m = month 01-12
     emitter.instruction("cmp w15, #109");                                       // compare with 'm' (109)
     emitter.instruction("b.eq __rt_date_fmt_m");                                // handle month
-
     // d = day 01-31
     emitter.instruction("cmp w15, #100");                                       // compare with 'd' (100)
     emitter.instruction("b.eq __rt_date_fmt_d");                                // handle day
-
     // H = hour 00-23
     emitter.instruction("cmp w15, #72");                                        // compare with 'H' (72)
     emitter.instruction("b.eq __rt_date_fmt_H");                                // handle hour
-
     // i = minute 00-59
     emitter.instruction("cmp w15, #105");                                       // compare with 'i' (105)
     emitter.instruction("b.eq __rt_date_fmt_i");                                // handle minute
-
     // s = second 00-59
     emitter.instruction("cmp w15, #115");                                       // compare with 's' (115)
     emitter.instruction("b.eq __rt_date_fmt_s");                                // handle second
-
     // j = day 1-31 (no leading zero)
     emitter.instruction("cmp w15, #106");                                       // compare with 'j' (106)
     emitter.instruction("b.eq __rt_date_fmt_j");                                // handle day no padding
-
     // n = month 1-12 (no leading zero)
     emitter.instruction("cmp w15, #110");                                       // compare with 'n' (110)
     emitter.instruction("b.eq __rt_date_fmt_n");                                // handle month no padding
-
     // G = hour 0-23 (no leading zero)
     emitter.instruction("cmp w15, #71");                                        // compare with 'G' (71)
     emitter.instruction("b.eq __rt_date_fmt_G");                                // handle hour no padding

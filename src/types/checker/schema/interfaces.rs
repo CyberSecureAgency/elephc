@@ -1,3 +1,13 @@
+//! Purpose:
+//! Validates schema interfaces declarations for the checker.
+//! Turns parsed declarations into canonical metadata and rejects invalid contracts before code generation.
+//!
+//! Called from:
+//! - `crate::types::checker::schema`
+//!
+//! Key details:
+//! - Declaration metadata must align with name resolution, inheritance flattening, and runtime/codegen expectations.
+
 use std::collections::{HashMap, HashSet};
 
 use crate::errors::CompileError;
@@ -175,6 +185,19 @@ pub(crate) fn build_interface_info_recursive(
         }
     }
 
+    let mut iface_constants: HashMap<String, crate::parser::ast::Expr> = HashMap::new();
+    for parent_name in &interface.extends {
+        if let Some(parent_info) = checker.interfaces.get(parent_name) {
+            for (k, v) in &parent_info.constants {
+                iface_constants
+                    .entry(k.clone())
+                    .or_insert_with(|| v.clone());
+            }
+        }
+    }
+    for c in &interface.constants {
+        iface_constants.insert(c.name.clone(), c.value.clone());
+    }
     checker.interfaces.insert(
         interface.name.clone(),
         InterfaceInfo {
@@ -184,6 +207,7 @@ pub(crate) fn build_interface_info_recursive(
             method_declaring_interfaces,
             method_order,
             method_slots,
+            constants: iface_constants,
         },
     );
     *next_interface_id += 1;

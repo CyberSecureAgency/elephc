@@ -1,3 +1,13 @@
+//! Purpose:
+//! Builds and emits codegen signatures for class, interface, enum, and trait methods.
+//! Handles receiver layout, static dispatch symbols, and method body emission.
+//!
+//! Called from:
+//! - `crate::codegen::generate()` when class metadata contains methods
+//!
+//! Key details:
+//! - Generated signatures must line up with object dispatch, vtables, and inherited method metadata.
+
 use std::collections::{HashMap, HashSet};
 
 use crate::codegen::data_section::DataSection;
@@ -126,6 +136,7 @@ fn build_static_method_codegen_sig(
             ref_params,
             declared_params,
             variadic: method.variadic.clone(),
+            deprecation: None,
         },
     )
 }
@@ -199,6 +210,7 @@ fn build_instance_method_codegen_sig(
             ref_params,
             declared_params,
             variadic: method.variadic.clone(),
+            deprecation: None,
         },
     )
 }

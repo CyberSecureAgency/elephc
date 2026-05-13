@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `call_user_func_array` builtin calls that invoke user-provided callbacks.
+//! Owns callback argument materialization, result shape selection, and runtime helper calls.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::arrays::emit()`.
+//!
+//! Key details:
+//! - Callback lowering must preserve PHP source evaluation order, captures, and callable return ownership.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
@@ -34,8 +44,8 @@ fn emit_array_value_type_stamp(emitter: &mut Emitter, array_reg: &str, elem_ty: 
         }
         crate::codegen::platform::Arch::X86_64 => {
             emitter.instruction(&format!("mov r10, QWORD PTR [{} - 8]", array_reg)); // load the packed array kind word from the heap header
-            emitter.instruction("mov r11, 0x80ff");                             // preserve the indexed-array kind and persistent COW flag
-            emitter.instruction("and r10, r11");                                // keep only the persistent indexed-array metadata bits
+            emitter.instruction("mov rdx, 0xffffffff000080ff");                 // materialize the x86_64 indexed-array metadata preservation mask
+            emitter.instruction("and r10, rdx");                                // preserve heap marker, indexed-array kind, and persistent COW bits
             emitter.instruction(&format!("mov rcx, {}", value_type_tag));       // materialize the runtime array value_type tag
             emitter.instruction("shl rcx, 8");                                  // move the value_type tag into the packed kind-word byte lane
             emitter.instruction("or r10, rcx");                                 // combine the heap kind with the array value_type tag
@@ -124,7 +134,7 @@ pub fn emit(
 
     // -- extract elements from array and push them as regular call arguments --
     let mut arg_types = Vec::new();
-    let visible_param_count = sig.params.len().saturating_sub(captures.len());
+    let visible_param_count = sig.params.len();
     let regular_param_count = if sig.variadic.is_some() {
         visible_param_count.saturating_sub(1)
     } else {

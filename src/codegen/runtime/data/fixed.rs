@@ -1,3 +1,13 @@
+//! Purpose:
+//! Builds the cacheable fixed runtime data section as assembly text.
+//! This owns heap globals, shared scratch buffers, fatal messages, lookup tables, and fixed runtime state.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::data::emit_runtime_data_fixed()`.
+//!
+//! Key details:
+//! - Fixed symbols are cached across compilations, so only target-independent runtime data belongs here.
+
 use super::{DIRNAME_LEVELS_MSG, PHP_UNAME_MODE_LEN_MSG, PHP_UNAME_MODE_VALUE_MSG};
 use super::super::system;
 

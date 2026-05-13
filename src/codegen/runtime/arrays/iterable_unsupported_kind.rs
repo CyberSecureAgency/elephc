@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_iterable_unsupported_kind` runtime helper assembly for iterable unsupported kind.
+//! Keeps PHP array/hash storage, heap ownership, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::arrays`.
+//!
+//! Key details:
+//! - Iterable helpers dispatch on runtime kind tags and must report unsupported shapes without corrupting iteration state.
+
 use crate::codegen::abi;
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;

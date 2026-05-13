@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_tempnam`, `__rt_tempnam_dir` runtime helper assembly for tempnam.
+//! Keeps PHP filesystem/resource behavior, libc calls, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::io`.
+//!
+//! Key details:
+//! - I/O helpers bridge PHP strings, resources, descriptors, and libc calls while returning runtime arrays or pointer/length strings.
+
 use crate::codegen::{emit::Emitter, platform::Arch};
 
 const X86_64_HEAP_MAGIC_HI32: u64 = 0x454C5048;

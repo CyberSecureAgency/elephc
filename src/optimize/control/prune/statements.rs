@@ -1,3 +1,13 @@
+//! Purpose:
+//! Prunes constant control-flow statements cases.
+//! Rewrites statements or expressions whose compile-time condition is known while preserving required effects.
+//!
+//! Called from:
+//! - `crate::optimize::control::prune`
+//!
+//! Key details:
+//! - Loop exits, empty bodies, and effectful conditions must be handled before removing structural statements.
+
 use super::super::*;
 use super::expr::{expr_has_side_effects, prune_expr};
 use super::loop_exit::block_contains_loop_exit;
@@ -23,6 +33,7 @@ pub(crate) fn prune_stmt(stmt: Stmt) -> Vec<Stmt> {
         StmtKind::Echo(expr) => vec![Stmt {
             kind: StmtKind::Echo(prune_expr(expr)),
             span,
+            attributes: Vec::new(),
         }],
         StmtKind::Assign { name, value } => vec![Stmt {
             kind: StmtKind::Assign {
@@ -30,6 +41,7 @@ pub(crate) fn prune_stmt(stmt: Stmt) -> Vec<Stmt> {
                 value: prune_expr(value),
             },
             span,
+            attributes: Vec::new(),
         }],
         StmtKind::If {
             condition,
@@ -54,6 +66,7 @@ pub(crate) fn prune_stmt(stmt: Stmt) -> Vec<Stmt> {
                         else_body,
                     },
                     span,
+                    attributes: Vec::new(),
                 }]
             }
         }
@@ -67,6 +80,7 @@ pub(crate) fn prune_stmt(stmt: Stmt) -> Vec<Stmt> {
                         body: prune_block(body),
                     },
                     span,
+                    attributes: Vec::new(),
                 }],
             }
         }
@@ -81,6 +95,7 @@ pub(crate) fn prune_stmt(stmt: Stmt) -> Vec<Stmt> {
                         condition,
                     },
                     span,
+                    attributes: Vec::new(),
                 }],
             }
         }
@@ -103,6 +118,7 @@ pub(crate) fn prune_stmt(stmt: Stmt) -> Vec<Stmt> {
                         body: prune_block(body),
                     },
                     span,
+                    attributes: Vec::new(),
                 }],
             }
         }
@@ -119,6 +135,7 @@ pub(crate) fn prune_stmt(stmt: Stmt) -> Vec<Stmt> {
                 body: prune_block(body),
             },
             span,
+            attributes: Vec::new(),
         }],
         StmtKind::Switch {
             subject,
@@ -155,6 +172,7 @@ pub(crate) fn prune_stmt(stmt: Stmt) -> Vec<Stmt> {
                             finally_body,
                         },
                         span,
+                        attributes: Vec::new(),
                     }];
                 }
             }
@@ -177,6 +195,7 @@ pub(crate) fn prune_stmt(stmt: Stmt) -> Vec<Stmt> {
                                 finally_body: Some(finally_body),
                             },
                             span,
+                            attributes: Vec::new(),
                         }]
                     }
                 } else {
@@ -192,6 +211,7 @@ pub(crate) fn prune_stmt(stmt: Stmt) -> Vec<Stmt> {
                         finally_body,
                     },
                     span,
+                    attributes: Vec::new(),
                 }]
             };
             hoisted_prefix.append(&mut remaining);
@@ -203,6 +223,7 @@ pub(crate) fn prune_stmt(stmt: Stmt) -> Vec<Stmt> {
                 body: prune_block(body),
             },
             span,
+            attributes: Vec::new(),
         }],
         StmtKind::FunctionDecl {
             name,
@@ -219,10 +240,12 @@ pub(crate) fn prune_stmt(stmt: Stmt) -> Vec<Stmt> {
                 body: prune_block(body),
             },
             span,
+            attributes: Vec::new(),
         }],
         StmtKind::Return(expr) => vec![Stmt {
             kind: StmtKind::Return(expr.map(prune_expr)),
             span,
+            attributes: Vec::new(),
         }],
         StmtKind::ClassDecl {
             name,
@@ -234,6 +257,7 @@ pub(crate) fn prune_stmt(stmt: Stmt) -> Vec<Stmt> {
             trait_uses,
             properties,
             methods,
+        constants,
         } => {
             let parent_name = extends.as_ref().map(|parent| parent.as_str().to_string());
             let methods = methods
@@ -251,8 +275,10 @@ pub(crate) fn prune_stmt(stmt: Stmt) -> Vec<Stmt> {
                     trait_uses,
                     properties,
                     methods,
+                constants,
                 },
                 span,
+                attributes: Vec::new(),
             }]
         }
         StmtKind::ExprStmt(expr) => {
@@ -261,6 +287,7 @@ pub(crate) fn prune_stmt(stmt: Stmt) -> Vec<Stmt> {
                 vec![Stmt {
                     kind: StmtKind::ExprStmt(expr),
                     span,
+                    attributes: Vec::new(),
                 }]
             } else {
                 Vec::new()
@@ -277,15 +304,18 @@ pub(crate) fn prune_stmt(stmt: Stmt) -> Vec<Stmt> {
                 cases,
             },
             span,
+            attributes: Vec::new(),
         }],
         StmtKind::PackedClassDecl { name, fields } => vec![Stmt {
             kind: StmtKind::PackedClassDecl { name, fields },
             span,
+            attributes: Vec::new(),
         }],
         StmtKind::InterfaceDecl {
             name,
             extends,
             methods,
+        constants,
         } => vec![Stmt {
             kind: StmtKind::InterfaceDecl {
                 name,
@@ -294,14 +324,17 @@ pub(crate) fn prune_stmt(stmt: Stmt) -> Vec<Stmt> {
                     .into_iter()
                     .map(prune_method_without_context)
                     .collect(),
+            constants,
             },
             span,
+            attributes: Vec::new(),
         }],
         StmtKind::TraitDecl {
             name,
             trait_uses,
             properties,
             methods,
+        constants,
         } => vec![Stmt {
             kind: StmtKind::TraitDecl {
                 name,
@@ -311,10 +344,12 @@ pub(crate) fn prune_stmt(stmt: Stmt) -> Vec<Stmt> {
                     .into_iter()
                     .map(prune_method_without_context)
                     .collect(),
+            constants,
             },
             span,
+            attributes: Vec::new(),
         }],
-        kind => vec![Stmt { kind, span }],
+        kind => vec![Stmt { kind, span, attributes: Vec::new() }],
     }
 }
 

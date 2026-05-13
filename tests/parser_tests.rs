@@ -1,3 +1,12 @@
+//! Purpose:
+//! Parser test root wiring and shared AST assertion helpers for PHP syntax coverage.
+//!
+//! Called from:
+//! - `cargo test` through Rust's test harness.
+//!
+//! Key details:
+//! - Helpers parse inline PHP snippets, assert failures, and inspect literals or promoted assignments.
+
 use elephc::lexer::tokenize;
 use elephc::names::Name;
 use elephc::parser::ast::{
@@ -72,3 +81,7 @@ mod extensions;
 mod magic_constants;
 #[path = "parser_tests/never.rs"]
 mod never;
+#[path = "parser_tests/attributes.rs"]
+mod attributes;
+#[path = "parser_tests/yield_parsing.rs"]
+mod yield_parsing;

@@ -1,3 +1,12 @@
+//! Purpose:
+//! Integration or regression tests for end-to-end codegen coverage of namespaces, including namespace use function and global builtin resolution, namespace class can call global extern function, and namespace class can call pointer builtins without global prefix.
+//!
+//! Called from:
+//! - `cargo test` through Rust's test harness.
+//!
+//! Key details:
+//! - Multi-file fixtures exercise include/require resolution, temporary project layout, and native binary output.
+
 use crate::support::*;
 
 #[test]
@@ -331,6 +340,34 @@ echo call_user_func("triple", 4);
 "#,
     );
     assert_eq!(out, "112");
+}
+
+#[test]
+fn test_namespace_fully_qualified_callback_strings_are_absolute() {
+    let out = compile_and_run(
+        r#"<?php
+namespace Demo\Support;
+
+class User {
+    public function badge() {
+        return "ok";
+    }
+}
+
+function format_user(User $user) {
+    return "[" . $user->badge() . "]";
+}
+
+namespace Demo\App;
+
+use Demo\Support\User;
+
+echo function_exists("Demo\\Support\\format_user");
+echo call_user_func("Demo\\Support\\format_user", new User());
+echo call_user_func_array("Demo\\Support\\format_user", [new User()]);
+"#,
+    );
+    assert_eq!(out, "1[ok][ok]");
 }
 
 #[test]

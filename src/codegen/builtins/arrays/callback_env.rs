@@ -1,3 +1,13 @@
+//! Purpose:
+//! Builds callback capture environments used by array and dynamic-call builtins.
+//! Owns hidden capture materialization and deferred wrapper metadata for emitted callbacks.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::arrays::{array_filter,array_map,call_user_func,call_user_func_array}::emit()`.
+//!
+//! Key details:
+//! - Capture slots must preserve source-call evaluation order and ABI argument layout for wrapper calls.
+
 use crate::codegen::abi;
 use crate::codegen::context::{Context, DeferredCallbackWrapper};
 use crate::codegen::emit::Emitter;

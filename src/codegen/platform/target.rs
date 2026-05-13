@@ -1,3 +1,13 @@
+//! Purpose:
+//! Defines target triples, architecture/platform enums, and derived codegen properties.
+//! Maps user-facing target choices to assembly, object, and linker conventions.
+//!
+//! Called from:
+//! - `crate::codegen::platform` and pipeline target selection
+//!
+//! Key details:
+//! - Architecture and platform decisions here gate every downstream ABI helper.
+
 use super::linux_transform::{map_syscall, needs_at_fdcwd, transform_for_linux};
 use super::toolchain::host_has_native_aarch64_toolchain;
 

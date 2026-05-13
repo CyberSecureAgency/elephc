@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_random_uniform`, `__rt_random_uniform_calc` runtime helper assembly for random uniform.
+//! Keeps PHP array/hash storage, heap ownership, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::arrays`.
+//!
+//! Key details:
+//! - Random helpers produce bounded integer values used by array_rand and shuffle without modulo bias where possible.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 

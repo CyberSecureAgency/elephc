@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_mixed_is_empty`, `__rt_mixed_is_empty_yes` runtime helper assembly for mixed is empty.
+//! Keeps PHP array/hash storage, heap ownership, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::arrays`.
+//!
+//! Key details:
+//! - Mixed helpers use boxed tag/payload cells; tag constants and ownership rules are shared with type checking and codegen.
+
 use crate::codegen::{emit::Emitter, platform::Arch};
 
 /// mixed_is_empty: implement PHP empty() semantics for boxed mixed values.

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_shuffle`, `__rt_shuffle_loop` runtime helper assembly for shuffle.
+//! Keeps PHP array/hash storage, heap ownership, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::arrays`.
+//!
+//! Key details:
+//! - Shuffle mutates array order using runtime random helpers while preserving element ownership.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 

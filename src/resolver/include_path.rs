@@ -1,3 +1,13 @@
+//! Purpose:
+//! Folds include and require path expressions into static filesystem paths.
+//! Accepts literal and constant-derived path expressions while rejecting dynamic includes.
+//!
+//! Called from:
+//! - `crate::resolver::engine_includes` and include discovery statement walkers.
+//!
+//! Key details:
+//! - Dynamic include errors are reported early because the compiler needs a closed source graph.
+
 use crate::parser::ast::{BinOp, Expr, ExprKind};
 
 use super::state::{resolve_constant_ref, ResolveState};

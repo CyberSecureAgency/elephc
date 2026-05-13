@@ -1,3 +1,13 @@
+//! Purpose:
+//! Builds flattened class schema metadata from parsed declarations and inherited members.
+//! Coordinates property, method, interface, and state validation for class declarations.
+//!
+//! Called from:
+//! - `crate::types::checker::schema`
+//!
+//! Key details:
+//! - Flattening must preserve visibility, overrides, readonly/final constraints, and interface obligations.
+
 use std::collections::{HashMap, HashSet};
 
 use crate::errors::CompileError;
@@ -63,10 +73,8 @@ pub(crate) fn build_class_info_recursive(
 
     let constructor_param_to_prop =
         constructor_param_to_prop_for(&class, parent_info.as_ref());
-    checker.classes.insert(
-        class.name.clone(),
-        state.into_class_info(*next_class_id, &class, constructor_param_to_prop),
-    );
+    let class_info = state.into_class_info(*next_class_id, &class, constructor_param_to_prop)?;
+    checker.classes.insert(class.name.clone(), class_info);
     *next_class_id += 1;
     building.remove(class_name);
     Ok(())

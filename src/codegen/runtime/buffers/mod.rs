@@ -1,3 +1,13 @@
+//! Purpose:
+//! Collects runtime emitters for the compiler buffer extension.
+//! The module owns re-export wiring for allocation, length, bounds, and use-after-free helper labels.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` during the buffer runtime section.
+//!
+//! Key details:
+//! - Buffer helpers enforce extension ownership rules, including live headers, bounds checks, and fatal paths before unsafe access.
+
 mod bounds_fail;
 mod buffer_len;
 mod buffer_new;

@@ -42,6 +42,7 @@ pub(crate) fn inject_builtin_json_interfaces(
             extends: Vec::new(),
             methods: vec![json_serialize_method()],
             span: crate::span::Span::dummy(),
+            constants: Vec::new(),
         },
     );
 
@@ -61,6 +62,7 @@ fn json_serialize_method() -> ClassMethod {
         return_type: Some(TypeExpr::Named(Name::unqualified("mixed"))),
         body: Vec::new(),
         span: crate::span::Span::dummy(),
+        attributes: Vec::new(),
     }
 }
 

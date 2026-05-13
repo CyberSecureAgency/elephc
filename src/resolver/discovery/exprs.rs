@@ -1,3 +1,13 @@
+//! Purpose:
+//! Discovers include effects and declarations referenced inside expression trees.
+//! Recurses through nested expression-owned bodies and parameters during include discovery.
+//!
+//! Called from:
+//! - `crate::resolver::discovery::stmts` and branch discovery.
+//!
+//! Key details:
+//! - Expression discovery must stay in lockstep with resolver expression walking to avoid hidden declarations.
+
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
@@ -144,12 +154,23 @@ pub(super) fn discover_expr(
         | ExprKind::PreDecrement(_)
         | ExprKind::PostDecrement(_)
         | ExprKind::ConstRef(_)
-        | ExprKind::EnumCase { .. }
         | ExprKind::StaticPropertyAccess { .. }
         | ExprKind::FirstClassCallable(_)
         | ExprKind::This
         | ExprKind::ClassConstant { .. }
+        | ExprKind::ScopedConstantAccess { .. }
         | ExprKind::MagicConstant(_) => {}
+        ExprKind::Yield { key, value } => {
+            if let Some(k) = key {
+                discover_expr(k, base_dir, loaded_paths, include_chain, state, output)?;
+            }
+            if let Some(v) = value {
+                discover_expr(v, base_dir, loaded_paths, include_chain, state, output)?;
+            }
+        }
+        ExprKind::YieldFrom(inner) => {
+            discover_expr(inner, base_dir, loaded_paths, include_chain, state, output)?;
+        }
     }
     Ok(())
 }

@@ -1,9 +1,13 @@
-//! Fiber context switch primitive.
+//! Purpose:
+//! Emits the low-level Fiber context switch primitive.
+//! Owns saving the current execution context and restoring the target Fiber or main-thread context.
 //!
-//! `__rt_fiber_switch(to_fiber)` saves the current execution context onto the
-//! source fiber's stack (or the main thread's saved-state slot) and restores
-//! the target fiber's context. After the switch, the previously suspended
-//! target resumes execution at the point where it last suspended.
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::fibers`.
+//! - `crate::codegen::runtime::x86_minimal::emit_runtime_linux_x86_64_minimal()`.
+//!
+//! Key details:
+//! - Saved register sets and stack alignment must match each target ABI exactly or Fiber resumes corrupt execution state.
 //!
 //! ARM64 callee-saved state preserved across switches:
 //!   * General-purpose: x19–x28 (10 registers)

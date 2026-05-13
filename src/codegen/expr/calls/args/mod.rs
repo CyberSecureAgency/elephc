@@ -1,3 +1,13 @@
+//! Purpose:
+//! Coordinates call-argument lowering from semantic call plans into ABI-ready temporary values.
+//! Re-exports helpers for named, spread, variadic, and array-element argument paths.
+//!
+//! Called from:
+//! - `crate::codegen::expr::calls`
+//!
+//! Key details:
+//! - Source-order side effects and ABI-order materialization are deliberately separated across this module tree.
+
 mod array_elements;
 mod common;
 mod emit;
@@ -44,7 +54,6 @@ pub(crate) struct PreparedCallArgs {
     pub(crate) regular_param_count: usize,
     pub(crate) is_variadic: bool,
     pub(crate) spread_into_named: bool,
-    pub(crate) spread_length_checks: Vec<SpreadBoundsCheck>,
 }
 
 pub(crate) struct EmittedCallArgs {

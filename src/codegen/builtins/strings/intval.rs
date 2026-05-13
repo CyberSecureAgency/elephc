@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `intval` conversion calls from scalar expressions.
+//! Keeps PHP conversion lowering close to string builtins because string parsing is the dominant path.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::strings::emit()`.
+//!
+//! Key details:
+//! - Conversion behavior must stay aligned with type-checker assumptions for scalar-to-int coercion.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_shell_exec`, `__rt_cstr` runtime helper assembly for shell exec.
+//! Keeps PHP builtin semantics, libc/syscall boundaries, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::system`.
+//!
+//! Key details:
+//! - The helper crosses libc process I/O and must copy command output into runtime-owned string storage.
+
 use crate::codegen::{abi, emit::Emitter, platform::Arch};
 
 /// __rt_shell_exec: execute a shell command and capture its output.

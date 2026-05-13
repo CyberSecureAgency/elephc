@@ -1,3 +1,13 @@
+//! Purpose:
+//! Detects and lowers postfix assignments for complex expression targets.
+//! Replays parseable l-values and creates effect-preserving lowerings for property/static assignments.
+//!
+//! Called from:
+//! - `crate::parser::stmt::simple::parse_expr_stmt()` and assignment statement dispatch.
+//!
+//! Key details:
+//! - Complex target lowering must not duplicate side effects while preserving PHP source evaluation order.
+
 use crate::errors::CompileError;
 use crate::lexer::Token;
 use crate::parser::ast::{Expr, ExprKind, InstanceOfTarget, Stmt, StmtKind};
@@ -219,8 +229,7 @@ pub(crate) fn can_replay_assignment_target(expr: &Expr) -> bool {
         | ExprKind::BoolLiteral(_)
         | ExprKind::Null
         | ExprKind::ConstRef(_)
-        | ExprKind::ClassConstant { .. }
-        | ExprKind::EnumCase { .. }
+        | ExprKind::ClassConstant { .. } | ExprKind::ScopedConstantAccess { .. }
         | ExprKind::MagicConstant(_) => true,
         _ => false,
     }

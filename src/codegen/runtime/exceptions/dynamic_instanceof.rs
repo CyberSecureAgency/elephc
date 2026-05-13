@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_instanceof_lookup`, `__rt_instanceof_lookup_no` runtime helper assembly for dynamic instanceof.
+//! Keeps exception object matching, unwinding state, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::exceptions`.
+//!
+//! Key details:
+//! - Exception matching and unwinding must keep handler-stack, call-frame cleanup, and class metadata invariants aligned.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 

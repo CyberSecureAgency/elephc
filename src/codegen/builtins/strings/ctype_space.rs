@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `ctype_space` character-class predicate calls.
+//! Loads string bytes for runtime classification while returning PHP boolean results.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::strings::emit()`.
+//!
+//! Key details:
+//! - PHP ctype semantics operate on byte strings and empty-string behavior must match the checker/runtime contract.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

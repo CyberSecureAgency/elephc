@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_array_push_refcounted`, `__rt_array_ensure_unique` runtime helper assembly for array push refcounted.
+//! Keeps PHP array/hash storage, heap ownership, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::arrays`.
+//!
+//! Key details:
+//! - Array helpers operate on runtime array headers and element cells; mutations must respect capacity and COW contracts.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 
@@ -108,7 +118,8 @@ fn emit_array_push_refcounted_linux_x86_64(emitter: &mut Emitter) {
     emitter.label("__rt_array_push_refcounted_kind_hash");
     emitter.instruction("mov r9, 5");                                           // encode runtime value_type 5 for nested associative arrays
     emitter.label("__rt_array_push_refcounted_kind_store");
-    emitter.instruction("and r11, 0x80ff");                                     // preserve only the indexed-array kind and persistent copy-on-write bits before rewriting value_type
+    emitter.instruction("mov r8, 0xffffffff000080ff");                          // materialize the x86_64 indexed-array metadata preservation mask
+    emitter.instruction("and r11, r8");                                         // preserve heap marker, indexed-array kind, and persistent COW bits before rewriting value_type
     emitter.instruction("shl r9, 8");                                           // move the runtime value_type tag into the packed heap-kind byte lane
     emitter.instruction("or r11, r9");                                          // combine the stable indexed-array metadata bits with the new runtime value_type tag
     emitter.instruction("mov QWORD PTR [r10 - 8], r11");                        // persist the updated packed heap-kind word back into the destination indexed-array header

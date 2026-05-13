@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `stripslashes` string transformation or formatting calls.
+//! Marshals string/scalar arguments into runtime helpers that allocate returned PHP strings.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::strings::emit()`.
+//!
+//! Key details:
+//! - Returned string pointer/length pairs must be treated as owned runtime values when the helper allocates.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

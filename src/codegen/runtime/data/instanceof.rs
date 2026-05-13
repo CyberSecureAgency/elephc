@@ -1,3 +1,13 @@
+//! Purpose:
+//! Formats class/interface metadata used by runtime instanceof and exception matching helpers.
+//! This keeps emitted parent-id and interface table layout coupled to object runtime checks.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::data::user` while formatting user class metadata.
+//!
+//! Key details:
+//! - Table shape must match __rt_dynamic_instanceof and __rt_exception_matches exactly.
+
 use crate::types::{ClassInfo, InterfaceInfo};
 
 pub(super) fn emit_instanceof_target_lookup_data(
@@ -71,7 +81,7 @@ pub(super) fn emit_instanceof_target_lookup_data(
     out.push_str("    .p2align 3\n");
 }
 
-fn escaped_ascii(value: &str) -> String {
+pub(super) fn escaped_ascii(value: &str) -> String {
     let mut escaped = String::new();
     for byte in value.bytes() {
         match byte {

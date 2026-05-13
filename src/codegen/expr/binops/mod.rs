@@ -1,3 +1,13 @@
+//! Purpose:
+//! Dispatches binary operator lowering to arithmetic, comparison, array-union, and target helper modules.
+//! Selects PHP-compatible result types and special operator paths before instruction emission.
+//!
+//! Called from:
+//! - `crate::codegen::expr::emit_expr()`
+//!
+//! Key details:
+//! - Operator precedence is resolved by the parser; this layer preserves PHP value semantics and result registers.
+
 use super::super::context::Context;
 use super::super::data_section::DataSection;
 use super::super::emit::Emitter;

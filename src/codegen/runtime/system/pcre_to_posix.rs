@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_pcre_to_posix`, `__rt_p2p_loop` runtime helper assembly for pcre to posix.
+//! Keeps PHP builtin semantics, libc/syscall boundaries, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::system`.
+//!
+//! Key details:
+//! - The translator is an emitted parser/formatter state machine that rewrites only the supported PCRE subset.
+
 use crate::codegen::{abi, emit::Emitter, platform::Arch};
 
 /// __rt_pcre_to_posix: copy regex pattern to _cstr_buf, converting PCRE shorthands

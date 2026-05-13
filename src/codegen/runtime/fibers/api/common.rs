@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_mixed_from_value` runtime helper assembly for common.
+//! Keeps emitted runtime labels and generated code call sites aligned across supported targets.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()`.
+//!
+//! Key details:
+//! - Runtime labels, registers, and data symbols here are ABI shared with generated assembly call sites.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 

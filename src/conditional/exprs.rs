@@ -1,3 +1,13 @@
+//! Purpose:
+//! Rewrites expressions while applying compiler conditional branches.
+//! Recurses into nested statement bodies embedded in expression forms such as closures and preludes.
+//!
+//! Called from:
+//! - `crate::conditional::stmts::apply_stmts()`.
+//!
+//! Key details:
+//! - Expression shape and spans are preserved except where nested conditional statement lists are pruned.
+
 use std::collections::HashSet;
 
 use crate::parser::ast::{CallableTarget, Expr, ExprKind};
@@ -135,13 +145,6 @@ pub(super) fn rewrite_expr(expr: Expr, defines: &HashSet<String>) -> Expr {
                 .collect(),
         },
         ExprKind::ConstRef(name) => ExprKind::ConstRef(name),
-        ExprKind::EnumCase {
-            enum_name,
-            case_name,
-        } => ExprKind::EnumCase {
-            enum_name,
-            case_name,
-        },
         ExprKind::NewObject { class_name, args } => ExprKind::NewObject {
             class_name,
             args: args

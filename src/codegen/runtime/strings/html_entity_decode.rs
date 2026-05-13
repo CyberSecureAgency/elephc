@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_html_entity_decode`, `__rt_hed_loop` runtime helper assembly for html entity decode.
+//! Keeps PHP byte-string pointer/length behavior and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::strings`.
+//!
+//! Key details:
+//! - HTML escaping helpers are emitted scanners that must keep entity tables and quote handling in sync with PHP semantics.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 

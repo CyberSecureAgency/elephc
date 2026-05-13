@@ -1,3 +1,13 @@
+//! Purpose:
+//! Collects string, formatting, encoding, hashing, and resource string runtime emitters.
+//! The module owns re-export wiring for helpers that operate on PHP pointer/length string pairs.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` during the string runtime section.
+//!
+//! Key details:
+//! - String helpers use PHP pointer/length pairs and target ABI return registers; heap-backed results must remain refcount-compatible.
+
 mod itoa;
 mod concat;
 mod ftoa;

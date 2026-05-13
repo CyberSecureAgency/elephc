@@ -1,3 +1,14 @@
+//! Purpose:
+//! Defines the runtime module boundary and re-exports the runtime emission entry points.
+//! This is the narrow public surface used by codegen to attach helper assembly and data sections.
+//!
+//! Called from:
+//! - `crate::codegen::driver_support::generate_runtime()` while building the cached runtime object.
+//! - `crate::codegen::main_emission::finish_user_asm()` when appending user-specific runtime data.
+//!
+//! Key details:
+//! - Keep this surface small: runtime codegen imports these re-exports instead of reaching into leaf emitters directly.
+
 mod arrays;
 mod buffers;
 mod data;
@@ -5,6 +16,7 @@ mod diagnostics;
 mod emitters;
 mod exceptions;
 mod fibers;
+pub(crate) mod generators;
 mod io;
 mod objects;
 mod pointers;

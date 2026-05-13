@@ -1,3 +1,13 @@
+//! Purpose:
+//! Classifies and lowers assignment-expression targets that may have observable side effects.
+//! Builds prelude statements and temporary result targets for complex l-values.
+//!
+//! Called from:
+//! - `crate::parser::expr::pratt` when parsing assignment expressions.
+//!
+//! Key details:
+//! - Target dependencies are tracked so PHP evaluation order is preserved during lowering.
+
 use std::collections::HashSet;
 
 use crate::parser::ast::{Expr, ExprKind, InstanceOfTarget, Stmt, StmtKind};
@@ -288,14 +298,15 @@ fn collect_assignment_target_dependencies(expr: &Expr, dependencies: &mut HashSe
         | ExprKind::PreDecrement(_)
         | ExprKind::PostDecrement(_)
         | ExprKind::ConstRef(_)
-        | ExprKind::EnumCase { .. }
         | ExprKind::NewObject { .. }
         | ExprKind::StaticPropertyAccess { .. }
         | ExprKind::FirstClassCallable(_)
         | ExprKind::This
         | ExprKind::BufferNew { .. }
-        | ExprKind::ClassConstant { .. }
+        | ExprKind::ClassConstant { .. } | ExprKind::ScopedConstantAccess { .. }
         | ExprKind::NewScopedObject { .. }
+        | ExprKind::Yield { .. }
+        | ExprKind::YieldFrom(_)
         | ExprKind::MagicConstant(_) => {}
     }
 }
@@ -415,11 +426,13 @@ fn expr_may_write_dependency(expr: &Expr, dependencies: &HashSet<String>) -> boo
         | ExprKind::BoolLiteral(_)
         | ExprKind::Null
         | ExprKind::ConstRef(_)
-        | ExprKind::EnumCase { .. }
         | ExprKind::StaticPropertyAccess { .. }
         | ExprKind::FirstClassCallable(_)
         | ExprKind::This
         | ExprKind::ClassConstant { .. }
+        | ExprKind::ScopedConstantAccess { .. }
+        | ExprKind::Yield { .. }
+        | ExprKind::YieldFrom(_)
         | ExprKind::MagicConstant(_) => false,
     }
 }

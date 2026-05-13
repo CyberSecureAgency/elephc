@@ -1,3 +1,13 @@
+//! Purpose:
+//! Provides external global symbol loads and stores for statement assignments.
+//! Offers a typed storage interface to assignment and expression statement paths.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::storage`
+//!
+//! Key details:
+//! - Loads and stores must use ABI value sizes and preserve refcounted ownership conventions.
+
 use crate::codegen::abi;
 use crate::codegen::emit::Emitter;
 use crate::types::PhpType;

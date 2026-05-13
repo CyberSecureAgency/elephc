@@ -1,3 +1,13 @@
+//! Purpose:
+//! Infers ops type-system behavior.
+//! Converts AST forms into `PhpType` facts used by validation, warnings, and codegen metadata.
+//!
+//! Called from:
+//! - `crate::types::checker::inference`
+//!
+//! Key details:
+//! - PHP compatibility matters for coercions, operator results, object access, and nullable/union handling.
+
 use crate::errors::CompileError;
 use crate::names::Name;
 use crate::parser::ast::{BinOp, Expr, ExprKind, InstanceOfTarget, Stmt, TypeExpr};
@@ -202,9 +212,27 @@ impl Checker {
                     value: Box::new(value),
                 })
             }
+            (PhpType::Array(left_elem), PhpType::AssocArray { key, value }) => {
+                let value = self
+                    .merge_array_element_type(left_elem, value)
+                    .unwrap_or(PhpType::Mixed);
+                Ok(PhpType::AssocArray {
+                    key: Box::new(merge_array_key_types(PhpType::Int, *key.clone())),
+                    value: Box::new(value),
+                })
+            }
+            (PhpType::AssocArray { key, value }, PhpType::Array(right_elem)) => {
+                let value = self
+                    .merge_array_element_type(value, right_elem)
+                    .unwrap_or(PhpType::Mixed);
+                Ok(PhpType::AssocArray {
+                    key: Box::new(merge_array_key_types(*key.clone(), PhpType::Int)),
+                    value: Box::new(value),
+                })
+            }
             _ => Err(CompileError::new(
                 expr.span,
-                "Array union requires both operands to be arrays of the same kind",
+                "Array union requires both operands to be arrays",
             )),
         }
     }

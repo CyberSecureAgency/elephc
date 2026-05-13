@@ -1,3 +1,13 @@
+//! Purpose:
+//! Collects exception runtime emitters and re-exports the helper emission surface.
+//! The module groups throw, rethrow, cleanup, dynamic instanceof, and catch matching helpers.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via the exception runtime section.
+//!
+//! Key details:
+//! - Exception matching and unwinding must keep handler-stack, call-frame cleanup, and class metadata invariants aligned.
+
 mod cleanup_frames;
 mod dynamic_instanceof;
 mod matches;

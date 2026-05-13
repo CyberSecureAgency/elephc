@@ -1,3 +1,13 @@
+//! Purpose:
+//! Exposes the compiler modules used by integration tests and library consumers.
+//! Keeps frontend, analysis, optimization, and codegen namespaces available from one crate root.
+//!
+//! Called from:
+//! - External crates and Rust integration tests that import `elephc`.
+//!
+//! Key details:
+//! - Public module boundaries here are part of the crate-facing compiler API.
+
 pub mod codegen;
 pub mod conditional;
 pub mod errors;

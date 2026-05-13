@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `unset` calls that clear variables or array elements.
+//! Coordinates ownership cleanup with caller storage updates for removed values.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::types::emit()`.
+//!
+//! Key details:
+//! - Unset is mutating and must release owned refcounted values without touching unrelated aliases.
+
 use crate::codegen::abi;
 use crate::codegen::context::{Context, HeapOwnership};
 use crate::codegen::data_section::DataSection;

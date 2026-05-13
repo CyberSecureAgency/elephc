@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `array_reduce` builtin calls that invoke user-provided callbacks.
+//! Owns callback argument materialization, result shape selection, and runtime helper calls.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::arrays::emit()`.
+//!
+//! Key details:
+//! - Callback lowering must preserve PHP source evaluation order, captures, and callable return ownership.
+
 use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;

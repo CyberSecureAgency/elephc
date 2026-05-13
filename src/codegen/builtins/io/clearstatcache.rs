@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `clearstatcache` calls for filesystem metadata cache state.
+//! Provides the codegen hook even when runtime cache behavior is minimal.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::io::emit()`.
+//!
+//! Key details:
+//! - The call is effectful from PHP's perspective and should remain ordered with stat-family operations.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

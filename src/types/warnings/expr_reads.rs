@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits checker warnings for expr reads cases.
+//! Scans typed AST and checker metadata for suspicious but non-fatal program patterns.
+//!
+//! Called from:
+//! - `crate::types::warnings`
+//!
+//! Key details:
+//! - Warning analysis should preserve source spans and avoid rejecting programs that type checking accepted.
+
 use crate::errors::CompileWarning;
 use crate::parser::ast::{Expr, ExprKind, InstanceOfTarget, Stmt, StmtKind};
 
@@ -149,7 +159,7 @@ pub(super) fn collect_expr_reads(
         }
         ExprKind::StaticPropertyAccess { .. } => {},
         ExprKind::BufferNew { len, .. } => collect_expr_reads(len, scope, warnings),
-        ExprKind::ClassConstant { .. } => {}
+        ExprKind::ClassConstant { .. } | ExprKind::ScopedConstantAccess { .. } => {}
         ExprKind::NewScopedObject { args, .. } => {
             for arg in args {
                 collect_expr_reads(arg, scope, warnings);
@@ -161,9 +171,17 @@ pub(super) fn collect_expr_reads(
         | ExprKind::BoolLiteral(_)
         | ExprKind::Null
         | ExprKind::ConstRef(_)
-        | ExprKind::EnumCase { .. }
         | ExprKind::FirstClassCallable(_)
         | ExprKind::This => {}
+        ExprKind::Yield { key, value } => {
+            if let Some(k) = key {
+                collect_expr_reads(k, scope, warnings);
+            }
+            if let Some(v) = value {
+                collect_expr_reads(v, scope, warnings);
+            }
+        }
+        ExprKind::YieldFrom(inner) => collect_expr_reads(inner, scope, warnings),
         ExprKind::MagicConstant(_) => {
             unreachable!("MagicConstant must be lowered before warnings analysis")
         }

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_heap_debug_report`, `__rt_itoa` runtime helper assembly for heap debug report.
+//! Keeps PHP array/hash storage, heap ownership, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::arrays`.
+//!
+//! Key details:
+//! - Heap helpers own allocator metadata, debug accounting, and free-list invariants used by all refcounted runtime values.
+
 use crate::codegen::{emit::Emitter, platform::Arch};
 
 /// heap_debug_report: print allocator/debug summary and leak info to stderr.

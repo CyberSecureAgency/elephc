@@ -1,10 +1,13 @@
-//! Fiber stack allocation.
+//! Purpose:
+//! Emits runtime helpers that allocate and free per-fiber stacks.
+//! Owns the mmap/protection setup that gives each Fiber an isolated stack and guard page.
 //!
-//! Per-fiber stacks are allocated via `mmap` with `MAP_PRIVATE | MAP_ANON` and a
-//! 16 KB guard page at the bottom protected with `PROT_NONE`. A stack overflow
-//! that touches the guard page faults via SIGSEGV instead of silently
-//! corrupting the heap. The full mmap'd region is returned to the OS via
-//! `munmap` in the object_free_deep hook when the Fiber object is released.
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::fibers`.
+//! - `crate::codegen::runtime::x86_minimal::emit_runtime_linux_x86_64_minimal()`.
+//!
+//! Key details:
+//! - Stack regions must be unmapped when Fiber objects are freed, and guard-page sizing must match supported targets.
 
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::{Arch, Platform};

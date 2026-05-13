@@ -1,3 +1,13 @@
+//! Purpose:
+//! Resolves statement lists by expanding include/require effects into the AST.
+//! Tracks included files, declaration state, constants, and function variants across traversal.
+//!
+//! Called from:
+//! - `crate::resolver::resolve()` and isolated include-discovery resolution.
+//!
+//! Key details:
+//! - Resolver runs before namespace name canonicalization, so it preserves PHP namespace syntax context.
+
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -343,6 +353,7 @@ pub(super) fn resolve_stmts(
                 trait_uses,
                 properties,
                 methods,
+            constants,
             } => {
                 let methods = resolve_methods(
                     methods,
@@ -352,7 +363,7 @@ pub(super) fn resolve_stmts(
                     state,
                     function_variants,
                 )?;
-                result.push(Stmt::new(
+                result.push(Stmt::with_attributes(
                     StmtKind::ClassDecl {
                         name: name.clone(),
                         extends: extends.clone(),
@@ -363,33 +374,14 @@ pub(super) fn resolve_stmts(
                         trait_uses: trait_uses.clone(),
                         properties: properties.clone(),
                         methods,
+                        constants: constants.clone(),
                     },
                     stmt.span,
+                    stmt.attributes.clone(),
                 ));
             }
-            StmtKind::InterfaceDecl { name, extends, methods } => {
-                let methods = resolve_methods(
-                    methods,
-                    base_dir,
-                    declared_once,
-                    include_chain,
-                    state,
-                    function_variants,
-                )?;
-                result.push(Stmt::new(
-                    StmtKind::InterfaceDecl {
-                        name: name.clone(),
-                        extends: extends.clone(),
-                        methods,
-                    },
-                    stmt.span,
-                ));
-            }
-            StmtKind::TraitDecl {
-                name,
-                trait_uses,
-                properties,
-                methods,
+            StmtKind::InterfaceDecl { name, extends, methods,
+            constants,
             } => {
                 let methods = resolve_methods(
                     methods,
@@ -399,14 +391,42 @@ pub(super) fn resolve_stmts(
                     state,
                     function_variants,
                 )?;
-                result.push(Stmt::new(
+                result.push(Stmt::with_attributes(
+                    StmtKind::InterfaceDecl {
+                        name: name.clone(),
+                        extends: extends.clone(),
+                        methods,
+                        constants: constants.clone(),
+                    },
+                    stmt.span,
+                    stmt.attributes.clone(),
+                ));
+            }
+            StmtKind::TraitDecl {
+                name,
+                trait_uses,
+                properties,
+                methods,
+            constants,
+            } => {
+                let methods = resolve_methods(
+                    methods,
+                    base_dir,
+                    declared_once,
+                    include_chain,
+                    state,
+                    function_variants,
+                )?;
+                result.push(Stmt::with_attributes(
                     StmtKind::TraitDecl {
                         name: name.clone(),
                         trait_uses: trait_uses.clone(),
                         properties: properties.clone(),
                         methods,
+                        constants: constants.clone(),
                     },
                     stmt.span,
+                    stmt.attributes.clone(),
                 ));
             }
             _ => {

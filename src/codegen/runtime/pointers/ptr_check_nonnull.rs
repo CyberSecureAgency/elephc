@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_ptr_check_nonnull`, `__rt_ptr_check_nonnull_ok` runtime helper assembly for null pointer guard checks.
+//! Keeps compiler pointer extension conversions and fatal checks aligned with generated pointer operations.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::pointers`.
+//!
+//! Key details:
+//! - Pointer helpers must keep null checks and C-string conversions aligned with the pointer extension ABI.
+
 use crate::codegen::{abi, emit::Emitter, platform::Arch};
 
 /// __rt_ptr_check_nonnull: abort with a fatal error on null pointer dereference.

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Infers object methods expression types.
+//! Validates class, method, constructor, property, and magic-access contracts against schema metadata.
+//!
+//! Called from:
+//! - `crate::types::checker::inference::objects`
+//!
+//! Key details:
+//! - Object inference depends on flattened class metadata, visibility, inheritance, and declared property types.
+
 use crate::errors::CompileError;
 use crate::parser::ast::{Expr, StaticReceiver};
 use crate::types::{PhpType, TypeEnv};
@@ -65,6 +75,18 @@ impl Checker {
         let mut normalized_args = args.to_vec();
         if let Some(class_info) = self.classes.get(class_name) {
             if let Some(sig) = class_info.methods.get(method) {
+                if let Some(reason) = sig.deprecation.clone() {
+                    let message = if reason.is_empty() {
+                        format!("Call to deprecated method: {}::{}()", class_name, method)
+                    } else {
+                        format!(
+                            "Call to deprecated method: {}::{}() — {}",
+                            class_name, method, reason
+                        )
+                    };
+                    self.warnings
+                        .push(crate::errors::CompileWarning::new(expr.span, &message));
+                }
                 if let Some(visibility) = class_info.method_visibilities.get(method) {
                     let declaring_class = class_info
                         .method_declaring_classes
@@ -195,6 +217,18 @@ impl Checker {
         let normalized_args: Vec<Expr>;
         if let Some(class_info) = self.classes.get(class_name) {
             if let Some(sig) = class_info.static_methods.get(method) {
+                if let Some(reason) = sig.deprecation.clone() {
+                    let message = if reason.is_empty() {
+                        format!("Call to deprecated static method: {}::{}()", class_name, method)
+                    } else {
+                        format!(
+                            "Call to deprecated static method: {}::{}() — {}",
+                            class_name, method, reason
+                        )
+                    };
+                    self.warnings
+                        .push(crate::errors::CompileWarning::new(expr.span, &message));
+                }
                 if let Some(visibility) = class_info.static_method_visibilities.get(method) {
                     let declaring_class = class_info
                         .static_method_declaring_classes

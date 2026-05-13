@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits process bootstrap snippets that move OS-provided values into compiler-managed locations.
+//! Provides small target-aware helpers for heap debug setup, frame copying, and process exit.
+//!
+//! Called from:
+//! - `crate::codegen::main_emission` and top-level program prologue emission
+//!
+//! Key details:
+//! - Register choices must match the platform entry convention before normal PHP frame setup begins.
+
 use crate::codegen::{emit::Emitter, platform::Arch};
 
 use super::{

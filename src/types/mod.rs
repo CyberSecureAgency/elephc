@@ -1,3 +1,13 @@
+//! Purpose:
+//! Provides the public type-system entry point used by the compile pipeline.
+//! Re-exports type models, signatures, schemas, call-argument planning, warnings, and checker results.
+//!
+//! Called from:
+//! - `crate::pipeline::compile()`
+//!
+//! Key details:
+//! - `check()` runs after name resolution and before optimization/codegen so later passes receive canonical type metadata.
+
 pub mod checker;
 pub mod traits;
 mod array_keys;
@@ -19,10 +29,12 @@ pub use ffi::{ctype_stack_size, ctype_to_php_type, packed_type_size};
 pub use model::{PhpType, TypeEnv};
 pub use result::{check_with_target, CheckResult};
 pub use schema::{
-    ClassInfo, EnumCaseInfo, EnumCaseValue, EnumInfo, ExternClassInfo, ExternFieldInfo,
-    ExternFunctionSig, InterfaceInfo, PackedClassInfo, PackedFieldInfo,
+    AttrArgValue, ClassInfo, EnumCaseInfo, EnumCaseValue, EnumInfo, ExternClassInfo,
+    ExternFieldInfo, ExternFunctionSig, InterfaceInfo, PackedClassInfo, PackedFieldInfo,
 };
-pub(crate) use signatures::{builtin_call_sig, first_class_callable_builtin_sig};
+pub(crate) use signatures::{
+    builtin_call_sig, callable_wrapper_sig, first_class_callable_builtin_sig,
+};
 pub use signatures::FunctionSig;
 
 #[allow(dead_code)]

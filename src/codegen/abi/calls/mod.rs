@@ -1,3 +1,13 @@
+//! Purpose:
+//! Groups ABI call helpers for incoming parameters, outgoing materialization, invocation, and stack scratch space.
+//! Offers the call-lowering surface used by PHP, method, wrapper, and extern emitters.
+//!
+//! Called from:
+//! - `crate::codegen::abi` and call expression emitters
+//!
+//! Key details:
+//! - Source-order evaluation is handled above this layer; this module materializes already-planned ABI order.
+
 mod incoming;
 mod invoke;
 mod outgoing;

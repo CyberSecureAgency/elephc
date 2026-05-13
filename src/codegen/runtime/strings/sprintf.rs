@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_sprintf`, `__rt_sprintf_loop` runtime helper assembly for sprintf formatting.
+//! Keeps PHP byte-string pointer/length behavior and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::strings`.
+//!
+//! Key details:
+//! - Formatting helpers parse format strings and marshal values through target ABI calls or emitted formatting paths.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 

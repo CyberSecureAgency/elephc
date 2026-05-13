@@ -1,3 +1,13 @@
+//! Purpose:
+//! Resolves ordinary non-declaration statements under an active namespace/import context.
+//! Rewrites child expressions, nested bodies, catch clauses, and control-flow statements.
+//!
+//! Called from:
+//! - `crate::name_resolver::statements::list::resolve_stmt_list()`.
+//!
+//! Key details:
+//! - Statement structure is preserved while contained names are canonicalized for downstream passes.
+
 use crate::errors::CompileError;
 use crate::parser::ast::{Stmt, StmtKind};
 

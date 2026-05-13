@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `preg_match` PCRE-style regex builtin calls.
+//! Connects pattern/subject arguments and optional match arrays to runtime regex helpers.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::system::emit()`.
+//!
+//! Key details:
+//! - Match arrays and false/error results must use PHP-compatible Mixed array payloads.
+
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

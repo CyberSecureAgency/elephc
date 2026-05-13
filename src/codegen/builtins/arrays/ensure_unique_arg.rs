@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits copy-on-write uniqueness checks for array arguments before in-place mutation.
+//! Centralizes the COW guard shared by PHP mutating array builtins.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::arrays::*::emit() for mutating array builtins`.
+//!
+//! Key details:
+//! - The array pointer may change after uniqueness repair, so callers must store it back when mutating by reference.
+
 use crate::codegen::abi;
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;

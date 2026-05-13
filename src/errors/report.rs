@@ -1,3 +1,13 @@
+//! Purpose:
+//! Formats compiler errors and warnings for terminal output.
+//! Converts optional file and span metadata into concise source-location diagnostics.
+//!
+//! Called from:
+//! - `crate::errors::report()` and `crate::errors::report_warning()`.
+//!
+//! Key details:
+//! - Formatting stays intentionally simple because callers may report diagnostics during early pipeline failure.
+
 use super::{CompileError, CompileWarning};
 
 pub fn print_error(error: &CompileError) {

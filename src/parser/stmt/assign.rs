@@ -1,3 +1,13 @@
+//! Purpose:
+//! Groups assignment-statement parsers and re-exports their shared lowering helpers.
+//! Separates compound, list, local, postfix, and simple assignment surfaces.
+//!
+//! Called from:
+//! - `crate::parser::stmt::parse_stmt()`.
+//!
+//! Key details:
+//! - Assignment statement parsing is split to keep PHP l-value and evaluation-order rules localized.
+
 mod compound;
 mod list;
 mod locals;

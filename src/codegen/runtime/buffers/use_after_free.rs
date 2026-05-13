@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_buffer_use_after_free` runtime helper assembly for buffer use-after-free fatal diagnostics.
+//! Keeps compiler buffer extension checks and fatal paths aligned with generated pointer operations.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::buffers`.
+//!
+//! Key details:
+//! - Buffer helpers enforce extension ownership rules, including live headers, bounds checks, and fatal paths before unsafe access.
+
 use crate::codegen::abi;
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;

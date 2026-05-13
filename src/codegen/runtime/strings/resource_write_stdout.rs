@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_resource_write_stdout`, `__rt_itoa` runtime helper assembly for resource write stdout.
+//! Keeps PHP byte-string pointer/length behavior and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::strings`.
+//!
+//! Key details:
+//! - Resource helpers format or write runtime resource identifiers without claiming ownership of external descriptors.
+
 use crate::codegen::abi;
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;

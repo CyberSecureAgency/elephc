@@ -1,8 +1,19 @@
+//! Purpose:
+//! Coordinates emission of all runtime helper labels for non-minimal targets.
+//! Orders strings, system helpers, exceptions, arrays, buffers, I/O, pointers, and fibers so dependencies are available.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emit_runtime()`.
+//!
+//! Key details:
+//! - Emission order is part of the runtime contract because helpers branch to labels and data symbols emitted elsewhere.
+
 use super::arrays;
 use super::buffers;
 use super::diagnostics;
 use super::exceptions;
 use super::fibers;
+use super::generators;
 use super::io;
 use super::objects;
 use super::pointers;
@@ -121,6 +132,9 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter) {
     exceptions::emit_throw_current(emitter);
     exceptions::emit_rethrow_current(emitter);
 
+    // Generator runtime helpers for Iterator methods, send/throw, and return-value retrieval.
+    generators::emit_generator_runtime(emitter);
+
     // Array runtime functions
     arrays::emit_heap_alloc(emitter);
     arrays::emit_heap_debug_fail(emitter);
@@ -138,6 +152,8 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter) {
     arrays::emit_array_push_refcounted(emitter);
     arrays::emit_array_push_str(emitter);
     arrays::emit_array_union(emitter);
+    arrays::emit_array_hash_union(emitter);
+    arrays::emit_hash_array_union(emitter);
     arrays::emit_random_u32(emitter);
     arrays::emit_random_uniform(emitter);
     arrays::emit_sort_int(emitter, false);
@@ -192,6 +208,7 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter) {
     arrays::emit_array_chunk(emitter);
     arrays::emit_array_chunk_refcounted(emitter);
     arrays::emit_array_column(emitter);
+    arrays::emit_array_column_mixed(emitter);
     arrays::emit_array_column_ref(emitter);
     arrays::emit_array_column_str(emitter);
     arrays::emit_array_splice(emitter);
@@ -208,6 +225,7 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter) {
     arrays::emit_array_reduce(emitter);
     arrays::emit_array_walk(emitter);
     arrays::emit_usort(emitter);
+    arrays::emit_array_to_mixed(emitter);
     arrays::emit_array_merge_into(emitter);
     arrays::emit_array_merge_into_refcounted(emitter);
     arrays::emit_decref_any(emitter);

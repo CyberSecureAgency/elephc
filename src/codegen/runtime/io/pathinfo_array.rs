@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_str_persist`, `__rt_pathinfo_array` runtime helper assembly for pathinfo array.
+//! Keeps PHP filesystem/resource behavior, libc calls, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::io`.
+//!
+//! Key details:
+//! - I/O helpers bridge PHP strings, resources, descriptors, and libc calls while returning runtime arrays or pointer/length strings.
+
 use crate::codegen::{emit::Emitter, platform::Arch};
 
 /// pathinfo (no-flag form): build an associative array with the path components.

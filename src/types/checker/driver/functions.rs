@@ -1,3 +1,13 @@
+//! Purpose:
+//! Implements the checker driver functions phase.
+//! Owns one ordered step in building checker state and validating the program before optimization/codegen.
+//!
+//! Called from:
+//! - `crate::types::checker::driver::check_types_impl()`
+//!
+//! Key details:
+//! - Phase order controls diagnostics, available declarations, required libraries, and function-local environments.
+
 use std::collections::HashSet;
 
 use crate::errors::CompileError;
@@ -79,6 +89,7 @@ impl Checker {
                         return_type: return_type.clone(),
                         span: stmt.span,
                         body: body.clone(),
+                        attributes: stmt.attributes.clone(),
                     },
                 );
             }
@@ -229,6 +240,7 @@ impl Checker {
                 .chain(decl.variadic.iter().map(|_| false))
                 .collect(),
             variadic: decl.variadic,
+            deprecation: None,
         }))
     }
 }

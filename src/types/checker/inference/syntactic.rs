@@ -1,3 +1,13 @@
+//! Purpose:
+//! Infers syntactic type-system behavior.
+//! Converts AST forms into `PhpType` facts used by validation, warnings, and codegen metadata.
+//!
+//! Called from:
+//! - `crate::types::checker::inference`
+//!
+//! Key details:
+//! - PHP compatibility matters for coercions, operator results, object access, and nullable/union handling.
+
 use crate::parser::ast::{BinOp, CastType, Expr, ExprKind, Stmt, StmtKind};
 use crate::types::{merge_array_key_types, normalized_array_key_type, PhpType};
 
@@ -5,6 +15,10 @@ use crate::types::{merge_array_key_types, normalized_array_key_type, PhpType};
 /// This is a syntactic/heuristic check — no full type inference.
 /// Used for functions that are never called directly (only used as callbacks).
 pub fn infer_return_type_syntactic(body: &[Stmt]) -> PhpType {
+    if crate::types::checker::yield_validation::body_contains_yield(body) {
+        return PhpType::Object("Generator".to_string());
+    }
+
     let mut types = Vec::new();
     for stmt in body {
         collect_return_types_syntactic(stmt, &mut types);
@@ -101,6 +115,12 @@ pub(crate) fn wider_type_syntactic(a: &PhpType, b: &PhpType) -> PhpType {
     if a == b {
         return a.clone();
     }
+    if *a == PhpType::Never {
+        return b.clone();
+    }
+    if *b == PhpType::Never {
+        return a.clone();
+    }
     if *a == PhpType::Str || *b == PhpType::Str {
         return PhpType::Str;
     }
@@ -143,7 +163,31 @@ fn array_union_type_syntactic(a: &PhpType, b: &PhpType) -> Option<PhpType> {
             };
             Some(PhpType::AssocArray { key, value })
         }
+        (PhpType::Array(left_value), PhpType::AssocArray { key, value }) => {
+            Some(PhpType::AssocArray {
+                key: Box::new(merge_array_key_types(PhpType::Int, *key.clone())),
+                value: Box::new(array_union_value_type_syntactic(left_value, value)),
+            })
+        }
+        (PhpType::AssocArray { key, value }, PhpType::Array(right_value)) => {
+            Some(PhpType::AssocArray {
+                key: Box::new(merge_array_key_types(*key.clone(), PhpType::Int)),
+                value: Box::new(array_union_value_type_syntactic(value, right_value)),
+            })
+        }
         _ => None,
+    }
+}
+
+fn array_union_value_type_syntactic(left: &PhpType, right: &PhpType) -> PhpType {
+    if left == right {
+        left.clone()
+    } else if matches!(left, PhpType::Never) {
+        right.clone()
+    } else if matches!(right, PhpType::Never) {
+        left.clone()
+    } else {
+        PhpType::Mixed
     }
 }
 
@@ -252,7 +296,7 @@ pub fn infer_expr_type_syntactic(expr: &Expr) -> PhpType {
             let mut elem_ty = elems
                 .first()
                 .map(infer_expr_type_syntactic)
-                .unwrap_or(PhpType::Mixed);
+                .unwrap_or(PhpType::Never);
             for elem in elems.iter().skip(1) {
                 elem_ty = wider_type_syntactic(&elem_ty, &infer_expr_type_syntactic(elem));
             }
@@ -281,8 +325,7 @@ pub fn infer_expr_type_syntactic(expr: &Expr) -> PhpType {
         }
         ExprKind::NewObject { class_name, .. } => PhpType::Object(class_name.as_str().to_string()),
         ExprKind::NewScopedObject { .. } => PhpType::Object(String::new()),
-        ExprKind::ClassConstant { .. } => PhpType::Str,
-        ExprKind::EnumCase { enum_name, .. } => PhpType::Object(enum_name.as_str().to_string()),
+        ExprKind::ClassConstant { .. } | ExprKind::ScopedConstantAccess { .. } => PhpType::Str,
         ExprKind::This => PhpType::Object(String::new()),
         ExprKind::PtrCast { target_type, .. } => PhpType::Pointer(Some(target_type.clone())),
         ExprKind::BinaryOp { left, op, right } => match op {
@@ -331,5 +374,48 @@ pub fn infer_expr_type_syntactic(expr: &Expr) -> PhpType {
         },
         ExprKind::InstanceOf { .. } => PhpType::Bool,
         _ => PhpType::Int,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_syntactic_indexed_plus_assoc_array_union_type() {
+        let ty = array_union_type_syntactic(
+            &PhpType::Array(Box::new(PhpType::Str)),
+            &PhpType::AssocArray {
+                key: Box::new(PhpType::Str),
+                value: Box::new(PhpType::Str),
+            },
+        );
+
+        assert_eq!(
+            ty,
+            Some(PhpType::AssocArray {
+                key: Box::new(PhpType::Mixed),
+                value: Box::new(PhpType::Str),
+            })
+        );
+    }
+
+    #[test]
+    fn test_syntactic_assoc_plus_indexed_array_union_type() {
+        let ty = array_union_type_syntactic(
+            &PhpType::AssocArray {
+                key: Box::new(PhpType::Int),
+                value: Box::new(PhpType::Str),
+            },
+            &PhpType::Array(Box::new(PhpType::Int)),
+        );
+
+        assert_eq!(
+            ty,
+            Some(PhpType::AssocArray {
+                key: Box::new(PhpType::Int),
+                value: Box::new(PhpType::Mixed),
+            })
+        );
     }
 }

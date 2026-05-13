@@ -1,3 +1,13 @@
+//! Purpose:
+//! Coordinates indexed array assignment preparation, normalization, extension, and value storage.
+//! Keeps platform-sensitive substeps behind one statement-level entry point.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::arrays::assign`
+//!
+//! Key details:
+//! - Index normalization and capacity extension must happen before storing the coerced element value.
+
 mod extend;
 mod normalize;
 mod prepare;

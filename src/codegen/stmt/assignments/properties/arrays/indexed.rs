@@ -1,3 +1,13 @@
+//! Purpose:
+//! Lowers indexed array mutation through object property storage.
+//! Prepares receiver, property array payload, index, and value before publishing the updated property.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::assignments::properties::arrays`
+//!
+//! Key details:
+//! - Property array writes must preserve receiver ownership and write the final array handle back to the property slot.
+
 use super::super::target;
 use crate::codegen::abi;
 use crate::codegen::context::Context;
@@ -42,11 +52,10 @@ pub(crate) fn emit_property_array_assign_stmt(
         }
         return;
     }
-
     let obj_ty = emit_expr(object, emitter, ctx, data);
     let target = match target::resolve_property_assign_target(&obj_ty, property, None, emitter, ctx) {
         target::PropertyAssignResolution::Resolved(target) => target,
-        target::PropertyAssignResolution::UseMagicSet(_) | target::PropertyAssignResolution::Abort => {
+        target::PropertyAssignResolution::UseMagicSet(_) | target::PropertyAssignResolution::UseDynamicProperty { .. } | target::PropertyAssignResolution::Abort => {
             emitter.comment("WARNING: property array assign requires a concrete array property");
             return;
         }
@@ -62,7 +71,6 @@ pub(crate) fn emit_property_array_assign_stmt(
             return;
         }
     };
-
     if target.needs_deref {
         abi::emit_call_label(emitter, "__rt_ptr_check_nonnull");
         emitter.comment(&format!(
@@ -70,7 +78,6 @@ pub(crate) fn emit_property_array_assign_stmt(
             target.class_name, property, target.offset
         ));
     }
-
     let object_reg = abi::symbol_scratch_reg(emitter);
     emitter.instruction(&format!("mov {}, {}", object_reg, abi::int_result_reg(emitter))); // preserve the owning object pointer while the indexed write evaluates the index/value and may reallocate the array
     abi::emit_load_from_address(emitter, abi::int_result_reg(emitter), object_reg, target.offset);

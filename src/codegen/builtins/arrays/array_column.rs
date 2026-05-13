@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `array_column` builtin calls over associative or key-aware array data.
+//! Owns key/value payload setup and runtime hash-helper invocation for array results or lookups.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::arrays::emit()`.
+//!
+//! Key details:
+//! - Array key typing and Mixed payload tags must match the runtime hash-table representation.
+
 use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
@@ -44,6 +54,8 @@ pub fn emit(
     }
     if val_ty == PhpType::Str {
         abi::emit_call_label(emitter, "__rt_array_column_str");                 // extract string column values into a new indexed array whose slots own persisted strings
+    } else if matches!(val_ty, PhpType::Mixed | PhpType::Union(_)) {
+        abi::emit_call_label(emitter, "__rt_array_column_mixed");               // extract runtime-tagged hash values into boxed Mixed result slots
     } else if val_ty.is_refcounted() {
         abi::emit_call_label(emitter, "__rt_array_column_ref");                 // extract retained heap/object/array column values into a new indexed array
     } else {

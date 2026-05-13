@@ -1,3 +1,13 @@
+//! Purpose:
+//! Rewrites include-loaded functions that have mutually exclusive declaration variants.
+//! Collects occurrences, chooses supported variant groups, and rewrites local function names.
+//!
+//! Called from:
+//! - `crate::resolver::resolve()` after include declaration discovery.
+//!
+//! Key details:
+//! - Variant symbol names are stable and deterministic so runtime activation checks can link correctly.
+
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 

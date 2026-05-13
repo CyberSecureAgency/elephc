@@ -1,3 +1,13 @@
+//! Purpose:
+//! Computes builtin return and parameter types needed by code generation.
+//! Keeps emission-time type decisions separate from instruction lowering.
+//!
+//! Called from:
+//! - `crate::codegen::functions::types`
+//!
+//! Key details:
+//! - Results must agree with `crate::types` so local slots and runtime value shapes are selected correctly.
+
 use crate::codegen::context::Context;
 use crate::parser::ast::{BinOp, Expr, ExprKind};
 use crate::types::{array_key_type_from_value_type, FunctionSig, PhpType};
@@ -196,6 +206,11 @@ pub(super) fn infer_function_call_type(
             }
         }
         "ptr_get" | "ptr_read8" | "ptr_read32" | "ptr_sizeof" => PhpType::Int,
+        "class_attribute_names" => PhpType::Array(Box::new(PhpType::Str)),
+        "class_attribute_args" => PhpType::Array(Box::new(PhpType::Mixed)),
+        "class_get_attributes" => PhpType::Array(Box::new(PhpType::Object(
+            "ReflectionAttribute".to_string(),
+        ))),
         _ => {
             if let Some(c) = ctx {
                 if let Some(fn_sig) = c.functions.get(name) {

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Dispatches type checking for supported PHP builtin function families.
+//! Centralizes builtin return inference, arity diagnostics, and target library requirements.
+//!
+//! Called from:
+//! - `crate::types::checker::Checker::infer_type()` for function-call expressions.
+//!
+//! Key details:
+//! - Builtin names must flow through the catalog so case-insensitive lookup and namespace fallback stay coherent.
+
 mod arrays;
 mod callables;
 mod catalog;

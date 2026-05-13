@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_json_encode_null` runtime helper assembly for json encode null.
+//! Keeps PHP builtin semantics, libc/syscall boundaries, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::system`.
+//!
+//! Key details:
+//! - JSON encoders are emitted formatter state machines; escaping, type tags, and buffer growth are observable PHP behavior.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 

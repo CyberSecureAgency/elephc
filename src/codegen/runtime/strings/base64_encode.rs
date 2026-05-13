@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_base64_encode`, `__rt_b64enc_loop` runtime helper assembly for base64 encode.
+//! Keeps PHP byte-string pointer/length behavior and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::strings`.
+//!
+//! Key details:
+//! - Base64 helpers depend on fixed encode/decode tables and must report decoded pointer/length pairs consistently.
+
 use crate::codegen::{emit::Emitter, platform::Arch};
 
 /// base64_encode: standard base64 encoding (3 input bytes -> 4 output chars).

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Classifies expression results as owned, borrowed, persistent, or non-refcounted for cleanup decisions.
+//! Provides retain and release helpers used around heap-valued temporaries and arguments.
+//!
+//! Called from:
+//! - `crate::codegen::expr` and statement cleanup paths
+//!
+//! Key details:
+//! - Ownership answers must stay conservative to avoid leaks, double frees, and borrowed-value releases.
+
 use crate::codegen::context::HeapOwnership;
 use crate::parser::ast::{Expr, ExprKind};
 
@@ -8,7 +18,6 @@ pub(crate) fn expr_result_heap_ownership(expr: &Expr) -> HeapOwnership {
         | ExprKind::PropertyAccess { .. }
         | ExprKind::NullsafePropertyAccess { .. }
         | ExprKind::StaticPropertyAccess { .. }
-        | ExprKind::EnumCase { .. }
         | ExprKind::This => HeapOwnership::Borrowed,
         ExprKind::Spread(inner)
         | ExprKind::PtrCast { expr: inner, .. }

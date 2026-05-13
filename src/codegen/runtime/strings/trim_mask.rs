@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_trim_mask`, `__rt_ltrim_mask` runtime helper assembly for trim mask.
+//! Keeps PHP byte-string pointer/length behavior and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::strings`.
+//!
+//! Key details:
+//! - Trim helpers scan byte ranges without copying unless the returned pointer/length slice changes.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 

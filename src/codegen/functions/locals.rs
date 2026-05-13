@@ -1,7 +1,16 @@
+//! Purpose:
+//! Collects all local and hidden frame slots required by function bodies before frame sizing.
+//! Finds temporaries for named arguments, try handlers, closures, fibers, and statement lowering.
+//!
+//! Called from:
+//! - `crate::codegen::functions` before prologue emission
+//!
+//! Key details:
+//! - Any lowering path that introduces storage must be represented here before stack offsets are assigned.
+
 use crate::codegen::context::Context;
 use crate::parser::ast::{Expr, ExprKind, InstanceOfTarget, StmtKind};
 use crate::types::{FunctionSig, PhpType};
-
 use super::types::{codegen_declared_type, codegen_static_type, infer_local_type};
 
 pub fn collect_local_vars(

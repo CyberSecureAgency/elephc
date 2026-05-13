@@ -1,32 +1,23 @@
+//! Purpose:
+//! Checks type compatibility for declarations cases.
+//! Supports the central assignability predicate used by declarations, calls, returns, and assignments.
+//!
+//! Called from:
+//! - `crate::types::checker::type_compat`
+//!
+//! Key details:
+//! - Rules here define accepted programs, so PHP covariance, inheritance, and extension-specific constraints must stay explicit.
+
 use crate::errors::CompileError;
 use crate::parser::ast::{Expr, TypeExpr};
-use crate::types::{ClassInfo, FunctionSig, PhpType};
+use crate::types::{callable_wrapper_sig, ClassInfo, FunctionSig, PhpType};
 
 use super::super::inference::syntactic::infer_expr_type_syntactic;
 use super::super::{Checker, FnDecl};
 
 impl Checker {
     pub(crate) fn callable_wrapper_sig(sig: &FunctionSig) -> FunctionSig {
-        let Some(variadic_name) = sig.variadic.as_ref() else {
-            return sig.clone();
-        };
-        if sig
-            .params
-            .last()
-            .is_some_and(|(name, ty)| name == variadic_name && matches!(ty, PhpType::Array(_)))
-        {
-            return sig.clone();
-        }
-
-        let mut wrapper_sig = sig.clone();
-        wrapper_sig.params.push((
-            variadic_name.clone(),
-            PhpType::Array(Box::new(PhpType::Mixed)),
-        ));
-        wrapper_sig.defaults.push(None);
-        wrapper_sig.ref_params.push(false);
-        wrapper_sig.declared_params.push(false);
-        wrapper_sig
+        callable_wrapper_sig(sig)
     }
 
     pub(crate) fn resolve_declared_param_type_hint(

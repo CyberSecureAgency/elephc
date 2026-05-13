@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_getenv`, `__rt_cstr` runtime helper assembly for getenv.
+//! Keeps PHP builtin semantics, libc/syscall boundaries, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::system`.
+//!
+//! Key details:
+//! - The helper converts PHP strings to C strings and returns empty pointer/length pairs for missing environment variables.
+
 use crate::codegen::{abi, emit::Emitter, platform::Arch};
 
 /// __rt_getenv: get environment variable value.

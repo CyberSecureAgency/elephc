@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_array_merge_into`, `__rt_ami_done` runtime helper assembly for array merge into.
+//! Keeps PHP array/hash storage, heap ownership, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::arrays`.
+//!
+//! Key details:
+//! - Array helpers operate on runtime array headers and element cells; mutations must respect capacity and COW contracts.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 

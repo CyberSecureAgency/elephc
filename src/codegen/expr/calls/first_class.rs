@@ -1,37 +1,24 @@
+//! Purpose:
+//! Lowers first-class callable creation for functions, methods, and builtins.
+//! Resolves the callable shape, prepares arguments, and leaves the call result for expression consumers.
+//!
+//! Called from:
+//! - `crate::codegen::expr::calls`
+//!
+//! Key details:
+//! - Callable metadata and argument signatures must stay synchronized with type checking and runtime dispatch.
+
 use crate::codegen::abi;
 use crate::codegen::context::{Context, DeferredClosure};
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
 use crate::names::Name;
 use crate::parser::ast::{CallableTarget, Expr, ExprKind, StaticReceiver, Stmt, StmtKind};
-use crate::types::{first_class_callable_builtin_sig, FunctionSig, PhpType};
+use crate::types::{callable_wrapper_sig, first_class_callable_builtin_sig, FunctionSig, PhpType};
 
 const FCC_CALLED_CLASS_ID_PARAM: &str = "__elephc_fcc_called_class_id";
 const FCC_THIS_PARAM: &str = "__elephc_fcc_this";
 const FCC_RECEIVER_PARAM: &str = "__elephc_fcc_receiver";
-
-fn callable_wrapper_sig(sig: &FunctionSig) -> FunctionSig {
-    let Some(variadic_name) = sig.variadic.as_ref() else {
-        return sig.clone();
-    };
-    if sig
-        .params
-        .last()
-        .is_some_and(|(name, ty)| name == variadic_name && matches!(ty, PhpType::Array(_)))
-    {
-        return sig.clone();
-    }
-
-    let mut wrapper_sig = sig.clone();
-    wrapper_sig.params.push((
-        variadic_name.clone(),
-        PhpType::Array(Box::new(PhpType::Mixed)),
-    ));
-    wrapper_sig.defaults.push(None);
-    wrapper_sig.ref_params.push(false);
-    wrapper_sig.declared_params.push(false);
-    wrapper_sig
-}
 
 fn resolved_static_callable_target(receiver: &StaticReceiver, ctx: &Context) -> Option<StaticReceiver> {
     match receiver {
@@ -85,20 +72,6 @@ pub(super) fn first_class_callable_sig(target: &CallableTarget, ctx: &Context) -
     }?;
 
     Some(callable_wrapper_sig(&sig))
-}
-
-fn append_hidden_params_to_sig(
-    sig: &FunctionSig,
-    hidden_params: &[(String, PhpType)],
-) -> FunctionSig {
-    let mut captured_sig = sig.clone();
-    for (name, ty) in hidden_params {
-        captured_sig.params.push((name.clone(), ty.clone()));
-        captured_sig.defaults.push(None);
-        captured_sig.ref_params.push(false);
-        captured_sig.declared_params.push(true);
-    }
-    captured_sig
 }
 
 fn unique_hidden_param(base: &str, sig: &FunctionSig) -> String {
@@ -283,14 +256,14 @@ pub(super) fn emit_first_class_callable(
     let wrapper_label = ctx.next_label("fcc");
     let param_names: Vec<String> = sig.params.iter().map(|(name, _)| name.clone()).collect();
     let body = wrapper_body(&normalized_target, &sig);
-    let deferred_sig = append_hidden_params_to_sig(&sig, &hidden_params);
 
     ctx.deferred_closures.push(DeferredClosure {
         label: wrapper_label.clone(),
         params: param_names,
         body,
-        sig: deferred_sig,
+        sig,
         captures,
+        hidden_params,
         current_class: ctx.current_class.clone(),
     });
 

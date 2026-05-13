@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_mixed_unbox`, `__rt_mixed_unbox_null` runtime helper assembly for mixed unbox.
+//! Keeps PHP array/hash storage, heap ownership, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::arrays`.
+//!
+//! Key details:
+//! - Mixed helpers use boxed tag/payload cells; tag constants and ownership rules are shared with type checking and codegen.
+
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 

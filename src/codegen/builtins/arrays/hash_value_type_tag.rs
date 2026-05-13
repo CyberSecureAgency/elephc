@@ -1,3 +1,13 @@
+//! Purpose:
+//! Maps PHP element types to runtime hash-array value tags.
+//! Provides the compact tag contract used when building associative array payloads.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::arrays::{array_combine,array_fill_keys}::emit()`.
+//!
+//! Key details:
+//! - Tag values must stay synchronized with runtime hash helpers that interpret Mixed and typed payloads.
+
 use crate::types::PhpType;
 
 pub(super) fn hash_value_type_tag(ty: &PhpType) -> u8 {

@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits PHP `count` calls for arrays and countable runtime values.
+//! Loads lengths from typed array layouts or boxed runtime structures as needed.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::arrays::emit()`.
+//!
+//! Key details:
+//! - Ownership state is observed but count must not consume or mutate the counted value.
+
 use crate::codegen::context::{Context, HeapOwnership};
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;

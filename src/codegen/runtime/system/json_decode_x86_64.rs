@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits the `__rt_json_decode`, `__rt_json_decode_empty` runtime helper assembly for json decode Linux x86 64.
+//! Keeps PHP builtin semantics, libc/syscall boundaries, and target-specific ABI variants in one focused emitter.
+//!
+//! Called from:
+//! - `crate::codegen::runtime::emitters::emit_runtime()` via `crate::codegen::runtime::system`.
+//!
+//! Key details:
+//! - The JSON decoder is an emitted parser state machine; tags, array/hash construction, and failure paths must stay synchronized.
+
 use crate::codegen::emit::Emitter;
 
 pub(super) fn emit_json_decode_linux_x86_64(emitter: &mut Emitter) {

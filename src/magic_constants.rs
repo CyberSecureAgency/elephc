@@ -1,7 +1,12 @@
-//! Lowering of PHP magic constants (`__DIR__`, `__FILE__`, `__FUNCTION__`,
-//! `__CLASS__`, `__METHOD__`, `__NAMESPACE__`, `__TRAIT__`) to plain string
-//! literals before the type checker and codegen run. `__LINE__` is already
-//! lowered at parse time (see `parser::expr::prefix`).
+//! Purpose:
+//! Coordinates PHP magic-constant lowering for file paths, lexical scopes, and trait binding.
+//! Owns the public pass entrypoints that turn magic constants into plain literals before later compiler passes.
+//!
+//! Called from:
+//! - `crate::pipeline::compile()` and `crate::resolver` when preparing main and included files.
+//!
+//! Key details:
+//! - `__LINE__` is lowered by the parser, while file/scope constants must be resolved before type checking and codegen.
 //!
 //! Public passes:
 //! - [`substitute_file_constants`] resolves `__FILE__` and `__DIR__` against

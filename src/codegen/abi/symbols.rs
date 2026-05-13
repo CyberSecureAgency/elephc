@@ -1,3 +1,13 @@
+//! Purpose:
+//! Emits target-aware loads, stores, and addresses for assembly symbols and external globals.
+//! Bridges local slot values, result registers, and static storage symbols.
+//!
+//! Called from:
+//! - `crate::codegen::stmt::storage`, `crate::codegen::functions`, and global emitters
+//!
+//! Key details:
+//! - Symbol relocations differ by platform and refcounted stores must preserve ownership cleanup.
+
 use crate::codegen::{emit::Emitter, platform::Arch};
 use crate::types::PhpType;
 

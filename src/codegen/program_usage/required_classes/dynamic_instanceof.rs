@@ -1,3 +1,13 @@
+//! Purpose:
+//! Detects instanceof expressions whose target is computed at runtime.
+//! Signals when codegen must keep broader class metadata available for dynamic checks.
+//!
+//! Called from:
+//! - `crate::codegen::program_usage::required_classes`
+//!
+//! Key details:
+//! - Dynamic targets require conservative metadata retention because the concrete class is not known statically.
+
 use crate::parser::ast::{Expr, ExprKind, InstanceOfTarget, Program, Stmt, StmtKind};
 
 pub(in crate::codegen) fn program_has_dynamic_instanceof(program: &Program) -> bool {
@@ -215,11 +225,18 @@ fn expr_has_dynamic_instanceof(expr: &Expr) -> bool {
         | ExprKind::PreDecrement(_)
         | ExprKind::PostDecrement(_)
         | ExprKind::ConstRef(_)
-        | ExprKind::EnumCase { .. }
         | ExprKind::StaticPropertyAccess { .. }
         | ExprKind::FirstClassCallable(_)
         | ExprKind::This
-        | ExprKind::ClassConstant { .. } => false,
+        | ExprKind::ClassConstant { .. }
+        | ExprKind::ScopedConstantAccess { .. } => false,
+        ExprKind::Yield { key, value } => {
+            key.as_ref().is_some_and(|k| expr_has_dynamic_instanceof(k))
+                || value
+                    .as_ref()
+                    .is_some_and(|v| expr_has_dynamic_instanceof(v))
+        }
+        ExprKind::YieldFrom(inner) => expr_has_dynamic_instanceof(inner),
         ExprKind::MagicConstant(_) => {
             unreachable!("MagicConstant must be lowered before codegen analysis")
         }
