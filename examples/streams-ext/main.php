@@ -9,7 +9,7 @@ $h = fopen("greet.txt", "r");
 echo "fgetc: ";
 while (!feof($h)) {
     $c = fgetc($h);
-    if (strlen($c) > 0) {
+    if ($c !== false) {
         echo $c;
     }
 }

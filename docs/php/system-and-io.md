@@ -144,10 +144,10 @@ Uses POSIX extended regex with common PCRE shorthand translation (`\s`, `\d`, `\
 | `rewind()` | `rewind(resource $handle): bool` | Seek to beginning |
 | `fgetcsv()` | `fgetcsv(resource $handle [, $sep]): array` | Read CSV line |
 | `fputcsv()` | `fputcsv(resource $handle, $fields [, $sep]): int` | Write CSV line |
-| `fgetc()` | `fgetc(resource $handle): string` | Read one byte (empty string at EOF) |
-| `readfile()` | `readfile($filename): int` | Stream a file to stdout, return bytes copied (0 on failure) |
-| `fpassthru()` | `fpassthru(resource $handle): int` | Stream remaining bytes of an open handle to stdout |
-| `flock()` | `flock(resource $handle, $op): bool` | Advisory lock. Combine `LOCK_SH` (1), `LOCK_EX` (2), or `LOCK_UN` (3) with the optional `LOCK_NB` (4) flag. |
+| `fgetc()` | `fgetc(resource $handle): string\|false` | Read one byte, or `false` at EOF/failure |
+| `readfile()` | `readfile($filename): int\|false` | Stream a file to stdout, return bytes copied, `-1` on read failure, or `false` on open failure |
+| `fpassthru()` | `fpassthru(resource $handle): int` | Stream remaining bytes of an open handle to stdout, returning `-1` on read failure |
+| `flock()` | `flock(resource $handle, int $op, &$would_block = null): bool` | Advisory lock. Combine `LOCK_SH` (1), `LOCK_EX` (2), or `LOCK_UN` (3) with the optional `LOCK_NB` (4) flag. `$would_block` is set to `0` or `1` when provided. |
 | `tmpfile()` | `tmpfile(): resource\|false` | Create a `/tmp/elephc-XXXXXX` temp file via `mkstemp`, immediately `unlink` the path so the file disappears when the descriptor closes. Returns a stream `resource` on success, or `false` on failure. |
 
 File handles are PHP `resource` values, not integers. `gettype(fopen(...))` returns `"resource"` on success and `"boolean"` on failure, `gettype(STDIN)` returns `"resource"`, and passing a plain `int` to stream functions is rejected. Failed `fopen()` calls, including invalid or empty modes, emit a suppressible runtime warning and return `false`; passing that `false` to stream functions is a fatal runtime TypeError with PHP-style "false given" wording, matching PHP's guard-before-use pattern.
@@ -185,7 +185,7 @@ File handles are PHP `resource` values, not integers. `gettype(fopen(...))` retu
 | `symlink()` | `symlink($target, $link): bool` | Create a symbolic link at `$link` pointing at `$target`. |
 | `link()` | `link($target, $link): bool` | Create a hard link `$link` for an existing path `$target`. |
 | `readlink()` | `readlink($path): string\|false` | Read the target of a symbolic link. Returns `false` on failure. |
-| `linkinfo()` | `linkinfo($path): int` | Returns the device id (`st_dev`) of the link, or `0` on failure. |
+| `linkinfo()` | `linkinfo($path): int` | Returns the device id (`st_dev`) of the link, or `-1` on failure. |
 
 ## File metadata
 

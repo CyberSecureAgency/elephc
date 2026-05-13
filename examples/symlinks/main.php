@@ -15,7 +15,7 @@ echo "soft.txt -> " . readlink("soft.txt") . "\n";
 link("data.txt", "hard.txt");
 echo "via hard link: " . file_get_contents("hard.txt");
 
-// linkinfo() returns a non-zero device id for an existing link, 0 otherwise.
+// linkinfo() returns a non-zero device id for an existing link, -1 otherwise.
 echo "linkinfo(soft.txt) > 0: " . (linkinfo("soft.txt") > 0 ? "y" : "n") . "\n";
 echo "linkinfo(missing): " . linkinfo("does-not-exist") . "\n";
 
