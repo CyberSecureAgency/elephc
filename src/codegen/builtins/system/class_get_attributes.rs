@@ -170,18 +170,9 @@ fn emit_set_name_property(
             abi::emit_symbol_address(emitter, "rax", &sym);                     // rax = source string address
             emitter.instruction(&format!("mov rdx, {}", len));                  // rdx = source string length
             emitter.instruction("call __rt_str_persist");                       // rax = heap-resident pointer, rdx = length
-            emitter.instruction(&format!(
-                "mov {}, QWORD PTR [rsp]",
-                obj_ptr_scratch
-            ));                                                                 // peek the obj pointer back
-            emitter.instruction(&format!(
-                "mov QWORD PTR [{} + 8], rax",
-                obj_ptr_scratch
-            ));                                                                 // commit __name.lo
-            emitter.instruction(&format!(
-                "mov QWORD PTR [{} + 16], rdx",
-                obj_ptr_scratch
-            ));                                                                 // commit __name.hi (length)
+            emitter.instruction(&format!("mov {}, QWORD PTR [rsp]", obj_ptr_scratch)); // peek the obj pointer back
+            emitter.instruction(&format!("mov QWORD PTR [{} + 8], rax", obj_ptr_scratch)); // commit __name.lo
+            emitter.instruction(&format!("mov QWORD PTR [{} + 16], rdx", obj_ptr_scratch)); // commit __name.hi (length)
         }
     }
 }
@@ -253,26 +244,14 @@ fn emit_set_args_property(
     match emitter.target.arch {
         Arch::AArch64 => {
             emitter.instruction(&format!("ldr {}, [sp]", obj_ptr_scratch));     // peek the obj pointer
-            emitter.instruction(&format!(
-                "str {}, [{}, #24]",
-                result_reg, obj_ptr_scratch
-            ));                                                                 // commit __args.lo (array pointer)
+            emitter.instruction(&format!("str {}, [{}, #24]", result_reg, obj_ptr_scratch)); // commit __args.lo (array pointer)
             emitter.instruction("mov x10, #4");                                 // runtime kind tag 4 = indexed array (x10 to avoid clobbering obj_ptr_scratch)
             emitter.instruction(&format!("str x10, [{}, #32]", obj_ptr_scratch)); // commit __args.hi (kind tag)
         }
         Arch::X86_64 => {
-            emitter.instruction(&format!(
-                "mov {}, QWORD PTR [rsp]",
-                obj_ptr_scratch
-            ));                                                                 // peek the obj pointer
-            emitter.instruction(&format!(
-                "mov QWORD PTR [{} + 24], {}",
-                obj_ptr_scratch, result_reg
-            ));                                                                 // commit __args.lo (array pointer)
-            emitter.instruction(&format!(
-                "mov QWORD PTR [{} + 32], 4",
-                obj_ptr_scratch
-            ));                                                                 // commit __args.hi (kind tag = 4 = indexed array)
+            emitter.instruction(&format!("mov {}, QWORD PTR [rsp]", obj_ptr_scratch)); // peek the obj pointer
+            emitter.instruction(&format!("mov QWORD PTR [{} + 24], {}", obj_ptr_scratch, result_reg)); // commit __args.lo (array pointer)
+            emitter.instruction(&format!("mov QWORD PTR [{} + 32], 4", obj_ptr_scratch)); // commit __args.hi (kind tag = 4 = indexed array)
         }
     }
 }
