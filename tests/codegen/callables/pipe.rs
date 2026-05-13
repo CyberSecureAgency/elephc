@@ -188,6 +188,35 @@ echo "|" . $r;
 }
 
 #[test]
+fn test_pipe_lhs_mutation_visible_to_rhs_method_receiver() {
+    let out = compile_and_run(
+        r#"<?php
+class Label {
+    public function __construct(private string $name) {}
+    public function read($ignored): string { return $this->name; }
+}
+$box = new Label("old");
+$next = new Label("new");
+echo ($box = $next) |> $box->read(...);
+"#,
+    );
+    assert_eq!(out, "new");
+}
+
+#[test]
+fn test_pipe_lhs_mutation_visible_to_rhs_callable_variable() {
+    let out = compile_and_run(
+        r#"<?php
+function first($value): string { return "first"; }
+function second($value): string { return "second"; }
+$cb = first(...);
+echo ($cb = second(...)) |> $cb;
+"#,
+    );
+    assert_eq!(out, "second");
+}
+
+#[test]
 fn test_pipe_in_arithmetic_context() {
     let out = compile_and_run(
         r#"<?php

@@ -25,7 +25,10 @@ pub(super) fn emit_pipe(
     ctx: &mut Context,
     data: &mut DataSection,
 ) -> PhpType {
-    let synth_args = vec![value.clone()];
+    let temp_name = super::pipe_value_temp_name(span);
+    crate::codegen::stmt::emit_assign_stmt(&temp_name, value, emitter, ctx, data);
+    let temp_value = Expr::new(ExprKind::Variable(temp_name), value.span);
+    let synth_args = vec![temp_value];
     let synthetic = match &callable.kind {
         ExprKind::FirstClassCallable(CallableTarget::Function(name)) => Expr::new(
             ExprKind::FunctionCall {

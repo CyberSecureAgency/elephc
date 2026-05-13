@@ -95,11 +95,15 @@ pub(super) fn emit_first_class_callable(
     first_class::emit_first_class_callable(target, emitter, ctx, data)
 }
 
-pub(super) fn first_class_callable_sig(
+pub(crate) fn first_class_callable_sig(
     target: &crate::parser::ast::CallableTarget,
     ctx: &Context,
 ) -> Option<crate::types::FunctionSig> {
     first_class::first_class_callable_sig(target, ctx)
+}
+
+pub(crate) fn pipe_value_temp_name(span: Span) -> String {
+    format!("__elephc_pipe_value_{}_{}", span.line, span.col)
 }
 
 pub(super) fn emit_pipe(
