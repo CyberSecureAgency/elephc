@@ -471,34 +471,34 @@ pub(super) fn emit(emitter: &mut Emitter) {
     emitter.instruction("add rax, 48");                                         // convert nibble to ASCII digit
     emitter.instruction("mov BYTE PTR [r11 + 2], al");                          // emit the digit
     // Nibble 2 (bits 8-11)
-    emitter.instruction("mov rax, rdi");
-    emitter.instruction("shr rax, 8");
-    emitter.instruction("and rax, 0xF");
-    emitter.instruction("cmp rax, 10");
-    emitter.instruction("jl __rt_json_str_emit_u16_n2_dec_x");
-    emitter.instruction("add rax, 7");
+    emitter.instruction("mov rax, rdi");                                        // load or prepare JSON string encoder state
+    emitter.instruction("shr rax, 8");                                          // update the JSON string encoder cursor or counter
+    emitter.instruction("and rax, 0xF");                                        // update the JSON string encoder cursor or counter
+    emitter.instruction("cmp rax, 10");                                         // check the current JSON string encoder condition
+    emitter.instruction("jl __rt_json_str_emit_u16_n2_dec_x");                  // branch on the current JSON string encoder condition
+    emitter.instruction("add rax, 7");                                          // update the JSON string encoder cursor or counter
     emitter.label("__rt_json_str_emit_u16_n2_dec_x");
-    emitter.instruction("add rax, 48");
-    emitter.instruction("mov BYTE PTR [r11 + 3], al");
+    emitter.instruction("add rax, 48");                                         // update the JSON string encoder cursor or counter
+    emitter.instruction("mov BYTE PTR [r11 + 3], al");                          // load or prepare JSON string encoder state
     // Nibble 1 (bits 4-7)
-    emitter.instruction("mov rax, rdi");
-    emitter.instruction("shr rax, 4");
-    emitter.instruction("and rax, 0xF");
-    emitter.instruction("cmp rax, 10");
-    emitter.instruction("jl __rt_json_str_emit_u16_n1_dec_x");
-    emitter.instruction("add rax, 7");
+    emitter.instruction("mov rax, rdi");                                        // load or prepare JSON string encoder state
+    emitter.instruction("shr rax, 4");                                          // update the JSON string encoder cursor or counter
+    emitter.instruction("and rax, 0xF");                                        // update the JSON string encoder cursor or counter
+    emitter.instruction("cmp rax, 10");                                         // check the current JSON string encoder condition
+    emitter.instruction("jl __rt_json_str_emit_u16_n1_dec_x");                  // branch on the current JSON string encoder condition
+    emitter.instruction("add rax, 7");                                          // update the JSON string encoder cursor or counter
     emitter.label("__rt_json_str_emit_u16_n1_dec_x");
-    emitter.instruction("add rax, 48");
-    emitter.instruction("mov BYTE PTR [r11 + 4], al");
+    emitter.instruction("add rax, 48");                                         // update the JSON string encoder cursor or counter
+    emitter.instruction("mov BYTE PTR [r11 + 4], al");                          // load or prepare JSON string encoder state
     // Nibble 0 (bits 0-3)
-    emitter.instruction("mov rax, rdi");
-    emitter.instruction("and rax, 0xF");
-    emitter.instruction("cmp rax, 10");
-    emitter.instruction("jl __rt_json_str_emit_u16_n0_dec_x");
-    emitter.instruction("add rax, 7");
+    emitter.instruction("mov rax, rdi");                                        // load or prepare JSON string encoder state
+    emitter.instruction("and rax, 0xF");                                        // update the JSON string encoder cursor or counter
+    emitter.instruction("cmp rax, 10");                                         // check the current JSON string encoder condition
+    emitter.instruction("jl __rt_json_str_emit_u16_n0_dec_x");                  // branch on the current JSON string encoder condition
+    emitter.instruction("add rax, 7");                                          // update the JSON string encoder cursor or counter
     emitter.label("__rt_json_str_emit_u16_n0_dec_x");
-    emitter.instruction("add rax, 48");
-    emitter.instruction("mov BYTE PTR [r11 + 5], al");
+    emitter.instruction("add rax, 48");                                         // update the JSON string encoder cursor or counter
+    emitter.instruction("mov BYTE PTR [r11 + 5], al");                          // load or prepare JSON string encoder state
     emitter.instruction("add r11, 6");                                          // advance the write pointer past the escape
     emitter.instruction("mov QWORD PTR [rbp - 32], r11");                       // persist the updated write pointer
     emitter.instruction("ret");                                                 // return to the caller
@@ -510,12 +510,12 @@ pub(super) fn emit(emitter: &mut Emitter) {
     emitter.label("__rt_json_str_is_numeric_x");
     emitter.instruction("xor rcx, rcx");                                        // initialize the source index
     emitter.instruction("test rdx, rdx");                                       // empty string short-circuits to 0
-    emitter.instruction("je __rt_json_str_is_numeric_x_fail");
+    emitter.instruction("je __rt_json_str_is_numeric_x_fail");                  // branch on the current JSON string encoder condition
 
     // Optional leading minus sign.
     emitter.instruction("movzx r9, BYTE PTR [rax + rcx]");                      // peek the first byte
     emitter.instruction("cmp r9, 45");                                          // is it '-'?
-    emitter.instruction("jne __rt_json_str_is_numeric_x_int_start");
+    emitter.instruction("jne __rt_json_str_is_numeric_x_int_start");            // branch on the current JSON string encoder condition
     emitter.instruction("add rcx, 1");                                          // consume the minus
     emitter.instruction("cmp rcx, rdx");                                        // anything after the minus?
     emitter.instruction("jae __rt_json_str_is_numeric_x_fail");                 // bare '-' is not numeric
@@ -536,83 +536,83 @@ pub(super) fn emit(emitter: &mut Emitter) {
     emitter.instruction("cmp r10, 9");                                          // 0..9
     emitter.instruction("ja __rt_json_str_is_numeric_x_after_int");             // non-digit → check fraction or exponent
     emitter.instruction("add rcx, 1");                                          // consume the digit
-    emitter.instruction("jmp __rt_json_str_is_numeric_x_int_loop");
+    emitter.instruction("jmp __rt_json_str_is_numeric_x_int_loop");             // continue in the JSON string encoder control path
 
     emitter.label("__rt_json_str_is_numeric_x_after_int");
     emitter.instruction("cmp r9, 46");                                          // '.'?
-    emitter.instruction("je __rt_json_str_is_numeric_x_frac_start");
+    emitter.instruction("je __rt_json_str_is_numeric_x_frac_start");            // branch on the current JSON string encoder condition
     emitter.instruction("cmp r9, 101");                                         // 'e'?
-    emitter.instruction("je __rt_json_str_is_numeric_x_exp_sign");
+    emitter.instruction("je __rt_json_str_is_numeric_x_exp_sign");              // branch on the current JSON string encoder condition
     emitter.instruction("cmp r9, 69");                                          // 'E'?
-    emitter.instruction("je __rt_json_str_is_numeric_x_exp_sign");
+    emitter.instruction("je __rt_json_str_is_numeric_x_exp_sign");              // branch on the current JSON string encoder condition
     emitter.instruction("jmp __rt_json_str_is_numeric_x_fail");                 // any other byte → not numeric
 
     emitter.label("__rt_json_str_is_numeric_x_frac_start");
     emitter.instruction("add rcx, 1");                                          // consume the '.'
     emitter.instruction("cmp rcx, rdx");                                        // any digit after?
-    emitter.instruction("jae __rt_json_str_is_numeric_x_fail");
+    emitter.instruction("jae __rt_json_str_is_numeric_x_fail");                 // branch on the current JSON string encoder condition
     emitter.instruction("movzx r9, BYTE PTR [rax + rcx]");                      // peek
-    emitter.instruction("sub r9, 48");
-    emitter.instruction("cmp r9, 9");
+    emitter.instruction("sub r9, 48");                                          // update the JSON string encoder cursor or counter
+    emitter.instruction("cmp r9, 9");                                           // check the current JSON string encoder condition
     emitter.instruction("ja __rt_json_str_is_numeric_x_fail");                  // need at least one fractional digit
     emitter.instruction("add rcx, 1");                                          // consume the first fractional digit
 
     emitter.label("__rt_json_str_is_numeric_x_frac_loop");
-    emitter.instruction("cmp rcx, rdx");
-    emitter.instruction("jae __rt_json_str_is_numeric_x_ok");
-    emitter.instruction("movzx r9, BYTE PTR [rax + rcx]");
-    emitter.instruction("mov r10, r9");
-    emitter.instruction("sub r10, 48");
-    emitter.instruction("cmp r10, 9");
-    emitter.instruction("ja __rt_json_str_is_numeric_x_after_frac");
-    emitter.instruction("add rcx, 1");
-    emitter.instruction("jmp __rt_json_str_is_numeric_x_frac_loop");
+    emitter.instruction("cmp rcx, rdx");                                        // check the current JSON string encoder condition
+    emitter.instruction("jae __rt_json_str_is_numeric_x_ok");                   // branch on the current JSON string encoder condition
+    emitter.instruction("movzx r9, BYTE PTR [rax + rcx]");                      // load or prepare JSON string encoder state
+    emitter.instruction("mov r10, r9");                                         // load or prepare JSON string encoder state
+    emitter.instruction("sub r10, 48");                                         // update the JSON string encoder cursor or counter
+    emitter.instruction("cmp r10, 9");                                          // check the current JSON string encoder condition
+    emitter.instruction("ja __rt_json_str_is_numeric_x_after_frac");            // branch on the current JSON string encoder condition
+    emitter.instruction("add rcx, 1");                                          // update the JSON string encoder cursor or counter
+    emitter.instruction("jmp __rt_json_str_is_numeric_x_frac_loop");            // continue in the JSON string encoder control path
 
     emitter.label("__rt_json_str_is_numeric_x_after_frac");
     emitter.instruction("cmp r9, 101");                                         // 'e'?
-    emitter.instruction("je __rt_json_str_is_numeric_x_exp_sign");
+    emitter.instruction("je __rt_json_str_is_numeric_x_exp_sign");              // branch on the current JSON string encoder condition
     emitter.instruction("cmp r9, 69");                                          // 'E'?
-    emitter.instruction("je __rt_json_str_is_numeric_x_exp_sign");
-    emitter.instruction("jmp __rt_json_str_is_numeric_x_fail");
+    emitter.instruction("je __rt_json_str_is_numeric_x_exp_sign");              // branch on the current JSON string encoder condition
+    emitter.instruction("jmp __rt_json_str_is_numeric_x_fail");                 // continue in the JSON string encoder control path
 
     emitter.label("__rt_json_str_is_numeric_x_exp_sign");
     emitter.instruction("add rcx, 1");                                          // consume the 'e'/'E'
-    emitter.instruction("cmp rcx, rdx");
+    emitter.instruction("cmp rcx, rdx");                                        // check the current JSON string encoder condition
     emitter.instruction("jae __rt_json_str_is_numeric_x_fail");                 // bare 'Xe' is not numeric
-    emitter.instruction("movzx r9, BYTE PTR [rax + rcx]");
+    emitter.instruction("movzx r9, BYTE PTR [rax + rcx]");                      // load or prepare JSON string encoder state
     emitter.instruction("cmp r9, 43");                                          // optional '+'
-    emitter.instruction("je __rt_json_str_is_numeric_x_exp_advance_sign");
+    emitter.instruction("je __rt_json_str_is_numeric_x_exp_advance_sign");      // branch on the current JSON string encoder condition
     emitter.instruction("cmp r9, 45");                                          // optional '-'
-    emitter.instruction("je __rt_json_str_is_numeric_x_exp_advance_sign");
-    emitter.instruction("jmp __rt_json_str_is_numeric_x_exp_first_digit");
+    emitter.instruction("je __rt_json_str_is_numeric_x_exp_advance_sign");      // branch on the current JSON string encoder condition
+    emitter.instruction("jmp __rt_json_str_is_numeric_x_exp_first_digit");      // continue in the JSON string encoder control path
     emitter.label("__rt_json_str_is_numeric_x_exp_advance_sign");
     emitter.instruction("add rcx, 1");                                          // consume the exponent sign
-    emitter.instruction("cmp rcx, rdx");
+    emitter.instruction("cmp rcx, rdx");                                        // check the current JSON string encoder condition
     emitter.instruction("jae __rt_json_str_is_numeric_x_fail");                 // bare 'e+' / 'e-' is not numeric
 
     emitter.label("__rt_json_str_is_numeric_x_exp_first_digit");
-    emitter.instruction("movzx r9, BYTE PTR [rax + rcx]");
-    emitter.instruction("sub r9, 48");
-    emitter.instruction("cmp r9, 9");
+    emitter.instruction("movzx r9, BYTE PTR [rax + rcx]");                      // load or prepare JSON string encoder state
+    emitter.instruction("sub r9, 48");                                          // update the JSON string encoder cursor or counter
+    emitter.instruction("cmp r9, 9");                                           // check the current JSON string encoder condition
     emitter.instruction("ja __rt_json_str_is_numeric_x_fail");                  // need at least one exponent digit
-    emitter.instruction("add rcx, 1");
+    emitter.instruction("add rcx, 1");                                          // update the JSON string encoder cursor or counter
 
     emitter.label("__rt_json_str_is_numeric_x_exp_loop");
-    emitter.instruction("cmp rcx, rdx");
-    emitter.instruction("jae __rt_json_str_is_numeric_x_ok");
-    emitter.instruction("movzx r9, BYTE PTR [rax + rcx]");
-    emitter.instruction("sub r9, 48");
-    emitter.instruction("cmp r9, 9");
+    emitter.instruction("cmp rcx, rdx");                                        // check the current JSON string encoder condition
+    emitter.instruction("jae __rt_json_str_is_numeric_x_ok");                   // branch on the current JSON string encoder condition
+    emitter.instruction("movzx r9, BYTE PTR [rax + rcx]");                      // load or prepare JSON string encoder state
+    emitter.instruction("sub r9, 48");                                          // update the JSON string encoder cursor or counter
+    emitter.instruction("cmp r9, 9");                                           // check the current JSON string encoder condition
     emitter.instruction("ja __rt_json_str_is_numeric_x_fail");                  // any non-digit after exponent digits → not numeric
-    emitter.instruction("add rcx, 1");
-    emitter.instruction("jmp __rt_json_str_is_numeric_x_exp_loop");
+    emitter.instruction("add rcx, 1");                                          // update the JSON string encoder cursor or counter
+    emitter.instruction("jmp __rt_json_str_is_numeric_x_exp_loop");             // continue in the JSON string encoder control path
 
     emitter.label("__rt_json_str_is_numeric_x_ok");
     emitter.instruction("mov rax, 1");                                          // signal numeric
-    emitter.instruction("ret");
+    emitter.instruction("ret");                                                 // return from the JSON string encoder helper
     emitter.label("__rt_json_str_is_numeric_x_fail");
     emitter.instruction("xor rax, rax");                                        // signal non-numeric
-    emitter.instruction("ret");
+    emitter.instruction("ret");                                                 // return from the JSON string encoder helper
 
     emitter.label("__rt_json_str_close");
     emitter.instruction("mov r11, QWORD PTR [rbp - 32]");                       // reload the concat-buffer write pointer after the final escaped payload byte

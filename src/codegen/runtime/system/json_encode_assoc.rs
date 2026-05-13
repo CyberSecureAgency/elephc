@@ -50,7 +50,7 @@ pub(crate) fn emit_json_encode_assoc(emitter: &mut Emitter) {
     emitter.instruction("b.ne __rt_json_assoc_force_object_mode");              // FORCE_OBJECT wins → emit object form
     emitter.instruction("bl __rt_json_assoc_is_list_shape");                    // x0 = 1 if list-shape, 0 otherwise
     emitter.instruction("str x0, [sp, #112]");                                  // park the list_mode flag for the loop and close
-    emitter.instruction("b __rt_json_assoc_after_list_check");
+    emitter.instruction("b __rt_json_assoc_after_list_check");                  // continue in the JSON object encoder control path
     emitter.label("__rt_json_assoc_force_object_mode");
     emitter.instruction("str xzr, [sp, #112]");                                 // FORCE_OBJECT path always uses object form
 
@@ -71,7 +71,7 @@ pub(crate) fn emit_json_encode_assoc(emitter: &mut Emitter) {
     emitter.instruction("ldr x12, [sp, #112]");                                 // reload the list_mode flag
     emitter.instruction("cbz x12, __rt_json_assoc_open_obj");                   // 0 → object form
     emitter.instruction("mov w12, #91");                                        // ASCII '['
-    emitter.instruction("b __rt_json_assoc_open_emit");
+    emitter.instruction("b __rt_json_assoc_open_emit");                         // continue in the JSON object encoder control path
     emitter.label("__rt_json_assoc_open_obj");
     emitter.instruction("mov w12, #123");                                       // ASCII '{'
     emitter.label("__rt_json_assoc_open_emit");
@@ -129,7 +129,7 @@ pub(crate) fn emit_json_encode_assoc(emitter: &mut Emitter) {
     emitter.instruction("ldr x1, [sp, #48]");                                   // load key ptr (or integer payload when len = -1)
     emitter.instruction("ldr x2, [sp, #56]");                                   // load key len (or -1 sentinel for integer keys)
     emitter.instruction("cmn x2, #1");                                          // is this an integer key?
-    emitter.instruction("b.eq __rt_json_assoc_key_int");
+    emitter.instruction("b.eq __rt_json_assoc_key_int");                        // branch on the current JSON object encoder condition
 
     // String key: sync _concat_off and tail-call __rt_json_encode_str.
     emitter.instruction("ldr x11, [sp, #16]");                                  // reload the current output write position
@@ -139,7 +139,7 @@ pub(crate) fn emit_json_encode_assoc(emitter: &mut Emitter) {
     emitter.instruction("str x12, [x9]");                                       // sync _concat_off so __rt_json_encode_str appends in place
     emitter.instruction("bl __rt_json_encode_str");                             // writes "<escaped key>" into concat_buf and returns x1=ptr, x2=len
     emitter.instruction("add x11, x1, x2");                                     // advance past the closing quote written by encode_str
-    emitter.instruction("b __rt_json_assoc_key_colon");
+    emitter.instruction("b __rt_json_assoc_key_colon");                         // continue in the JSON object encoder control path
 
     // Integer key: format via itoa (which writes into its own 21-byte
     // scratch area inside concat_buf and advances _concat_off by 21),
@@ -276,7 +276,7 @@ pub(crate) fn emit_json_encode_assoc(emitter: &mut Emitter) {
     emitter.instruction("ldr x10, [sp, #112]");                                 // reload the list_mode flag
     emitter.instruction("cbz x10, __rt_json_assoc_close_obj");                  // 0 → object form
     emitter.instruction("mov w12, #93");                                        // ASCII ']'
-    emitter.instruction("b __rt_json_assoc_close_emit");
+    emitter.instruction("b __rt_json_assoc_close_emit");                        // continue in the JSON object encoder control path
     emitter.label("__rt_json_assoc_close_obj");
     emitter.instruction("mov w12, #125");                                       // ASCII '}'
     emitter.label("__rt_json_assoc_close_emit");
@@ -339,10 +339,10 @@ fn emit_assoc_is_list_shape_aarch64(emitter: &mut Emitter) {
     emitter.instruction("b.ne __rt_json_assoc_is_list_shape_loop");             // continue scanning
     emitter.label("__rt_json_assoc_is_list_shape_yes");
     emitter.instruction("mov x0, #1");                                          // report list shape
-    emitter.instruction("ret");
+    emitter.instruction("ret");                                                 // return from the JSON object encoder helper
     emitter.label("__rt_json_assoc_is_list_shape_no");
     emitter.instruction("mov x0, #0");                                          // report object form
-    emitter.instruction("ret");
+    emitter.instruction("ret");                                                 // return from the JSON object encoder helper
 }
 
 fn emit_json_encode_assoc_linux_x86_64(emitter: &mut Emitter) {
@@ -363,7 +363,7 @@ fn emit_json_encode_assoc_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("jne __rt_json_assoc_force_object_mode_x");             // FORCE_OBJECT wins → emit object form
     emitter.instruction("call __rt_json_assoc_is_list_shape");                  // rax = 1 if list-shape, 0 otherwise
     emitter.instruction("mov QWORD PTR [rbp - 96], rax");                       // park the list_mode flag for the loop and close
-    emitter.instruction("jmp __rt_json_assoc_after_list_check_x");
+    emitter.instruction("jmp __rt_json_assoc_after_list_check_x");              // continue in the JSON object encoder control path
     emitter.label("__rt_json_assoc_force_object_mode_x");
     emitter.instruction("mov QWORD PTR [rbp - 96], 0");                         // FORCE_OBJECT path always uses object form
 
@@ -378,10 +378,10 @@ fn emit_json_encode_assoc_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov QWORD PTR [rbp - 24], r11");                       // save the current concat-buffer write pointer for the hash iteration loop
     // Write the opening bracket: '[' for list-shape, '{' otherwise.
     emitter.instruction("mov rdx, QWORD PTR [rbp - 96]");                       // reload the list_mode flag
-    emitter.instruction("test rdx, rdx");
+    emitter.instruction("test rdx, rdx");                                       // check the current JSON object encoder condition
     emitter.instruction("jz __rt_json_assoc_open_obj_x");                       // 0 → object form
     emitter.instruction("mov BYTE PTR [r11], 91");                              // ASCII '['
-    emitter.instruction("jmp __rt_json_assoc_open_emit_x");
+    emitter.instruction("jmp __rt_json_assoc_open_emit_x");                     // continue in the JSON object encoder control path
     emitter.label("__rt_json_assoc_open_obj_x");
     emitter.instruction("mov BYTE PTR [r11], 123");                             // ASCII '{'
     emitter.label("__rt_json_assoc_open_emit_x");
@@ -419,12 +419,12 @@ fn emit_json_encode_assoc_linux_x86_64(emitter: &mut Emitter) {
     // value emission.
     emitter.label("__rt_json_assoc_key");
     emitter.instruction("mov rdx, QWORD PTR [rbp - 96]");                       // reload the list_mode flag
-    emitter.instruction("test rdx, rdx");
+    emitter.instruction("test rdx, rdx");                                       // check the current JSON object encoder condition
     emitter.instruction("jne __rt_json_assoc_after_key_prefix");                // list mode skips the key + colon prefix
     emitter.instruction("mov rax, QWORD PTR [rbp - 48]");                       // load the key pointer (or integer payload when len = -1)
     emitter.instruction("mov rdx, QWORD PTR [rbp - 56]");                       // load the key length (or -1 sentinel for integer keys)
     emitter.instruction("cmp rdx, -1");                                         // is this an integer key?
-    emitter.instruction("je __rt_json_assoc_key_int");
+    emitter.instruction("je __rt_json_assoc_key_int");                          // branch on the current JSON object encoder condition
 
     // String key: sync _concat_off and tail-call __rt_json_encode_str.
     emitter.instruction("mov r11, QWORD PTR [rbp - 24]");                       // reload the current concat-buffer write pointer
@@ -435,7 +435,7 @@ fn emit_json_encode_assoc_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("call __rt_json_encode_str");                           // writes "<escaped key>" into concat_buf and returns rax=ptr, rdx=len
     emitter.instruction("mov r11, rax");                                        // recover the start pointer of the encoded key
     emitter.instruction("add r11, rdx");                                        // advance past the closing quote written by encode_str
-    emitter.instruction("jmp __rt_json_assoc_key_colon");
+    emitter.instruction("jmp __rt_json_assoc_key_colon");                       // continue in the JSON object encoder control path
 
     // Integer key: format via __rt_itoa, then copy digit bytes into the
     // JSON output position. itoa updates _concat_off internally; we copy
@@ -561,10 +561,10 @@ fn emit_json_encode_assoc_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov r11, QWORD PTR [rbp - 24]");                       // reload the concat-buffer write pointer after the final encoded JSON entry
     // Write the closing bracket: ']' for list-shape, '}' otherwise.
     emitter.instruction("mov rdx, QWORD PTR [rbp - 96]");                       // reload the list_mode flag
-    emitter.instruction("test rdx, rdx");
+    emitter.instruction("test rdx, rdx");                                       // check the current JSON object encoder condition
     emitter.instruction("jz __rt_json_assoc_close_obj_x");                      // 0 → object form
     emitter.instruction("mov BYTE PTR [r11], 93");                              // ASCII ']'
-    emitter.instruction("jmp __rt_json_assoc_close_emit_x");
+    emitter.instruction("jmp __rt_json_assoc_close_emit_x");                    // continue in the JSON object encoder control path
     emitter.label("__rt_json_assoc_close_obj_x");
     emitter.instruction("mov BYTE PTR [r11], 125");                             // ASCII '}'
     emitter.label("__rt_json_assoc_close_emit_x");
@@ -614,8 +614,8 @@ fn emit_assoc_is_list_shape_x86_64(emitter: &mut Emitter) {
     emitter.instruction("jne __rt_json_assoc_is_list_shape_loop_x");            // continue scanning
     emitter.label("__rt_json_assoc_is_list_shape_yes_x");
     emitter.instruction("mov rax, 1");                                          // report list shape
-    emitter.instruction("ret");
+    emitter.instruction("ret");                                                 // return from the JSON object encoder helper
     emitter.label("__rt_json_assoc_is_list_shape_no_x");
     emitter.instruction("mov rax, 0");                                          // report object form
-    emitter.instruction("ret");
+    emitter.instruction("ret");                                                 // return from the JSON object encoder helper
 }

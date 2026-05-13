@@ -94,14 +94,14 @@ pub(crate) fn emit_json_encode_object(emitter: &mut Emitter) {
     emitter.instruction("str x0, [sp, #48]");                                   // park the boxed mixed return value across the prefix-restore loop
     // Copy the heap-owned prefix back into concat_buf[0..prefix_len].
     emitter.instruction("ldr x10, [sp, #24]");                                  // reload the saved prefix length
-    emitter.instruction("cbz x10, __rt_json_obj_jsonserialize_after_restore"); // skip the prefix restore when no prefix was preserved
+    emitter.instruction("cbz x10, __rt_json_obj_jsonserialize_after_restore");  // skip the prefix restore when no prefix was preserved
     emitter.instruction("ldr x11, [sp, #40]");                                  // reload the heap-owned prefix pointer
-    emitter.instruction("cbz x11, __rt_json_obj_jsonserialize_after_restore"); // defensive null guard for the heap-owned prefix pointer
+    emitter.instruction("cbz x11, __rt_json_obj_jsonserialize_after_restore");  // defensive null guard for the heap-owned prefix pointer
     crate::codegen::abi::emit_symbol_address(emitter, "x12", "_concat_buf");
     emitter.instruction("mov x13, #0");                                         // initialize the prefix copy index
     emitter.label("__rt_json_obj_prefix_restore");
     emitter.instruction("cmp x13, x10");                                        // have we copied every prefix byte back?
-    emitter.instruction("b.ge __rt_json_obj_jsonserialize_after_restore");     // exit once the entire prefix is restored
+    emitter.instruction("b.ge __rt_json_obj_jsonserialize_after_restore");      // exit once the entire prefix is restored
     emitter.instruction("ldrb w14, [x11, x13]");                                // load the next prefix byte from the heap-owned copy
     emitter.instruction("strb w14, [x12, x13]");                                // restore the byte into concat_buf at the original offset
     emitter.instruction("add x13, x13, #1");                                    // advance the prefix copy index
@@ -222,21 +222,21 @@ pub(crate) fn emit_json_encode_object(emitter: &mut Emitter) {
     // result in x1=ptr, x2=len so the shared copy code can append it.
     emitter.instruction("ldr x17, [sp, #56]");                                  // reload the saved property type tag
     emitter.instruction("cmp x17, #0");                                         // tag 0 = integer
-    emitter.instruction("b.eq __rt_json_obj_val_int");
+    emitter.instruction("b.eq __rt_json_obj_val_int");                          // branch on the current JSON object encoder condition
     emitter.instruction("cmp x17, #1");                                         // tag 1 = string
-    emitter.instruction("b.eq __rt_json_obj_val_str");
+    emitter.instruction("b.eq __rt_json_obj_val_str");                          // branch on the current JSON object encoder condition
     emitter.instruction("cmp x17, #2");                                         // tag 2 = float
-    emitter.instruction("b.eq __rt_json_obj_val_float");
+    emitter.instruction("b.eq __rt_json_obj_val_float");                        // branch on the current JSON object encoder condition
     emitter.instruction("cmp x17, #3");                                         // tag 3 = bool
-    emitter.instruction("b.eq __rt_json_obj_val_bool");
+    emitter.instruction("b.eq __rt_json_obj_val_bool");                         // branch on the current JSON object encoder condition
     emitter.instruction("cmp x17, #4");                                         // tag 4 = indexed array
-    emitter.instruction("b.eq __rt_json_obj_val_array");
+    emitter.instruction("b.eq __rt_json_obj_val_array");                        // branch on the current JSON object encoder condition
     emitter.instruction("cmp x17, #5");                                         // tag 5 = associative array
-    emitter.instruction("b.eq __rt_json_obj_val_assoc");
+    emitter.instruction("b.eq __rt_json_obj_val_assoc");                        // branch on the current JSON object encoder condition
     emitter.instruction("cmp x17, #6");                                         // tag 6 = nested object
-    emitter.instruction("b.eq __rt_json_obj_val_object");
+    emitter.instruction("b.eq __rt_json_obj_val_object");                       // branch on the current JSON object encoder condition
     emitter.instruction("cmp x17, #7");                                         // tag 7 = boxed mixed
-    emitter.instruction("b.eq __rt_json_obj_val_mixed");
+    emitter.instruction("b.eq __rt_json_obj_val_mixed");                        // branch on the current JSON object encoder condition
     emitter.instruction("b __rt_json_obj_val_null");                            // every other tag (null, resource, ...) falls back to JSON null
 
     emitter.label("__rt_json_obj_val_int");
@@ -526,64 +526,64 @@ fn emit_json_encode_object_linux_x86_64(emitter: &mut Emitter) {
     // Dispatch on the property type tag.
     emitter.instruction("mov r9, QWORD PTR [rbp - 64]");                        // reload the saved property type tag
     emitter.instruction("cmp r9, 0");                                           // tag 0 = integer
-    emitter.instruction("je __rt_json_obj_val_int_x");
+    emitter.instruction("je __rt_json_obj_val_int_x");                          // branch on the current JSON object encoder condition
     emitter.instruction("cmp r9, 1");                                           // tag 1 = string
-    emitter.instruction("je __rt_json_obj_val_str_x");
+    emitter.instruction("je __rt_json_obj_val_str_x");                          // branch on the current JSON object encoder condition
     emitter.instruction("cmp r9, 2");                                           // tag 2 = float
-    emitter.instruction("je __rt_json_obj_val_float_x");
+    emitter.instruction("je __rt_json_obj_val_float_x");                        // branch on the current JSON object encoder condition
     emitter.instruction("cmp r9, 3");                                           // tag 3 = bool
-    emitter.instruction("je __rt_json_obj_val_bool_x");
+    emitter.instruction("je __rt_json_obj_val_bool_x");                         // branch on the current JSON object encoder condition
     emitter.instruction("cmp r9, 4");                                           // tag 4 = indexed array
-    emitter.instruction("je __rt_json_obj_val_array_x");
+    emitter.instruction("je __rt_json_obj_val_array_x");                        // branch on the current JSON object encoder condition
     emitter.instruction("cmp r9, 5");                                           // tag 5 = associative array
-    emitter.instruction("je __rt_json_obj_val_assoc_x");
+    emitter.instruction("je __rt_json_obj_val_assoc_x");                        // branch on the current JSON object encoder condition
     emitter.instruction("cmp r9, 6");                                           // tag 6 = nested object
-    emitter.instruction("je __rt_json_obj_val_object_x");
+    emitter.instruction("je __rt_json_obj_val_object_x");                       // branch on the current JSON object encoder condition
     emitter.instruction("cmp r9, 7");                                           // tag 7 = boxed mixed
-    emitter.instruction("je __rt_json_obj_val_mixed_x");
+    emitter.instruction("je __rt_json_obj_val_mixed_x");                        // branch on the current JSON object encoder condition
     emitter.instruction("jmp __rt_json_obj_val_null_x");                        // every other tag falls back to JSON null
 
     emitter.label("__rt_json_obj_val_int_x");
     emitter.instruction("mov rax, QWORD PTR [rbp - 72]");                       // load the integer payload
     emitter.instruction("call __rt_itoa");                                      // format the integer as a decimal string
-    emitter.instruction("jmp __rt_json_obj_val_copy_x");
+    emitter.instruction("jmp __rt_json_obj_val_copy_x");                        // continue in the JSON object encoder control path
 
     emitter.label("__rt_json_obj_val_str_x");
     emitter.instruction("mov rax, QWORD PTR [rbp - 72]");                       // load the string pointer payload
     emitter.instruction("mov rdx, QWORD PTR [rbp - 80]");                       // load the string length payload
     emitter.instruction("call __rt_json_encode_str");                           // encode the string as a quoted JSON string
-    emitter.instruction("jmp __rt_json_obj_val_copy_x");
+    emitter.instruction("jmp __rt_json_obj_val_copy_x");                        // continue in the JSON object encoder control path
 
     emitter.label("__rt_json_obj_val_float_x");
     emitter.instruction("mov r10, QWORD PTR [rbp - 72]");                       // load the float bit pattern payload
     emitter.instruction("movq xmm0, r10");                                      // move the float bits into the FP argument register
     emitter.instruction("call __rt_json_encode_float");                         // encode the float, rejecting Inf/NaN per JSON semantics
-    emitter.instruction("jmp __rt_json_obj_val_copy_x");
+    emitter.instruction("jmp __rt_json_obj_val_copy_x");                        // continue in the JSON object encoder control path
 
     emitter.label("__rt_json_obj_val_bool_x");
     emitter.instruction("mov rax, QWORD PTR [rbp - 72]");                       // load the bool payload
     emitter.instruction("call __rt_json_encode_bool");                          // encode the bool as the true/false literal
-    emitter.instruction("jmp __rt_json_obj_val_copy_x");
+    emitter.instruction("jmp __rt_json_obj_val_copy_x");                        // continue in the JSON object encoder control path
 
     emitter.label("__rt_json_obj_val_array_x");
     emitter.instruction("mov rax, QWORD PTR [rbp - 72]");                       // load the indexed-array pointer payload
     emitter.instruction("call __rt_json_encode_array_dynamic");                 // encode the array via the dynamic array helper
-    emitter.instruction("jmp __rt_json_obj_val_copy_x");
+    emitter.instruction("jmp __rt_json_obj_val_copy_x");                        // continue in the JSON object encoder control path
 
     emitter.label("__rt_json_obj_val_assoc_x");
     emitter.instruction("mov rax, QWORD PTR [rbp - 72]");                       // load the associative-array pointer payload
     emitter.instruction("call __rt_json_encode_assoc");                         // encode the hash table as a JSON object
-    emitter.instruction("jmp __rt_json_obj_val_copy_x");
+    emitter.instruction("jmp __rt_json_obj_val_copy_x");                        // continue in the JSON object encoder control path
 
     emitter.label("__rt_json_obj_val_object_x");
     emitter.instruction("mov rax, QWORD PTR [rbp - 72]");                       // load the nested object pointer payload
     emitter.instruction("call __rt_json_encode_object");                        // recursively encode the nested object
-    emitter.instruction("jmp __rt_json_obj_val_copy_x");
+    emitter.instruction("jmp __rt_json_obj_val_copy_x");                        // continue in the JSON object encoder control path
 
     emitter.label("__rt_json_obj_val_mixed_x");
     emitter.instruction("mov rax, QWORD PTR [rbp - 72]");                       // load the boxed mixed pointer payload
     emitter.instruction("call __rt_json_encode_mixed");                         // encode the boxed mixed payload recursively
-    emitter.instruction("jmp __rt_json_obj_val_copy_x");
+    emitter.instruction("jmp __rt_json_obj_val_copy_x");                        // continue in the JSON object encoder control path
 
     emitter.label("__rt_json_obj_val_null_x");
     emitter.instruction("call __rt_json_encode_null");                          // encode unsupported tags as the JSON null literal

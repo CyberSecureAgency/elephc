@@ -55,17 +55,17 @@ fn emit_mixed_count_x86_64(emitter: &mut Emitter) {
 
     // rax = Mixed* receiver (single-arg int-result ABI). Output: rax = count.
     emitter.instruction("test rax, rax");                                       // null Mixed → 0
-    emitter.instruction("je __rt_mixed_count_zero");
+    emitter.instruction("je __rt_mixed_count_zero");                            // branch on the current mixed count helper condition
     emitter.instruction("mov r10, QWORD PTR [rax]");                            // load tag from mixed[0]
     emitter.instruction("cmp r10, 4");                                          // tag = 4 (indexed array)?
-    emitter.instruction("je __rt_mixed_count_payload");
+    emitter.instruction("je __rt_mixed_count_payload");                         // branch on the current mixed count helper condition
     emitter.instruction("cmp r10, 5");                                          // tag = 5 (associative array)?
     emitter.instruction("jne __rt_mixed_count_zero");                           // any other tag → 0
 
     emitter.label("__rt_mixed_count_payload");
     emitter.instruction("mov r10, QWORD PTR [rax + 8]");                        // load the boxed payload pointer
     emitter.instruction("test r10, r10");                                       // defensive null guard
-    emitter.instruction("je __rt_mixed_count_zero");
+    emitter.instruction("je __rt_mixed_count_zero");                            // branch on the current mixed count helper condition
     emitter.instruction("mov rax, QWORD PTR [r10]");                            // count lives at offset 0 of both array and hash headers
     emitter.instruction("ret");                                                 // return count in rax
 

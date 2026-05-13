@@ -518,13 +518,13 @@ fn emit_mixed_property_get_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov QWORD PTR [rbp - 24], rdx");                       // save name_len
 
     emitter.instruction("test rdi, rdi");                                       // null Mixed → null result
-    emitter.instruction("je __rt_mixed_property_get_null");
+    emitter.instruction("je __rt_mixed_property_get_null");                     // branch on the current JSON object encoder condition
     emitter.instruction("mov r10, QWORD PTR [rdi]");                            // load tag from mixed[0]
     emitter.instruction("cmp r10, 6");                                          // tag = 6 (object)?
     emitter.instruction("jne __rt_mixed_property_get_null");                    // non-object payload → null result
     emitter.instruction("mov r10, QWORD PTR [rdi + 8]");                        // load obj pointer from mixed[8]
     emitter.instruction("test r10, r10");                                       // null obj → null result
-    emitter.instruction("je __rt_mixed_property_get_null");
+    emitter.instruction("je __rt_mixed_property_get_null");                     // branch on the current JSON object encoder condition
     emitter.instruction("mov r11, QWORD PTR [r10]");                            // load class_id from obj[0]
     emitter.instruction("mov r12, QWORD PTR [rip + _stdclass_class_id]");       // load the compile-time stdClass class_id sentinel
     emitter.instruction("cmp r11, r12");                                        // is the receiver a stdClass instance?
@@ -563,13 +563,13 @@ fn emit_mixed_property_set_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov QWORD PTR [rbp - 32], rcx");                       // save value_mixed_ptr
 
     emitter.instruction("test rdi, rdi");                                       // null Mixed → drop write
-    emitter.instruction("je __rt_mixed_property_set_done");
+    emitter.instruction("je __rt_mixed_property_set_done");                     // branch on the current JSON object encoder condition
     emitter.instruction("mov r10, QWORD PTR [rdi]");                            // load tag from mixed[0]
     emitter.instruction("cmp r10, 6");                                          // tag = 6 (object)?
     emitter.instruction("jne __rt_mixed_property_set_done");                    // non-object payload → drop write
     emitter.instruction("mov r10, QWORD PTR [rdi + 8]");                        // load obj pointer from mixed[8]
     emitter.instruction("test r10, r10");                                       // null obj → drop write
-    emitter.instruction("je __rt_mixed_property_set_done");
+    emitter.instruction("je __rt_mixed_property_set_done");                     // branch on the current JSON object encoder condition
     emitter.instruction("mov r11, QWORD PTR [r10]");                            // load class_id from obj[0]
     emitter.instruction("mov r12, QWORD PTR [rip + _stdclass_class_id]");       // load the compile-time stdClass class_id sentinel
     emitter.instruction("cmp r11, r12");                                        // is the receiver a stdClass instance?

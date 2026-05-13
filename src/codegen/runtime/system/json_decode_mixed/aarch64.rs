@@ -31,16 +31,16 @@ pub(super) fn emit(emitter: &mut Emitter) {
     emitter.instruction("b.ge __rt_json_decode_mixed_empty");                   // empty / all-whitespace input → Mixed(null)
     emitter.instruction("ldrb w10, [x1, x9]");                                  // load the next byte
     emitter.instruction("cmp w10, #32");                                        // space?
-    emitter.instruction("b.eq __rt_json_decode_mixed_skip_step");
+    emitter.instruction("b.eq __rt_json_decode_mixed_skip_step");               // branch on the current JSON decoder condition
     emitter.instruction("cmp w10, #9");                                         // tab?
-    emitter.instruction("b.eq __rt_json_decode_mixed_skip_step");
+    emitter.instruction("b.eq __rt_json_decode_mixed_skip_step");               // branch on the current JSON decoder condition
     emitter.instruction("cmp w10, #10");                                        // LF?
-    emitter.instruction("b.eq __rt_json_decode_mixed_skip_step");
+    emitter.instruction("b.eq __rt_json_decode_mixed_skip_step");               // branch on the current JSON decoder condition
     emitter.instruction("cmp w10, #13");                                        // CR?
     emitter.instruction("b.ne __rt_json_decode_mixed_skip_done");               // any other byte stops the scan
     emitter.label("__rt_json_decode_mixed_skip_step");
     emitter.instruction("add x9, x9, #1");                                      // consume the whitespace byte
-    emitter.instruction("b __rt_json_decode_mixed_skip_ws");
+    emitter.instruction("b __rt_json_decode_mixed_skip_ws");                    // continue in the JSON decoder control path
     emitter.label("__rt_json_decode_mixed_skip_done");
     emitter.instruction("strb w10, [sp, #16]");                                 // park the first non-whitespace byte for the post-decode classification
 
@@ -54,23 +54,23 @@ pub(super) fn emit(emitter: &mut Emitter) {
     // Classify the value based on the saved first byte.
     emitter.instruction("ldrb w10, [sp, #16]");                                 // reload the saved first byte
     emitter.instruction("cmp w10, #34");                                        // '"' → string
-    emitter.instruction("b.eq __rt_json_decode_mixed_string");
+    emitter.instruction("b.eq __rt_json_decode_mixed_string");                  // branch on the current JSON decoder condition
     emitter.instruction("cmp w10, #116");                                       // 't' → true
-    emitter.instruction("b.eq __rt_json_decode_mixed_true");
+    emitter.instruction("b.eq __rt_json_decode_mixed_true");                    // branch on the current JSON decoder condition
     emitter.instruction("cmp w10, #102");                                       // 'f' → false
-    emitter.instruction("b.eq __rt_json_decode_mixed_false");
+    emitter.instruction("b.eq __rt_json_decode_mixed_false");                   // branch on the current JSON decoder condition
     emitter.instruction("cmp w10, #110");                                       // 'n' → null
-    emitter.instruction("b.eq __rt_json_decode_mixed_null");
+    emitter.instruction("b.eq __rt_json_decode_mixed_null");                    // branch on the current JSON decoder condition
     emitter.instruction("cmp w10, #91");                                        // '[' → array (empty check, else passthrough)
-    emitter.instruction("b.eq __rt_json_decode_mixed_array");
+    emitter.instruction("b.eq __rt_json_decode_mixed_array");                   // branch on the current JSON decoder condition
     emitter.instruction("cmp w10, #123");                                       // '{' → object (empty check, else passthrough)
-    emitter.instruction("b.eq __rt_json_decode_mixed_object");
+    emitter.instruction("b.eq __rt_json_decode_mixed_object");                  // branch on the current JSON decoder condition
     emitter.instruction("cmp w10, #45");                                        // '-' → number
-    emitter.instruction("b.eq __rt_json_decode_mixed_number");
+    emitter.instruction("b.eq __rt_json_decode_mixed_number");                  // branch on the current JSON decoder condition
     emitter.instruction("cmp w10, #48");                                        // '0'..
     emitter.instruction("b.lt __rt_json_decode_mixed_passthrough");             // garbage → return as string
     emitter.instruction("cmp w10, #57");                                        // ..'9'
-    emitter.instruction("b.le __rt_json_decode_mixed_number");
+    emitter.instruction("b.le __rt_json_decode_mixed_number");                  // branch on the current JSON decoder condition
     emitter.instruction("b __rt_json_decode_mixed_passthrough");                // anything else → string
 
     // -- empty / all-whitespace input → Mixed(null) --
@@ -79,7 +79,7 @@ pub(super) fn emit(emitter: &mut Emitter) {
     emitter.instruction("mov x1, #0");                                          // lo = 0
     emitter.instruction("mov x2, #0");                                          // hi = 0
     emitter.instruction("bl __rt_mixed_from_value");                            // box a Mixed(null) cell
-    emitter.instruction("b __rt_json_decode_mixed_done");
+    emitter.instruction("b __rt_json_decode_mixed_done");                       // continue in the JSON decoder control path
 
     // -- string and non-empty container passthrough → Mixed(str, ptr, len) --
     emitter.label("__rt_json_decode_mixed_string");
@@ -88,7 +88,7 @@ pub(super) fn emit(emitter: &mut Emitter) {
     emitter.instruction("ldr x1, [sp, #24]");                                   // lo = decoded ptr
     emitter.instruction("ldr x2, [sp, #32]");                                   // hi = decoded len
     emitter.instruction("bl __rt_mixed_from_value");                            // box a Mixed(string) cell (the helper persists the bytes)
-    emitter.instruction("b __rt_json_decode_mixed_done");
+    emitter.instruction("b __rt_json_decode_mixed_done");                       // continue in the JSON decoder control path
 
     // -- array dispatch: empty → Mixed(array=[]); else passthrough as string --
     // Walks the trimmed slice between the `[` and `]` brackets, accepting only
@@ -107,31 +107,31 @@ pub(super) fn emit(emitter: &mut Emitter) {
     emitter.instruction("b.ge __rt_json_decode_mixed_array_empty");             // only whitespace inside → empty array
     emitter.instruction("ldrb w11, [x1, x9]");                                  // load the next interior byte
     emitter.instruction("cmp w11, #32");                                        // space?
-    emitter.instruction("b.eq __rt_json_decode_mixed_array_step");
+    emitter.instruction("b.eq __rt_json_decode_mixed_array_step");              // branch on the current JSON decoder condition
     emitter.instruction("cmp w11, #9");                                         // tab?
-    emitter.instruction("b.eq __rt_json_decode_mixed_array_step");
+    emitter.instruction("b.eq __rt_json_decode_mixed_array_step");              // branch on the current JSON decoder condition
     emitter.instruction("cmp w11, #10");                                        // LF?
-    emitter.instruction("b.eq __rt_json_decode_mixed_array_step");
+    emitter.instruction("b.eq __rt_json_decode_mixed_array_step");              // branch on the current JSON decoder condition
     emitter.instruction("cmp w11, #13");                                        // CR?
     emitter.instruction("b.ne __rt_json_decode_mixed_array_invoke");            // any other byte → contents present → invoke the recursive parser
     emitter.label("__rt_json_decode_mixed_array_step");
-    emitter.instruction("add x9, x9, #1");
-    emitter.instruction("b __rt_json_decode_mixed_array_scan");
+    emitter.instruction("add x9, x9, #1");                                      // update the JSON decoder cursor or counter
+    emitter.instruction("b __rt_json_decode_mixed_array_scan");                 // continue in the JSON decoder control path
     emitter.label("__rt_json_decode_mixed_array_invoke");
     emitter.instruction("ldr x1, [sp, #24]");                                   // decoded slice ptr (entire `[...]` slice)
     emitter.instruction("ldr x2, [sp, #32]");                                   // decoded slice length
     emitter.instruction("bl __rt_json_decode_mixed_array_real");                // recursively decode each element; returns x0 = Mixed* or 0 on error
     emitter.instruction("cbz x0, __rt_json_decode_mixed_passthrough");          // structural decode failed → fall back to the legacy string passthrough
-    emitter.instruction("b __rt_json_decode_mixed_done");
+    emitter.instruction("b __rt_json_decode_mixed_done");                       // continue in the JSON decoder control path
     emitter.label("__rt_json_decode_mixed_array_empty");
     emitter.instruction("mov x0, #0");                                          // capacity = 0
     emitter.instruction("mov x1, #8");                                          // elem_size = 8 (Mixed-pointer slots)
     emitter.instruction("bl __rt_array_new");                                   // allocate the empty indexed array
     emitter.instruction("mov x1, x0");                                          // payload = array pointer
     emitter.instruction("mov x0, #4");                                          // tag = indexed array
-    emitter.instruction("mov x2, #0");
+    emitter.instruction("mov x2, #0");                                          // load or prepare JSON decoder state
     emitter.instruction("bl __rt_mixed_from_value");                            // box as Mixed(array)
-    emitter.instruction("b __rt_json_decode_mixed_done");
+    emitter.instruction("b __rt_json_decode_mixed_done");                       // continue in the JSON decoder control path
 
     // -- object dispatch: empty `{}` → Mixed(assoc=hash); else passthrough --
     emitter.label("__rt_json_decode_mixed_object");
@@ -140,26 +140,26 @@ pub(super) fn emit(emitter: &mut Emitter) {
     emitter.instruction("mov x9, #1");                                          // skip the leading `{`
     emitter.instruction("sub x10, x2, #1");                                     // last meaningful index = len - 1 (the `}`)
     emitter.label("__rt_json_decode_mixed_object_scan");
-    emitter.instruction("cmp x9, x10");
-    emitter.instruction("b.ge __rt_json_decode_mixed_object_empty");
-    emitter.instruction("ldrb w11, [x1, x9]");
-    emitter.instruction("cmp w11, #32");
-    emitter.instruction("b.eq __rt_json_decode_mixed_object_step");
-    emitter.instruction("cmp w11, #9");
-    emitter.instruction("b.eq __rt_json_decode_mixed_object_step");
-    emitter.instruction("cmp w11, #10");
-    emitter.instruction("b.eq __rt_json_decode_mixed_object_step");
-    emitter.instruction("cmp w11, #13");
+    emitter.instruction("cmp x9, x10");                                         // check the current JSON decoder condition
+    emitter.instruction("b.ge __rt_json_decode_mixed_object_empty");            // branch on the current JSON decoder condition
+    emitter.instruction("ldrb w11, [x1, x9]");                                  // load or prepare JSON decoder state
+    emitter.instruction("cmp w11, #32");                                        // check the current JSON decoder condition
+    emitter.instruction("b.eq __rt_json_decode_mixed_object_step");             // branch on the current JSON decoder condition
+    emitter.instruction("cmp w11, #9");                                         // check the current JSON decoder condition
+    emitter.instruction("b.eq __rt_json_decode_mixed_object_step");             // branch on the current JSON decoder condition
+    emitter.instruction("cmp w11, #10");                                        // check the current JSON decoder condition
+    emitter.instruction("b.eq __rt_json_decode_mixed_object_step");             // branch on the current JSON decoder condition
+    emitter.instruction("cmp w11, #13");                                        // check the current JSON decoder condition
     emitter.instruction("b.ne __rt_json_decode_mixed_object_invoke");           // any other byte → invoke recursive parser
     emitter.label("__rt_json_decode_mixed_object_step");
-    emitter.instruction("add x9, x9, #1");
-    emitter.instruction("b __rt_json_decode_mixed_object_scan");
+    emitter.instruction("add x9, x9, #1");                                      // update the JSON decoder cursor or counter
+    emitter.instruction("b __rt_json_decode_mixed_object_scan");                // continue in the JSON decoder control path
     emitter.label("__rt_json_decode_mixed_object_invoke");
     emitter.instruction("ldr x1, [sp, #24]");                                   // decoded slice ptr (entire `{...}` slice)
     emitter.instruction("ldr x2, [sp, #32]");                                   // decoded slice length
     emitter.instruction("bl __rt_json_decode_mixed_object_real");               // recursively decode each pair; returns x0 = Mixed* or 0 on error
     emitter.instruction("cbz x0, __rt_json_decode_mixed_passthrough");          // structural decode failed → fall back to the legacy string passthrough
-    emitter.instruction("b __rt_json_decode_mixed_done");
+    emitter.instruction("b __rt_json_decode_mixed_done");                       // continue in the JSON decoder control path
     emitter.label("__rt_json_decode_mixed_object_empty");
     emitter.instruction("mov x0, #0");                                          // capacity = 0
     emitter.instruction("mov x1, #7");                                          // value_type = 7 (boxed mixed slots)
@@ -172,7 +172,7 @@ pub(super) fn emit(emitter: &mut Emitter) {
     emitter.instruction("mov x0, #5");                                          // tag = associative array
     emitter.instruction("mov x2, #0");                                          // mixed_from_value high word unused for assoc payload
     emitter.instruction("bl __rt_mixed_from_value");                            // box as Mixed(assoc)
-    emitter.instruction("b __rt_json_decode_mixed_done");
+    emitter.instruction("b __rt_json_decode_mixed_done");                       // continue in the JSON decoder control path
 
     emitter.label("__rt_json_decode_mixed_object_empty_stdclass");
     emitter.instruction("mov x0, x1");                                          // x0 = empty hash pointer for stdclass_from_hash
@@ -181,28 +181,28 @@ pub(super) fn emit(emitter: &mut Emitter) {
     emitter.instruction("mov x0, #6");                                          // tag = object
     emitter.instruction("mov x2, #0");                                          // mixed_from_value high word unused for object payload
     emitter.instruction("bl __rt_mixed_from_value");                            // box as Mixed(object)
-    emitter.instruction("b __rt_json_decode_mixed_done");
+    emitter.instruction("b __rt_json_decode_mixed_done");                       // continue in the JSON decoder control path
 
     emitter.label("__rt_json_decode_mixed_true");
     emitter.instruction("mov x0, #3");                                          // tag = bool
     emitter.instruction("mov x1, #1");                                          // lo = 1 (true)
-    emitter.instruction("mov x2, #0");
-    emitter.instruction("bl __rt_mixed_from_value");
-    emitter.instruction("b __rt_json_decode_mixed_done");
+    emitter.instruction("mov x2, #0");                                          // load or prepare JSON decoder state
+    emitter.instruction("bl __rt_mixed_from_value");                            // call the mixed from value helper
+    emitter.instruction("b __rt_json_decode_mixed_done");                       // continue in the JSON decoder control path
 
     emitter.label("__rt_json_decode_mixed_false");
     emitter.instruction("mov x0, #3");                                          // tag = bool
     emitter.instruction("mov x1, #0");                                          // lo = 0 (false)
-    emitter.instruction("mov x2, #0");
-    emitter.instruction("bl __rt_mixed_from_value");
-    emitter.instruction("b __rt_json_decode_mixed_done");
+    emitter.instruction("mov x2, #0");                                          // load or prepare JSON decoder state
+    emitter.instruction("bl __rt_mixed_from_value");                            // call the mixed from value helper
+    emitter.instruction("b __rt_json_decode_mixed_done");                       // continue in the JSON decoder control path
 
     emitter.label("__rt_json_decode_mixed_null");
     emitter.instruction("mov x0, #8");                                          // tag = null
-    emitter.instruction("mov x1, #0");
-    emitter.instruction("mov x2, #0");
-    emitter.instruction("bl __rt_mixed_from_value");
-    emitter.instruction("b __rt_json_decode_mixed_done");
+    emitter.instruction("mov x1, #0");                                          // load or prepare JSON decoder state
+    emitter.instruction("mov x2, #0");                                          // load or prepare JSON decoder state
+    emitter.instruction("bl __rt_mixed_from_value");                            // call the mixed from value helper
+    emitter.instruction("b __rt_json_decode_mixed_done");                       // continue in the JSON decoder control path
 
     // -- number: scan for '.', 'e', 'E' to choose int vs float --
     emitter.label("__rt_json_decode_mixed_number");
@@ -211,19 +211,19 @@ pub(super) fn emit(emitter: &mut Emitter) {
     emitter.instruction("mov x9, #0");                                          // scan index
     emitter.instruction("mov w12, #0");                                         // is_float flag
     emitter.label("__rt_json_decode_mixed_number_scan");
-    emitter.instruction("cmp x9, x2");
-    emitter.instruction("b.ge __rt_json_decode_mixed_number_decided");
-    emitter.instruction("ldrb w10, [x1, x9]");
+    emitter.instruction("cmp x9, x2");                                          // check the current JSON decoder condition
+    emitter.instruction("b.ge __rt_json_decode_mixed_number_decided");          // branch on the current JSON decoder condition
+    emitter.instruction("ldrb w10, [x1, x9]");                                  // load or prepare JSON decoder state
     emitter.instruction("cmp w10, #46");                                        // '.'?
-    emitter.instruction("b.eq __rt_json_decode_mixed_number_set_float");
+    emitter.instruction("b.eq __rt_json_decode_mixed_number_set_float");        // branch on the current JSON decoder condition
     emitter.instruction("cmp w10, #101");                                       // 'e'?
-    emitter.instruction("b.eq __rt_json_decode_mixed_number_set_float");
+    emitter.instruction("b.eq __rt_json_decode_mixed_number_set_float");        // branch on the current JSON decoder condition
     emitter.instruction("cmp w10, #69");                                        // 'E'?
-    emitter.instruction("b.eq __rt_json_decode_mixed_number_set_float");
-    emitter.instruction("add x9, x9, #1");
-    emitter.instruction("b __rt_json_decode_mixed_number_scan");
+    emitter.instruction("b.eq __rt_json_decode_mixed_number_set_float");        // branch on the current JSON decoder condition
+    emitter.instruction("add x9, x9, #1");                                      // update the JSON decoder cursor or counter
+    emitter.instruction("b __rt_json_decode_mixed_number_scan");                // continue in the JSON decoder control path
     emitter.label("__rt_json_decode_mixed_number_set_float");
-    emitter.instruction("mov w12, #1");
+    emitter.instruction("mov w12, #1");                                         // load or prepare JSON decoder state
     emitter.label("__rt_json_decode_mixed_number_decided");
     emitter.instruction("cbnz w12, __rt_json_decode_mixed_number_float");       // float grammar wins immediately
 
@@ -287,7 +287,7 @@ pub(super) fn emit(emitter: &mut Emitter) {
     emitter.instruction("ldr x1, [sp, #24]");                                   // ptr = decoded slice (original digits)
     emitter.instruction("ldr x2, [sp, #32]");                                   // len = decoded slice
     emitter.instruction("bl __rt_mixed_from_value");                            // box & persist the digits as a Mixed(string) cell
-    emitter.instruction("b __rt_json_decode_mixed_done");
+    emitter.instruction("b __rt_json_decode_mixed_done");                       // continue in the JSON decoder control path
 
     // Integer path: __rt_atoi expects x1=ptr, x2=len → returns x0
     emitter.label("__rt_json_decode_mixed_number_int_atoi");
@@ -298,7 +298,7 @@ pub(super) fn emit(emitter: &mut Emitter) {
     emitter.instruction("mov x0, #0");                                          // tag = int
     emitter.instruction("mov x2, #0");                                          // mixed_from_value high word unused for int payload
     emitter.instruction("bl __rt_mixed_from_value");                            // box as Mixed(int)
-    emitter.instruction("b __rt_json_decode_mixed_done");
+    emitter.instruction("b __rt_json_decode_mixed_done");                       // continue in the JSON decoder control path
 
     // Float path: copy the decoded slice into a 32-byte stack buffer with a
     // trailing NUL, then call libc atof which expects a C string.
@@ -306,24 +306,24 @@ pub(super) fn emit(emitter: &mut Emitter) {
     emitter.instruction("ldr x1, [sp, #24]");                                   // decoded ptr
     emitter.instruction("ldr x2, [sp, #32]");                                   // decoded len
     emitter.instruction("add x11, sp, #40");                                    // scratch buffer base (32 bytes available)
-    emitter.instruction("mov x9, #0");
+    emitter.instruction("mov x9, #0");                                          // load or prepare JSON decoder state
     emitter.label("__rt_json_decode_mixed_float_copy");
     emitter.instruction("cmp x9, x2");                                          // copied every byte?
-    emitter.instruction("b.ge __rt_json_decode_mixed_float_copy_done");
+    emitter.instruction("b.ge __rt_json_decode_mixed_float_copy_done");         // branch on the current JSON decoder condition
     emitter.instruction("cmp x9, #31");                                         // bound the copy to 31 bytes + NUL terminator
-    emitter.instruction("b.ge __rt_json_decode_mixed_float_copy_done");
-    emitter.instruction("ldrb w10, [x1, x9]");
-    emitter.instruction("strb w10, [x11, x9]");
-    emitter.instruction("add x9, x9, #1");
-    emitter.instruction("b __rt_json_decode_mixed_float_copy");
+    emitter.instruction("b.ge __rt_json_decode_mixed_float_copy_done");         // branch on the current JSON decoder condition
+    emitter.instruction("ldrb w10, [x1, x9]");                                  // load or prepare JSON decoder state
+    emitter.instruction("strb w10, [x11, x9]");                                 // store updated JSON decoder state
+    emitter.instruction("add x9, x9, #1");                                      // update the JSON decoder cursor or counter
+    emitter.instruction("b __rt_json_decode_mixed_float_copy");                 // continue in the JSON decoder control path
     emitter.label("__rt_json_decode_mixed_float_copy_done");
     emitter.instruction("strb wzr, [x11, x9]");                                 // append the NUL terminator atof needs
     emitter.instruction("mov x0, x11");                                         // pass the C-string pointer to atof in x0
     emitter.bl_c("atof");                                                       // libc atof → d0 = double
     emitter.instruction("fmov x1, d0");                                         // move the double bits into the integer payload register
     emitter.instruction("mov x0, #2");                                          // tag = float
-    emitter.instruction("mov x2, #0");
-    emitter.instruction("bl __rt_mixed_from_value");
+    emitter.instruction("mov x2, #0");                                          // load or prepare JSON decoder state
+    emitter.instruction("bl __rt_mixed_from_value");                            // call the mixed from value helper
 
     emitter.label("__rt_json_decode_mixed_done");
     emitter.instruction("ldp x29, x30, [sp, #80]");                             // restore frame pointer and return address

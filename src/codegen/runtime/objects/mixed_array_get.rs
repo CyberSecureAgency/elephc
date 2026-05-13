@@ -55,11 +55,11 @@ fn emit_mixed_array_get_aarch64(emitter: &mut Emitter) {
     emitter.instruction("cbz x0, __rt_mixed_array_get_null");                   // null Mixed → Mixed(null)
     emitter.instruction("ldr x9, [x0]");                                        // load tag from mixed[0]
     emitter.instruction("cmp x9, #4");                                          // tag = 4 (indexed array)?
-    emitter.instruction("b.eq __rt_mixed_array_get_indexed");
+    emitter.instruction("b.eq __rt_mixed_array_get_indexed");                   // branch on the current JSON decoder condition
     emitter.instruction("cmp x9, #5");                                          // tag = 5 (associative array)?
-    emitter.instruction("b.eq __rt_mixed_array_get_assoc");
+    emitter.instruction("b.eq __rt_mixed_array_get_assoc");                     // branch on the current JSON decoder condition
     emitter.instruction("cmp x9, #6");                                          // tag = 6 (object)?
-    emitter.instruction("b.eq __rt_mixed_array_get_object");
+    emitter.instruction("b.eq __rt_mixed_array_get_object");                    // branch on the current JSON decoder condition
     emitter.instruction("b __rt_mixed_array_get_null");                         // any other payload → null
 
     // Indexed array: integer key only. key_hi == -1 marks int keys.
@@ -72,9 +72,9 @@ fn emit_mixed_array_get_aarch64(emitter: &mut Emitter) {
     emitter.instruction("ldr x12, [sp, #8]");                                   // x12 = key_lo (int index)
     emitter.instruction("ldr x9, [x10]");                                       // x9 = array length (header offset 0)
     emitter.instruction("cmp x12, #0");                                         // negative index → null
-    emitter.instruction("b.lt __rt_mixed_array_get_null");
+    emitter.instruction("b.lt __rt_mixed_array_get_null");                      // branch on the current JSON decoder condition
     emitter.instruction("cmp x12, x9");                                         // index >= length → null
-    emitter.instruction("b.ge __rt_mixed_array_get_null");
+    emitter.instruction("b.ge __rt_mixed_array_get_null");                      // branch on the current JSON decoder condition
     // Indexed arrays of mixed contents store boxed Mixed pointers as
     // 8-byte slots starting at offset 24 (24-byte header). The decode
     // runtime creates these arrays with elem_size=8 and tag=mixed for
@@ -159,33 +159,33 @@ fn emit_mixed_array_get_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov QWORD PTR [rbp - 24], rdx");                       // save key_hi
 
     emitter.instruction("test rdi, rdi");                                       // null Mixed → null
-    emitter.instruction("je __rt_mixed_array_get_null");
+    emitter.instruction("je __rt_mixed_array_get_null");                        // branch on the current JSON decoder condition
     emitter.instruction("mov r10, QWORD PTR [rdi]");                            // load tag from mixed[0]
     emitter.instruction("cmp r10, 4");                                          // tag = 4 (indexed array)?
-    emitter.instruction("je __rt_mixed_array_get_indexed");
+    emitter.instruction("je __rt_mixed_array_get_indexed");                     // branch on the current JSON decoder condition
     emitter.instruction("cmp r10, 5");                                          // tag = 5 (associative array)?
-    emitter.instruction("je __rt_mixed_array_get_assoc");
+    emitter.instruction("je __rt_mixed_array_get_assoc");                       // branch on the current JSON decoder condition
     emitter.instruction("cmp r10, 6");                                          // tag = 6 (object)?
-    emitter.instruction("je __rt_mixed_array_get_object");
+    emitter.instruction("je __rt_mixed_array_get_object");                      // branch on the current JSON decoder condition
     emitter.instruction("jmp __rt_mixed_array_get_null");                       // any other payload → null
 
     emitter.label("__rt_mixed_array_get_indexed");
     emitter.instruction("mov r10, QWORD PTR [rdi + 8]");                        // r10 = array pointer
     emitter.instruction("test r10, r10");                                       // defensive null guard
-    emitter.instruction("je __rt_mixed_array_get_null");
+    emitter.instruction("je __rt_mixed_array_get_null");                        // branch on the current JSON decoder condition
     emitter.instruction("mov r11, QWORD PTR [rbp - 24]");                       // load key_hi
     emitter.instruction("cmp r11, -1");                                         // int-key sentinel?
     emitter.instruction("jne __rt_mixed_array_get_null");                       // string key on indexed array → null
     emitter.instruction("mov r12, QWORD PTR [rbp - 16]");                       // r12 = key_lo (int index)
     emitter.instruction("mov r9, QWORD PTR [r10]");                             // r9 = array length
     emitter.instruction("cmp r12, 0");                                          // negative index → null
-    emitter.instruction("jl __rt_mixed_array_get_null");
+    emitter.instruction("jl __rt_mixed_array_get_null");                        // branch on the current JSON decoder condition
     emitter.instruction("cmp r12, r9");                                         // index >= length → null
-    emitter.instruction("jge __rt_mixed_array_get_null");
+    emitter.instruction("jge __rt_mixed_array_get_null");                       // branch on the current JSON decoder condition
     emitter.instruction("lea r10, [r10 + 24]");                                 // skip the 24-byte array header to reach the contiguous payload
     emitter.instruction("mov rax, QWORD PTR [r10 + r12 * 8]");                  // load slot at base + index*8 (Mixed* per slot)
     emitter.instruction("test rax, rax");                                       // empty slot → null
-    emitter.instruction("je __rt_mixed_array_get_null");
+    emitter.instruction("je __rt_mixed_array_get_null");                        // branch on the current JSON decoder condition
     emitter.instruction("mov rsp, rbp");                                        // restore stack pointer
     emitter.instruction("pop rbp");                                             // restore caller frame pointer
     emitter.instruction("ret");                                                 // return Mixed* in rax
@@ -193,13 +193,13 @@ fn emit_mixed_array_get_x86_64(emitter: &mut Emitter) {
     emitter.label("__rt_mixed_array_get_assoc");
     emitter.instruction("mov r10, QWORD PTR [rdi + 8]");                        // r10 = hash pointer
     emitter.instruction("test r10, r10");                                       // defensive null guard
-    emitter.instruction("je __rt_mixed_array_get_null");
+    emitter.instruction("je __rt_mixed_array_get_null");                        // branch on the current JSON decoder condition
     emitter.instruction("mov rdi, r10");                                        // rdi = hash pointer for hash_get
     emitter.instruction("mov rsi, QWORD PTR [rbp - 16]");                       // rsi = key_lo
     emitter.instruction("mov rdx, QWORD PTR [rbp - 24]");                       // rdx = key_hi
     emitter.instruction("call __rt_hash_get");                                  // rax=found, rdi=value_lo, rsi=value_hi, rcx=value_tag
     emitter.instruction("test rax, rax");                                       // miss → null
-    emitter.instruction("je __rt_mixed_array_get_null");
+    emitter.instruction("je __rt_mixed_array_get_null");                        // branch on the current JSON decoder condition
     // For value_tag == 7 the entry is already a boxed Mixed pointer; for
     // any other tag (typed string/int/array entries from non-Mixed assoc
     // arrays passing through a Mixed receiver) re-box (lo, hi, tag) so
@@ -222,7 +222,7 @@ fn emit_mixed_array_get_x86_64(emitter: &mut Emitter) {
     emitter.label("__rt_mixed_array_get_object");
     emitter.instruction("mov r10, QWORD PTR [rdi + 8]");                        // r10 = obj pointer
     emitter.instruction("test r10, r10");                                       // defensive null guard
-    emitter.instruction("je __rt_mixed_array_get_null");
+    emitter.instruction("je __rt_mixed_array_get_null");                        // branch on the current JSON decoder condition
     emitter.instruction("mov r11, QWORD PTR [r10]");                            // r11 = class_id
     emitter.instruction("mov r12, QWORD PTR [rip + _stdclass_class_id]");       // r12 = compile-time stdClass class_id
     emitter.instruction("cmp r11, r12");                                        // is the receiver a stdClass instance?

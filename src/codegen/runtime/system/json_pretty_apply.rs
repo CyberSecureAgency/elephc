@@ -327,7 +327,7 @@ fn emit_json_pretty_apply_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov rax, QWORD PTR [rbp - 8]");                        // reload the source pointer
     emitter.instruction("movzx r8, BYTE PTR [rax + rcx]");                      // load the next source byte
     emitter.instruction("mov r9, QWORD PTR [rbp - 56]");                        // reload the in_string flag
-    emitter.instruction("test r9, r9");
+    emitter.instruction("test r9, r9");                                         // check the current JSON encoder condition
     emitter.instruction("jne __rt_json_pretty_in_string");                      // when inside a JSON string, copy bytes verbatim with escape handling
 
     // Outside a string: dispatch on the byte.
@@ -424,7 +424,7 @@ fn emit_json_pretty_apply_linux_x86_64(emitter: &mut Emitter) {
     // closing bracket: 0 means a value preceded us (non-empty), 1 means
     // the container is empty.
     emitter.instruction("mov r9, QWORD PTR [rbp - 64]");                        // reload the need_indent flag
-    emitter.instruction("test r9, r9");
+    emitter.instruction("test r9, r9");                                         // check the current JSON encoder condition
     emitter.instruction("je __rt_json_pretty_close_with_indent");               // need_indent==0 → non-empty container, emit a closing newline+indent
     // Empty container: just decrement depth and clear the flag.
     emitter.instruction("mov r9, QWORD PTR [rbp - 48]");                        // reload the depth counter
@@ -476,7 +476,7 @@ fn emit_json_pretty_apply_linux_x86_64(emitter: &mut Emitter) {
     // Helper: emit "\n" + depth*4 spaces if need_indent is set; clear flag.
     emitter.label("__rt_json_pretty_emit_indent_if_needed");
     emitter.instruction("mov r9, QWORD PTR [rbp - 64]");                        // load the need_indent flag
-    emitter.instruction("test r9, r9");
+    emitter.instruction("test r9, r9");                                         // check the current JSON encoder condition
     emitter.instruction("je __rt_json_pretty_emit_indent_done");                // skip when no indent is pending
     emitter.instruction("mov QWORD PTR [rbp - 64], 0");                         // clear the need_indent flag before emitting
     emitter.instruction("jmp __rt_json_pretty_emit_indent_body");               // emit the newline and indent

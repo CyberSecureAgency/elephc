@@ -574,10 +574,10 @@ pub(super) fn emit(emitter: &mut Emitter) {
     emitter.instruction("b.ge __rt_json_str_is_numeric_done");                  // bare 'Xe' is not numeric
     emitter.instruction("ldrb w10, [x1, x9]");                                  // peek
     emitter.instruction("cmp w10, #43");                                        // optional '+'?
-    emitter.instruction("b.eq __rt_json_str_is_numeric_exp_advance_sign");
+    emitter.instruction("b.eq __rt_json_str_is_numeric_exp_advance_sign");      // branch on the current JSON string encoder condition
     emitter.instruction("cmp w10, #45");                                        // optional '-'?
-    emitter.instruction("b.eq __rt_json_str_is_numeric_exp_advance_sign");
-    emitter.instruction("b __rt_json_str_is_numeric_exp_first_digit");
+    emitter.instruction("b.eq __rt_json_str_is_numeric_exp_advance_sign");      // branch on the current JSON string encoder condition
+    emitter.instruction("b __rt_json_str_is_numeric_exp_first_digit");          // continue in the JSON string encoder control path
     emitter.label("__rt_json_str_is_numeric_exp_advance_sign");
     emitter.instruction("add x9, x9, #1");                                      // consume the exponent sign
     emitter.instruction("cmp x9, x2");                                          // is there a digit after?
@@ -595,7 +595,7 @@ pub(super) fn emit(emitter: &mut Emitter) {
     emitter.instruction("b.ge __rt_json_str_is_numeric_ok");                    // valid exponent reached EOI → numeric
     emitter.instruction("ldrb w10, [x1, x9]");                                  // peek
     emitter.instruction("sub w11, w10, #48");                                   // digit?
-    emitter.instruction("cmp w11, #9");
+    emitter.instruction("cmp w11, #9");                                         // check the current JSON string encoder condition
     emitter.instruction("b.hi __rt_json_str_is_numeric_done");                  // any non-digit after exponent digits → not numeric
     emitter.instruction("add x9, x9, #1");                                      // consume the digit
     emitter.instruction("b __rt_json_str_is_numeric_exp_loop");                 // continue
