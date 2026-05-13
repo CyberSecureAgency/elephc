@@ -12,7 +12,7 @@ use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
-use crate::codegen::expr::emit_expr;
+use crate::codegen::expr::{coerce_to_string, coerce_to_truthiness, emit_expr};
 use crate::codegen::platform::Arch;
 use crate::parser::ast::{Expr, ExprKind};
 use crate::types::PhpType;
@@ -26,40 +26,50 @@ pub fn emit(
 ) -> Option<PhpType> {
     emitter.comment("json_decode()");
 
-    // PHP resets json_last_error() at the start of every call so a previous
-    // failure does not leak into the next one's success result.
-    abi::emit_store_zero_to_symbol(emitter, "_json_last_error", 0);
+    let json_ty = emit_expr(&args[0], emitter, ctx, data);
+    coerce_to_string(emitter, ctx, data, &json_ty);
+    abi::emit_call_label(emitter, "__rt_str_persist");                          // keep the JSON source stable while optional arguments evaluate
+    let (ptr_reg, len_reg) = abi::string_result_regs(emitter);
+    abi::emit_push_reg_pair(emitter, ptr_reg, len_reg);                         // preserve the JSON source until validation and decoding
 
-    // The runtime decoder consults `_json_decode_assoc` whenever it boxes a
-    // JSON object: 0 produces a stdClass instance (PHP's default), 1
-    // produces a hash-backed associative array. Settle this once at the top
-    // level so all recursive object decodes inside one call see the same
-    // shape.
-    write_assoc_flag(args, emitter, ctx, data);
-
-    // Settle the flag and depth runtime symbols before calling
-    // __rt_json_validate so JSON_THROW_ON_ERROR (and the depth limit)
-    // observe what the caller passed. The third positional argument is
-    // depth and the fourth is flags; both default to PHP's standard
-    // values when omitted.
+    let assoc_arg = evaluate_assoc_arg(args, emitter, ctx, data);
+    if let Some(depth_expr) = args.get(2) {
+        emit_expr(depth_expr, emitter, ctx, data);
+        abi::emit_push_reg(emitter, abi::int_result_reg(emitter));              // preserve the depth argument until later arguments have evaluated
+    }
     if let Some(flag_expr) = args.get(3) {
         emit_expr(flag_expr, emitter, ctx, data);
+        abi::emit_push_reg(emitter, abi::int_result_reg(emitter));              // preserve the flags argument until runtime JSON state is updated
+    }
+
+    // PHP evaluates every argument before the builtin mutates JSON error
+    // state or call configuration.
+    abi::emit_store_zero_to_symbol(emitter, "_json_last_error", 0);
+    abi::emit_store_zero_to_symbol(emitter, "_json_active_depth", 0);
+
+    if args.get(3).is_some() {
+        abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));
         abi::emit_store_reg_to_symbol(
             emitter,
             abi::int_result_reg(emitter),
             "_json_active_flags",
             0,
         );
+        if matches!(assoc_arg, AssocArg::FromFlags) {
+            write_assoc_from_flags(emitter);
+        }
     } else {
         abi::emit_store_zero_to_symbol(emitter, "_json_active_flags", 0);
+        if matches!(assoc_arg, AssocArg::FromFlags) {
+            abi::emit_store_zero_to_symbol(emitter, "_json_decode_assoc", 0);   // missing/null associative arg and no flag → stdClass
+        }
     }
-    abi::emit_store_zero_to_symbol(emitter, "_json_active_depth", 0);
     // PHP json_decode rejects nesting when active_depth >= depth (strict).
     // The shared __rt_json_depth_enter compares `active <= limit` so we
     // subtract 1 from the user-supplied depth here to get the same
     // observable behavior (depth=1 → limit=0 → top-level container fails).
-    if let Some(depth_expr) = args.get(2) {
-        emit_expr(depth_expr, emitter, ctx, data);
+    if args.get(2).is_some() {
+        abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));
         let reg = abi::int_result_reg(emitter);
         match emitter.target.arch {
             Arch::AArch64 => emitter.instruction(&format!("sub {reg}, {reg}, #1")), // strict-semantic offset for json_decode
@@ -76,11 +86,18 @@ pub fn emit(
         );
     }
 
-    // -- evaluate the JSON string argument once and stash for the two
-    //    runtime calls (validate then decode). emit_expr is not idempotent
-    //    when the source has side effects, so we cannot re-evaluate the
-    //    argument across two helper calls.
-    emit_expr(&args[0], emitter, ctx, data);
+    if matches!(assoc_arg, AssocArg::Explicit) {
+        abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));
+        abi::emit_store_reg_to_symbol(
+            emitter,
+            abi::int_result_reg(emitter),
+            "_json_decode_assoc",
+            0,
+        );
+    }
+
+    let (ptr_reg, len_reg) = abi::string_result_regs(emitter);
+    abi::emit_pop_reg_pair(emitter, ptr_reg, len_reg);
     let valid_label = ctx.next_label("json_decode_valid");
     let done_label = ctx.next_label("json_decode_done");
     match emitter.target.arch {
@@ -125,39 +142,50 @@ pub fn emit(
     Some(PhpType::Mixed)
 }
 
-/// Materialize the `$associative` argument into the runtime flag symbol.
+/// Evaluate the `$associative` argument in PHP source order.
 ///
 /// PHP semantics: missing or `null` → false (stdClass), `false` → false,
-/// `true` → true. Anything else gets the usual PHP coercion to bool. For
-/// the common compile-time literal cases we set the flag with a constant
-/// store; dynamic expressions evaluate at runtime and use the result
-/// register's value as the flag.
-fn write_assoc_flag(
+/// `true` → true. When `$associative` is missing/null, `JSON_OBJECT_AS_ARRAY`
+/// in the flags argument chooses the shape. Dynamic non-null expressions use
+/// normal PHP truthiness and are stored after all later arguments evaluate.
+fn evaluate_assoc_arg(
     args: &[Expr],
     emitter: &mut Emitter,
     ctx: &mut Context,
     data: &mut DataSection,
-) {
+) -> AssocArg {
     if args.len() < 2 || matches!(args[1].kind, ExprKind::Null) {
-        abi::emit_store_zero_to_symbol(emitter, "_json_decode_assoc", 0);       // default associative=false → stdClass for all decoded objects
-        return;
+        return AssocArg::FromFlags;
     }
     if let ExprKind::BoolLiteral(value) = args[1].kind {
-        if value {
-            // Materialize the literal `true` (1) via a small helper so
-            // arch-specific stores stay confined to abi::*.
-            let scratch = abi::int_result_reg(emitter);
-            abi::emit_load_int_immediate(emitter, scratch, 1);
-            abi::emit_store_reg_to_symbol(emitter, scratch, "_json_decode_assoc", 0); // record true so all decoded objects become assoc arrays
-        } else {
-            abi::emit_store_zero_to_symbol(emitter, "_json_decode_assoc", 0);   // explicit false → stdClass for all decoded objects
-        }
-        return;
+        let scratch = abi::int_result_reg(emitter);
+        abi::emit_load_int_immediate(emitter, scratch, if value { 1 } else { 0 });
+        abi::emit_push_reg(emitter, scratch);                                   // preserve the explicit associative literal until JSON state is updated
+        return AssocArg::Explicit;
     }
-    // Dynamic argument: evaluate and store the bool/int result. Non-zero
-    // values flag assoc, zero flags stdClass — matching PHP's truthiness
-    // for the second parameter.
-    let _ = emit_expr(&args[1], emitter, ctx, data);
-    let scratch = abi::int_result_reg(emitter);
-    abi::emit_store_reg_to_symbol(emitter, scratch, "_json_decode_assoc", 0);   // store the runtime-truthy result of $associative for the upcoming decode
+    let ty = emit_expr(&args[1], emitter, ctx, data);
+    if ty == PhpType::Void {
+        return AssocArg::FromFlags;
+    }
+    coerce_to_truthiness(emitter, ctx, &ty);
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the truthiness result until later arguments have evaluated
+    AssocArg::Explicit
+}
+
+fn write_assoc_from_flags(emitter: &mut Emitter) {
+    let reg = abi::int_result_reg(emitter);
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction(&format!("and {reg}, {reg}, #1"));              // keep JSON_OBJECT_AS_ARRAY when associative is null/missing
+        }
+        Arch::X86_64 => {
+            emitter.instruction(&format!("and {reg}, 1"));                      // keep JSON_OBJECT_AS_ARRAY when associative is null/missing
+        }
+    }
+    abi::emit_store_reg_to_symbol(emitter, reg, "_json_decode_assoc", 0);
+}
+
+enum AssocArg {
+    Explicit,
+    FromFlags,
 }

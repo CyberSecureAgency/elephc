@@ -315,7 +315,7 @@ pub(super) fn check_builtin(
                     ));
                 }
             }
-            for extra in &args[2..] {
+            for extra in args.iter().skip(2) {
                 let ty = checker.infer_type(extra, env)?;
                 if ty != PhpType::Int {
                     return Err(CompileError::new(

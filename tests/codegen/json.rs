@@ -42,3 +42,5 @@ mod decode_errors;
 mod decode_bigint;
 #[path = "json/case_insensitive.rs"]
 mod case_insensitive;
+#[path = "json/evaluation_order.rs"]
+mod evaluation_order;

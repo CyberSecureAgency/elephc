@@ -25,36 +25,26 @@ pub fn emit(
 ) -> Option<PhpType> {
     emitter.comment("json_encode()");
 
-    // PHP resets json_last_error() at the start of every call so a previous
-    // failure does not leak into the next one's success result.
-    abi::emit_store_zero_to_symbol(emitter, "_json_last_error", 0);
+    let ty = emit_expr(&args[0], emitter, ctx, data);
+    persist_string_result_if_needed(&ty, emitter);
+    abi::emit_push_result_value(emitter, &ty);
 
-    // Evaluate the flags arg (args[1]) before the value arg so the runtime
-    // can consult `_json_active_flags` while encoding. This evaluation order
-    // diverges from PHP's strict left-to-right rule, but the flag argument
-    // is virtually always a constant bitmask (`JSON_PRETTY_PRINT | …`); we
-    // skip the side-effecting reordering when the source expression is a
-    // literal/constant by emitting through the standard expression path.
     if let Some(flag_expr) = args.get(1) {
         emit_expr(flag_expr, emitter, ctx, data);
-        abi::emit_store_reg_to_symbol(
-            emitter,
-            abi::int_result_reg(emitter),
-            "_json_active_flags",
-            0,
-        );
-    } else {
-        abi::emit_store_zero_to_symbol(emitter, "_json_active_flags", 0);
+        abi::emit_push_reg(emitter, abi::int_result_reg(emitter));              // keep json_encode flags stable while later arguments evaluate
     }
-    // Always reset the active indent depth at the top of every json_encode
-    // call so a previous PRETTY_PRINT pass does not leak indent state into
-    // a fresh invocation.
-    abi::emit_store_zero_to_symbol(emitter, "_json_active_depth", 0);
-    // Evaluate args[2] (depth) and store it as the recursion limit consulted
-    // by every container encoder. PHP's default is 512; mirror that for the
-    // implicit case so user code can omit the argument.
     if let Some(depth_expr) = args.get(2) {
         emit_expr(depth_expr, emitter, ctx, data);
+        abi::emit_push_reg(emitter, abi::int_result_reg(emitter));              // keep json_encode depth stable until all argument side effects are done
+    }
+
+    // PHP evaluates every argument before the builtin mutates global JSON
+    // error/configuration state.
+    abi::emit_store_zero_to_symbol(emitter, "_json_last_error", 0);
+    abi::emit_store_zero_to_symbol(emitter, "_json_active_depth", 0);
+
+    if args.get(2).is_some() {
+        abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));
         abi::emit_store_reg_to_symbol(
             emitter,
             abi::int_result_reg(emitter),
@@ -70,8 +60,19 @@ pub fn emit(
             0,
         );
     }
+    if args.get(1).is_some() {
+        abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));
+        abi::emit_store_reg_to_symbol(
+            emitter,
+            abi::int_result_reg(emitter),
+            "_json_active_flags",
+            0,
+        );
+    } else {
+        abi::emit_store_zero_to_symbol(emitter, "_json_active_flags", 0);
+    }
 
-    let ty = emit_expr(&args[0], emitter, ctx, data);
+    restore_result_value(emitter, &ty);
 
     match ty {
         PhpType::Int => {
@@ -148,4 +149,26 @@ pub fn emit(
     abi::emit_call_label(emitter, "__rt_json_pretty_apply");
 
     Some(PhpType::Str)
+}
+
+fn persist_string_result_if_needed(ty: &PhpType, emitter: &mut Emitter) {
+    if ty.codegen_repr() == PhpType::Str {
+        abi::emit_call_label(emitter, "__rt_str_persist");                      // keep the string value stable while later json_encode arguments evaluate
+    }
+}
+
+fn restore_result_value(emitter: &mut Emitter, ty: &PhpType) {
+    match ty.codegen_repr() {
+        PhpType::Float => {
+            abi::emit_pop_float_reg(emitter, abi::float_result_reg(emitter));
+        }
+        PhpType::Str => {
+            let (ptr_reg, len_reg) = abi::string_result_regs(emitter);
+            abi::emit_pop_reg_pair(emitter, ptr_reg, len_reg);
+        }
+        PhpType::Void | PhpType::Never => {}
+        _ => {
+            abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));
+        }
+    }
 }
