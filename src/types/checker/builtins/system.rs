@@ -352,10 +352,12 @@ fn class_attribute_args_unsupported(checker: &Checker, class_name: &str, attr_na
         return false;
     };
     let attr_key = php_symbol_key(attr_name.trim_start_matches('\\'));
-    class_info.attribute_names.iter().enumerate().any(|(idx, name)| {
-        php_symbol_key(name.trim_start_matches('\\')) == attr_key
-            && !matches!(class_info.attribute_args.get(idx), Some(Some(_)))
-    })
+    class_info
+        .attribute_names
+        .iter()
+        .enumerate()
+        .find(|(_, name)| php_symbol_key(name.trim_start_matches('\\')) == attr_key)
+        .is_some_and(|(idx, _)| !matches!(class_info.attribute_args.get(idx), Some(Some(_))))
 }
 
 fn class_get_attributes_unsupported(checker: &Checker, class_name: &str) -> bool {

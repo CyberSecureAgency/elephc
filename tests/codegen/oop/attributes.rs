@@ -757,3 +757,18 @@ echo $args[0];
     );
     assert_eq!(out, "1/first");
 }
+
+#[test]
+fn test_class_attribute_args_ignores_later_unsupported_duplicate_match() {
+    let out = compile_and_run(
+        r#"<?php
+#[Tag("first"), Tag(1 + 2)]
+class X {}
+$args = class_attribute_args('X', 'Tag');
+echo count($args);
+echo "/";
+echo $args[0];
+"#,
+    );
+    assert_eq!(out, "1/first");
+}
