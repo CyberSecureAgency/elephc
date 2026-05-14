@@ -1,11 +1,13 @@
-//! Codegen stub for `class_alias`.
+//! Purpose:
+//! Provides a defensive codegen fallback for unsupported `class_alias` calls.
+//! Keeps the builtin dispatcher total even though valid AOT alias calls are consumed earlier.
 //!
-//! Top-level `class_alias("Original", "Alias")` calls with literal
-//! arguments are consumed at compile time by the autoload pass, which
-//! synthesises a `class Alias extends Original {}` declaration. Calls
-//! that don't fit that pattern (variable args, conditional sites the
-//! collector skipped) reach this stub, which always returns `true`. The
-//! arguments are still evaluated for side effects.
+//! Called from:
+//! - `crate::codegen::builtins::types::emit()`
+//!
+//! Key details:
+//! - Top-level literal alias calls are compiled into synthetic subclass declarations by autoload.
+//! - Any call reaching this file should already have been rejected by the checker.
 
 use crate::codegen::abi;
 use crate::codegen::context::Context;
@@ -22,10 +24,10 @@ pub fn emit(
     ctx: &mut Context,
     data: &mut DataSection,
 ) -> Option<PhpType> {
-    emitter.comment("class_alias() — AOT stub returns true");
+    emitter.comment("class_alias() unsupported fallback");
     for arg in args {
         emit_expr(arg, emitter, ctx, data);
     }
-    abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), 1);
+    abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), 0);
     Some(PhpType::Bool)
 }

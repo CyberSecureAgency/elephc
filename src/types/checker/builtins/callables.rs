@@ -338,6 +338,41 @@ pub(super) fn check_builtin(
             for arg in args {
                 checker.infer_type(arg, env)?;
             }
+            return Err(CompileError::new(
+                span,
+                "class_alias() is only supported as a top-level statement with literal class names",
+            ));
+        }
+        "class_exists" | "interface_exists" | "trait_exists" | "enum_exists" => {
+            if args.is_empty() || args.len() > 2 {
+                return Err(CompileError::new(
+                    span,
+                    &format!("{}() takes 1 or 2 arguments", name),
+                ));
+            }
+            for arg in args {
+                checker.infer_type(arg, env)?;
+            }
+            if !matches!(args[0].kind, ExprKind::StringLiteral(_)) {
+                return Err(CompileError::new(
+                    span,
+                    &format!("{}() first argument must be a string literal in AOT mode", name),
+                ));
+            }
+            if let Some(autoload_arg) = args.get(1) {
+                if !matches!(
+                    autoload_arg.kind,
+                    ExprKind::BoolLiteral(_) | ExprKind::IntLiteral(_)
+                ) {
+                    return Err(CompileError::new(
+                        span,
+                        &format!(
+                            "{}() autoload argument must be a literal bool or int in AOT mode",
+                            name
+                        ),
+                    ));
+                }
+            }
             Ok(Some(PhpType::Bool))
         }
         "get_class" => {
@@ -369,18 +404,6 @@ pub(super) fn check_builtin(
                 return Err(CompileError::new(
                     span,
                     &format!("{}() takes 2 or 3 arguments", name),
-                ));
-            }
-            for arg in args {
-                checker.infer_type(arg, env)?;
-            }
-            Ok(Some(PhpType::Bool))
-        }
-        "class_exists" | "interface_exists" | "trait_exists" | "enum_exists" => {
-            if args.is_empty() || args.len() > 2 {
-                return Err(CompileError::new(
-                    span,
-                    &format!("{}() takes 1 or 2 arguments", name),
                 ));
             }
             for arg in args {

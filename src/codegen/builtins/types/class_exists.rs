@@ -1,17 +1,13 @@
-//! Codegen for `class_exists` / `interface_exists` / `trait_exists` /
-//! `enum_exists`.
+//! Purpose:
+//! Emits AOT results for `class_exists`, `interface_exists`, `trait_exists`, and `enum_exists`.
+//! Evaluates arguments for side effects, then lowers literal lookups to an integer bool.
 //!
-//! In the AOT model, the autoload pass has already resolved every class
-//! the program either references directly or names through
-//! `class_exists("Literal", true)`. The corresponding entry is therefore
-//! present in `ctx.classes` (or `interfaces` / `enums`) by the time we
-//! reach this codegen.
+//! Called from:
+//! - `crate::codegen::builtins::types::emit()`
 //!
-//! Decision matrix at compile time:
-//!   * literal class name + present in the relevant ctx map → emit `1`
-//!   * literal class name + absent → emit `0`
-//!   * non-literal argument → emit `1` (the rest of the program would
-//!     have failed earlier if the class didn't compile in)
+//! Key details:
+//! - The autoload pass has already resolved literal autoload demands before codegen.
+//! - Non-literal arguments are checker errors; codegen falls back to `false` defensively.
 
 use crate::codegen::abi;
 use crate::codegen::context::Context;
@@ -34,7 +30,7 @@ pub fn emit(
     for arg in args {
         emit_expr(arg, emitter, ctx, data);
     }
-    let value = literal_lookup_result(name, args, ctx).unwrap_or(1);
+    let value = literal_lookup_result(name, args, ctx).unwrap_or(0);
     abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), value);
     Some(PhpType::Bool)
 }
@@ -49,10 +45,10 @@ fn literal_lookup_result(name: &str, args: &[Expr], ctx: &Context) -> Option<i64
         "class_exists" => ctx.classes.contains_key(cleaned),
         "interface_exists" => ctx.interfaces.contains_key(cleaned),
         "enum_exists" => ctx.enums.contains_key(cleaned),
-        // The compiler doesn't keep a separate trait registry on Context
-        // — traits are flattened away. Always-present is the conservative
-        // answer for AOT.
-        "trait_exists" => true,
+        // The compiler doesn't keep a separate trait registry on Context:
+        // traits are flattened away before codegen. Returning false is safer
+        // than claiming every queried trait exists.
+        "trait_exists" => false,
         _ => return None,
     };
     Some(if present { 1 } else { 0 })
