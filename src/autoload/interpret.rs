@@ -13,7 +13,8 @@
 //!   * Binary `.` concatenation
 //!   * Variable reads and writes
 //!   * `str_replace($from, $to, $haystack)` with literal arguments
-//!   * `file_exists($path)` / `is_file($path)` (real filesystem check)
+//!   * `file_exists($path)` / `is_file($path)` / `is_readable($path)`
+//!     / `is_dir($path)` (real filesystem checks)
 //!   * `if`/`elseif`/`else` whose conditions fold to a literal bool
 //!   * `require` / `require_once` / `include` / `include_once`
 //!
@@ -23,6 +24,7 @@
 //! (or PSR-4 fallback) is tried.
 
 use std::collections::HashMap;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::parser::ast::{BinOp, Expr, ExprKind, Stmt, StmtKind};
@@ -225,11 +227,20 @@ impl Interpreter {
                 .eval(args.first()?)
                 .and_then(|v| v.as_str().map(|s| s.to_uppercase()))
                 .map(Value::Str),
-            "file_exists" | "is_file" | "is_readable" => {
+            "file_exists" => {
                 let path = self.eval(args.first()?)?;
                 let path_str = path.as_str()?;
-                let p = Path::new(path_str);
-                Some(Value::Bool(p.is_file()))
+                Some(Value::Bool(Path::new(path_str).exists()))
+            }
+            "is_file" => {
+                let path = self.eval(args.first()?)?;
+                let path_str = path.as_str()?;
+                Some(Value::Bool(Path::new(path_str).is_file()))
+            }
+            "is_readable" => {
+                let path = self.eval(args.first()?)?;
+                let path_str = path.as_str()?;
+                Some(Value::Bool(is_readable_path(Path::new(path_str))))
             }
             "is_dir" => {
                 let path = self.eval(args.first()?)?;
@@ -363,6 +374,10 @@ fn fold_dirname(path: &str, levels: i64) -> Option<String> {
         }
     }
     Some(current)
+}
+
+fn is_readable_path(path: &Path) -> bool {
+    fs::File::open(path).is_ok() || fs::read_dir(path).is_ok()
 }
 
 fn value_to_string(value: &Value) -> Option<String> {

@@ -383,6 +383,46 @@ fn test_register_with_file_exists_positive_branch() {
 }
 
 #[test]
+fn test_register_file_exists_directory_guard_loads_file() {
+    // PHP's file_exists() returns true for directories. Autoload rules
+    // often guard on the base directory before requiring the class file.
+    let out = compile_and_run_files(
+        &[
+            (
+                "lib/DirectoryGuard.php",
+                "<?php\nclass DirectoryGuard {\n    public function tag(): string { return \"dir\"; }\n}\n",
+            ),
+            (
+                "main.php",
+                "<?php\nspl_autoload_register(function ($name) {\n    $base = __DIR__ . '/lib';\n    if (file_exists($base)) {\n        require_once $base . '/' . $name . '.php';\n    }\n});\n$d = new DirectoryGuard();\necho $d->tag();\n",
+            ),
+        ],
+        "main.php",
+    );
+    assert_eq!(out, "dir");
+}
+
+#[test]
+fn test_register_is_readable_directory_guard_loads_file() {
+    // is_readable() checks read access, not whether the path is a regular
+    // file. A readable autoload base directory must pass the guard.
+    let out = compile_and_run_files(
+        &[
+            (
+                "lib/ReadableGuard.php",
+                "<?php\nclass ReadableGuard {\n    public function tag(): string { return \"readable\"; }\n}\n",
+            ),
+            (
+                "main.php",
+                "<?php\nspl_autoload_register(function ($name) {\n    $base = __DIR__ . '/lib';\n    if (is_readable($base)) {\n        require_once $base . '/' . $name . '.php';\n    }\n});\n$r = new ReadableGuard();\necho $r->tag();\n",
+            ),
+        ],
+        "main.php",
+    );
+    assert_eq!(out, "readable");
+}
+
+#[test]
 fn test_register_chain_first_misses_second_loads() {
     // Two registered closures. The first looks in lib/missing/ (where the
     // file isn't); the second looks in lib/ where it is. The first rule's
