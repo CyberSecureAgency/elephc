@@ -1284,6 +1284,27 @@ echo $found_beta ? "b" : "-";
 }
 
 #[test]
+fn test_get_declared_classes_preserves_user_declaration_order() {
+    let out = compile_and_run(
+        r#"<?php
+class Zebra {}
+class Alpha {}
+$classes = get_declared_classes();
+$idx = 0;
+$zebra = -1;
+$alpha = -1;
+foreach ($classes as $c) {
+    if ($c === "Zebra") $zebra = $idx;
+    if ($c === "Alpha") $alpha = $idx;
+    $idx = $idx + 1;
+}
+echo ($zebra >= 0 && $alpha >= 0 && $zebra < $alpha) ? "ok" : "bad";
+"#,
+    );
+    assert_eq!(out, "ok");
+}
+
+#[test]
 fn test_get_declared_interfaces_includes_user_interfaces() {
     let out = compile_and_run(
         r#"<?php
@@ -1297,6 +1318,48 @@ echo $found ? "yes" : "no";
 "#,
     );
     assert_eq!(out, "yes");
+}
+
+#[test]
+fn test_get_declared_interfaces_preserves_user_declaration_order() {
+    let out = compile_and_run(
+        r#"<?php
+interface ZebraContract {}
+interface AlphaContract {}
+$ifaces = get_declared_interfaces();
+$idx = 0;
+$zebra = -1;
+$alpha = -1;
+foreach ($ifaces as $i) {
+    if ($i === "ZebraContract") $zebra = $idx;
+    if ($i === "AlphaContract") $alpha = $idx;
+    $idx = $idx + 1;
+}
+echo ($zebra >= 0 && $alpha >= 0 && $zebra < $alpha) ? "ok" : "bad";
+"#,
+    );
+    assert_eq!(out, "ok");
+}
+
+#[test]
+fn test_get_declared_traits_preserves_user_declaration_order() {
+    let out = compile_and_run(
+        r#"<?php
+trait ZebraTrait {}
+trait AlphaTrait {}
+$traits = get_declared_traits();
+$idx = 0;
+$zebra = -1;
+$alpha = -1;
+foreach ($traits as $t) {
+    if ($t === "ZebraTrait") $zebra = $idx;
+    if ($t === "AlphaTrait") $alpha = $idx;
+    $idx = $idx + 1;
+}
+echo ($zebra >= 0 && $alpha >= 0 && $zebra < $alpha) ? "ok" : "bad";
+"#,
+    );
+    assert_eq!(out, "ok");
 }
 
 #[test]

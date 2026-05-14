@@ -28,7 +28,7 @@ mod reflection;
 mod runtime;
 mod stmt;
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 
 thread_local! {
@@ -38,6 +38,9 @@ thread_local! {
     /// codegen to size the introspection array. Thread-local so
     /// parallel test runs don't interfere.
     static AUTOLOAD_RULE_COUNT: Cell<usize> = const { Cell::new(0) };
+    static DECLARED_CLASS_NAMES: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    static DECLARED_INTERFACE_NAMES: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    static DECLARED_TRAIT_NAMES: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
 }
 
 pub fn set_autoload_rule_count(n: usize) {
@@ -46,6 +49,24 @@ pub fn set_autoload_rule_count(n: usize) {
 
 pub fn autoload_rule_count() -> usize {
     AUTOLOAD_RULE_COUNT.with(|c| c.get())
+}
+
+fn set_declared_name_order(classes: Vec<String>, interfaces: Vec<String>, traits: Vec<String>) {
+    DECLARED_CLASS_NAMES.with(|names| *names.borrow_mut() = classes);
+    DECLARED_INTERFACE_NAMES.with(|names| *names.borrow_mut() = interfaces);
+    DECLARED_TRAIT_NAMES.with(|names| *names.borrow_mut() = traits);
+}
+
+pub(crate) fn declared_class_names() -> Vec<String> {
+    DECLARED_CLASS_NAMES.with(|names| names.borrow().clone())
+}
+
+pub(crate) fn declared_interface_names() -> Vec<String> {
+    DECLARED_INTERFACE_NAMES.with(|names| names.borrow().clone())
+}
+
+pub(crate) fn declared_trait_names() -> Vec<String> {
+    DECLARED_TRAIT_NAMES.with(|names| names.borrow().clone())
 }
 
 use crate::parser::ast::{Program, StmtKind};
@@ -100,7 +121,13 @@ pub fn generate_user_asm(
 
     // Pre-scan for static variable declarations across all functions
     let all_static_vars = collect_static_vars(program, global_env);
-    let declared_traits = collect_trait_names(program);
+    let declared_trait_order = collect_declared_trait_names(program);
+    let declared_traits: HashSet<String> = declared_trait_order.iter().cloned().collect();
+    set_declared_name_order(
+        collect_declared_class_names(program, classes),
+        collect_declared_interface_names(program, interfaces),
+        declared_trait_order,
+    );
 
     // Emit user-defined functions before _main (skip extern functions)
     let function_variant_groups = function_variants::collect_function_variant_groups(program);
@@ -215,19 +242,99 @@ pub fn generate_user_asm(
     )
 }
 
-fn collect_trait_names(program: &Program) -> HashSet<String> {
-    let mut names = HashSet::new();
+fn collect_declared_class_names(
+    program: &Program,
+    classes: &HashMap<String, ClassInfo>,
+) -> Vec<String> {
+    let mut user_names = Vec::new();
+    collect_program_declared_names(
+        program,
+        classes,
+        &mut HashSet::new(),
+        &mut user_names,
+        |stmt| match &stmt.kind {
+            StmtKind::ClassDecl { name, .. } | StmtKind::EnumDecl { name, .. } => {
+                Some(name.as_str())
+            }
+            _ => None,
+        },
+    );
+    prepend_internal_names(classes.keys(), &user_names)
+}
+
+fn collect_declared_interface_names(
+    program: &Program,
+    interfaces: &HashMap<String, InterfaceInfo>,
+) -> Vec<String> {
+    let mut user_names = Vec::new();
+    collect_program_declared_names(
+        program,
+        interfaces,
+        &mut HashSet::new(),
+        &mut user_names,
+        |stmt| match &stmt.kind {
+            StmtKind::InterfaceDecl { name, .. } => Some(name.as_str()),
+            _ => None,
+        },
+    );
+    prepend_internal_names(interfaces.keys(), &user_names)
+}
+
+fn collect_declared_trait_names(program: &Program) -> Vec<String> {
+    let mut names = Vec::new();
     for stmt in program {
         match &stmt.kind {
             StmtKind::TraitDecl { name, .. } => {
-                names.insert(name.clone());
+                names.push(name.clone());
             }
             StmtKind::NamespaceBlock { body, .. } => {
-                names.extend(collect_trait_names(body));
+                names.extend(collect_declared_trait_names(body));
             }
             _ => {}
         }
     }
+    names
+}
+
+fn collect_program_declared_names<T>(
+    program: &Program,
+    known: &HashMap<String, T>,
+    seen: &mut HashSet<String>,
+    out: &mut Vec<String>,
+    pick: impl Copy + Fn(&crate::parser::ast::Stmt) -> Option<&str>,
+) {
+    for stmt in program {
+        match &stmt.kind {
+            StmtKind::NamespaceBlock { body, .. } => {
+                collect_program_declared_names(body, known, seen, out, pick);
+            }
+            _ => {
+                let Some(name) = pick(stmt) else {
+                    continue;
+                };
+                let key = crate::names::php_symbol_key(name);
+                if known.contains_key(name) && seen.insert(key) {
+                    out.push(name.to_string());
+                }
+            }
+        }
+    }
+}
+
+fn prepend_internal_names<'a>(
+    known_names: impl Iterator<Item = &'a String>,
+    user_names: &[String],
+) -> Vec<String> {
+    let user_keys: HashSet<String> = user_names
+        .iter()
+        .map(|name| crate::names::php_symbol_key(name))
+        .collect();
+    let mut names: Vec<String> = known_names
+        .filter(|name| !user_keys.contains(&crate::names::php_symbol_key(name)))
+        .cloned()
+        .collect();
+    names.sort();
+    names.extend(user_names.iter().cloned());
     names
 }
 

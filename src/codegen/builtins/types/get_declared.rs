@@ -4,8 +4,9 @@
 //! In the AOT model the registry of compiled classes / interfaces / traits
 //! is fixed at compile time. We can therefore materialise the introspection
 //! array as a constant — allocate it via `__rt_array_new`, then push every
-//! known name as a string. Names are sorted alphabetically so subsequent
-//! invocations within the same compilation unit see a deterministic order.
+//! known name as a string. Internal names are emitted first in deterministic
+//! order; user declarations follow source order, matching PHP's observable
+//! declaration-order behavior.
 
 use crate::codegen::abi;
 use crate::codegen::context::Context;
@@ -23,12 +24,20 @@ pub fn emit(
     data: &mut DataSection,
 ) -> Option<PhpType> {
     let mut names: Vec<String> = match name {
-        "get_declared_classes" => ctx.classes.keys().cloned().collect(),
-        "get_declared_interfaces" => ctx.interfaces.keys().cloned().collect(),
-        "get_declared_traits" => ctx.traits.iter().cloned().collect(),
+        "get_declared_classes" => crate::codegen::declared_class_names(),
+        "get_declared_interfaces" => crate::codegen::declared_interface_names(),
+        "get_declared_traits" => crate::codegen::declared_trait_names(),
         _ => return None,
     };
-    names.sort();
+    if names.is_empty() {
+        names = match name {
+            "get_declared_classes" => ctx.classes.keys().cloned().collect(),
+            "get_declared_interfaces" => ctx.interfaces.keys().cloned().collect(),
+            "get_declared_traits" => ctx.traits.iter().cloned().collect(),
+            _ => unreachable!(),
+        };
+        names.sort();
+    }
 
     emitter.comment(&format!("{}() — AOT introspection snapshot", name));
 
