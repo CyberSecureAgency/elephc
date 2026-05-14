@@ -14,6 +14,7 @@ use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
 use crate::codegen::expr::emit_expr;
+use crate::names::php_symbol_key;
 use crate::parser::ast::{Expr, ExprKind};
 use crate::types::PhpType;
 
@@ -42,9 +43,9 @@ fn literal_lookup_result(name: &str, args: &[Expr], ctx: &Context) -> Option<i64
     };
     let cleaned = class.trim_start_matches('\\');
     let present = match name {
-        "class_exists" => ctx.classes.contains_key(cleaned),
-        "interface_exists" => ctx.interfaces.contains_key(cleaned),
-        "enum_exists" => ctx.enums.contains_key(cleaned),
+        "class_exists" => contains_folded(ctx.classes.keys(), cleaned),
+        "interface_exists" => contains_folded(ctx.interfaces.keys(), cleaned),
+        "enum_exists" => contains_folded(ctx.enums.keys(), cleaned),
         // The compiler doesn't keep a separate trait registry on Context:
         // traits are flattened away before codegen. Returning false is safer
         // than claiming every queried trait exists.
@@ -52,4 +53,12 @@ fn literal_lookup_result(name: &str, args: &[Expr], ctx: &Context) -> Option<i64
         _ => return None,
     };
     Some(if present { 1 } else { 0 })
+}
+
+fn contains_folded<'a>(
+    mut names: impl Iterator<Item = &'a String>,
+    needle: &str,
+) -> bool {
+    let needle_key = php_symbol_key(needle);
+    names.any(|name| php_symbol_key(name) == needle_key)
 }

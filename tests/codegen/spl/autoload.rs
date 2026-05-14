@@ -882,6 +882,21 @@ fn test_interface_exists_literal_triggers_autoload() {
     assert_eq!(out, "w");
 }
 
+#[test]
+fn test_class_like_exists_literals_are_case_insensitive() {
+    let out = compile_and_run(
+        r#"<?php
+class Foo {}
+interface Paintable {}
+enum Status { case Ready; }
+echo class_exists("foo", false) ? "c" : "n";
+echo interface_exists("paintable", false) ? "i" : "n";
+echo enum_exists("status", false) ? "e" : "n";
+"#,
+    );
+    assert_eq!(out, "cie");
+}
+
 // --- alternative register call shapes ---
 
 #[test]
