@@ -81,6 +81,28 @@ fn test_psr4_transitive_autoload() {
 }
 
 #[test]
+fn test_psr4_static_property_assignment_triggers_autoload() {
+    let out = compile_and_run_files(
+        &[
+            (
+                "composer.json",
+                r#"{"autoload":{"psr-4":{"App\\":"src/"}}}"#,
+            ),
+            (
+                "src/State.php",
+                "<?php\nnamespace App;\nclass State { public static int $count = 0; }\n",
+            ),
+            (
+                "main.php",
+                "<?php\nApp\\State::$count = 1;\necho \"ok\";\n",
+            ),
+        ],
+        "main.php",
+    );
+    assert_eq!(out, "ok");
+}
+
+#[test]
 fn test_psr4_vendor_autoload() {
     let out = compile_and_run_files(
         &[

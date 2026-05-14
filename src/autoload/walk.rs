@@ -12,7 +12,7 @@
 use std::collections::HashSet;
 
 use crate::parser::ast::{
-    CallableTarget, CatchClause, ClassMethod, ClassProperty, Expr, ExprKind, Program,
+    CallableTarget, CatchClause, ClassConst, ClassMethod, ClassProperty, Expr, ExprKind, Program,
     StaticReceiver, Stmt, StmtKind, TraitUse, TypeExpr,
 };
 
@@ -62,6 +62,7 @@ fn collect_refs_stmt(stmt: &Stmt, out: &mut HashSet<String>) {
             trait_uses,
             properties,
             methods,
+            constants,
             ..
         } => {
             if let Some(parent) = extends {
@@ -79,9 +80,15 @@ fn collect_refs_stmt(stmt: &Stmt, out: &mut HashSet<String>) {
             for method in methods {
                 collect_method(method, out);
             }
+            for constant in constants {
+                collect_class_const(constant, out);
+            }
         }
         StmtKind::InterfaceDecl {
-            extends, methods, ..
+            extends,
+            methods,
+            constants,
+            ..
         } => {
             for parent in extends {
                 push_name(parent, out);
@@ -89,11 +96,15 @@ fn collect_refs_stmt(stmt: &Stmt, out: &mut HashSet<String>) {
             for method in methods {
                 collect_method(method, out);
             }
+            for constant in constants {
+                collect_class_const(constant, out);
+            }
         }
         StmtKind::TraitDecl {
             trait_uses,
             properties,
             methods,
+            constants,
             ..
         } => {
             for tu in trait_uses {
@@ -104,6 +115,28 @@ fn collect_refs_stmt(stmt: &Stmt, out: &mut HashSet<String>) {
             }
             for method in methods {
                 collect_method(method, out);
+            }
+            for constant in constants {
+                collect_class_const(constant, out);
+            }
+        }
+        StmtKind::EnumDecl {
+            backing_type,
+            cases,
+            ..
+        } => {
+            if let Some(t) = backing_type {
+                collect_type_expr(t, out);
+            }
+            for case in cases {
+                if let Some(value) = &case.value {
+                    collect_refs_expr(value, out);
+                }
+            }
+        }
+        StmtKind::PackedClassDecl { fields, .. } => {
+            for field in fields {
+                collect_type_expr(&field.type_expr, out);
             }
         }
         StmtKind::FunctionDecl {
@@ -132,10 +165,30 @@ fn collect_refs_stmt(stmt: &Stmt, out: &mut HashSet<String>) {
                 collect_refs_stmt(inner, out);
             }
         }
+        StmtKind::IfDef {
+            then_body,
+            else_body,
+            ..
+        } => {
+            for s in then_body {
+                collect_refs_stmt(s, out);
+            }
+            if let Some(body) = else_body {
+                for s in body {
+                    collect_refs_stmt(s, out);
+                }
+            }
+        }
         StmtKind::Assign { value, .. } => collect_refs_expr(value, out),
         StmtKind::ExprStmt(e) => collect_refs_expr(e, out),
         StmtKind::Return(Some(e)) => collect_refs_expr(e, out),
         StmtKind::Echo(e) => collect_refs_expr(e, out),
+        StmtKind::Include { path, .. } => collect_refs_expr(path, out),
+        StmtKind::IncludeOnceGuard { body, .. } => {
+            for s in body {
+                collect_refs_stmt(s, out);
+            }
+        }
         StmtKind::If {
             condition,
             then_body,
@@ -228,8 +281,37 @@ fn collect_refs_stmt(stmt: &Stmt, out: &mut HashSet<String>) {
             collect_refs_expr(value, out);
         }
         StmtKind::PropertyAssign { object, value, .. }
-        | StmtKind::PropertyArrayAssign { object, value, .. } => {
+        | StmtKind::PropertyArrayPush { object, value, .. } => {
             collect_refs_expr(object, out);
+            collect_refs_expr(value, out);
+        }
+        StmtKind::PropertyArrayAssign {
+            object,
+            index,
+            value,
+            ..
+        } => {
+            collect_refs_expr(object, out);
+            collect_refs_expr(index, out);
+            collect_refs_expr(value, out);
+        }
+        StmtKind::StaticPropertyAssign {
+            receiver, value, ..
+        }
+        | StmtKind::StaticPropertyArrayPush {
+            receiver, value, ..
+        } => {
+            collect_static_receiver(receiver, out);
+            collect_refs_expr(value, out);
+        }
+        StmtKind::StaticPropertyArrayAssign {
+            receiver,
+            index,
+            value,
+            ..
+        } => {
+            collect_static_receiver(receiver, out);
+            collect_refs_expr(index, out);
             collect_refs_expr(value, out);
         }
         StmtKind::ArrayAssign { value, index, .. } => {
@@ -237,6 +319,7 @@ fn collect_refs_stmt(stmt: &Stmt, out: &mut HashSet<String>) {
             collect_refs_expr(index, out);
         }
         StmtKind::ArrayPush { value, .. } => collect_refs_expr(value, out),
+        StmtKind::ListUnpack { value, .. } => collect_refs_expr(value, out),
         StmtKind::TypedAssign { type_expr, value, .. } => {
             collect_type_expr(type_expr, out);
             collect_refs_expr(value, out);
@@ -284,6 +367,10 @@ fn collect_property(prop: &ClassProperty, out: &mut HashSet<String>) {
     if let Some(d) = &prop.default {
         collect_refs_expr(d, out);
     }
+}
+
+fn collect_class_const(constant: &ClassConst, out: &mut HashSet<String>) {
+    collect_refs_expr(&constant.value, out);
 }
 
 fn collect_trait_use(trait_use: &TraitUse, out: &mut HashSet<String>) {
