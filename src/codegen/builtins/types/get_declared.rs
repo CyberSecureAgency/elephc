@@ -45,12 +45,12 @@ pub fn emit(
     let cap = names.len().max(1);
     match emitter.target.arch {
         Arch::AArch64 => {
-            emitter.instruction(&format!("mov x0, #{}", cap));                          // request capacity for one entry per declared name
-            emitter.instruction("mov x1, #16");                                         // request 16-byte string slots so the array can store ptr+len pairs
+            emitter.instruction(&format!("mov x0, #{}", cap));                  // request capacity for one entry per declared name
+            emitter.instruction("mov x1, #16");                                 // request 16-byte string slots so the array can store ptr+len pairs
         }
         Arch::X86_64 => {
-            emitter.instruction(&format!("mov rdi, {}", cap));                          // request capacity for one entry per declared name
-            emitter.instruction("mov rsi, 16");                                         // request 16-byte string slots so the array can store ptr+len pairs
+            emitter.instruction(&format!("mov rdi, {}", cap));                  // request capacity for one entry per declared name
+            emitter.instruction("mov rsi, 16");                                 // request 16-byte string slots so the array can store ptr+len pairs
         }
     }
     abi::emit_call_label(emitter, "__rt_array_new");                                    // allocate the introspection array through the shared array constructor
@@ -68,30 +68,30 @@ pub fn emit(
 fn emit_push_names(names: &[String], emitter: &mut Emitter, data: &mut DataSection) {
     match emitter.target.arch {
         Arch::AArch64 => {
-            emitter.instruction("str x0, [sp, #-16]!");                                 // park the indexed-array pointer while we push the declared-name entries
+            emitter.instruction("str x0, [sp, #-16]!");                         // park the indexed-array pointer while we push the declared-name entries
             for name in names {
                 let (label, len) = data.add_string(name.as_bytes());
-                emitter.instruction("ldr x0, [sp]");                                    // reload the array pointer for this push call
+                emitter.instruction("ldr x0, [sp]");                            // reload the array pointer for this push call
                 abi::emit_symbol_address(emitter, "x1", &label);                        // load the address of this name's string literal
-                emitter.instruction(&format!("mov x2, #{}", len));                      // load the length of this name's string literal
-                emitter.instruction("bl __rt_array_push_str");                          // append the name and may grow the storage
-                emitter.instruction("str x0, [sp]");                                    // refresh the saved array pointer if __rt_array_push_str grew it
+                emitter.instruction(&format!("mov x2, #{}", len));              // load the length of this name's string literal
+                emitter.instruction("bl __rt_array_push_str");                  // append the name and may grow the storage
+                emitter.instruction("str x0, [sp]");                            // refresh the saved array pointer if __rt_array_push_str grew it
             }
-            emitter.instruction("ldr x0, [sp], #16");                                   // restore the final array pointer as the builtin result
+            emitter.instruction("ldr x0, [sp], #16");                           // restore the final array pointer as the builtin result
         }
         Arch::X86_64 => {
-            emitter.instruction("push rax");                                            // park the indexed-array pointer while we push the declared-name entries
-            emitter.instruction("sub rsp, 8");                                          // keep the stack 16-byte aligned for the call sequence
+            emitter.instruction("push rax");                                    // park the indexed-array pointer while we push the declared-name entries
+            emitter.instruction("sub rsp, 8");                                  // keep the stack 16-byte aligned for the call sequence
             for name in names {
                 let (label, len) = data.add_string(name.as_bytes());
-                emitter.instruction("mov rdi, QWORD PTR [rsp + 8]");                    // reload the array pointer for this push call
+                emitter.instruction("mov rdi, QWORD PTR [rsp + 8]");            // reload the array pointer for this push call
                 abi::emit_symbol_address(emitter, "rsi", &label);                       // load the address of this name's string literal
-                emitter.instruction(&format!("mov rdx, {}", len));                      // load the length of this name's string literal
-                emitter.instruction("call __rt_array_push_str");                        // append the name and may grow the storage
-                emitter.instruction("mov QWORD PTR [rsp + 8], rax");                    // refresh the saved array pointer if __rt_array_push_str grew it
+                emitter.instruction(&format!("mov rdx, {}", len));              // load the length of this name's string literal
+                emitter.instruction("call __rt_array_push_str");                // append the name and may grow the storage
+                emitter.instruction("mov QWORD PTR [rsp + 8], rax");            // refresh the saved array pointer if __rt_array_push_str grew it
             }
-            emitter.instruction("add rsp, 8");                                          // pop the alignment padding before restoring the array pointer
-            emitter.instruction("pop rax");                                             // restore the final array pointer as the builtin result
+            emitter.instruction("add rsp, 8");                                  // pop the alignment padding before restoring the array pointer
+            emitter.instruction("pop rax");                                     // restore the final array pointer as the builtin result
         }
     }
 }
