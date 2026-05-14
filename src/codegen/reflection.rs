@@ -315,7 +315,7 @@ fn emit_box_arg_aarch64(arg: &AttrArgValue, emitter: &mut Emitter, data: &mut Da
         }
         AttrArgValue::Int(value) => {
             emitter.instruction("mov x0, #0");                                  // runtime tag 0 = integer payload
-            emitter.instruction(&format!("mov x1, #{}", value));                // x1 = int value
+            abi::emit_load_int_immediate(emitter, "x1", *value);
             emitter.instruction("mov x2, xzr");                                 // ints do not use the high word
         }
         AttrArgValue::Bool(value) => {
@@ -342,7 +342,7 @@ fn emit_box_arg_x86_64(arg: &AttrArgValue, emitter: &mut Emitter, data: &mut Dat
         }
         AttrArgValue::Int(value) => {
             emitter.instruction("mov rax, 0");                                  // runtime tag 0 = integer payload
-            emitter.instruction(&format!("mov rdi, {}", value));                // rdi = int value
+            abi::emit_load_int_immediate(emitter, "rdi", *value);
             emitter.instruction("xor rsi, rsi");                                // ints do not use the high word
         }
         AttrArgValue::Bool(value) => {

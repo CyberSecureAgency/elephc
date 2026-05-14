@@ -848,6 +848,24 @@ echo $attrs[0]->getArguments()[1];
 }
 
 #[test]
+fn test_reflection_method_constructor_supports_named_arguments() {
+    let out = compile_and_run(
+        r#"<?php
+class Controller {
+    #[Route("/home")]
+    public function index() {}
+}
+$ref = new ReflectionMethod(method_name: 'index', class_name: 'Controller');
+$attrs = $ref->getAttributes();
+echo count($attrs) . "/";
+echo $attrs[0]->getName() . "/";
+echo $attrs[0]->getArguments()[0];
+"#,
+    );
+    assert_eq!(out, "1/Route//home");
+}
+
+#[test]
 fn test_reflection_property_get_attributes_accepts_class_constant() {
     let out = compile_and_run(
         r#"<?php
@@ -856,6 +874,24 @@ class User {
     public int $id = 0;
 }
 $ref = new ReflectionProperty(User::class, 'id');
+$attrs = $ref->getAttributes();
+echo count($attrs) . "/";
+echo $attrs[0]->getName() . "/";
+echo $attrs[0]->getArguments()[0];
+"#,
+    );
+    assert_eq!(out, "1/Column/id");
+}
+
+#[test]
+fn test_reflection_property_constructor_supports_static_assoc_spread() {
+    let out = compile_and_run(
+        r#"<?php
+class User {
+    #[Column("id")]
+    public int $id = 0;
+}
+$ref = new ReflectionProperty(...["property_name" => "id", "class_name" => "User"]);
 $attrs = $ref->getAttributes();
 echo count($attrs) . "/";
 echo $attrs[0]->getName() . "/";
@@ -901,4 +937,41 @@ echo ($instance instanceof Route) ? "instance\n" : "bad\n";
 "#,
     );
     assert_eq!(out, "before\nmiddle\nctor:/lazy\ninstance\n");
+}
+
+#[test]
+fn test_reflection_attribute_new_instance_expression_statement_is_preserved() {
+    let out = compile_and_run(
+        r#"<?php
+class Route {
+    public function __construct(string $path) {
+        echo "ctor:" . $path;
+    }
+}
+#[Route("/effect")]
+class Controller {}
+$attrs = (new ReflectionClass('Controller'))->getAttributes();
+$attrs[0]->newInstance();
+"#,
+    );
+    assert_eq!(out, "ctor:/effect");
+}
+
+#[test]
+fn test_reflection_attribute_new_instance_preserves_large_negative_int_args() {
+    let out = compile_and_run(
+        r#"<?php
+class Code {
+    public function __construct(int $value) {
+        echo $value;
+    }
+}
+#[Code(-65537)]
+class Controller {}
+$attrs = (new ReflectionClass('Controller'))->getAttributes();
+echo $attrs[0]->getArguments()[0] . "/";
+$attrs[0]->newInstance();
+"#,
+    );
+    assert_eq!(out, "-65537/-65537");
 }
