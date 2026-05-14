@@ -81,7 +81,7 @@ pub(crate) fn inject_builtin_interfaces(
             extends: vec!["Traversable".to_string()],
             methods: vec![builtin_interface_method(
                 "getIterator",
-                TypeExpr::Named(Name::unqualified("Iterator")),
+                TypeExpr::Named(Name::unqualified("Traversable")),
             )],
             span: crate::span::Span::dummy(),
             constants: Vec::new(),

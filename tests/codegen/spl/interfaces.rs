@@ -1,3 +1,12 @@
+//! Purpose:
+//! End-to-end tests for SPL builtin interfaces and their PHP-compatible contracts.
+//!
+//! Called from:
+//! - `cargo test --test codegen_tests` through Rust's test harness.
+//!
+//! Key details:
+//! - These fixtures exercise checker validation plus runtime `instanceof` metadata.
+
 use crate::support::*;
 
 #[test]
@@ -48,6 +57,27 @@ var_dump($r instanceof Traversable);
 "#,
     );
     assert_eq!(out, "bool(true)\nbool(true)\n");
+}
+
+#[test]
+fn test_iterator_aggregate_get_iterator_accepts_traversable_return() {
+    let out = compile_and_run(
+        r#"<?php
+class RangeIter implements Iterator {
+    public function current(): mixed { return 1; }
+    public function key(): mixed { return 0; }
+    public function next(): void {}
+    public function valid(): bool { return false; }
+    public function rewind(): void {}
+}
+class Bag implements IteratorAggregate {
+    public function getIterator(): Traversable { return new RangeIter(); }
+}
+$b = new Bag();
+var_dump($b instanceof IteratorAggregate);
+"#,
+    );
+    assert_eq!(out, "bool(true)\n");
 }
 
 #[test]
