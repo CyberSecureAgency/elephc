@@ -83,3 +83,25 @@ if (function_exists("double")) {
 if (!function_exists("nonexistent")) {
     echo "function 'nonexistent' does not exist\n";
 }
+
+// is_callable: dynamic strings, object/method arrays, and invokable objects
+class Runner {
+    public function run() {
+        return "running";
+    }
+}
+
+class InvokableRunner {
+    public function __invoke() {
+        return "invoked";
+    }
+}
+
+$callback_name = "double";
+$runner = new Runner();
+$method_callback = [$runner, "run"];
+$invokable_runner = new InvokableRunner();
+
+echo "is_callable dynamic string: " . (is_callable($callback_name) ? "yes" : "no") . "\n";
+echo "is_callable method array: " . (is_callable($method_callback) ? "yes" : "no") . "\n";
+echo "is_callable invokable object: " . (is_callable($invokable_runner) ? "yes" : "no") . "\n";
