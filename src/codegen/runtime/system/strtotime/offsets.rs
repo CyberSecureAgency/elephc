@@ -236,19 +236,23 @@ fn emit_offsets_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("cmp al, 43");                                          // '+' ?
     emitter.instruction("jne __rt_strtotime_offsets_check_neg_linux_x86_64");   // no → check '-'
     emitter.instruction("inc rdi");                                             // consume '+'
+    emitter.instruction("mov DWORD PTR [rsp + 104], ecx");                      // save sign before whitespace helper clobbers ecx
     emitter.instruction("call __rt_strtotime_skip_ws_linux_x86_64");            // skip WS after sign
-    emitter.instruction("jmp __rt_strtotime_offsets_save_sign_linux_x86_64");   // proceed
+    emitter.instruction("jmp __rt_strtotime_offsets_parse_value_linux_x86_64"); // proceed
     emitter.label("__rt_strtotime_offsets_check_neg_linux_x86_64");
     emitter.instruction("cmp al, 45");                                          // '-' ?
     emitter.instruction("jne __rt_strtotime_offsets_save_sign_linux_x86_64");   // no sign → default +1
     emitter.instruction("mov ecx, -1");                                         // sign = -1
     emitter.instruction("inc rdi");                                             // consume '-'
+    emitter.instruction("mov DWORD PTR [rsp + 104], ecx");                      // save sign before whitespace helper clobbers ecx
     emitter.instruction("call __rt_strtotime_skip_ws_linux_x86_64");            // skip WS after sign
+    emitter.instruction("jmp __rt_strtotime_offsets_parse_value_linux_x86_64"); // proceed
 
     emitter.label("__rt_strtotime_offsets_save_sign_linux_x86_64");
     emitter.instruction("mov DWORD PTR [rsp + 104], ecx");                      // save sign across helper calls
 
     // -- parse decimal magnitude --
+    emitter.label("__rt_strtotime_offsets_parse_value_linux_x86_64");
     emitter.instruction("mov r11, rdi");                                        // cursor before parse_dec
     emitter.instruction("call __rt_strtotime_parse_dec_linux_x86_64");          // rax = value, rdi = new cursor
     emitter.instruction("cmp rdi, r11");                                        // cursor advanced ?
