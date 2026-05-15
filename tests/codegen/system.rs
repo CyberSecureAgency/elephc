@@ -147,6 +147,21 @@ echo date("Y-m-d H:i:s", $ts);
 }
 
 #[test]
+fn test_strtotime_rejects_malformed_iso_datetime() {
+    let out = compile_and_run(
+        r#"<?php
+echo strtotime("2024-06-15 12:30:45 extra") . ",";
+echo strtotime("2024-06-15abc") . ",";
+echo strtotime("2024-06-15 12:30x") . ",";
+echo strtotime("2024-06-15 12") . ",";
+echo strtotime("2024/06/15") . ",";
+echo strtotime("2024-0x-15");
+"#,
+    );
+    assert_eq!(out, "-1,-1,-1,-1,-1,-1");
+}
+
+#[test]
 fn test_strtotime_mktime_roundtrip() {
     let out = compile_and_run(
         r#"<?php
