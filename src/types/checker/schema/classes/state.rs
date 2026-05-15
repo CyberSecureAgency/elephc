@@ -49,6 +49,12 @@ pub(super) struct ClassBuildState {
     pub(super) static_vtable_methods: Vec<String>,
     pub(super) static_vtable_slots: HashMap<String, usize>,
     pub(super) interfaces: Vec<String>,
+    pub(super) method_attribute_names: HashMap<String, Vec<String>>,
+    pub(super) method_attribute_args:
+        HashMap<String, Vec<Option<Vec<crate::types::AttrArgValue>>>>,
+    pub(super) property_attribute_names: HashMap<String, Vec<String>>,
+    pub(super) property_attribute_args:
+        HashMap<String, Vec<Option<Vec<crate::types::AttrArgValue>>>>,
 }
 
 impl ClassBuildState {
@@ -87,6 +93,10 @@ impl ClassBuildState {
                 .collect(),
             attribute_names: collect_attribute_names(&class.attributes),
             attribute_args,
+            method_attribute_names: self.method_attribute_names,
+            method_attribute_args: self.method_attribute_args,
+            property_attribute_names: self.property_attribute_names,
+            property_attribute_args: self.property_attribute_args,
             properties: self.prop_types,
             property_offsets: self.property_offsets,
             property_declaring_classes: self.property_declaring_classes,
@@ -225,6 +235,14 @@ impl ClassBuildState {
                 self.property_declaring_classes
                     .insert(name.clone(), declaring_class.clone());
             }
+            if let Some(names) = parent.property_attribute_names.get(name) {
+                self.property_attribute_names
+                    .insert(name.clone(), names.clone());
+            }
+            if let Some(args) = parent.property_attribute_args.get(name) {
+                self.property_attribute_args
+                    .insert(name.clone(), args.clone());
+            }
             if parent.final_properties.contains(name) {
                 self.final_properties.insert(name.clone());
             }
@@ -256,6 +274,14 @@ impl ClassBuildState {
                 self.static_property_declaring_classes
                     .insert(name.clone(), declaring_class.clone());
             }
+            if let Some(names) = parent.property_attribute_names.get(name) {
+                self.property_attribute_names
+                    .insert(name.clone(), names.clone());
+            }
+            if let Some(args) = parent.property_attribute_args.get(name) {
+                self.property_attribute_args
+                    .insert(name.clone(), args.clone());
+            }
             if parent.final_static_properties.contains(name) {
                 self.final_static_properties.insert(name.clone());
             }
@@ -283,6 +309,14 @@ impl ClassBuildState {
                 self.method_impl_classes
                     .insert(name.clone(), impl_class.clone());
             }
+            if let Some(names) = parent.method_attribute_names.get(name) {
+                self.method_attribute_names
+                    .insert(name.clone(), names.clone());
+            }
+            if let Some(args) = parent.method_attribute_args.get(name) {
+                self.method_attribute_args
+                    .insert(name.clone(), args.clone());
+            }
         }
         self.vtable_methods = parent.vtable_methods.clone();
         self.vtable_slots = parent.vtable_slots.clone();
@@ -308,6 +342,14 @@ impl ClassBuildState {
             if let Some(impl_class) = parent.static_method_impl_classes.get(name) {
                 self.static_method_impl_classes
                     .insert(name.clone(), impl_class.clone());
+            }
+            if let Some(names) = parent.method_attribute_names.get(name) {
+                self.method_attribute_names
+                    .insert(name.clone(), names.clone());
+            }
+            if let Some(args) = parent.method_attribute_args.get(name) {
+                self.method_attribute_args
+                    .insert(name.clone(), args.clone());
             }
         }
         self.static_vtable_methods = parent.static_vtable_methods.clone();

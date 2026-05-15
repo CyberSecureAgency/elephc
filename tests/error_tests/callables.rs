@@ -25,6 +25,30 @@ fn test_error_function_exists_wrong_args() {
     );
 }
 
+#[test]
+fn test_error_class_exists_requires_literal_name() {
+    expect_error(
+        r#"<?php $name = "DateTime"; class_exists($name);"#,
+        "class_exists() first argument must be a string literal in AOT mode",
+    );
+}
+
+#[test]
+fn test_error_class_exists_requires_literal_autoload_flag() {
+    expect_error(
+        r#"<?php $autoload = false; class_exists("DateTime", $autoload);"#,
+        "class_exists() autoload argument must be a literal bool or int in AOT mode",
+    );
+}
+
+#[test]
+fn test_error_class_alias_rejects_runtime_call_shape() {
+    expect_error(
+        r#"<?php class Original {} $alias = "Alias"; class_alias("Original", $alias);"#,
+        "class_alias() is only supported as a top-level statement with literal class names",
+    );
+}
+
 // --- Closure / arrow function errors ---
 
 #[test]

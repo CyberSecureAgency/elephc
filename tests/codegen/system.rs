@@ -136,6 +136,45 @@ echo date("Y-m-d H:i:s", $ts);
 }
 
 #[test]
+fn test_strtotime_datetime_without_seconds() {
+    let out = compile_and_run(
+        r#"<?php
+$ts = strtotime("2024-06-15 12:30");
+echo date("Y-m-d H:i:s", $ts);
+"#,
+    );
+    assert_eq!(out, "2024-06-15 12:30:00");
+}
+
+#[test]
+fn test_strtotime_datetime_t_separator() {
+    let out = compile_and_run(
+        r#"<?php
+$upper = strtotime("2024-06-15T12:00:00");
+$lower = strtotime("2024-06-15t12:30");
+echo date("Y-m-d H:i:s", $upper) . ",";
+echo date("Y-m-d H:i:s", $lower);
+"#,
+    );
+    assert_eq!(out, "2024-06-15 12:00:00,2024-06-15 12:30:00");
+}
+
+#[test]
+fn test_strtotime_rejects_malformed_iso_datetime() {
+    let out = compile_and_run(
+        r#"<?php
+echo strtotime("2024-06-15 12:30:45 extra") . ",";
+echo strtotime("2024-06-15abc") . ",";
+echo strtotime("2024-06-15 12:30x") . ",";
+echo strtotime("2024-06-15 12") . ",";
+echo strtotime("2024/06/15") . ",";
+echo strtotime("2024-0x-15");
+"#,
+    );
+    assert_eq!(out, "-1,-1,-1,-1,-1,-1");
+}
+
+#[test]
 fn test_strtotime_mktime_roundtrip() {
     let out = compile_and_run(
         r#"<?php
@@ -147,6 +186,418 @@ if ($ts1 == $ts2) {
 "#,
     );
     assert_eq!(out, "match");
+}
+
+#[test]
+fn test_strtotime_now() {
+    let out = compile_and_run(
+        r#"<?php
+$t = time();
+$s = strtotime("now");
+if ($s >= $t - 2 && $s <= $t + 2) echo "ok";
+"#,
+    );
+    assert_eq!(out, "ok");
+}
+
+#[test]
+fn test_strtotime_now_uppercase() {
+    let out = compile_and_run(
+        r#"<?php
+$t = time();
+$s = strtotime("NOW");
+if ($s >= $t - 2 && $s <= $t + 2) echo "ok";
+"#,
+    );
+    assert_eq!(out, "ok");
+}
+
+#[test]
+fn test_strtotime_today_midnight() {
+    let out = compile_and_run(
+        r#"<?php
+$ts = strtotime("today");
+echo date("H:i:s", $ts);
+"#,
+    );
+    assert_eq!(out, "00:00:00");
+}
+
+#[test]
+fn test_strtotime_midnight() {
+    let out = compile_and_run(
+        r#"<?php
+$ts = strtotime("midnight");
+echo date("H:i:s", $ts);
+"#,
+    );
+    assert_eq!(out, "00:00:00");
+}
+
+#[test]
+fn test_strtotime_trims_ascii_whitespace() {
+    let out = compile_and_run(
+        "<?php $ts = strtotime(\"\\n\\t today \\n\"); echo date(\"H:i:s\", $ts);",
+    );
+    assert_eq!(out, "00:00:00");
+}
+
+#[test]
+fn test_strtotime_tomorrow() {
+    let out = compile_and_run(
+        r#"<?php
+$today = strtotime("today");
+$tomorrow = strtotime("tomorrow");
+$diff = $tomorrow - $today;
+if ($diff >= 82800 && $diff <= 90000) echo "ok";
+"#,
+    );
+    assert_eq!(out, "ok");
+}
+
+#[test]
+fn test_strtotime_yesterday() {
+    let out = compile_and_run(
+        r#"<?php
+$today = strtotime("today");
+$yesterday = strtotime("yesterday");
+$diff = $today - $yesterday;
+if ($diff >= 82800 && $diff <= 90000) echo "ok";
+"#,
+    );
+    assert_eq!(out, "ok");
+}
+
+#[test]
+fn test_strtotime_noon() {
+    let out = compile_and_run(
+        r#"<?php
+$ts = strtotime("noon");
+echo date("H:i:s", $ts);
+"#,
+    );
+    assert_eq!(out, "12:00:00");
+}
+
+#[test]
+fn test_strtotime_noon_capitalized() {
+    let out = compile_and_run(
+        r#"<?php
+$ts = strtotime("Noon");
+echo date("H:i:s", $ts);
+"#,
+    );
+    assert_eq!(out, "12:00:00");
+}
+
+#[test]
+fn test_time_then_localtime_regression() {
+    // Regression: a raw macOS gettimeofday syscall in __rt_time used to skip libc's
+    // lazy TLS/__findenv init, so any subsequent `localtime` chain crashed in
+    // `__findenv_locked` when `tzset` first read `environ`. __rt_time now routes
+    // through libc `time(NULL)` on macOS arm64 to keep that init coherent.
+    let out = compile_and_run(
+        r#"<?php
+$now = time();
+echo date("Y", $now);
+"#,
+    );
+    let val: i32 = out.trim().parse().unwrap();
+    assert!(val >= 2024, "expected current year >= 2024, got {}", out);
+}
+
+#[test]
+fn test_strtotime_invalid() {
+    let out = compile_and_run(
+        r#"<?php
+$ts = strtotime("garbage");
+echo $ts;
+"#,
+    );
+    assert_eq!(out, "-1");
+}
+
+#[test]
+fn test_strtotime_rejects_keyword_and_weekday_suffix_junk() {
+    let out = compile_and_run(
+        r#"<?php
+echo strtotime("today123") . ",";
+echo strtotime("today!") . ",";
+echo strtotime("Monday2") . ",";
+echo strtotime("next Monday2");
+"#,
+    );
+    assert_eq!(out, "-1,-1,-1,-1");
+}
+
+#[test]
+fn test_strtotime_time_only_hhmm() {
+    let out = compile_and_run(
+        r#"<?php
+$ts = strtotime("14:30");
+echo date("H:i:s", $ts);
+"#,
+    );
+    assert_eq!(out, "14:30:00");
+}
+
+#[test]
+fn test_strtotime_time_only_hhmmss() {
+    let out = compile_and_run(
+        r#"<?php
+$ts = strtotime("09:15:42");
+echo date("H:i:s", $ts);
+"#,
+    );
+    assert_eq!(out, "09:15:42");
+}
+
+#[test]
+fn test_strtotime_time_only_single_digit_hour() {
+    let out = compile_and_run(
+        r#"<?php
+$ts = strtotime("9:30");
+echo date("H:i:s", $ts);
+"#,
+    );
+    assert_eq!(out, "09:30:00");
+}
+
+#[test]
+fn test_strtotime_rejects_invalid_time_only_shapes() {
+    let out = compile_and_run(
+        r#"<?php
+echo strtotime("14:30abc") . ",";
+echo strtotime("14:30:99") . ",";
+echo strtotime("99:99") . ",";
+echo strtotime("14:30:");
+"#,
+    );
+    assert_eq!(out, "-1,-1,-1,-1");
+}
+
+#[test]
+fn test_strtotime_time_only_php_upper_bounds() {
+    let out = compile_and_run(
+        r#"<?php
+$ts = strtotime("24:59:60");
+echo date("H:i:s", $ts);
+"#,
+    );
+    assert_eq!(out, "01:00:00");
+}
+
+#[test]
+fn test_strtotime_offset_plus_one_hour() {
+    let out = compile_and_run(
+        r#"<?php
+$now = time();
+$ts = strtotime("+1 hour");
+$diff = $ts - $now;
+if ($diff >= 3590 && $diff <= 3610) echo "ok";
+"#,
+    );
+    assert_eq!(out, "ok");
+}
+
+#[test]
+fn test_strtotime_offset_minus_one_hour() {
+    let out = compile_and_run(
+        r#"<?php
+$now = time();
+$ts = strtotime("-1 hour");
+$diff = $now - $ts;
+if ($diff >= 3590 && $diff <= 3610) echo "ok";
+"#,
+    );
+    assert_eq!(out, "ok");
+}
+
+#[test]
+fn test_strtotime_offset_one_hour_ago() {
+    let out = compile_and_run(
+        r#"<?php
+$now = time();
+$ts = strtotime("1 hour ago");
+$diff = $now - $ts;
+if ($diff >= 3590 && $diff <= 3610) echo "ok";
+"#,
+    );
+    assert_eq!(out, "ok");
+}
+
+#[test]
+fn test_strtotime_offset_plus_30_seconds() {
+    let out = compile_and_run(
+        r#"<?php
+$now = time();
+$ts = strtotime("+30 seconds");
+$diff = $ts - $now;
+if ($diff >= 28 && $diff <= 32) echo "ok";
+"#,
+    );
+    assert_eq!(out, "ok");
+}
+
+#[test]
+fn test_strtotime_offset_plus_two_weeks() {
+    let out = compile_and_run(
+        r#"<?php
+$now = time();
+$ts = strtotime("+2 weeks");
+$diff = $ts - $now;
+// 14 days = 1209600 seconds, allow ±1 day for DST
+if ($diff >= 1209600 - 3700 && $diff <= 1209600 + 3700) echo "ok";
+"#,
+    );
+    assert_eq!(out, "ok");
+}
+
+#[test]
+fn test_strtotime_offset_composite() {
+    let out = compile_and_run(
+        r#"<?php
+$now = time();
+$ts = strtotime("+1 day 2 hours");
+$diff = $ts - $now;
+// 1 day + 2 hours = 93600 seconds, allow ±1 hour for DST
+if ($diff >= 93600 - 3700 && $diff <= 93600 + 3700) echo "ok";
+"#,
+    );
+    assert_eq!(out, "ok");
+}
+
+#[test]
+fn test_strtotime_offset_allows_ascii_whitespace_between_terms() {
+    let out = compile_and_run(
+        r#"<?php
+$now = time();
+$ts = strtotime("+1 day
+2 hours");
+$diff = $ts - $now;
+if ($diff >= 93600 - 3700 && $diff <= 93600 + 3700) echo "ok";
+"#,
+    );
+    assert_eq!(out, "ok");
+}
+
+#[test]
+fn test_strtotime_offset_plus_one_month() {
+    let out = compile_and_run(
+        r#"<?php
+$now = time();
+$ts = strtotime("+1 month");
+$diff = $ts - $now;
+// 1 month ≈ 28..31 days = 2419200..2678400 seconds
+if ($diff >= 2400000 && $diff <= 2700000) echo "ok";
+"#,
+    );
+    assert_eq!(out, "ok");
+}
+
+#[test]
+fn test_strtotime_offset_plus_one_minute() {
+    let out = compile_and_run(
+        r#"<?php
+$now = time();
+$ts = strtotime("+1 minute");
+$diff = $ts - $now;
+if ($diff >= 58 && $diff <= 62) echo "ok";
+"#,
+    );
+    assert_eq!(out, "ok");
+}
+
+#[test]
+fn test_strtotime_weekday_monday() {
+    let out = compile_and_run(
+        r#"<?php
+$ts = strtotime("Monday");
+echo date("D", $ts);
+"#,
+    );
+    assert_eq!(out, "Mon");
+}
+
+#[test]
+fn test_strtotime_weekday_lowercase() {
+    let out = compile_and_run(
+        r#"<?php
+$ts = strtotime("monday");
+echo date("D", $ts);
+"#,
+    );
+    assert_eq!(out, "Mon");
+}
+
+#[test]
+fn test_strtotime_weekday_abbrev() {
+    let out = compile_and_run(
+        r#"<?php
+$ts = strtotime("Mon");
+echo date("D", $ts);
+"#,
+    );
+    assert_eq!(out, "Mon");
+}
+
+#[test]
+fn test_strtotime_current_weekday_is_today() {
+    let out = compile_and_run(
+        r#"<?php
+$weekday = date("l");
+$ts = strtotime($weekday);
+if (date("Y-m-d", $ts) == date("Y-m-d")) echo "ok";
+"#,
+    );
+    assert_eq!(out, "ok");
+}
+
+#[test]
+fn test_strtotime_next_friday() {
+    let out = compile_and_run(
+        r#"<?php
+$ts = strtotime("next Friday");
+echo date("D", $ts);
+"#,
+    );
+    assert_eq!(out, "Fri");
+}
+
+#[test]
+fn test_strtotime_last_sunday() {
+    let out = compile_and_run(
+        r#"<?php
+$ts = strtotime("last Sunday");
+echo date("D", $ts);
+"#,
+    );
+    assert_eq!(out, "Sun");
+}
+
+#[test]
+fn test_strtotime_this_wednesday() {
+    let out = compile_and_run(
+        r#"<?php
+$ts = strtotime("this Wednesday");
+echo date("D", $ts);
+"#,
+    );
+    assert_eq!(out, "Wed");
+}
+
+#[test]
+fn test_strtotime_offset_3_days_ago() {
+    let out = compile_and_run(
+        r#"<?php
+$now = time();
+$ts = strtotime("3 days ago");
+$diff = $now - $ts;
+// 3 days = 259200, allow ±1 hour for DST
+if ($diff >= 259200 - 3700 && $diff <= 259200 + 3700) echo "ok";
+"#,
+    );
+    assert_eq!(out, "ok");
 }
 
 #[test]

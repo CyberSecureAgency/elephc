@@ -47,6 +47,36 @@ class Product implements Named {
 - signature-only methods, no bodies, no properties
 - interface inheritance flattened transitively with cycle detection
 
+### Built-in interfaces
+
+The compiler injects the following interfaces, available without any
+`implements` declaration on the user side:
+
+| Interface | Methods |
+|---|---|
+| `Traversable` | (marker) |
+| `Iterator` extends `Traversable` | `current(): mixed`, `key(): mixed`, `next(): void`, `valid(): bool`, `rewind(): void` |
+| `IteratorAggregate` extends `Traversable` | `getIterator(): Traversable` |
+| `OuterIterator` extends `Iterator` | `getInnerIterator(): ?Iterator` |
+| `RecursiveIterator` extends `Iterator` | `getChildren(): ?RecursiveIterator`, `hasChildren(): bool` |
+| `SeekableIterator` extends `Iterator` | `seek(int $offset): void` |
+| `Countable` | `count(): int` |
+| `ArrayAccess` | `offsetExists(mixed $offset): bool`, `offsetGet(mixed $offset): mixed`, `offsetSet(mixed $offset, mixed $value): void`, `offsetUnset(mixed $offset): void` |
+| `SplObserver` | `update(SplSubject $subject): void` |
+| `SplSubject` | `attach(SplObserver $observer): void`, `detach(SplObserver $observer): void`, `notify(): void` |
+| `Stringable` | `__toString(): string` |
+| `JsonSerializable` | `jsonSerialize(): mixed` |
+| `Throwable` | `getMessage(): string` |
+
+`count($obj)` automatically dispatches to `Countable::count()` when
+`$obj` is an instance of a class implementing `Countable`. The
+`$obj[$key]` subscript syntax for `ArrayAccess` implementers is not yet
+implemented; call the methods directly (`$obj->offsetGet($key)`).
+
+`Serializable` is intentionally not provided: it is deprecated since
+PHP 8.1. Use `__serialize` / `__unserialize` magic methods instead
+(when those land).
+
 ## Type checks with instanceof
 ```php
 <?php
@@ -362,7 +392,7 @@ Pure and backed enums. `->value`, `::from()`, `::tryFrom()`, `::cases()`. Only `
 
 ## Attributes
 
-PHP 8.0 attributes (`#[Name]`) decorate declarations. elephc parses attributes at every site PHP allows: classes, interfaces, traits, enums, enum cases, top-level functions, methods, properties, function/method/closure parameters (incl. promoted constructor params), closures, and arrow functions. Class-level attributes have limited runtime reflection through the helpers below; attributes on other declaration sites are currently validated for syntax and kept only in the AST.
+PHP 8.0 attributes (`#[Name]`) decorate declarations. elephc parses attributes at every site PHP allows: classes, interfaces, traits, enums, enum cases, top-level functions, methods, properties, function/method/closure parameters (incl. promoted constructor params), closures, and arrow functions. Class, method, and property attributes have limited runtime reflection through the helpers below; attributes on other declaration sites are currently validated for syntax and kept only in the AST.
 
 ```php
 <?php
@@ -423,7 +453,7 @@ echo $b->name;            // "elephc"
 echo $b->missing;         // empty (Mixed null)
 ```
 
-User-defined attributes (e.g. `#[Author]`, `#[Pure]`, `#[Memoized]`) parse and persist in the AST. They have no compile-time semantics, but their **names** and positional **literal arguments** are reachable at runtime through the `class_attribute_names()` and `class_attribute_args()` builtins:
+User-defined attributes (e.g. `#[Author]`, `#[Pure]`, `#[Memoized]`) parse and persist in the AST. They have no compile-time semantics, but their **names** and positional **literal arguments** are reachable at runtime through lightweight helper builtins and the supported Reflection API:
 
 ```php
 <?php
@@ -454,7 +484,7 @@ foreach (class_attribute_args('UserController', 'Route') as $arg) {
 
 `class_attribute_args()` returns an `array<mixed>` whose elements preserve their original PHP type — strings stay strings, ints stay ints, booleans stay booleans, and `null` is `null`. The args are interned at compile time and boxed into mixed cells on demand at the call site.
 
-For a more PHP-idiomatic API, `class_get_attributes()` returns the same data wrapped as `ReflectionAttribute` instances:
+For a more PHP-idiomatic API, `class_get_attributes()` and `ReflectionClass::getAttributes()` return the same data wrapped as `ReflectionAttribute` instances:
 
 ```php
 <?php
@@ -472,7 +502,45 @@ foreach (class_get_attributes('Greeter') as $attr) {
 // Version: [1.0][1]
 ```
 
-`ReflectionAttribute` is a final synthetic built-in class with `getName(): string` and `getArguments(): array` methods. It is populated internally by `class_get_attributes()` and cannot be constructed or populated directly from user code; its metadata slots are private.
+Reflection is also available for class members:
+
+```php
+<?php
+class Controller {
+    #[Route("/home", "GET")]
+    public function index() {}
+
+    #[Column("id")]
+    public int $id = 0;
+}
+
+$class = new ReflectionClass(Controller::class);
+echo $class->getAttributes()[0]->getName();
+
+$method = new ReflectionMethod('Controller', 'index');
+echo $method->getAttributes()[0]->getArguments()[0]; // /home
+
+$property = new ReflectionProperty('Controller', 'id');
+echo $property->getAttributes()[0]->getName(); // Column
+```
+
+`ReflectionAttribute` is a final synthetic built-in class with `getName(): string`, `getArguments(): array`, and `newInstance(): mixed` methods. It is populated internally by `class_get_attributes()` and the supported Reflection lookups and cannot be constructed or populated directly from user code; its metadata slots are private. `newInstance()` constructs the attribute class on demand when the attribute class exists in the program and the captured arguments are supported literals:
+
+```php
+<?php
+class Route {
+    public function __construct(string $path) {
+        echo $path;
+    }
+}
+
+#[Route("/lazy")]
+class Controller {}
+
+$attr = (new ReflectionClass('Controller'))->getAttributes()[0];
+$instance = $attr->newInstance(); // constructor runs here
+echo ($instance instanceof Route) ? "yes" : "no";
+```
 
 | Function | Signature | Description |
 |---|---|---|
@@ -480,11 +548,18 @@ foreach (class_get_attributes('Greeter') as $attr) {
 | `class_attribute_args()` | `class_attribute_args($class_name, $attribute_name): array` | Return the supported literal positional arguments for the first matching class attribute |
 | `class_get_attributes()` | `class_get_attributes($class_name): array` | Return `ReflectionAttribute` objects for the class attributes |
 
+| Reflection method | Supported constructor | Description |
+|---|---|---|
+| `ReflectionClass::getAttributes()` | `new ReflectionClass($class_name)` | Return `ReflectionAttribute` objects for class attributes |
+| `ReflectionMethod::getAttributes()` | `new ReflectionMethod($class_name, $method_name)` | Return `ReflectionAttribute` objects for method attributes |
+| `ReflectionProperty::getAttributes()` | `new ReflectionProperty($class_name, $property_name)` | Return `ReflectionAttribute` objects for property attributes |
+| `ReflectionAttribute::newInstance()` | Internal only | Instantiate the attribute class from captured literal args |
+
 Limitations today:
-- All arguments to `class_attribute_names()`, `class_attribute_args()`, and `class_get_attributes()` must be **string literals** at the call site — dynamic class or attribute names (variables) require a runtime name→id lookup table that is not yet implemented.
-- Only **literal** positional arguments are materialized by reflection helpers today (string, int, bool, null, plus `-N` for negative ints). Other legal PHP attribute arguments can still be parsed and compiled, and `class_attribute_names()` can still list the attribute name, but `class_attribute_args()` / `class_get_attributes()` report an error if they would need unsupported argument metadata.
+- All arguments to `class_attribute_names()`, `class_attribute_args()`, `class_get_attributes()`, and `new ReflectionClass/Method/Property(...)` must be compile-time class/member strings. `ClassName::class` is accepted for the class-name argument of `new ReflectionClass/Method/Property(...)`, and normal named-argument / static associative-spread normalization runs before the literal-string check. Dynamic class, method, property, or attribute names require a runtime name→id lookup table that is not yet implemented.
+- Only **literal** positional arguments are materialized by reflection helpers today (string, int, bool, null, plus `-N` for negative ints). Other legal PHP attribute arguments can still be parsed and compiled, and `class_attribute_names()` can still list the attribute name, but `class_attribute_args()`, `class_get_attributes()`, and Reflection `getAttributes()` report an error if they would need unsupported argument metadata.
 - When several attributes share a name on the same class, `class_attribute_args()` returns the args of the first match; `class_get_attributes()` does expose every occurrence as a separate `ReflectionAttribute` in source order.
-- The full `ReflectionClass` API (`getProperties()`, `getMethods()`, `newInstance()`, …) is not yet available.
+- Only `getAttributes()` is implemented on `ReflectionClass`, `ReflectionMethod`, and `ReflectionProperty`; broader APIs such as `getProperties()`, `getMethods()`, and object construction through `ReflectionClass::newInstance()` are not yet available.
 
 ### Class constants
 
@@ -513,4 +588,4 @@ Class constants (PHP 7.1+ visibility, PHP 8.1+ `final`) live on classes, interfa
 - Shadowing a private parent property with a same-named child property is not yet supported (PHP gives them separate slots; elephc uses one slot per name)
 - Class constants must be literal-or-foldable expressions; `self::OTHER + 1` style recursive references are not supported.
 - Anonymous classes (`new class { ... }`) are not yet supported.
-- Class attribute names and supported literal args are exposed at runtime through `class_attribute_names()`, `class_attribute_args()`, and `class_get_attributes()`; method/property/parameter reflection and `ReflectionClass` are not yet available. `#[\Override]`, `#[\Deprecated]`, and `#[\AllowDynamicProperties]` are enforced/diagnosed/honored at compile time and runtime; `#[\SensitiveParameter]` is parsed but not yet propagated to parameters (refactor of param representation and stack-trace infrastructure pending).
+- Class attribute names and supported literal args are exposed at runtime through `class_attribute_names()`, `class_attribute_args()`, `class_get_attributes()`, and the supported `ReflectionClass`/`ReflectionMethod`/`ReflectionProperty::getAttributes()` APIs; parameter reflection is not yet available. `#[\Override]`, `#[\Deprecated]`, and `#[\AllowDynamicProperties]` are enforced/diagnosed/honored at compile time and runtime; `#[\SensitiveParameter]` is parsed but not yet propagated to parameters (refactor of param representation and stack-trace infrastructure pending).

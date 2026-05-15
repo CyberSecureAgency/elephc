@@ -423,10 +423,10 @@ product mode. This is also the series that delivered the Fibers MVP.
 - [x] `is_callable($value): bool` builtin. Compile-time decision when the value is a string literal (resolves against the catalog + user functions; case-insensitive for builtins) or a `Callable`-typed expression (closures, first-class callables). Non-literal strings, `[$obj, "method"]` arrays, and `__invoke` objects route to a future runtime helper.
 - [x] Cache `_json_active_flags` in a callee-saved register (`x19` ARM64 / `r15` x86_64) inside `__rt_json_encode_str`: 8 reload sites collapse to a single-instruction `tst`/`test` against the cached register, eliminating one address-load + memory dereference per HEX_*/UNESCAPED_*/UTF-8 dispatch in the per-byte escape loop.
 
-## v0.21.x — PHP array and type-model parity
+## v0.21.x — PHP runtime and language parity
 
-Tighten the PHP value model where the current static representation is still
-more restrictive than PHP.
+Close broad PHP-visible parity gaps across the value model, modern syntax,
+runtime helpers, and standard-library surfaces.
 
 - [x] Heterogeneous indexed arrays — allow mixed payloads in indexed arrays instead of requiring homogeneous indexed values
 - [x] PHP 8.0 attribute syntax — `#[Name]`, `#[Name(args)]`, stacked groups (`#[A] #[B]`), comma-separated within a group (`#[A, B(1)]`), qualified names (`#[\Ns\Name]`). Lexer adds `Token::AttrOpen` for `#[` ; bare `#` becomes a PHP-style line comment (no longer ambiguous). Parser invokes `parse_attribute_lists` at every site PHP allows: top-level statements, class/trait/interface members, enum cases, function/method parameters, closures, arrow functions. Attributes preserved in the AST via `attributes: Vec<AttributeGroup>` on `Stmt`, `ClassProperty`, `ClassMethod`, `EnumCaseDecl`, plus per-`ClassConst` storage on the new `ClassConst` AST type. Class-like declarations gain `constants: Vec<ClassConst>`.
@@ -438,7 +438,7 @@ more restrictive than PHP.
 - [x] Filesystem stream extensions: `fgetc()` (thin wrapper over `fread`, length 1, returning `false` at EOF/read failure), `readfile()` (open + chunked read+write to stdout + close, returns bytes copied, `-1` on read failure, or `false` on open failure), `fpassthru()` (same loop on an already-open fd, returning `-1` on read failure), `flock()` (libc `flock` with PHP→POSIX `LOCK_UN` translation, preserves the `LOCK_NB` flag, and supports the optional `$would_block` output), and `tmpfile()` (`mkstemp("/tmp/elephc-XXXXXX")` + immediate `unlink` so the file auto-deletes on close, returns a PHP `resource|false`). Also predefines `LOCK_SH=1`, `LOCK_EX=2`, `LOCK_UN=3`, `LOCK_NB=4` constants matching PHP's numbering.
 - [x] Filesystem symbolic links: `symlink($target, $link)`, `link($target, $link)`, `readlink($path)` (returns owned heap string boxed as Mixed for the `string|false` convention), and `linkinfo($path)` (returns `st_dev` or PHP's `-1` failure sentinel). All routed through libc to avoid per-syscall remapping work.
 - [x] PHP 8.5 pipe operator (`|>`) — left-associative, lower precedence than additive operators, supporting first-class callables, static and instance methods, closures, and variable callables; rejects by-reference callable parameters
-- [ ] PHP attributes runtime introspection — implement `ReflectionClass::getAttributes()`, `ReflectionMethod::getAttributes()`, `ReflectionProperty::getAttributes()`, plus `ReflectionAttribute::newInstance()`. Class declarations currently expose limited metadata through `class_attribute_names()`, `class_attribute_args()`, and `class_get_attributes()` with `ReflectionAttribute::getName()` / `getArguments()`, but Reflection lookups (`new ReflectionClass(...)->getAttributes()`) return `Undefined class: ReflectionClass`.
+- [x] PHP attributes runtime introspection — implement `ReflectionClass::getAttributes()`, `ReflectionMethod::getAttributes()`, `ReflectionProperty::getAttributes()`, plus `ReflectionAttribute::newInstance()`. Class/member declarations expose attribute names and supported literal args through helper builtins and Reflection objects; `ReflectionAttribute::newInstance()` constructs the attribute class on demand from the captured literal args.
 - [x] Mixed indexed/associative array union — model `array + array` across indexed/hash representations while preserving PHP's shared int/string key space and left-key precedence
 - [ ] Callable parity follow-up — support captured method/static first-class callables in the remaining callback runtimes (`array_reduce()`, `array_walk()`, `usort()`, `uksort()`, `uasort()`), direct callable expression calls such as `($obj->method(...))()`, non-local method receivers such as `(new Foo())->method(...)`, nullsafe first-class callables, broader builtin first-class callable wrappers, and the remaining `call_user_func_array()` by-reference callback gaps
 - [ ] Runtime-value compatibility polishing v2 — continue with PHP's uninitialized typed-property state, integer overflow promotion, broader loose-comparison semantics, and future warning/notice sites as they are added
@@ -449,6 +449,43 @@ more restrictive than PHP.
 - [ ] JSON pretty-print optimization — inline indent emission inside each container encoder (assoc, array_int/str/dynamic, object) and retire the `__rt_json_pretty_apply` post-processor. Eliminates the second buffer walk for JSON_PRETTY_PRINT workloads. Multi-day refactor: needs a `_json_indent_depth` BSS slot, careful invariant maintenance across throws, and bytewise PHP cross-check on ~10 representative payloads.
 - [ ] `is_callable()` runtime fallback — handle non-literal strings, `[$obj, "method"]` arrays, and objects implementing `__invoke`. The string-literal + Callable-typed compile-time path is already in place.
 - [ ] Case-insensitive user-function lookup — `function_exists("USER_FN")` and `is_callable("USER_FN")` currently require the exact case. PHP accepts any case for user functions too; tighten the lookup table (shared by both builtins).
+
+### Standard PHP Library (SPL)
+
+PHP-compatible Standard PHP Library coverage, rolled out in phases.
+
+- [x] Phase 1 — built-in interfaces: `Traversable`, `Iterator` (extends `Traversable`), `IteratorAggregate` (extends `Traversable`), `OuterIterator`, `RecursiveIterator`, `SeekableIterator`, `Countable`, `ArrayAccess`, `SplObserver`, `SplSubject`, `Stringable`, `JsonSerializable`
+- [x] Phase 2 — `count($obj)` redirects to `Countable::count()`
+- [x] Phase 3 — SPL exception hierarchy: `LogicException`, `BadFunctionCallException`, `BadMethodCallException`, `DomainException`, `InvalidArgumentException`, `LengthException`, `OutOfRangeException`, `RuntimeException`, `OutOfBoundsException`, `OverflowException`, `RangeException`, `UnderflowException`, `UnexpectedValueException`
+- [ ] `$obj[$k]` subscript syntax for `ArrayAccess` implementers (read, write, `isset`, `unset` paths) — defers `Mixed`-boxing work
+- [x] Static autoload — composer.json `autoload.psr-4` driven, includes `vendor/<vendor>/<package>/composer.json`. Replaces runtime autoload by inlining every reachable PSR-4 class at compile time
+- [x] `spl_autoload_*` stubs — `register`/`unregister` return `true`, `functions` returns `[]`, `extensions` returns `".inc,.php"`, `call` and `spl_autoload` are no-ops. Defensive code that calls these at boot compiles unchanged
+- [x] Closure-aware `spl_autoload_register` — the closure body is evaluated symbolically at compile time. Supports `__DIR__ . '/' . str_replace('\\', '/', $name) . '.php'` style autoloaders, intermediate variable assignments, and `if (file_exists(...))` guards. `spl_autoload_unregister` removes matching rules; `spl_autoload_call("App\\Foo")` with a literal name forces compile-time autoload of that class
+- [x] Runtime r/w for `spl_autoload_extensions` — backed by mutable globals (`_spl_autoload_exts_ptr` / `_spl_autoload_exts_len`) initialized to `".inc,.php"`. Read returns the current value; write swaps in the new and returns the previous, matching PHP semantics
+- [x] `spl_autoload_functions()` returns an indexed array sized to the number of registered closure rules — `count()` and `foreach` see one entry per rule
+- [x] Read `autoload.classmap`, `autoload.files`, `autoload.psr-0`, and `autoload-dev.*` sections from composer.json. Longest-prefix wins for PSR-4. PSR-0 supports both namespaced and underscore-class conventions
+- [x] `class_exists` / `interface_exists` / `trait_exists` / `enum_exists` with literal class name and `autoload = true` (default) trigger compile-time autoload of the literal
+- [x] Variable-stored closures and function-name string callables are accepted by `spl_autoload_register`. The closure assignment / function declaration is stripped from the program after the rule is extracted
+- [x] Top-level `if (...)` whose condition folds to a literal bool flattens before rule collection — guard your register call with `if (true)`, `if (false)/else`, or chained `elseif` and the chosen branch is inlined at compile time
+- [x] `sprintf`, `dirname`, `basename` are supported by the symbolic interpreter — common autoloader patterns like `require_once sprintf("%s/%s.php", __DIR__, $name)` and `dirname(__DIR__) . '/lib/' . $name . '.php'` fold at compile time
+- [x] `get_declared_classes` / `get_declared_interfaces` / `get_declared_traits` return AOT introspection snapshots of the compiled symbol set
+- [x] `class_alias($orig, $alias)` synthesises a subclass at compile time so `new $alias()` and `instanceof $alias` work as the user expects
+- [x] `autoload.exclude-from-classmap` skips matching paths during classmap scanning. Supports glob patterns (`*`, `**`, `?`) plus the trailing-slash directory shorthand
+- [x] PSR-4 empty namespace prefix `""` (root namespace) verified working
+- [x] `realpath` and `pathinfo` (with `PATHINFO_*` flags) added to the symbolic interpreter
+- [x] PSR-0 underscore-class convention (`Twig_Loader_Filesystem` → `lib/Twig/Loader/Filesystem.php`) verified
+- [x] `spl_object_id`, `spl_object_hash`, `spl_classes` runtime helpers; pointer-based identity, stable per process
+- [x] `get_class` / `get_parent_class` resolve via the argument's static type at compile time
+- [x] `is_a` / `is_subclass_of` with literal class arg fold at compile time, walking parent chain and implemented interfaces
+- [x] Compile-time warning when a `spl_autoload_register` closure is rejected (use captures, multi-param, variadic) — explains why the autoloader silently became a no-op
+- [ ] Phase 4 — `IntrinsicCall` foundation + `SplDoublyLinkedList`, `SplStack`, `SplQueue`, `SplFixedArray`
+- [ ] Phase 5 — iterator decorators (`ArrayIterator`, `ArrayObject`, `IteratorIterator`, `LimitIterator`, `NoRewindIterator`, `InfiniteIterator`, `EmptyIterator`, `AppendIterator`, `MultipleIterator`, `CallbackFilterIterator`, `FilterIterator`, `CachingIterator`, `RecursiveArrayIterator`, `RecursiveCallbackFilterIterator`, `RecursiveFilterIterator`, `RecursiveIteratorIterator`, `ParentIterator`); functions `iterator_to_array`, `iterator_count`, `iterator_apply`, `class_implements`, `class_parents`, `class_uses`
+- [ ] Phase 6 — `SplHeap`, `SplMaxHeap`, `SplMinHeap`, `SplPriorityQueue`, `SplObjectStorage`; `spl_object_id`, `spl_object_hash`, `spl_classes`; `spl_autoload_*` decision and per-instance handle finalization
+- [ ] Phase 7 — `RegexIterator`, `RecursiveRegexIterator`
+- [ ] Phase 8 — file/directory iterators: `SplFileInfo`, `SplFileObject`, `SplTempFileObject`, `DirectoryIterator`, `FilesystemIterator`, `GlobIterator`, `RecursiveDirectoryIterator`, `RecursiveCachingIterator`
+- [ ] `Throwable`-via-interface `getMessage()` dispatch fix (pre-existing): catching by `Throwable` and calling `getMessage()` on the typed binding returns garbage instead of the message string
+
+`Serializable` is intentionally not implemented — it has been deprecated since PHP 8.1.
 
 ## v0.22.x — PHP OOP parity finish
 

@@ -44,9 +44,17 @@ sidebar:
 |---|---|---|
 | `date()` | `date($format [, $timestamp]): string` | Format timestamp. Chars: Y, m, d, H, i, s, l, F, D, M, N, j, n, G, g, A, a, U. |
 | `mktime()` | `mktime($h, $m, $s, $mon, $day, $yr): int` | Create timestamp from components |
-| `strtotime()` | `strtotime($datetime): int` | Parse "YYYY-MM-DD" or "YYYY-MM-DD HH:MM:SS" to timestamp |
+| `strtotime()` | `strtotime($datetime): int` | Parse a date/time string into a Unix timestamp. Supports ISO dates, time-only, relative offsets, named weekdays, and bare keywords. Returns `-1` on failure. |
 
-> `strtotime()` only supports "YYYY-MM-DD" and "YYYY-MM-DD HH:MM:SS" formats. Relative strings like "next Monday" are not supported.
+`strtotime()` accepts the following shapes (input is case-insensitive for keywords/unit names/weekday names, and leading/trailing ASCII whitespace is trimmed):
+
+- **ISO date / datetime** — `YYYY-MM-DD`, `YYYY-MM-DD HH:MM`, `YYYY-MM-DD HH:MM:SS`, `YYYY-MM-DDTHH:MM`, or `YYYY-MM-DDTHH:MM:SS`. Lowercase `t` is also accepted as the date/time separator.
+- **Bare keywords** — `now`, `today`, `tomorrow`, `yesterday`, `midnight`, `noon`. (`midnight` is an alias for `today`.)
+- **Time-only** — `H:MM`, `HH:MM`, `H:MM:SS`, `HH:MM:SS` — combined with today's date.
+- **Relative offsets** — `[+-]?N unit [N unit ...]` and `N unit ago` (negates the whole expression). Units: `sec(s)`, `second(s)`, `min(s)`, `minute(s)`, `hour(s)`, `day(s)`, `week(s)`, `month(s)`, `year(s)`. Composite forms like `"+1 day 2 hours"` and `"3 months ago"` are supported. Day/week offsets honor DST through libc `mktime` normalization.
+- **Named weekdays** — `Monday`..`Sunday` and 3-letter abbreviations `Mon`..`Sun`. Modifiers: `next <weekday>` (next future occurrence; today + 7 if today matches), `last <weekday>` (most recent past; today - 7 if today matches), `this <weekday>` (delta may be zero when today matches). Result is midnight of the target day.
+
+Currently out of scope (not accepted): timezone offsets (`+0200`, `UTC`, ...), `@unix_timestamp` form, `first/last day of` patterns, `MM/DD/YYYY` and `DD-Mon-YYYY` alternative date shapes, `nth <weekday> of <month>` patterns. Malformed input returns `-1`.
 
 ## JSON
 
