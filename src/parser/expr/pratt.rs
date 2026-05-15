@@ -17,8 +17,8 @@ use crate::span::Span;
 
 use super::assignment_targets::{
     AssignmentExpressionLowerer,
-    assignment_value_may_mutate_target_dependency, is_assignment_expression_target,
-    is_non_local_assignment_target,
+    assignment_value_may_mutate_target_dependency, assignment_value_reads_target_container,
+    is_assignment_expression_target, is_non_local_assignment_target,
 };
 use super::calls::parse_first_class_callable_parens;
 use super::parse_args;
@@ -257,7 +257,9 @@ pub(super) fn parse_expr_bp(
             if is_non_local_assignment_target(&lhs) {
                 let null_coalesce_assign = matches!(op, AssignmentOperator::NullCoalesce);
                 let needs_conditional_value_temp =
-                    null_coalesce_assign && assignment_value_may_mutate_target_dependency(&lhs, &rhs);
+                    null_coalesce_assign
+                        && (assignment_value_may_mutate_target_dependency(&lhs, &rhs)
+                            || assignment_value_reads_target_container(&lhs, &rhs));
 
                 let mut lowerer = AssignmentExpressionLowerer::new(span);
                 let target = lowerer.stabilize_non_local_target(lhs, &rhs);
@@ -266,9 +268,12 @@ pub(super) fn parse_expr_bp(
                 let rhs = if null_coalesce_assign {
                     rhs
                 } else {
-                    lowerer.bind_value(rhs)
+                    lowerer.bind_value(&target, rhs)
                 };
-                let value = assignment_value(target.clone(), op, rhs, span);
+                let value = match op {
+                    AssignmentOperator::Assign => rhs,
+                    op => assignment_value(target.clone(), op, rhs, span),
+                };
                 let prelude = lowerer.finish();
                 lhs = Expr::new(
                     ExprKind::Assignment {
@@ -281,7 +286,10 @@ pub(super) fn parse_expr_bp(
                     span,
                 );
             } else {
-                let value = assignment_value(lhs.clone(), op, rhs, span);
+                let value = match op {
+                    AssignmentOperator::Assign => rhs,
+                    op => assignment_value(lhs.clone(), op, rhs, span),
+                };
                 lhs = Expr::new(
                     ExprKind::Assignment {
                         target: Box::new(lhs),
