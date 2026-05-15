@@ -444,6 +444,18 @@ echo date("D", $ts);
 }
 
 #[test]
+fn test_strtotime_current_weekday_is_today() {
+    let out = compile_and_run(
+        r#"<?php
+$weekday = date("l");
+$ts = strtotime($weekday);
+if (date("Y-m-d", $ts) == date("Y-m-d")) echo "ok";
+"#,
+    );
+    assert_eq!(out, "ok");
+}
+
+#[test]
 fn test_strtotime_next_friday() {
     let out = compile_and_run(
         r#"<?php

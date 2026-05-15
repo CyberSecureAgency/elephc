@@ -30,7 +30,7 @@ fn emit_weekdays_arm64(emitter: &mut Emitter) {
 
     // -- branch on kind: 10..16 = direct weekday, 6..8 = modifier needing follow-up weekday --
     emitter.instruction("cmp w9, #10");                                         // direct weekday kind ?
-    emitter.instruction("b.ge __rt_strtotime_weekdays_direct");                 // yes → use implicit "next"
+    emitter.instruction("b.ge __rt_strtotime_weekdays_direct");                 // yes → use implicit "this"
 
     // -- modifier path (kind 6/7/8) --
     emitter.instruction("str w9, [sp, #84]");                                   // save modifier kind to slot before any helpers clobber w-regs
@@ -64,7 +64,7 @@ fn emit_weekdays_arm64(emitter: &mut Emitter) {
     emitter.label("__rt_strtotime_weekdays_direct");
     // -- direct weekday (kind 10..16, no explicit modifier) --
     emitter.instruction("sub w11, w9, #10");                                    // target_wday
-    emitter.instruction("mov w12, #6");                                         // implicit modifier = "next"
+    emitter.instruction("mov w12, #8");                                         // implicit modifier = "this"
 
     emitter.label("__rt_strtotime_weekdays_compute");
     // -- save target_wday + modifier across today_tm bl --
@@ -127,7 +127,7 @@ fn emit_weekdays_linux_x86_64(emitter: &mut Emitter) {
     // Inputs: rdx = kind, rax = consumed bytes.
 
     emitter.instruction("cmp rdx, 10");                                         // direct weekday kind ?
-    emitter.instruction("jge __rt_strtotime_weekdays_direct_linux_x86_64");     // yes → implicit "next"
+    emitter.instruction("jge __rt_strtotime_weekdays_direct_linux_x86_64");     // yes → implicit "this"
 
     // -- modifier path (kind 6/7/8) --
     emitter.instruction("mov DWORD PTR [rsp + 84], edx");                       // save modifier kind
@@ -163,7 +163,7 @@ fn emit_weekdays_linux_x86_64(emitter: &mut Emitter) {
     emitter.label("__rt_strtotime_weekdays_direct_linux_x86_64");
     emitter.instruction("sub edx, 10");                                         // target_wday
     emitter.instruction("mov DWORD PTR [rsp + 80], edx");                       // save target_wday
-    emitter.instruction("mov DWORD PTR [rsp + 84], 6");                         // implicit modifier = "next"
+    emitter.instruction("mov DWORD PTR [rsp + 84], 8");                         // implicit modifier = "this"
 
     emitter.label("__rt_strtotime_weekdays_compute_linux_x86_64");
     emitter.instruction("call __rt_strtotime_today_tm_linux_x86_64");           // build today midnight
