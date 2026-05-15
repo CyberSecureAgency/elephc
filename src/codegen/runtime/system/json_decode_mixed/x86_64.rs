@@ -35,22 +35,10 @@ pub(super) fn emit(emitter: &mut Emitter) {
 
     // Skip leading whitespace and capture the first non-whitespace byte.
     emitter.instruction("xor rcx, rcx");                                        // initialize the source index for the whitespace skip
-    emitter.label("__rt_json_decode_mixed_skip_ws");
-    emitter.instruction("cmp rcx, rdx");                                        // are we past the end of the input?
+    emitter.instruction("call __rt_json_skip_ws");                              // advance to the first non-whitespace source byte
+    emitter.instruction("cmp rcx, rdx");                                        // did the input contain only JSON whitespace?
     emitter.instruction("jge __rt_json_decode_mixed_syntax_error");             // empty / all-whitespace input is invalid JSON
     emitter.instruction("movzx r8, BYTE PTR [rax + rcx]");                      // load the next byte
-    emitter.instruction("cmp r8, 32");                                          // space?
-    emitter.instruction("je __rt_json_decode_mixed_skip_step");                 // branch on the current JSON decoder condition
-    emitter.instruction("cmp r8, 9");                                           // tab?
-    emitter.instruction("je __rt_json_decode_mixed_skip_step");                 // branch on the current JSON decoder condition
-    emitter.instruction("cmp r8, 10");                                          // LF?
-    emitter.instruction("je __rt_json_decode_mixed_skip_step");                 // branch on the current JSON decoder condition
-    emitter.instruction("cmp r8, 13");                                          // CR?
-    emitter.instruction("jne __rt_json_decode_mixed_skip_done");                // any other byte stops the scan
-    emitter.label("__rt_json_decode_mixed_skip_step");
-    emitter.instruction("add rcx, 1");                                          // consume the whitespace byte
-    emitter.instruction("jmp __rt_json_decode_mixed_skip_ws");                  // continue in the JSON decoder control path
-    emitter.label("__rt_json_decode_mixed_skip_done");
     emitter.instruction("mov BYTE PTR [rbp - 24], r8b");                        // park the first non-whitespace byte for the post-decode classification
 
     // Trim the right edge once here so scalar validators and recursive
@@ -148,23 +136,10 @@ pub(super) fn emit(emitter: &mut Emitter) {
     emitter.instruction("mov rax, QWORD PTR [rbp - 80]");                       // trimmed raw slice ptr
     emitter.instruction("mov rdx, QWORD PTR [rbp - 88]");                       // trimmed raw slice len
     emitter.instruction("mov rcx, 1");                                          // skip the leading `[`
-    emitter.instruction("mov r9, rdx");                                         // copy length for offset comparison
-    emitter.instruction("sub r9, 1");                                           // last meaningful index = len - 1 (the `]`)
-    emitter.label("__rt_json_decode_mixed_array_scan");
-    emitter.instruction("cmp rcx, r9");                                         // check the current JSON decoder condition
+    emitter.instruction("sub rdx, 1");                                          // last meaningful index = len - 1 (the `]`)
+    emitter.instruction("call __rt_json_skip_ws");                              // advance to array content or the closing bracket
+    emitter.instruction("cmp rcx, rdx");                                        // check the current JSON decoder condition
     emitter.instruction("jge __rt_json_decode_mixed_array_empty");              // branch on the current JSON decoder condition
-    emitter.instruction("movzx r8, BYTE PTR [rax + rcx]");                      // load or prepare JSON decoder state
-    emitter.instruction("cmp r8, 32");                                          // check the current JSON decoder condition
-    emitter.instruction("je __rt_json_decode_mixed_array_step");                // branch on the current JSON decoder condition
-    emitter.instruction("cmp r8, 9");                                           // check the current JSON decoder condition
-    emitter.instruction("je __rt_json_decode_mixed_array_step");                // branch on the current JSON decoder condition
-    emitter.instruction("cmp r8, 10");                                          // check the current JSON decoder condition
-    emitter.instruction("je __rt_json_decode_mixed_array_step");                // branch on the current JSON decoder condition
-    emitter.instruction("cmp r8, 13");                                          // check the current JSON decoder condition
-    emitter.instruction("jne __rt_json_decode_mixed_array_invoke");             // non-whitespace inside → invoke recursive parser
-    emitter.label("__rt_json_decode_mixed_array_step");
-    emitter.instruction("add rcx, 1");                                          // update the JSON decoder cursor or counter
-    emitter.instruction("jmp __rt_json_decode_mixed_array_scan");               // continue in the JSON decoder control path
     emitter.label("__rt_json_decode_mixed_array_invoke");
     emitter.instruction("mov rax, QWORD PTR [rbp - 80]");                       // trimmed raw slice ptr (entire `[...]` slice)
     emitter.instruction("mov rdx, QWORD PTR [rbp - 88]");                       // trimmed raw slice length
@@ -205,23 +180,10 @@ pub(super) fn emit(emitter: &mut Emitter) {
     emitter.instruction("mov rax, QWORD PTR [rbp - 80]");                       // trimmed raw slice ptr
     emitter.instruction("mov rdx, QWORD PTR [rbp - 88]");                       // trimmed raw slice len
     emitter.instruction("mov rcx, 1");                                          // skip the leading `{`
-    emitter.instruction("mov r9, rdx");                                         // load or prepare JSON decoder state
-    emitter.instruction("sub r9, 1");                                           // last meaningful index = len - 1 (the `}`)
-    emitter.label("__rt_json_decode_mixed_object_scan");
-    emitter.instruction("cmp rcx, r9");                                         // check the current JSON decoder condition
+    emitter.instruction("sub rdx, 1");                                          // last meaningful index = len - 1 (the `}`)
+    emitter.instruction("call __rt_json_skip_ws");                              // advance to object content or the closing brace
+    emitter.instruction("cmp rcx, rdx");                                        // check the current JSON decoder condition
     emitter.instruction("jge __rt_json_decode_mixed_object_empty");             // branch on the current JSON decoder condition
-    emitter.instruction("movzx r8, BYTE PTR [rax + rcx]");                      // load or prepare JSON decoder state
-    emitter.instruction("cmp r8, 32");                                          // check the current JSON decoder condition
-    emitter.instruction("je __rt_json_decode_mixed_object_step");               // branch on the current JSON decoder condition
-    emitter.instruction("cmp r8, 9");                                           // check the current JSON decoder condition
-    emitter.instruction("je __rt_json_decode_mixed_object_step");               // branch on the current JSON decoder condition
-    emitter.instruction("cmp r8, 10");                                          // check the current JSON decoder condition
-    emitter.instruction("je __rt_json_decode_mixed_object_step");               // branch on the current JSON decoder condition
-    emitter.instruction("cmp r8, 13");                                          // check the current JSON decoder condition
-    emitter.instruction("jne __rt_json_decode_mixed_object_invoke");            // non-whitespace inside → invoke recursive parser
-    emitter.label("__rt_json_decode_mixed_object_step");
-    emitter.instruction("add rcx, 1");                                          // update the JSON decoder cursor or counter
-    emitter.instruction("jmp __rt_json_decode_mixed_object_scan");              // continue in the JSON decoder control path
     emitter.label("__rt_json_decode_mixed_object_invoke");
     emitter.instruction("mov rax, QWORD PTR [rbp - 80]");                       // trimmed raw slice ptr
     emitter.instruction("mov rdx, QWORD PTR [rbp - 88]");                       // trimmed raw slice length

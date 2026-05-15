@@ -58,23 +58,11 @@ pub(super) fn emit_aarch64(emitter: &mut Emitter) {
     emitter.instruction("ldr x1, [sp, #0]");                                    // load or prepare JSON decoder state
     emitter.instruction("ldr x2, [sp, #8]");                                    // load or prepare JSON decoder state
     emitter.instruction("ldr x9, [sp, #16]");                                   // load or prepare JSON decoder state
-    emitter.label("__rt_json_decode_object_real_skip_key_ws");
     emitter.instruction("sub x10, x2, #1");                                     // update the JSON decoder cursor or counter
-    emitter.instruction("cmp x9, x10");                                         // check the current JSON decoder condition
+    emitter.instruction("mov x2, x10");                                         // skip whitespace up to, but not past, the closing brace
+    emitter.instruction("bl __rt_json_skip_ws");                                // advance to the next key or closing brace
+    emitter.instruction("cmp x9, x2");                                          // did the scan reach the closing brace?
     emitter.instruction("b.ge __rt_json_decode_object_real_close");             // branch on the current JSON decoder condition
-    emitter.instruction("ldrb w11, [x1, x9]");                                  // load or prepare JSON decoder state
-    emitter.instruction("cmp w11, #32");                                        // check the current JSON decoder condition
-    emitter.instruction("b.eq __rt_json_decode_object_real_skip_key_ws_step");  // branch on the current JSON decoder condition
-    emitter.instruction("cmp w11, #9");                                         // check the current JSON decoder condition
-    emitter.instruction("b.eq __rt_json_decode_object_real_skip_key_ws_step");  // branch on the current JSON decoder condition
-    emitter.instruction("cmp w11, #10");                                        // check the current JSON decoder condition
-    emitter.instruction("b.eq __rt_json_decode_object_real_skip_key_ws_step");  // branch on the current JSON decoder condition
-    emitter.instruction("cmp w11, #13");                                        // check the current JSON decoder condition
-    emitter.instruction("b.ne __rt_json_decode_object_real_skip_key_ws_done");  // branch on the current JSON decoder condition
-    emitter.label("__rt_json_decode_object_real_skip_key_ws_step");
-    emitter.instruction("add x9, x9, #1");                                      // update the JSON decoder cursor or counter
-    emitter.instruction("b __rt_json_decode_object_real_skip_key_ws");          // continue in the JSON decoder control path
-    emitter.label("__rt_json_decode_object_real_skip_key_ws_done");
     emitter.instruction("str x9, [sp, #16]");                                   // store updated JSON decoder state
 
     // After whitespace skip: if `}` we're done.
@@ -128,21 +116,10 @@ pub(super) fn emit_aarch64(emitter: &mut Emitter) {
     emitter.instruction("ldr x9, [sp, #16]");                                   // load or prepare JSON decoder state
     emitter.instruction("ldr x1, [sp, #0]");                                    // load or prepare JSON decoder state
     emitter.instruction("ldr x2, [sp, #8]");                                    // load or prepare JSON decoder state
-    emitter.label("__rt_json_decode_object_real_skip_colon_ws");
+    emitter.instruction("bl __rt_json_skip_ws");                                // advance to the colon after the key
     emitter.instruction("cmp x9, x2");                                          // check the current JSON decoder condition
     emitter.instruction("b.ge __rt_json_decode_object_real_fail");              // branch on the current JSON decoder condition
     emitter.instruction("ldrb w11, [x1, x9]");                                  // load or prepare JSON decoder state
-    emitter.instruction("cmp w11, #32");                                        // check the current JSON decoder condition
-    emitter.instruction("b.eq __rt_json_decode_object_real_skip_colon_step");   // branch on the current JSON decoder condition
-    emitter.instruction("cmp w11, #9");                                         // check the current JSON decoder condition
-    emitter.instruction("b.eq __rt_json_decode_object_real_skip_colon_step");   // branch on the current JSON decoder condition
-    emitter.instruction("cmp w11, #10");                                        // check the current JSON decoder condition
-    emitter.instruction("b.eq __rt_json_decode_object_real_skip_colon_step");   // branch on the current JSON decoder condition
-    emitter.instruction("cmp w11, #13");                                        // check the current JSON decoder condition
-    emitter.instruction("b.ne __rt_json_decode_object_real_at_colon");          // branch on the current JSON decoder condition
-    emitter.label("__rt_json_decode_object_real_skip_colon_step");
-    emitter.instruction("add x9, x9, #1");                                      // update the JSON decoder cursor or counter
-    emitter.instruction("b __rt_json_decode_object_real_skip_colon_ws");        // continue in the JSON decoder control path
     emitter.label("__rt_json_decode_object_real_at_colon");
     emitter.instruction("cmp w11, #58");                                        // ':'
     emitter.instruction("b.ne __rt_json_decode_object_real_fail");              // branch on the current JSON decoder condition
@@ -150,22 +127,9 @@ pub(super) fn emit_aarch64(emitter: &mut Emitter) {
     emitter.instruction("str x9, [sp, #16]");                                   // store updated JSON decoder state
 
     // Skip whitespace before the value.
-    emitter.label("__rt_json_decode_object_real_skip_value_ws");
+    emitter.instruction("bl __rt_json_skip_ws");                                // advance to the first byte of the value
     emitter.instruction("cmp x9, x2");                                          // check the current JSON decoder condition
     emitter.instruction("b.ge __rt_json_decode_object_real_fail");              // branch on the current JSON decoder condition
-    emitter.instruction("ldrb w11, [x1, x9]");                                  // load or prepare JSON decoder state
-    emitter.instruction("cmp w11, #32");                                        // check the current JSON decoder condition
-    emitter.instruction("b.eq __rt_json_decode_object_real_skip_value_step");   // branch on the current JSON decoder condition
-    emitter.instruction("cmp w11, #9");                                         // check the current JSON decoder condition
-    emitter.instruction("b.eq __rt_json_decode_object_real_skip_value_step");   // branch on the current JSON decoder condition
-    emitter.instruction("cmp w11, #10");                                        // check the current JSON decoder condition
-    emitter.instruction("b.eq __rt_json_decode_object_real_skip_value_step");   // branch on the current JSON decoder condition
-    emitter.instruction("cmp w11, #13");                                        // check the current JSON decoder condition
-    emitter.instruction("b.ne __rt_json_decode_object_real_value_start");       // branch on the current JSON decoder condition
-    emitter.label("__rt_json_decode_object_real_skip_value_step");
-    emitter.instruction("add x9, x9, #1");                                      // update the JSON decoder cursor or counter
-    emitter.instruction("b __rt_json_decode_object_real_skip_value_ws");        // continue in the JSON decoder control path
-    emitter.label("__rt_json_decode_object_real_value_start");
     emitter.instruction("str x9, [sp, #16]");                                   // store updated JSON decoder state
     emitter.instruction("str x9, [sp, #48]");                                   // value_start
 
@@ -342,26 +306,13 @@ pub(super) fn emit_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov rax, QWORD PTR [rbp - 8]");                        // load or prepare JSON decoder state
     emitter.instruction("mov rdx, QWORD PTR [rbp - 16]");                       // load or prepare JSON decoder state
     emitter.instruction("mov rcx, QWORD PTR [rbp - 24]");                       // load or prepare JSON decoder state
-    emitter.label("__rt_json_decode_object_real_skip_key_ws_x");
-    emitter.instruction("mov r9, rdx");                                         // load or prepare JSON decoder state
-    emitter.instruction("sub r9, 1");                                           // update the JSON decoder cursor or counter
-    emitter.instruction("cmp rcx, r9");                                         // check the current JSON decoder condition
+    emitter.instruction("sub rdx, 1");                                          // closing brace index is the exclusive whitespace limit
+    emitter.instruction("call __rt_json_skip_ws");                              // advance to the next key or closing brace
+    emitter.instruction("cmp rcx, rdx");                                        // did the scan reach the closing brace?
     emitter.instruction("jge __rt_json_decode_object_real_close_x");            // branch on the current JSON decoder condition
-    emitter.instruction("movzx r8, BYTE PTR [rax + rcx]");                      // load or prepare JSON decoder state
-    emitter.instruction("cmp r8, 32");                                          // check the current JSON decoder condition
-    emitter.instruction("je __rt_json_decode_object_real_skip_key_ws_step_x");  // branch on the current JSON decoder condition
-    emitter.instruction("cmp r8, 9");                                           // check the current JSON decoder condition
-    emitter.instruction("je __rt_json_decode_object_real_skip_key_ws_step_x");  // branch on the current JSON decoder condition
-    emitter.instruction("cmp r8, 10");                                          // check the current JSON decoder condition
-    emitter.instruction("je __rt_json_decode_object_real_skip_key_ws_step_x");  // branch on the current JSON decoder condition
-    emitter.instruction("cmp r8, 13");                                          // check the current JSON decoder condition
-    emitter.instruction("jne __rt_json_decode_object_real_skip_key_ws_done_x"); // branch on the current JSON decoder condition
-    emitter.label("__rt_json_decode_object_real_skip_key_ws_step_x");
-    emitter.instruction("add rcx, 1");                                          // update the JSON decoder cursor or counter
-    emitter.instruction("jmp __rt_json_decode_object_real_skip_key_ws_x");      // continue in the JSON decoder control path
-    emitter.label("__rt_json_decode_object_real_skip_key_ws_done_x");
     emitter.instruction("mov QWORD PTR [rbp - 24], rcx");                       // load or prepare JSON decoder state
 
+    emitter.instruction("mov rdx, QWORD PTR [rbp - 16]");                       // restore slice length after the whitespace helper limit
     emitter.instruction("movzx r8, BYTE PTR [rax + rcx]");                      // load or prepare JSON decoder state
     emitter.instruction("cmp r8, 125");                                         // '}'
     emitter.instruction("je __rt_json_decode_object_real_close_x");             // branch on the current JSON decoder condition
@@ -413,21 +364,10 @@ pub(super) fn emit_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov rax, QWORD PTR [rbp - 8]");                        // load or prepare JSON decoder state
     emitter.instruction("mov rdx, QWORD PTR [rbp - 16]");                       // load or prepare JSON decoder state
     emitter.instruction("mov rcx, QWORD PTR [rbp - 24]");                       // load or prepare JSON decoder state
-    emitter.label("__rt_json_decode_object_real_skip_colon_ws_x");
+    emitter.instruction("call __rt_json_skip_ws");                              // advance to the colon after the key
     emitter.instruction("cmp rcx, rdx");                                        // check the current JSON decoder condition
     emitter.instruction("jge __rt_json_decode_object_real_fail_x");             // branch on the current JSON decoder condition
     emitter.instruction("movzx r8, BYTE PTR [rax + rcx]");                      // load or prepare JSON decoder state
-    emitter.instruction("cmp r8, 32");                                          // check the current JSON decoder condition
-    emitter.instruction("je __rt_json_decode_object_real_skip_colon_step_x");   // branch on the current JSON decoder condition
-    emitter.instruction("cmp r8, 9");                                           // check the current JSON decoder condition
-    emitter.instruction("je __rt_json_decode_object_real_skip_colon_step_x");   // branch on the current JSON decoder condition
-    emitter.instruction("cmp r8, 10");                                          // check the current JSON decoder condition
-    emitter.instruction("je __rt_json_decode_object_real_skip_colon_step_x");   // branch on the current JSON decoder condition
-    emitter.instruction("cmp r8, 13");                                          // check the current JSON decoder condition
-    emitter.instruction("jne __rt_json_decode_object_real_at_colon_x");         // branch on the current JSON decoder condition
-    emitter.label("__rt_json_decode_object_real_skip_colon_step_x");
-    emitter.instruction("add rcx, 1");                                          // update the JSON decoder cursor or counter
-    emitter.instruction("jmp __rt_json_decode_object_real_skip_colon_ws_x");    // continue in the JSON decoder control path
     emitter.label("__rt_json_decode_object_real_at_colon_x");
     emitter.instruction("cmp r8, 58");                                          // ':'
     emitter.instruction("jne __rt_json_decode_object_real_fail_x");             // branch on the current JSON decoder condition
@@ -435,22 +375,9 @@ pub(super) fn emit_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov QWORD PTR [rbp - 24], rcx");                       // load or prepare JSON decoder state
 
     // Skip whitespace before value.
-    emitter.label("__rt_json_decode_object_real_skip_value_ws_x");
+    emitter.instruction("call __rt_json_skip_ws");                              // advance to the first byte of the value
     emitter.instruction("cmp rcx, rdx");                                        // check the current JSON decoder condition
     emitter.instruction("jge __rt_json_decode_object_real_fail_x");             // branch on the current JSON decoder condition
-    emitter.instruction("movzx r8, BYTE PTR [rax + rcx]");                      // load or prepare JSON decoder state
-    emitter.instruction("cmp r8, 32");                                          // check the current JSON decoder condition
-    emitter.instruction("je __rt_json_decode_object_real_skip_value_step_x");   // branch on the current JSON decoder condition
-    emitter.instruction("cmp r8, 9");                                           // check the current JSON decoder condition
-    emitter.instruction("je __rt_json_decode_object_real_skip_value_step_x");   // branch on the current JSON decoder condition
-    emitter.instruction("cmp r8, 10");                                          // check the current JSON decoder condition
-    emitter.instruction("je __rt_json_decode_object_real_skip_value_step_x");   // branch on the current JSON decoder condition
-    emitter.instruction("cmp r8, 13");                                          // check the current JSON decoder condition
-    emitter.instruction("jne __rt_json_decode_object_real_value_start_x");      // branch on the current JSON decoder condition
-    emitter.label("__rt_json_decode_object_real_skip_value_step_x");
-    emitter.instruction("add rcx, 1");                                          // update the JSON decoder cursor or counter
-    emitter.instruction("jmp __rt_json_decode_object_real_skip_value_ws_x");    // continue in the JSON decoder control path
-    emitter.label("__rt_json_decode_object_real_value_start_x");
     emitter.instruction("mov QWORD PTR [rbp - 24], rcx");                       // load or prepare JSON decoder state
     emitter.instruction("mov QWORD PTR [rbp - 56], rcx");                       // load or prepare JSON decoder state
 

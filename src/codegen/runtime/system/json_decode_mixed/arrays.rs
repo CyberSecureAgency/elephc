@@ -62,23 +62,11 @@ pub(super) fn emit_aarch64(emitter: &mut Emitter) {
     emitter.instruction("ldr x1, [sp, #0]");                                    // slice_ptr
     emitter.instruction("ldr x2, [sp, #8]");                                    // slice_len
     emitter.instruction("ldr x9, [sp, #16]");                                   // cursor
-    emitter.label("__rt_json_decode_array_real_skip_ws");
     emitter.instruction("sub x10, x2, #1");                                     // last meaningful index = len - 1 (the `]`)
-    emitter.instruction("cmp x9, x10");                                         // check the current JSON decoder condition
+    emitter.instruction("mov x2, x10");                                         // skip whitespace up to, but not past, the closing bracket
+    emitter.instruction("bl __rt_json_skip_ws");                                // advance to the next element or closing bracket
+    emitter.instruction("cmp x9, x2");                                          // did the scan reach the closing bracket?
     emitter.instruction("b.ge __rt_json_decode_array_real_close");              // ran past the close → finalize
-    emitter.instruction("ldrb w11, [x1, x9]");                                  // load or prepare JSON decoder state
-    emitter.instruction("cmp w11, #32");                                        // check the current JSON decoder condition
-    emitter.instruction("b.eq __rt_json_decode_array_real_skip_ws_step");       // branch on the current JSON decoder condition
-    emitter.instruction("cmp w11, #9");                                         // check the current JSON decoder condition
-    emitter.instruction("b.eq __rt_json_decode_array_real_skip_ws_step");       // branch on the current JSON decoder condition
-    emitter.instruction("cmp w11, #10");                                        // check the current JSON decoder condition
-    emitter.instruction("b.eq __rt_json_decode_array_real_skip_ws_step");       // branch on the current JSON decoder condition
-    emitter.instruction("cmp w11, #13");                                        // check the current JSON decoder condition
-    emitter.instruction("b.ne __rt_json_decode_array_real_skip_ws_done");       // branch on the current JSON decoder condition
-    emitter.label("__rt_json_decode_array_real_skip_ws_step");
-    emitter.instruction("add x9, x9, #1");                                      // update the JSON decoder cursor or counter
-    emitter.instruction("b __rt_json_decode_array_real_skip_ws");               // continue in the JSON decoder control path
-    emitter.label("__rt_json_decode_array_real_skip_ws_done");
     emitter.instruction("str x9, [sp, #16]");                                   // store updated JSON decoder state
 
     // After whitespace skip: peek at the byte. If it's the closing `]`
@@ -259,24 +247,10 @@ pub(super) fn emit_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov rax, QWORD PTR [rbp - 8]");                        // slice_ptr
     emitter.instruction("mov rdx, QWORD PTR [rbp - 16]");                       // slice_len
     emitter.instruction("mov rcx, QWORD PTR [rbp - 24]");                       // cursor
-    emitter.label("__rt_json_decode_array_real_skip_ws_x");
-    emitter.instruction("mov r9, rdx");                                         // load or prepare JSON decoder state
-    emitter.instruction("sub r9, 1");                                           // last meaningful index = len - 1 (the `]`)
-    emitter.instruction("cmp rcx, r9");                                         // check the current JSON decoder condition
+    emitter.instruction("sub rdx, 1");                                          // last meaningful index = len - 1 (the `]`)
+    emitter.instruction("call __rt_json_skip_ws");                              // advance to the next element or closing bracket
+    emitter.instruction("cmp rcx, rdx");                                        // did the scan reach the closing bracket?
     emitter.instruction("jge __rt_json_decode_array_real_close_x");             // ran past the close
-    emitter.instruction("movzx r8, BYTE PTR [rax + rcx]");                      // load or prepare JSON decoder state
-    emitter.instruction("cmp r8, 32");                                          // check the current JSON decoder condition
-    emitter.instruction("je __rt_json_decode_array_real_skip_ws_step_x");       // branch on the current JSON decoder condition
-    emitter.instruction("cmp r8, 9");                                           // check the current JSON decoder condition
-    emitter.instruction("je __rt_json_decode_array_real_skip_ws_step_x");       // branch on the current JSON decoder condition
-    emitter.instruction("cmp r8, 10");                                          // check the current JSON decoder condition
-    emitter.instruction("je __rt_json_decode_array_real_skip_ws_step_x");       // branch on the current JSON decoder condition
-    emitter.instruction("cmp r8, 13");                                          // check the current JSON decoder condition
-    emitter.instruction("jne __rt_json_decode_array_real_skip_ws_done_x");      // branch on the current JSON decoder condition
-    emitter.label("__rt_json_decode_array_real_skip_ws_step_x");
-    emitter.instruction("add rcx, 1");                                          // update the JSON decoder cursor or counter
-    emitter.instruction("jmp __rt_json_decode_array_real_skip_ws_x");           // continue in the JSON decoder control path
-    emitter.label("__rt_json_decode_array_real_skip_ws_done_x");
     emitter.instruction("mov QWORD PTR [rbp - 24], rcx");                       // load or prepare JSON decoder state
 
     // After whitespace skip: peek at the byte. If it's `]` we're done.
@@ -296,6 +270,7 @@ pub(super) fn emit_x86_64(emitter: &mut Emitter) {
     //   r11 = in_string flag
     //   r12 = escape flag (callee-saved — we save before clobbering)
     //   r8  = current byte
+    emitter.instruction("mov rdx, QWORD PTR [rbp - 16]");                       // restore slice_len after the whitespace helper used an exclusive limit
     emitter.instruction("push r12");                                            // preserve callee-saved (System V keeps r12)
     emitter.instruction("xor r10, r10");                                        // depth
     emitter.instruction("xor r11, r11");                                        // in_string

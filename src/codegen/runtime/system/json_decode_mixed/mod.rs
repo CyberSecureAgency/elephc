@@ -14,6 +14,7 @@ use crate::codegen::platform::Arch;
 mod aarch64;
 mod arrays;
 mod objects;
+mod whitespace;
 mod x86_64;
 
 /// __rt_json_decode_mixed: checked structural JSON decoder that returns a boxed
@@ -41,12 +42,14 @@ mod x86_64;
 /// Output: x0/rax = boxed Mixed pointer or 0 on error
 pub(crate) fn emit_json_decode_mixed(emitter: &mut Emitter) {
     if emitter.target.arch == Arch::X86_64 {
+        whitespace::emit(emitter);
         x86_64::emit(emitter);
         arrays::emit_x86_64(emitter);
         objects::emit_x86_64(emitter);
         return;
     }
 
+    whitespace::emit(emitter);
     aarch64::emit(emitter);
     arrays::emit_aarch64(emitter);
     objects::emit_aarch64(emitter);
