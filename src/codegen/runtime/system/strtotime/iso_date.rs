@@ -78,8 +78,8 @@ fn emit_iso_date_arm64(emitter: &mut Emitter) {
     emitter.instruction("add w9, w9, w10");                                     // w9 = day
     emitter.instruction("str w9, [sp, #12]");                                   // store tm_mday
 
-    // -- check if time component exists (length >= 19 for "YYYY-MM-DD HH:MM:SS") --
-    emitter.instruction("cmp x2, #19");                                         // check for full datetime
+    // -- check if time component exists (length >= 16 for "YYYY-MM-DD HH:MM") --
+    emitter.instruction("cmp x2, #16");                                         // check for hour/minute datetime
     emitter.instruction("b.lt __rt_strtotime_iso_notime");                      // no time component
 
     // -- parse HH (2 digits at offset 11) --
@@ -101,6 +101,8 @@ fn emit_iso_date_arm64(emitter: &mut Emitter) {
     emitter.instruction("sub w10, w10, #48");                                   // convert from ASCII
     emitter.instruction("add w9, w9, w10");                                     // w9 = minute
     emitter.instruction("str w9, [sp, #4]");                                    // store tm_min
+    emitter.instruction("cmp x2, #19");                                         // full datetime includes seconds?
+    emitter.instruction("b.lt __rt_strtotime_iso_no_seconds");                  // partial datetime defaults seconds to zero
 
     // -- parse SS (2 digits at offset 17) --
     emitter.instruction("ldrb w9, [x1, #17]");                                  // load 1st second digit
@@ -111,6 +113,10 @@ fn emit_iso_date_arm64(emitter: &mut Emitter) {
     emitter.instruction("sub w10, w10, #48");                                   // convert from ASCII
     emitter.instruction("add w9, w9, w10");                                     // w9 = second
     emitter.instruction("str w9, [sp, #0]");                                    // store tm_sec
+    emitter.instruction("b __rt_strtotime_iso_mktime");                         // proceed to mktime
+
+    emitter.label("__rt_strtotime_iso_no_seconds");
+    emitter.instruction("str wzr, [sp, #0]");                                   // tm_sec = 0 for YYYY-MM-DD HH:MM
     emitter.instruction("b __rt_strtotime_iso_mktime");                         // proceed to mktime
 
     // -- no time component, default to 00:00:00 --
@@ -176,7 +182,7 @@ fn emit_iso_date_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("add eax, ecx");                                        // finish assembling the day-of-month component
     emitter.instruction("mov DWORD PTR [rsp + 12], eax");                       // tm_mday = parsed day-of-month
 
-    emitter.instruction("cmp rsi, 19");                                         // the full YYYY-MM-DD HH:MM:SS form requires at least 19 bytes
+    emitter.instruction("cmp rsi, 16");                                         // the YYYY-MM-DD HH:MM form requires at least 16 bytes
     emitter.instruction("jb __rt_strtotime_iso_notime_linux_x86_64");           // fall back to midnight when the time suffix is absent
 
     emitter.instruction("movzx eax, BYTE PTR [r8 + 11]");                       // load the first hour digit
@@ -194,6 +200,8 @@ fn emit_iso_date_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("sub ecx, 48");                                         // convert the second minute digit from ASCII to its numeric value
     emitter.instruction("add eax, ecx");                                        // finish assembling the minute component
     emitter.instruction("mov DWORD PTR [rsp + 4], eax");                        // tm_min = parsed minute
+    emitter.instruction("cmp rsi, 19");                                         // full datetime includes seconds?
+    emitter.instruction("jb __rt_strtotime_iso_no_seconds_linux_x86_64");       // partial datetime defaults seconds to zero
 
     emitter.instruction("movzx eax, BYTE PTR [r8 + 17]");                       // load the first second digit
     emitter.instruction("sub eax, 48");                                         // convert the first second digit from ASCII to its numeric value
@@ -203,6 +211,10 @@ fn emit_iso_date_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("add eax, ecx");                                        // finish assembling the second component
     emitter.instruction("mov DWORD PTR [rsp + 0], eax");                        // tm_sec = parsed second
     emitter.instruction("jmp __rt_strtotime_iso_mktime_linux_x86_64");          // skip the midnight-default path
+
+    emitter.label("__rt_strtotime_iso_no_seconds_linux_x86_64");
+    emitter.instruction("mov DWORD PTR [rsp + 0], 0");                          // tm_sec = 0 for YYYY-MM-DD HH:MM
+    emitter.instruction("jmp __rt_strtotime_iso_mktime_linux_x86_64");          // proceed with defaulted seconds
 
     emitter.label("__rt_strtotime_iso_notime_linux_x86_64");
     emitter.instruction("mov DWORD PTR [rsp + 0], 0");                          // default tm_sec to zero when the date-only form was given

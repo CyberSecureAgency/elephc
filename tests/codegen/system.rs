@@ -136,6 +136,17 @@ echo date("Y-m-d H:i:s", $ts);
 }
 
 #[test]
+fn test_strtotime_datetime_without_seconds() {
+    let out = compile_and_run(
+        r#"<?php
+$ts = strtotime("2024-06-15 12:30");
+echo date("Y-m-d H:i:s", $ts);
+"#,
+    );
+    assert_eq!(out, "2024-06-15 12:30:00");
+}
+
+#[test]
 fn test_strtotime_mktime_roundtrip() {
     let out = compile_and_run(
         r#"<?php
