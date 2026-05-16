@@ -84,7 +84,7 @@ if (!function_exists("nonexistent")) {
     echo "function 'nonexistent' does not exist\n";
 }
 
-// is_callable: dynamic strings, object/method arrays, and invokable objects
+// is_callable: dynamic strings, method arrays, static method arrays, and invokable objects
 class Runner {
     public function run() {
         return "running";
@@ -97,11 +97,21 @@ class InvokableRunner {
     }
 }
 
+class StaticRunner {
+    public static function run() {
+        return "static";
+    }
+}
+
 $callback_name = "double";
+$static_callback_name = "StaticRunner::run";
 $runner = new Runner();
 $method_callback = [$runner, "run"];
+$static_method_callback = [StaticRunner::class, "run"];
 $invokable_runner = new InvokableRunner();
 
 echo "is_callable dynamic string: " . (is_callable($callback_name) ? "yes" : "no") . "\n";
+echo "is_callable static string: " . (is_callable($static_callback_name) ? "yes" : "no") . "\n";
 echo "is_callable method array: " . (is_callable($method_callback) ? "yes" : "no") . "\n";
+echo "is_callable static method array: " . (is_callable($static_method_callback) ? "yes" : "no") . "\n";
 echo "is_callable invokable object: " . (is_callable($invokable_runner) ? "yes" : "no") . "\n";
