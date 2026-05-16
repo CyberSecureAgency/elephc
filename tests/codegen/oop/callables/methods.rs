@@ -220,6 +220,32 @@ foreach ($values as $value) {
 }
 
 #[test]
+fn test_array_filter_evaluates_array_before_method_callable_receiver() {
+    let out = compile_and_run(
+        r#"<?php
+function values() {
+    echo "array:";
+    return [1, 3];
+}
+
+class FilterBox {
+    public function __construct() {
+        echo "receiver:";
+    }
+
+    public function keep($n) {
+        return $n > 1;
+    }
+}
+
+$values = array_filter(values(), (new FilterBox())->keep(...));
+echo count($values);
+"#,
+    );
+    assert_eq!(out, "array:receiver:1");
+}
+
+#[test]
 fn test_first_class_callable_instance_method_preserves_by_ref_params() {
     let out = compile_and_run(
         r#"<?php
@@ -364,6 +390,60 @@ echo array_reduce([1, 2], $fn, 0);
 "#,
     );
     assert_eq!(out, "23");
+}
+
+#[test]
+fn test_array_reduce_evaluates_args_left_to_right_for_method_callable() {
+    let out = compile_and_run(
+        r#"<?php
+function values() {
+    echo "array:";
+    return [1, 2];
+}
+
+function initial() {
+    echo "initial:";
+    return 0;
+}
+
+class Reducer {
+    public function __construct() {
+        echo "receiver:";
+    }
+
+    public function add($carry, $item) {
+        return $carry + $item;
+    }
+}
+
+echo array_reduce(values(), (new Reducer())->add(...), initial());
+"#,
+    );
+    assert_eq!(out, "array:receiver:initial:3");
+}
+
+#[test]
+fn test_array_filter_accepts_complex_noncaptured_callable_expression() {
+    let out = compile_and_run(
+        r#"<?php
+function keep_even($n) {
+    return $n % 2 == 0;
+}
+
+function keep_big($n) {
+    return $n > 2;
+}
+
+$use_even = true;
+$values = array_filter([1, 2, 3, 4], $use_even ? keep_even(...) : keep_big(...));
+echo count($values);
+foreach ($values as $value) {
+    echo ":";
+    echo $value;
+}
+"#,
+    );
+    assert_eq!(out, "2:2:4");
 }
 
 #[test]

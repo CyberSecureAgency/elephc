@@ -361,6 +361,24 @@ fn test_error_uasort_wrong_args() {
 }
 
 #[test]
+fn test_error_usort_first_class_callable_wrong_arity() {
+    expect_error(
+        r#"<?php
+class BadComparator {
+    public function cmp($a) {
+        return 0;
+    }
+}
+
+$bad = new BadComparator();
+$values = [2, 1];
+usort($values, $bad->cmp(...));
+"#,
+        "Method BadComparator::cmp expects 1 arguments, got 2",
+    );
+}
+
+#[test]
 fn test_error_list_unpack_non_array() {
     expect_error("<?php [$a, $b] = 42;", "List unpacking requires an array");
 }
@@ -372,6 +390,38 @@ fn test_error_call_user_func_array_wrong_args() {
     expect_error(
         "<?php call_user_func_array(\"foo\");",
         "call_user_func_array() takes exactly 2 arguments",
+    );
+}
+
+#[test]
+fn test_error_call_user_func_array_requires_known_callable_signature() {
+    expect_error(
+        r#"<?php
+function make_callback() {
+    return strlen(...);
+}
+
+echo call_user_func_array(make_callback(), ["abc"]);
+"#,
+        "call_user_func_array() callback must have a statically known callable signature",
+    );
+}
+
+#[test]
+fn test_error_array_filter_rejects_complex_captured_callable_expression() {
+    expect_error(
+        r#"<?php
+class FilterBox {
+    public function keep($n) {
+        return true;
+    }
+}
+
+$box = new FilterBox();
+$use_first = true;
+array_filter([1], $use_first ? $box->keep(...) : $box->keep(...));
+"#,
+        "array_filter() callback does not support complex expressions",
     );
 }
 
