@@ -173,7 +173,7 @@ class User {
 }
 ```
 
-Property type declarations are checked at compile time for both instance and static properties. Defaults and later assignments must be compatible with the declared type, including constructor assignments through untyped parameters. Nullable shorthand (`?T`) and union storage use the compiler's boxed mixed representation internally. `void` and `callable` property types are rejected.
+Property type declarations are checked at compile time for both instance and static properties. Defaults and later assignments must be compatible with the declared type, including constructor assignments through untyped parameters. Typed properties without an explicit default start in PHP's uninitialized state; reading an instance or static property before the first assignment is a fatal runtime error, while assigning values such as `0`, `false`, `""`, or `null` to compatible nullable storage initializes the slot normally. Nullable shorthand (`?T`) and union storage use the compiler's boxed mixed representation internally. `void` and `callable` property types are rejected.
 
 ### Property redeclaration
 
@@ -220,7 +220,7 @@ Counter::$count = 5;
 echo Counter::bump(); // 6
 ```
 
-Supported receivers are `ClassName::$prop`, `self::$prop`, `parent::$prop`, and `static::$prop`. Static property visibility and declared types are checked at compile time. Inherited static properties share the declaring class storage until a subclass redeclares the property. Redeclarations follow PHP rules: non-private inherited properties keep invariant declared types, cannot reduce visibility, and cannot override `final` properties. Private static properties redeclared in subclasses are independent slots; `static::$prop` is still late-bound and reports a fatal runtime error if the current method scope cannot access the matched private slot.
+Supported receivers are `ClassName::$prop`, `self::$prop`, `parent::$prop`, and `static::$prop`. Static property visibility and declared types are checked at compile time. Typed static properties without defaults use the same uninitialized-read fatal as typed instance properties. Inherited static properties share the declaring class storage until a subclass redeclares the property. Redeclarations follow PHP rules: non-private inherited properties keep invariant declared types, cannot reduce visibility, and cannot override `final` properties. Private static properties redeclared in subclasses are independent slots; `static::$prop` is still late-bound and reports a fatal runtime error if the current method scope cannot access the matched private slot.
 
 Static properties in elephc, like in PHP, are always mutable — even on a `readonly class`. PHP's `readonly` modifier only constrains instance properties; declaring `public readonly static` is a compile error in both PHP and elephc.
 
