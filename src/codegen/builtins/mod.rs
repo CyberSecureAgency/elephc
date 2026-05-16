@@ -9,6 +9,7 @@
 //! - Builtin names arrive after type/catalog resolution, including PHP case-insensitive and namespace fallback behavior.
 
 mod arrays;
+pub(crate) mod callable_lookup;
 mod io;
 mod math;
 mod pointers;

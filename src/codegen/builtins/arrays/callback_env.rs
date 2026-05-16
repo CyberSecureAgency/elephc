@@ -18,6 +18,8 @@ use crate::names::function_symbol;
 use crate::parser::ast::{Expr, ExprKind};
 use crate::types::PhpType;
 
+use super::super::callable_lookup::{lookup_function, FunctionLookup};
+
 pub(super) struct CallbackEnv {
     pub(super) wrapper_label: String,
     pub(super) env_bytes: usize,
@@ -33,7 +35,12 @@ pub(super) fn materialize_callback_address(
 ) -> Vec<(String, PhpType)> {
     match &callback.kind {
         ExprKind::StringLiteral(name) => {
-            let label = function_symbol(name);
+            let resolved_name = match lookup_function(ctx, name) {
+                Some(FunctionLookup::UserFunction(name))
+                | Some(FunctionLookup::IncludeVariant(name)) => name,
+                _ => name.clone(),
+            };
+            let label = function_symbol(&resolved_name);
             abi::emit_symbol_address(emitter, call_reg, &label);
             Vec::new()
         }
