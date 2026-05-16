@@ -15,8 +15,9 @@ use crate::codegen::abi;
 use crate::codegen::platform::Arch;
 use crate::names::function_variant_active_symbol;
 use crate::parser::ast::{Expr, ExprKind};
-use crate::types::checker::builtins::is_supported_builtin_function;
 use crate::types::PhpType;
+
+use super::super::callable_lookup::{lookup_function, FunctionLookup};
 
 pub fn emit(
     _name: &str,
@@ -33,16 +34,22 @@ pub fn emit(
         _ => panic!("function_exists() argument must be a string literal"),
     };
 
-    if ctx.function_variant_groups.contains(&func_name) {
-        emit_variant_function_exists(&func_name, emitter, data);
-        return Some(PhpType::Bool);
-    }
-
     // -- emit constant true/false based on whether function is known --
-    if ctx.functions.contains_key(&func_name) || is_supported_builtin_function(&func_name) {
-        abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), 1);
-    } else {
-        abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), 0);
+    match lookup_function(ctx, &func_name) {
+        Some(FunctionLookup::IncludeVariant(variant_name)) => {
+            emit_variant_function_exists(&variant_name, emitter, data);
+            return Some(PhpType::Bool);
+        }
+        Some(
+            FunctionLookup::Builtin(_)
+            | FunctionLookup::Extern(_)
+            | FunctionLookup::UserFunction(_),
+        ) => {
+            abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), 1);
+        }
+        None => {
+            abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), 0);
+        }
     }
 
     Some(PhpType::Bool)

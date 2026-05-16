@@ -14,8 +14,9 @@ use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
 use crate::codegen::expr::emit_expr;
 use crate::parser::ast::{Expr, ExprKind};
-use crate::types::checker::builtins::is_supported_builtin_function;
 use crate::types::PhpType;
+
+use super::super::callable_lookup::lookup_function;
 
 /// is_callable(value): bool
 ///
@@ -38,9 +39,7 @@ pub fn emit(
     // has no side effects, so we skip emit_expr.
     if let ExprKind::StringLiteral(name) = &args[0].kind {
         if !name.contains("::") {
-            let known = ctx.functions.contains_key(name)
-                || is_supported_builtin_function(name)
-                || ctx.function_variant_groups.contains(name);
+            let known = lookup_function(ctx, name).is_some();
             let val: i64 = if known { 1 } else { 0 };
             abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), val);
             return Some(PhpType::Bool);

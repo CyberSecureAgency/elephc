@@ -145,7 +145,7 @@ Aliases: `(integer)`, `(double)`, `(real)`, `(boolean)`.
 | `is_numeric()`  | `is_numeric($val): bool`     | Returns true if int or float   |
 | `is_bool()`     | `is_bool($val): bool`        | Returns true if bool           |
 | `is_iterable()` | `is_iterable($val): bool`    | Returns true if array or Traversable-compatible iterable |
-| `is_callable()` | `is_callable($val): bool`    | Returns true for closures, first-class callables, strings naming known builtins, user functions, or public static methods (`"Class::method"`), `[$obj, "method"]` arrays with public methods, `[ClassName::class, "method"]` static method arrays, and objects with public `__invoke()`. |
+| `is_callable()` | `is_callable($val): bool`    | Returns true for closures, first-class callables, strings case-insensitively naming known builtins, user functions, or public static methods (`"Class::method"`), `[$obj, "method"]` arrays with public methods, `[ClassName::class, "method"]` static method arrays, and objects with public `__invoke()`. |
 | `is_nan()`      | `is_nan($val): bool`         | Returns true if NAN            |
 | `is_finite()`   | `is_finite($val): bool`      | Returns true if not INF/NAN    |
 | `is_infinite()` | `is_infinite($val): bool`    | Returns true if INF or -INF    |

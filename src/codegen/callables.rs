@@ -14,6 +14,8 @@ use crate::codegen::context::Context;
 use crate::parser::ast::{Expr, ExprKind};
 use crate::types::{FunctionSig, PhpType};
 
+use super::builtins::callable_lookup::{lookup_function, FunctionLookup};
+
 pub(crate) fn callable_captures(callback: &Expr, ctx: &mut Context) -> Vec<(String, PhpType)> {
     match &callback.kind {
         ExprKind::Closure { .. } | ExprKind::FirstClassCallable(_) => ctx
@@ -31,7 +33,11 @@ pub(crate) fn callable_captures(callback: &Expr, ctx: &mut Context) -> Vec<(Stri
 
 pub(crate) fn callable_sig(callback: &Expr, ctx: &Context) -> Option<FunctionSig> {
     match &callback.kind {
-        ExprKind::StringLiteral(name) => ctx.functions.get(name).cloned(),
+        ExprKind::StringLiteral(name) => match lookup_function(ctx, name) {
+            Some(FunctionLookup::UserFunction(name))
+            | Some(FunctionLookup::IncludeVariant(name)) => ctx.functions.get(&name).cloned(),
+            _ => ctx.functions.get(name).cloned(),
+        },
         ExprKind::Variable(name) => ctx.closure_sigs.get(name).cloned(),
         ExprKind::FirstClassCallable(target) => {
             crate::codegen::expr::calls::first_class_callable_sig(target, ctx)

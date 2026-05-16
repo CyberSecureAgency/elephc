@@ -17,6 +17,7 @@ use crate::codegen::abi;
 use crate::parser::ast::{Expr, ExprKind};
 use crate::types::PhpType;
 use super::callback_env;
+use super::super::callable_lookup::{lookup_function, FunctionLookup};
 
 fn emit_array_value_type_stamp(emitter: &mut Emitter, array_reg: &str, elem_ty: &PhpType) {
     let value_type_tag = match elem_ty {
@@ -61,6 +62,35 @@ pub fn emit(
     data: &mut DataSection,
 ) -> Option<PhpType> {
     emitter.comment("call_user_func_array()");
+    if let (ExprKind::StringLiteral(name), ExprKind::ArrayLiteral(elems)) =
+        (&args[0].kind, &args[1].kind)
+    {
+        match lookup_function(ctx, name) {
+            Some(FunctionLookup::Extern(extern_name)) => {
+                return Some(crate::codegen::ffi::emit_extern_call(
+                    &extern_name,
+                    elems,
+                    args[0].span,
+                    emitter,
+                    ctx,
+                    data,
+                ));
+            }
+            Some(FunctionLookup::Builtin(builtin_name)) => {
+                if let Some(ret_ty) = crate::codegen::builtins::emit_builtin_call(
+                    &builtin_name,
+                    elems,
+                    args[0].span,
+                    emitter,
+                    ctx,
+                    data,
+                ) {
+                    return Some(ret_ty);
+                }
+            }
+            Some(FunctionLookup::UserFunction(_)) | Some(FunctionLookup::IncludeVariant(_)) | None => {}
+        }
+    }
     let save_concat_before_args =
         emitter.target.arch == crate::codegen::platform::Arch::X86_64;
     if save_concat_before_args {

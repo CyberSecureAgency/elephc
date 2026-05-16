@@ -123,9 +123,12 @@ class LoudLabeler extends Labeler {
 
 echo "static callable: " . Labeler::current() . "/" . LoudLabeler::current() . "\n";
 
-// function_exists: check if a function is defined
-if (function_exists("double")) {
+// Function string lookups are case-insensitive, like PHP.
+if (function_exists("DOUBLE")) {
     echo "function 'double' exists\n";
+}
+if (is_callable("DoUbLe")) {
+    echo "function 'double' is callable\n";
 }
 if (!function_exists("nonexistent")) {
     echo "function 'nonexistent' does not exist\n";
