@@ -57,6 +57,53 @@ foreach ($formatted as $v) { echo $v . " "; }
 echo "\n";
 echo "method callable call_user_func_array: " . call_user_func_array($format, ["cb"]) . "\n";
 
+function bump(&$value) {
+    $value = $value + 1;
+}
+
+$bump = bump(...);
+$counter_value = 10;
+call_user_func_array($bump, [$counter_value]);
+echo "call_user_func_array by-ref: " . $counter_value . "\n";
+
+$trim = trim(...);
+echo "builtin callable trim: " . $trim("  ready  ") . "\n";
+
+class OffsetCallbacks {
+    public function add_offset($carry, $item) {
+        return $carry + $item + 10;
+    }
+
+    public function show_shifted($item) {
+        echo ($item + 5) . " ";
+    }
+
+    public function descending($a, $b) {
+        return $b - $a;
+    }
+}
+
+$offsets = new OffsetCallbacks();
+echo "method callable array_reduce: " . array_reduce([1, 2], $offsets->add_offset(...), 0) . "\n";
+echo "method callable array_walk: ";
+array_walk([1, 2], $offsets->show_shifted(...));
+echo "\n";
+$method_sorted = [1, 3, 2];
+usort($method_sorted, $offsets->descending(...));
+echo "method callable usort: ";
+foreach ($method_sorted as $v) { echo $v . " "; }
+echo "\n";
+$method_key_sorted = [1, 3, 2];
+uksort($method_key_sorted, $offsets->descending(...));
+echo "method callable uksort: ";
+foreach ($method_key_sorted as $v) { echo $v . " "; }
+echo "\n";
+$method_value_sorted = [1, 3, 2];
+uasort($method_value_sorted, $offsets->descending(...));
+echo "method callable uasort: ";
+foreach ($method_value_sorted as $v) { echo $v . " "; }
+echo "\n";
+
 class Labeler {
     public static function current() {
         $label = static::name(...);
@@ -86,3 +133,35 @@ if (is_callable("DoUbLe")) {
 if (!function_exists("nonexistent")) {
     echo "function 'nonexistent' does not exist\n";
 }
+
+// is_callable: dynamic strings, method arrays, static method arrays, and invokable objects
+class Runner {
+    public function run() {
+        return "running";
+    }
+}
+
+class InvokableRunner {
+    public function __invoke() {
+        return "invoked";
+    }
+}
+
+class StaticRunner {
+    public static function run() {
+        return "static";
+    }
+}
+
+$callback_name = "double";
+$static_callback_name = "StaticRunner::run";
+$runner = new Runner();
+$method_callback = [$runner, "run"];
+$static_method_callback = [StaticRunner::class, "run"];
+$invokable_runner = new InvokableRunner();
+
+echo "is_callable dynamic string: " . (is_callable($callback_name) ? "yes" : "no") . "\n";
+echo "is_callable static string: " . (is_callable($static_callback_name) ? "yes" : "no") . "\n";
+echo "is_callable method array: " . (is_callable($method_callback) ? "yes" : "no") . "\n";
+echo "is_callable static method array: " . (is_callable($static_method_callback) ? "yes" : "no") . "\n";
+echo "is_callable invokable object: " . (is_callable($invokable_runner) ? "yes" : "no") . "\n";

@@ -427,6 +427,32 @@ if ($diff >= 3590 && $diff <= 3610) echo "ok";
 }
 
 #[test]
+fn test_strtotime_offset_article_day_ago() {
+    let out = compile_and_run(
+        r#"<?php
+$now = time();
+$ts = strtotime("a day ago");
+$diff = $now - $ts;
+if ($diff >= 86400 - 3700 && $diff <= 86400 + 3700) echo "ok";
+"#,
+    );
+    assert_eq!(out, "ok");
+}
+
+#[test]
+fn test_strtotime_offset_article_an_hour() {
+    let out = compile_and_run(
+        r#"<?php
+$now = time();
+$ts = strtotime("an hour");
+$diff = $ts - $now;
+if ($diff >= 3590 && $diff <= 3610) echo "ok";
+"#,
+    );
+    assert_eq!(out, "ok");
+}
+
+#[test]
 fn test_strtotime_offset_plus_30_seconds() {
     let out = compile_and_run(
         r#"<?php
@@ -933,6 +959,26 @@ fn test_preg_replace_case_insensitive() {
     let out = compile_and_run(r#"<?php echo preg_replace("/WORLD/i", "PHP", "hello World");"#);
     assert_eq!(out, "hello PHP");
 }
+
+#[test]
+fn test_preg_replace_dollar_backreferences() {
+    let out = compile_and_run(
+        r#"<?php echo preg_replace("/([a-z]+) ([a-z]+)/", '$2, $1', "hello world");"#,
+    );
+    assert_eq!(out, "world, hello");
+}
+
+#[test]
+fn test_preg_replace_backslash_backreferences() {
+    let out = compile_and_run(r#"<?php echo preg_replace("/([0-9]+)-([0-9]+)/", "\\2/\\1", "12-34");"#);
+    assert_eq!(out, "34/12");
+}
+
+#[test]
+fn test_preg_replace_unmatched_capture_backreference_is_empty() {
+    let out = compile_and_run(r#"<?php echo preg_replace("/(a)(b)?/", '[$1][$2]', "a");"#);
+    assert_eq!(out, "[a][]");
+}
 // is_callable() — compile-time decisions for string literals (catalog
 // lookup) and Callable-typed values (closures + first-class callables).
 
@@ -1002,5 +1048,232 @@ fn test_is_callable_int_returns_false() {
 #[test]
 fn test_is_callable_bool_returns_false() {
     let out = compile_and_run(r#"<?php echo is_callable(true) ? "y" : "n";"#);
+    assert_eq!(out, "n");
+}
+
+#[test]
+fn test_is_callable_dynamic_builtin_string_returns_true() {
+    let out = compile_and_run(
+        r#"<?php
+            function check(string $name) {
+                return is_callable($name) ? "y" : "n";
+            }
+            echo check("JSON_ENCODE");
+        "#,
+    );
+    assert_eq!(out, "y");
+}
+
+#[test]
+fn test_is_callable_dynamic_user_function_string_returns_true() {
+    let out = compile_and_run(
+        r#"<?php
+            function target_fn() { return 1; }
+            function check(string $name) {
+                return is_callable($name) ? "y" : "n";
+            }
+            echo check("target_fn");
+        "#,
+    );
+    assert_eq!(out, "y");
+}
+
+#[test]
+fn test_is_callable_dynamic_unknown_string_returns_false() {
+    let out = compile_and_run(
+        r#"<?php
+            function check(string $name) {
+                return is_callable($name) ? "y" : "n";
+            }
+            echo check("missing_callable_name");
+        "#,
+    );
+    assert_eq!(out, "n");
+}
+
+#[test]
+fn test_is_callable_dynamic_static_method_string_returns_true() {
+    let out = compile_and_run(
+        r#"<?php
+            class MathBox {
+                public static function double($n) {
+                    return $n * 2;
+                }
+            }
+            function check(string $name) {
+                return is_callable($name) ? "y" : "n";
+            }
+            echo check("MathBox::double");
+        "#,
+    );
+    assert_eq!(out, "y");
+}
+
+#[test]
+fn test_is_callable_object_method_array_returns_true() {
+    let out = compile_and_run(
+        r#"<?php
+            class Greeter {
+                public function hello() {
+                    return "hi";
+                }
+            }
+            $obj = new Greeter();
+            $cb = [$obj, "hello"];
+            echo is_callable($cb) ? "y" : "n";
+        "#,
+    );
+    assert_eq!(out, "y");
+}
+
+#[test]
+fn test_is_callable_inherited_object_method_array_returns_true() {
+    let out = compile_and_run(
+        r#"<?php
+            class BaseGreeter {
+                public function hello() {
+                    return "hi";
+                }
+            }
+            class ChildGreeter extends BaseGreeter {}
+            $obj = new ChildGreeter();
+            $cb = [$obj, "hello"];
+            echo is_callable($cb) ? "y" : "n";
+        "#,
+    );
+    assert_eq!(out, "y");
+}
+
+#[test]
+fn test_is_callable_object_method_array_missing_method_returns_false() {
+    let out = compile_and_run(
+        r#"<?php
+            class Greeter {
+                public function hello() {
+                    return "hi";
+                }
+            }
+            $obj = new Greeter();
+            $cb = [$obj, "missing"];
+            echo is_callable($cb) ? "y" : "n";
+        "#,
+    );
+    assert_eq!(out, "n");
+}
+
+#[test]
+fn test_is_callable_class_string_static_method_array_returns_true() {
+    let out = compile_and_run(
+        r#"<?php
+            class MathBox {
+                public static function double($n) {
+                    return $n * 2;
+                }
+            }
+            $class = "MathBox";
+            $cb = [$class, "double"];
+            echo is_callable($cb) ? "y" : "n";
+        "#,
+    );
+    assert_eq!(out, "y");
+}
+
+#[test]
+fn test_is_callable_class_string_static_method_array_is_case_insensitive() {
+    let out = compile_and_run(
+        r#"<?php
+            class MathBox {
+                public static function double($n) {
+                    return $n * 2;
+                }
+            }
+            $class = "mathbox";
+            $cb = [$class, "DOUBLE"];
+            echo is_callable($cb) ? "y" : "n";
+        "#,
+    );
+    assert_eq!(out, "y");
+}
+
+#[test]
+fn test_is_callable_class_string_static_method_array_missing_returns_false() {
+    let out = compile_and_run(
+        r#"<?php
+            class MathBox {
+                public static function double($n) {
+                    return $n * 2;
+                }
+            }
+            $class = "MathBox";
+            $cb = [$class, "missing"];
+            echo is_callable($cb) ? "y" : "n";
+        "#,
+    );
+    assert_eq!(out, "n");
+}
+
+#[test]
+fn test_is_callable_class_string_static_method_array_rejects_non_public() {
+    let out = compile_and_run(
+        r#"<?php
+            class MathBox {
+                protected static function hidden() {
+                    return 2;
+                }
+            }
+            $class = "MathBox";
+            $cb = [$class, "hidden"];
+            echo is_callable($cb) ? "y" : "n";
+        "#,
+    );
+    assert_eq!(out, "n");
+}
+
+#[test]
+fn test_is_callable_invokable_object_returns_true() {
+    let out = compile_and_run(
+        r#"<?php
+            class Task {
+                public function __invoke() {
+                    return 1;
+                }
+            }
+            $task = new Task();
+            echo is_callable($task) ? "y" : "n";
+        "#,
+    );
+    assert_eq!(out, "y");
+}
+
+#[test]
+fn test_is_callable_inherited_invokable_object_returns_true() {
+    let out = compile_and_run(
+        r#"<?php
+            class BaseTask {
+                public function __invoke() {
+                    return 1;
+                }
+            }
+            class ChildTask extends BaseTask {}
+            $task = new ChildTask();
+            echo is_callable($task) ? "y" : "n";
+        "#,
+    );
+    assert_eq!(out, "y");
+}
+
+#[test]
+fn test_is_callable_plain_object_returns_false() {
+    let out = compile_and_run(
+        r#"<?php
+            class Task {
+                public function run() {
+                    return 1;
+                }
+            }
+            $task = new Task();
+            echo is_callable($task) ? "y" : "n";
+        "#,
+    );
     assert_eq!(out, "n");
 }

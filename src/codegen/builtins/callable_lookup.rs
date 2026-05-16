@@ -13,14 +13,14 @@ use crate::codegen::context::Context;
 use crate::names::php_symbol_key;
 use crate::types::checker::builtins::canonical_builtin_function_name;
 
-pub(super) enum FunctionLookup {
+pub(crate) enum FunctionLookup {
     Builtin(String),
     Extern(String),
     UserFunction(String),
     IncludeVariant(String),
 }
 
-pub(super) fn lookup_function(ctx: &Context, name: &str) -> Option<FunctionLookup> {
+pub(crate) fn lookup_function(ctx: &Context, name: &str) -> Option<FunctionLookup> {
     if let Some(name) = lookup_folded(ctx.function_variant_groups.iter(), name) {
         return Some(FunctionLookup::IncludeVariant(name));
     }

@@ -10,6 +10,7 @@
 
 use super::arrays;
 use super::buffers;
+use super::callables;
 use super::diagnostics;
 use super::exceptions;
 use super::fibers;
@@ -88,6 +89,9 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter) {
     strings::emit_ltrim_mask(emitter);
     strings::emit_trim_mask(emitter);
 
+    // Callable introspection runtime functions
+    callables::emit_is_callable_runtime(emitter);
+
     // System runtime functions
     system::emit_build_argv(emitter);
     system::emit_time(emitter);
@@ -104,7 +108,7 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter) {
     system::emit_json_encode_mixed(emitter);
     system::emit_json_encode_float(emitter);
     system::emit_json_encode_object(emitter);
-    system::emit_json_pretty_apply(emitter);
+    system::emit_json_pretty_helpers(emitter);
     system::emit_json_throw_error(emitter);
     system::emit_json_depth_enter(emitter);
     system::emit_json_depth_exit(emitter);

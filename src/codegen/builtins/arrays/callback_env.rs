@@ -3,16 +3,22 @@
 //! Owns hidden capture materialization and deferred wrapper metadata for emitted callbacks.
 //!
 //! Called from:
-//! - `crate::codegen::builtins::arrays::{array_filter,array_map,call_user_func,call_user_func_array}::emit()`.
+//! - Array callback builtins such as `array_map()`, `array_filter()`, `array_reduce()`, and sort/walk helpers.
+//! - Dynamic-call builtins such as `call_user_func()` and `call_user_func_array()`.
 //!
 //! Key details:
 //! - Capture slots must preserve source-call evaluation order and ABI argument layout for wrapper calls.
 
 use crate::codegen::abi;
 use crate::codegen::context::{Context, DeferredCallbackWrapper};
+use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
+use crate::codegen::expr::emit_expr;
+use crate::names::function_symbol;
 use crate::parser::ast::{Expr, ExprKind};
 use crate::types::PhpType;
+
+use super::super::callable_lookup::{lookup_function, FunctionLookup};
 
 pub(super) struct CallbackEnv {
     pub(super) wrapper_label: String,
@@ -20,18 +26,35 @@ pub(super) struct CallbackEnv {
     pub(super) array_slot_offset: usize,
 }
 
-pub(super) fn callback_captures(callback: &Expr, ctx: &mut Context) -> Vec<(String, PhpType)> {
+pub(super) fn materialize_callback_address(
+    callback: &Expr,
+    call_reg: &str,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> Vec<(String, PhpType)> {
     match &callback.kind {
-        ExprKind::Closure { .. } | ExprKind::FirstClassCallable(_) => ctx
-            .deferred_closures
-            .last()
-            .map(|closure| closure.captures.clone())
-            .unwrap_or_default(),
-        ExprKind::Variable(name) => {
-            ctx.mark_fcc_used(name);
-            ctx.closure_captures.get(name).cloned().unwrap_or_default()
+        ExprKind::StringLiteral(name) => {
+            let resolved_name = match lookup_function(ctx, name) {
+                Some(FunctionLookup::UserFunction(name))
+                | Some(FunctionLookup::IncludeVariant(name)) => name,
+                _ => name.clone(),
+            };
+            let label = function_symbol(&resolved_name);
+            abi::emit_symbol_address(emitter, call_reg, &label);
+            Vec::new()
         }
-        _ => Vec::new(),
+        ExprKind::Variable(name) => {
+            let var = ctx.variables.get(name).expect("undefined callback variable");
+            abi::load_at_offset(emitter, call_reg, var.stack_offset);           // load the callback address from the callable variable slot
+            crate::codegen::callables::callable_captures(callback, ctx)
+        }
+        _ => {
+            emit_expr(callback, emitter, ctx, data);
+            let result_reg = abi::int_result_reg(emitter);
+            emitter.instruction(&format!("mov {}, {}", call_reg, result_reg));  // keep the evaluated callback address in the nested-call scratch register
+            crate::codegen::callables::callable_captures(callback, ctx)
+        }
     }
 }
 

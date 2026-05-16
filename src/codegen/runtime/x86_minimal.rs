@@ -10,6 +10,7 @@
 
 use super::arrays;
 use super::buffers;
+use super::callables;
 use super::diagnostics;
 use super::exceptions;
 use super::fibers;
@@ -103,6 +104,7 @@ pub(super) fn emit_runtime_linux_x86_64_minimal(emitter: &mut Emitter) {
     strings::emit_rtrim_mask(emitter);
     strings::emit_ltrim_mask(emitter);
     strings::emit_trim_mask(emitter);
+    callables::emit_is_callable_runtime(emitter);
     system::emit_time(emitter);
     system::emit_microtime(emitter);
     system::emit_php_uname(emitter);
@@ -161,6 +163,7 @@ pub(super) fn emit_runtime_linux_x86_64_minimal(emitter: &mut Emitter) {
     arrays::emit_hash_key_eq(emitter);
     arrays::emit_hash_normalize_key(emitter);
     arrays::emit_hash_new(emitter);
+    arrays::emit_hash_grow(emitter);
     arrays::emit_hash_insert_owned(emitter);
     arrays::emit_hash_clone_shallow(emitter);
     arrays::emit_hash_ensure_unique(emitter);
@@ -278,7 +281,7 @@ pub(super) fn emit_runtime_linux_x86_64_minimal(emitter: &mut Emitter) {
     system::emit_json_depth_enter(emitter);
     system::emit_json_depth_exit(emitter);
     system::emit_json_throw_error(emitter);
-    system::emit_json_pretty_apply(emitter);
+    system::emit_json_pretty_helpers(emitter);
     objects::emit_stdclass_new(emitter);
     objects::emit_stdclass_from_hash(emitter);
     objects::emit_stdclass_get(emitter);
@@ -326,6 +329,7 @@ mod tests {
         assert!(asm.contains("__rt_atoi:\n"));
         assert!(asm.contains("__rt_str_persist:\n"));
         assert!(asm.contains("__rt_str_eq:\n"));
+        assert!(asm.contains("__rt_is_callable_string:\n"));
         assert!(asm.contains("__rt_exception_cleanup_frames:\n"));
         assert!(asm.contains("__rt_exception_matches:\n"));
         assert!(asm.contains("__rt_throw_current:\n"));
