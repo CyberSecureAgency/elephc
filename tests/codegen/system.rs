@@ -427,6 +427,32 @@ if ($diff >= 3590 && $diff <= 3610) echo "ok";
 }
 
 #[test]
+fn test_strtotime_offset_article_day_ago() {
+    let out = compile_and_run(
+        r#"<?php
+$now = time();
+$ts = strtotime("a day ago");
+$diff = $now - $ts;
+if ($diff >= 86400 - 3700 && $diff <= 86400 + 3700) echo "ok";
+"#,
+    );
+    assert_eq!(out, "ok");
+}
+
+#[test]
+fn test_strtotime_offset_article_an_hour() {
+    let out = compile_and_run(
+        r#"<?php
+$now = time();
+$ts = strtotime("an hour");
+$diff = $ts - $now;
+if ($diff >= 3590 && $diff <= 3610) echo "ok";
+"#,
+    );
+    assert_eq!(out, "ok");
+}
+
+#[test]
 fn test_strtotime_offset_plus_30_seconds() {
     let out = compile_and_run(
         r#"<?php
