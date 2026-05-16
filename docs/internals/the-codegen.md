@@ -111,6 +111,8 @@ pub struct Context {
     pub functions: HashMap<String, FunctionSig>,
     pub function_variant_groups: HashSet<String>, // include-loaded function dispatchers
     pub deferred_closures: Vec<DeferredClosure>, // closures emitted after current function
+    pub deferred_fiber_wrappers: Vec<DeferredFiberWrapper>,
+    pub deferred_callback_wrappers: Vec<DeferredCallbackWrapper>,
     pub constants: HashMap<String, (ExprKind, PhpType)>, // compile-time constants
     pub global_vars: HashSet<String>,         // globals active in current scope
     pub static_vars: HashSet<String>,         // statics active in current scope
@@ -120,8 +122,11 @@ pub struct Context {
     pub all_static_vars: HashMap<(String, String), PhpType>,
     pub closure_sigs: HashMap<String, FunctionSig>,
     pub closure_captures: HashMap<String, Vec<(String, PhpType)>>,
+    pub first_class_callable_targets: HashMap<String, CallableTarget>,
+    pub variable_fcc_label: HashMap<String, String>,
     pub classes: HashMap<String, ClassInfo>,
     pub interfaces: HashMap<String, InterfaceInfo>,
+    pub traits: HashSet<String>,
     pub enums: HashMap<String, EnumInfo>,
     pub packed_classes: HashMap<String, PackedClassInfo>,
     pub current_class: Option<String>,
