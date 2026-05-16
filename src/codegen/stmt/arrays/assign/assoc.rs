@@ -12,7 +12,7 @@ use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
-use crate::codegen::expr::emit_expr;
+use crate::codegen::expr::{coerce_result_to_type, emit_expr};
 use crate::codegen::platform::Arch;
 use crate::parser::ast::Expr;
 use crate::types::PhpType;
@@ -42,6 +42,13 @@ pub(super) fn emit_assoc_array_assign(
     abi::emit_push_reg_pair(emitter, key_ptr_reg, key_len_reg);                       // preserve the computed key pointer and length while evaluating the value expression
 
     let mut val_ty = emit_expr(value, emitter, ctx, data);
+    if matches!(val_ty, PhpType::Mixed | PhpType::Union(_))
+        && !matches!(target.elem_ty, PhpType::Mixed | PhpType::Union(_))
+        && crate::codegen::expr::can_coerce_result_to_type(&val_ty, &target.elem_ty)
+    {
+        coerce_result_to_type(emitter, ctx, data, &val_ty, &target.elem_ty);
+        val_ty = target.elem_ty.clone();
+    }
     let boxed_iterable =
         crate::codegen::emit_box_iterable_value_for_mixed_container(emitter, &mut val_ty);
     if !boxed_iterable

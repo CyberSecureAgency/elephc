@@ -316,6 +316,7 @@ pub(super) fn emit_closure_call(
         regular_param_count,
         "closure ref arg",
         true,
+        false,
         emitter,
         ctx,
         data,

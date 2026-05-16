@@ -35,7 +35,7 @@ class Profile {
     public string $name = "Ada";
 }
 class User {
-    public ?Profile $profile;
+    public ?Profile $profile = null;
 }
 $with = new User();
 $with->profile = new Profile();
@@ -46,6 +46,26 @@ echo $without->profile?->name ?? "none";
 "#,
     );
     assert_eq!(out, "Ada|none");
+}
+
+#[test]
+fn test_nullsafe_property_access_does_not_suppress_uninitialized_typed_property() {
+    let err = compile_and_run_expect_failure(
+        r#"<?php
+class Profile {
+    public string $name = "Ada";
+}
+class User {
+    public ?Profile $profile;
+}
+$without = new User();
+echo $without?->profile?->name ?? "none";
+"#,
+    );
+    assert!(
+        err.contains("Fatal error: Typed property User::$profile must not be accessed before initialization"),
+        "{err}"
+    );
 }
 
 #[test]
@@ -124,10 +144,10 @@ class Address {
     public string $city = "Rome";
 }
 class Profile {
-    public ?Address $address;
+    public ?Address $address = null;
 }
 class User {
-    public ?Profile $profile;
+    public ?Profile $profile = null;
 }
 $with = new User();
 $profile = new Profile();
@@ -150,7 +170,7 @@ class Profile {
     public string $name = "Ada";
 }
 class User {
-    public ?Profile $profile;
+    public ?Profile $profile = null;
     public function profile(): ?Profile {
         return $this->profile;
     }
@@ -388,4 +408,3 @@ read(new Root());
     assert_eq!(out.stdout, "noisy|21");
     assert_eq!(out.stderr, "");
 }
-

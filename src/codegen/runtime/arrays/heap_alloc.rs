@@ -61,8 +61,16 @@ pub fn emit_heap_alloc(emitter: &mut Emitter) {
     crate::codegen::abi::emit_symbol_address(emitter, "x9", "_heap_small_bins");
     emitter.instruction("add x9, x9, x13");                                     // x9 = address of the first candidate bin head
     emitter.label("__rt_heap_alloc_small_bin_loop");
-    emitter.instruction("ldr x10, [x9]");                                       // x10 = current small-bin head block (0 if this bin is empty)
-    emitter.instruction("cbnz x10, __rt_heap_alloc_small_bin_found");           // use the first available cached block in this size class or larger
+    emitter.instruction("mov x16, x9");                                         // x16 tracks the previous next-pointer slot while scanning this bin
+    emitter.label("__rt_heap_alloc_small_bin_scan");
+    emitter.instruction("ldr x10, [x16]");                                      // x10 = current cached block header or null when this bin is exhausted
+    emitter.instruction("cbz x10, __rt_heap_alloc_small_bin_next_class");       // try the next larger bin when this bin has no fitting block
+    emitter.instruction("ldr w11, [x10]");                                      // load the cached block payload size before reusing it
+    emitter.instruction("cmp x11, x0");                                         // does the cached block satisfy the requested payload size?
+    emitter.instruction("b.hs __rt_heap_alloc_small_bin_found");                // yes — reuse this cached block safely
+    emitter.instruction("add x16, x10, #16");                                   // advance the previous next-pointer slot to current->next
+    emitter.instruction("b __rt_heap_alloc_small_bin_scan");                    // keep searching this bin for a large-enough cached block
+    emitter.label("__rt_heap_alloc_small_bin_next_class");
     emitter.instruction("cmp x13, #24");                                        // have we already checked the <=64-byte bin?
     emitter.instruction("b.eq __rt_heap_alloc_fl_start");                       // yes — fall back to the general free list
     emitter.instruction("add x13, x13, #8");                                    // advance to the next larger small-bin class
@@ -71,7 +79,7 @@ pub fn emit_heap_alloc(emitter: &mut Emitter) {
 
     emitter.label("__rt_heap_alloc_small_bin_found");
     emitter.instruction("ldr x11, [x10, #16]");                                 // x11 = cached_small_block->next within this size class
-    emitter.instruction("str x11, [x9]");                                       // pop the cached block from the segregated small bin
+    emitter.instruction("str x11, [x16]");                                      // unlink the cached block from its segregated small-bin chain
     emitter.instruction("mov w13, #1");                                         // initial refcount = 1 for the reused block
     emitter.instruction("str w13, [x10, #4]");                                  // restore the live refcount in the reused header
     emitter.instruction("str xzr, [x10, #8]");                                  // reset heap kind to raw until a typed constructor overwrites it
@@ -225,9 +233,17 @@ fn emit_heap_alloc_linux_x86_64(emitter: &mut Emitter) {
     crate::codegen::abi::emit_symbol_address(emitter, "r9", "_heap_small_bins");
     emitter.instruction("add r9, r8");                                          // r9 = address of the first candidate small-bin head slot
     emitter.label("__rt_heap_alloc_small_bin_loop");
-    emitter.instruction("mov r10, QWORD PTR [r9]");                             // r10 = current cached small-bin block header or null if this bin is empty
-    emitter.instruction("test r10, r10");                                       // does this size class currently hold a cached reusable block?
-    emitter.instruction("jnz __rt_heap_alloc_small_bin_found");                 // yes — reuse the first cached block in this class or a larger one
+    emitter.instruction("mov rcx, r9");                                         // rcx tracks the previous next-pointer slot while scanning this bin
+    emitter.label("__rt_heap_alloc_small_bin_scan");
+    emitter.instruction("mov r10, QWORD PTR [rcx]");                            // r10 = current cached block header or null when this bin is exhausted
+    emitter.instruction("test r10, r10");                                       // did this bin scan run out of cached blocks?
+    emitter.instruction("jz __rt_heap_alloc_small_bin_next_class");             // try the next larger bin when this bin has no fitting block
+    emitter.instruction("mov r11d, DWORD PTR [r10]");                           // load the cached block payload size before reusing it
+    emitter.instruction("cmp r11, rax");                                        // does the cached block satisfy the requested payload size?
+    emitter.instruction("jae __rt_heap_alloc_small_bin_found");                 // yes — reuse this cached block safely
+    emitter.instruction("lea rcx, [r10 + 16]");                                 // advance the previous next-pointer slot to current->next
+    emitter.instruction("jmp __rt_heap_alloc_small_bin_scan");                  // keep searching this bin for a large-enough cached block
+    emitter.label("__rt_heap_alloc_small_bin_next_class");
     emitter.instruction("cmp r8, 24");                                          // have we already checked the largest <=64-byte cache bin?
     emitter.instruction("je __rt_heap_alloc_fl_start");                         // yes — fall back to the general free list
     emitter.instruction("add r8, 8");                                           // advance to the next larger small-bin class offset
@@ -236,7 +252,7 @@ fn emit_heap_alloc_linux_x86_64(emitter: &mut Emitter) {
 
     emitter.label("__rt_heap_alloc_small_bin_found");
     emitter.instruction("mov r11, QWORD PTR [r10 + 16]");                       // load the cached block's next pointer within this size class
-    emitter.instruction("mov QWORD PTR [r9], r11");                             // pop the cached block from the selected small bin
+    emitter.instruction("mov QWORD PTR [rcx], r11");                            // unlink the cached block from its segregated small-bin chain
     emitter.instruction("mov DWORD PTR [r10 + 4], 1");                          // restore a live refcount of one in the reused heap header
     emitter.instruction(&format!("mov r11, 0x{:x}", X86_64_HEAP_MAGIC_HI32 << 32)); // materialize the x86_64 heap marker while leaving the low kind bits clear
     emitter.instruction("mov QWORD PTR [r10 + 8], r11");                        // stamp the reused heap header as an owned raw heap allocation

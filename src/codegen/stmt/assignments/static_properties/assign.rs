@@ -53,7 +53,7 @@ pub(crate) fn emit_static_property_assign_stmt(
         return;
     }
 
-    let Some((class_name, declaring_class, prop_ty, declared)) =
+    let Some((class_name, declaring_class, prop_ty, _declared)) =
         resolve::resolve_static_property(receiver, property, ctx, emitter)
     else {
         return;
@@ -67,11 +67,18 @@ pub(crate) fn emit_static_property_assign_stmt(
     );
 
     let mut val_ty = emit_expr(value, emitter, ctx, data);
-    let boxed_to_mixed = declared
-        && matches!(prop_ty, PhpType::Mixed | PhpType::Union(_))
+    let boxed_to_mixed = matches!(prop_ty, PhpType::Mixed | PhpType::Union(_))
         && !matches!(val_ty, PhpType::Mixed | PhpType::Union(_));
-    if declared {
+    if crate::codegen::expr::can_coerce_result_to_type(&val_ty, &prop_ty) {
+        let release_mixed_after_coerce =
+            helpers::should_release_owned_mixed_after_coerce(value, &val_ty, &prop_ty);
+        if release_mixed_after_coerce {
+            abi::emit_push_reg(emitter, abi::int_result_reg(emitter));
+        }
         coerce_result_to_type(emitter, ctx, data, &val_ty, &prop_ty);
+        if release_mixed_after_coerce {
+            helpers::release_preserved_mixed_after_coercion(emitter, &prop_ty);
+        }
         val_ty = prop_ty.clone();
     }
     if !boxed_to_mixed {
@@ -95,5 +102,6 @@ pub(crate) fn emit_static_property_assign_stmt(
     } else {
         let symbol = static_property_symbol(&declaring_class, property);
         abi::emit_store_result_to_symbol(emitter, &symbol, &val_ty, true);
+        late_bound::clear_uninitialized_marker_after_static_store(emitter, &symbol, &val_ty);
     }
 }

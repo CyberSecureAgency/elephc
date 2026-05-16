@@ -14,6 +14,7 @@ use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
 use crate::codegen::expr::calls::args as call_args;
 use crate::codegen::platform::Arch;
+use crate::codegen::UNINITIALIZED_TYPED_PROPERTY_SENTINEL;
 use crate::names::method_symbol;
 use crate::parser::ast::{Expr, ExprKind, TypeExpr};
 use crate::types::PhpType;
@@ -107,6 +108,9 @@ pub(super) fn emit_new_object_core(
     // -- zero-initialize all property slots --
     for i in 0..num_props {
         let offset = 8 + i * 16;
+        let property_name = &class_info.properties[i].0;
+        let starts_uninitialized = class_info.declared_properties.contains(property_name)
+            && class_info.defaults.get(i).is_some_and(|default| default.is_none());
         match emitter.target.arch {
             Arch::AArch64 => {
                 emitter.instruction("ldr x9, [sp]");                            // peek object pointer
@@ -118,6 +122,23 @@ pub(super) fn emit_new_object_core(
                 emitter.instruction(&format!("mov QWORD PTR [r11 + {}], 0", offset)); // zero-initialize the low word of the property storage slot
                 emitter.instruction(&format!("mov QWORD PTR [r11 + {}], 0", offset + 8)); // zero-initialize the high word / runtime metadata slot
             }
+        }
+        if starts_uninitialized {
+            let marker_reg = abi::temp_int_reg(emitter.target);
+            abi::emit_load_int_immediate(emitter, marker_reg, UNINITIALIZED_TYPED_PROPERTY_SENTINEL);
+            match emitter.target.arch {
+                Arch::AArch64 => {
+                    emitter.instruction("ldr x9, [sp]");                        // peek object pointer before marking this typed property uninitialized
+                }
+                Arch::X86_64 => {
+                    emitter.instruction("mov r11, QWORD PTR [rsp]");            // peek object pointer before marking this typed property uninitialized
+                }
+            }
+            let object_reg = match emitter.target.arch {
+                Arch::AArch64 => "x9",
+                Arch::X86_64 => "r11",
+            };
+            abi::emit_store_to_address(emitter, marker_reg, object_reg, offset + 8);
         }
     }
 
@@ -236,6 +257,7 @@ pub(super) fn emit_new_object_core(
             regular_param_count,
             "constructor ref arg",
             false,
+            true,
             emitter,
             ctx,
             data,

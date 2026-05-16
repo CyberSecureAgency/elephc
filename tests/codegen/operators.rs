@@ -77,6 +77,42 @@ fn test_nested_arithmetic() {
     assert_eq!(out, "10");
 }
 
+#[test]
+fn test_constant_int_add_overflow_promotes_to_float() {
+    let out = compile_and_run("<?php echo gettype(9223372036854775807 + 1);");
+    assert_eq!(out, "double");
+}
+
+#[test]
+fn test_constant_int_multiply_overflow_promotes_to_float() {
+    let out = compile_and_run("<?php echo gettype(3037000500 * 3037000500);");
+    assert_eq!(out, "double");
+}
+
+#[test]
+fn test_runtime_int_add_overflow_promotes_to_float() {
+    let out = compile_and_run("<?php $a = 9223372036854775807; $b = 1; echo gettype($a + $b);");
+    assert_eq!(out, "double");
+}
+
+#[test]
+fn test_runtime_int_multiply_overflow_promotes_to_float() {
+    let out = compile_and_run("<?php $a = 3037000500; $b = 3037000500; echo gettype($a * $b);");
+    assert_eq!(out, "double");
+}
+
+#[test]
+fn test_runtime_int_arithmetic_without_overflow_stays_integer() {
+    let out = compile_and_run("<?php $a = 40; $b = 2; echo gettype($a + $b) . ':' . ($a + $b);");
+    assert_eq!(out, "integer:42");
+}
+
+#[test]
+fn test_runtime_overflow_result_participates_in_later_arithmetic() {
+    let out = compile_and_run("<?php $a = 9223372036854775807; $b = 1; $c = $a + $b; echo gettype($c + 1);");
+    assert_eq!(out, "double");
+}
+
 // --- Phase 3: Concatenation ---
 
 #[test]
@@ -220,6 +256,66 @@ fn test_loose_eq_null_false() {
 }
 
 #[test]
+fn test_constant_loose_eq_non_numeric_strings_compare_by_bytes() {
+    let out = compile_and_run("<?php var_dump(\"abc\" == \"def\");");
+    assert_eq!(out, "bool(false)\n");
+}
+
+#[test]
+fn test_constant_loose_eq_numeric_strings_compare_numerically() {
+    let out = compile_and_run("<?php var_dump(\"0\" == \"00\");");
+    assert_eq!(out, "bool(true)\n");
+}
+
+#[test]
+fn test_constant_loose_eq_number_and_non_numeric_string_is_false() {
+    let out = compile_and_run("<?php var_dump(0 == \"abc\");");
+    assert_eq!(out, "bool(false)\n");
+}
+
+#[test]
+fn test_constant_loose_eq_number_and_numeric_string_is_true() {
+    let out = compile_and_run("<?php var_dump(10 == \"1e1\");");
+    assert_eq!(out, "bool(true)\n");
+}
+
+#[test]
+fn test_runtime_loose_eq_non_numeric_strings_compare_by_bytes() {
+    let out = compile_and_run("<?php $a = \"abc\"; $b = \"def\"; var_dump($a == $b);");
+    assert_eq!(out, "bool(false)\n");
+}
+
+#[test]
+fn test_runtime_loose_eq_numeric_strings_compare_numerically() {
+    let out = compile_and_run("<?php $a = \"0\"; $b = \"00\"; var_dump($a == $b);");
+    assert_eq!(out, "bool(true)\n");
+}
+
+#[test]
+fn test_runtime_loose_eq_number_and_non_numeric_string_is_false() {
+    let out = compile_and_run("<?php $n = 0; $s = \"abc\"; var_dump($n == $s);");
+    assert_eq!(out, "bool(false)\n");
+}
+
+#[test]
+fn test_runtime_loose_eq_number_and_numeric_string_is_true() {
+    let out = compile_and_run("<?php $n = 10; $s = \"1e1\"; var_dump($n == $s);");
+    assert_eq!(out, "bool(true)\n");
+}
+
+#[test]
+fn test_runtime_loose_eq_bool_and_string_uses_truthiness() {
+    let out = compile_and_run("<?php $s = \"abc\"; var_dump(true == $s); var_dump(false == $s);");
+    assert_eq!(out, "bool(true)\nbool(false)\n");
+}
+
+#[test]
+fn test_runtime_loose_eq_null_and_string_uses_empty_string_rule() {
+    let out = compile_and_run("<?php $empty = \"\"; $zero = \"0\"; var_dump(null == $empty); var_dump(null == $zero);");
+    assert_eq!(out, "bool(true)\nbool(false)\n");
+}
+
+#[test]
 fn test_less_than() {
     let out = compile_and_run("<?php echo 1 < 2;");
     assert_eq!(out, "1");
@@ -242,4 +338,3 @@ fn test_greater_equal() {
     let out = compile_and_run("<?php echo 1 >= 2;");
     assert_eq!(out, "");
 }
-

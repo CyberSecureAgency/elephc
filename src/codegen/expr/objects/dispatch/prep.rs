@@ -29,6 +29,7 @@ pub(super) fn eval_and_push_args(
         super::super::super::calls::args::regular_param_count(sig, args.len()),
         "method ref arg",
         true,
+        true,
         emitter,
         ctx,
         data,

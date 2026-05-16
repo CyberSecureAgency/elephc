@@ -12,7 +12,7 @@ use super::super::super::abi;
 use super::super::super::context::Context;
 use super::super::super::data_section::DataSection;
 use super::super::super::emit::Emitter;
-use super::super::super::expr::emit_expr;
+use super::super::super::expr::{coerce_result_to_type, emit_expr};
 use super::super::super::functions;
 use super::super::PhpType;
 use crate::names::Name;
@@ -78,6 +78,27 @@ pub(crate) fn emit_assign_stmt(
         if ref_needs_mixed_box {
             super::super::super::emit_box_current_value_as_mixed(emitter, &ty);
             ty = PhpType::Mixed;
+        } else if matches!(ty, PhpType::Mixed | PhpType::Union(_))
+            && !matches!(old_ty, PhpType::Mixed | PhpType::Union(_))
+            && super::super::super::expr::can_coerce_result_to_type(&ty, &old_ty)
+        {
+            let release_mixed_after_coerce =
+                super::super::helpers::should_release_owned_mixed_after_coerce(
+                    value,
+                    &ty,
+                    &old_ty,
+                );
+            if release_mixed_after_coerce {
+                abi::emit_push_reg(emitter, abi::int_result_reg(emitter));
+            }
+            coerce_result_to_type(emitter, ctx, data, &ty, &old_ty);
+            if release_mixed_after_coerce {
+                super::super::helpers::release_preserved_mixed_after_coercion(
+                    emitter,
+                    &old_ty,
+                );
+            }
+            ty = old_ty.clone();
         } else {
             super::super::helpers::retain_borrowed_heap_result(emitter, value, &ty);
         }
@@ -127,6 +148,28 @@ pub(crate) fn emit_assign_stmt(
         };
         let offset = var.stack_offset;
         let old_ty = var.ty.clone();
+        if matches!(ty, PhpType::Mixed | PhpType::Union(_))
+            && !matches!(old_ty, PhpType::Mixed | PhpType::Union(_))
+            && super::super::super::expr::can_coerce_result_to_type(&ty, &old_ty)
+        {
+            let release_mixed_after_coerce =
+                super::super::helpers::should_release_owned_mixed_after_coerce(
+                    value,
+                    &ty,
+                    &old_ty,
+                );
+            if release_mixed_after_coerce {
+                abi::emit_push_reg(emitter, abi::int_result_reg(emitter));
+            }
+            coerce_result_to_type(emitter, ctx, data, &ty, &old_ty);
+            if release_mixed_after_coerce {
+                super::super::helpers::release_preserved_mixed_after_coercion(
+                    emitter,
+                    &old_ty,
+                );
+            }
+            ty = old_ty.clone();
+        }
 
         if ctx.static_vars.contains(name) {
             if !dest_needs_mixed_box {

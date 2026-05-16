@@ -11,9 +11,10 @@
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
-use crate::codegen::expr::emit_expr;
+use crate::codegen::expr::{coerce_result_to_type, emit_expr, expr_result_heap_ownership};
 use crate::codegen::{abi, platform::Arch};
-use crate::parser::ast::Expr;
+use crate::codegen::context::HeapOwnership;
+use crate::parser::ast::{BinOp, Expr, ExprKind};
 use crate::types::PhpType;
 
 pub fn emit(
@@ -30,7 +31,27 @@ pub fn emit(
     abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the validated destination pointer while the stored value expression is evaluated
 
     // -- evaluate value to write --
-    emit_expr(&args[1], emitter, ctx, data);
+    let value_ty = emit_expr(&args[1], emitter, ctx, data);
+    let release_mixed_after_coerce = matches!(value_ty, PhpType::Mixed | PhpType::Union(_))
+        && (expr_result_heap_ownership(&args[1]) == HeapOwnership::Owned
+            || matches!(
+                args[1].kind,
+                ExprKind::BinaryOp {
+                    op: BinOp::Add | BinOp::Sub | BinOp::Mul,
+                    ..
+                }
+            ));
+    if release_mixed_after_coerce {
+        abi::emit_push_reg(emitter, abi::int_result_reg(emitter));              // preserve the boxed Mixed value so it can be released after integer coercion
+    }
+    coerce_result_to_type(emitter, ctx, data, &value_ty, &PhpType::Int);
+    if release_mixed_after_coerce {
+        abi::emit_push_reg(emitter, abi::int_result_reg(emitter));              // preserve the coerced integer payload while releasing the temporary Mixed box
+        abi::emit_load_temporary_stack_slot(emitter, abi::int_result_reg(emitter), 16);
+        abi::emit_decref_if_refcounted(emitter, &PhpType::Mixed);
+        abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));               // restore the coerced integer payload after temporary Mixed cleanup
+        abi::emit_release_temporary_stack(emitter, 16);
+    }
 
     // -- store value at pointer address --
     match emitter.target.arch {

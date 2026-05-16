@@ -397,8 +397,9 @@ pub(super) fn emit_static_property_access(
     property: &str,
     emitter: &mut Emitter,
     ctx: &mut Context,
+    data: &mut DataSection,
 ) -> PhpType {
-    static_properties::emit_static_property_access(receiver, property, emitter, ctx)
+    static_properties::emit_static_property_access(receiver, property, emitter, ctx, data)
 }
 
 pub(super) fn emit_enum_case(

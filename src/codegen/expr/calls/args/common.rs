@@ -9,8 +9,12 @@
 //! - Argument checks must happen at PHP-observable points without skipping later side effects.
 
 use crate::codegen::emit::Emitter;
-use crate::codegen::{abi, context::Context, data_section::DataSection};
-use crate::parser::ast::Expr;
+use crate::codegen::{
+    abi,
+    context::{Context, HeapOwnership},
+    data_section::DataSection,
+};
+use crate::parser::ast::{BinOp, Expr, ExprKind};
 use crate::types::{FunctionSig, PhpType};
 
 pub(crate) fn declared_target_ty<'a>(
@@ -31,6 +35,18 @@ pub(crate) fn declared_target_ty<'a>(
             None
         }
     })
+}
+
+pub(crate) fn call_target_ty<'a>(
+    sig: Option<&'a FunctionSig>,
+    param_idx: usize,
+    include_inferred: bool,
+) -> Option<&'a PhpType> {
+    if include_inferred {
+        sig.and_then(|sig| sig.params.get(param_idx).map(|(_, ty)| ty))
+    } else {
+        declared_target_ty(sig, param_idx)
+    }
 }
 
 pub(crate) fn push_arg_value(emitter: &mut Emitter, ty: &PhpType) {
@@ -79,6 +95,9 @@ pub(crate) fn coerce_current_value_to_target(
 ) -> (PhpType, bool) {
     let source_repr = source_ty.codegen_repr();
     let pushed_ty = target_ty
+        .filter(|target_ty| {
+            super::super::super::can_coerce_result_to_type(source_ty, target_ty)
+        })
         .map(PhpType::codegen_repr)
         .or_else(|| {
             if matches!(source_repr, PhpType::Void) {
@@ -110,11 +129,71 @@ pub(crate) fn push_expr_arg(
     data: &mut DataSection,
 ) -> PhpType {
     let source_ty = super::super::super::emit_expr(arg, emitter, ctx, data);
+    let release_mixed_after_coerce =
+        should_release_owned_mixed_after_arg_coerce(arg, &source_ty, target_ty);
+    if release_mixed_after_coerce {
+        abi::emit_push_reg(emitter, abi::int_result_reg(emitter));
+    }
     let (pushed_ty, boxed_to_mixed) =
         coerce_current_value_to_target(emitter, ctx, data, &source_ty, target_ty);
+    if release_mixed_after_coerce {
+        release_preserved_mixed_after_arg_coercion(emitter, &pushed_ty);
+    }
     if !boxed_to_mixed {
         super::super::super::retain_borrowed_heap_arg(emitter, arg, &source_ty);
     }
     push_arg_value(emitter, &pushed_ty);
     pushed_ty
+}
+
+fn should_release_owned_mixed_after_arg_coerce(
+    arg: &Expr,
+    source_ty: &PhpType,
+    target_ty: Option<&PhpType>,
+) -> bool {
+    let source_repr = source_ty.codegen_repr();
+    let Some(target_repr) = target_ty.map(PhpType::codegen_repr) else {
+        return false;
+    };
+    matches!(source_repr, PhpType::Mixed | PhpType::Union(_))
+        && !matches!(target_repr, PhpType::Mixed | PhpType::Union(_))
+        && target_ty.is_some_and(|target_ty| {
+            super::super::super::can_coerce_result_to_type(source_ty, target_ty)
+        })
+        && (super::super::super::expr_result_heap_ownership(arg) == HeapOwnership::Owned
+            || matches!(
+                arg.kind,
+                ExprKind::BinaryOp {
+                    op: BinOp::Add | BinOp::Sub | BinOp::Mul,
+                    ..
+                }
+            ))
+}
+
+fn release_preserved_mixed_after_arg_coercion(emitter: &mut Emitter, target_ty: &PhpType) {
+    match target_ty.codegen_repr() {
+        PhpType::Float => {
+            abi::emit_push_float_reg(emitter, abi::float_result_reg(emitter));
+            abi::emit_load_temporary_stack_slot(emitter, abi::int_result_reg(emitter), 16);
+            abi::emit_decref_if_refcounted(emitter, &PhpType::Mixed);
+            abi::emit_pop_float_reg(emitter, abi::float_result_reg(emitter));
+            abi::emit_release_temporary_stack(emitter, 16);
+        }
+        PhpType::Str => {
+            let (ptr_reg, len_reg) = abi::string_result_regs(emitter);
+            abi::emit_call_label(emitter, "__rt_str_persist");                        // detach string casts from the mixed cell before releasing the boxed owner
+            abi::emit_push_reg_pair(emitter, ptr_reg, len_reg);
+            abi::emit_load_temporary_stack_slot(emitter, abi::int_result_reg(emitter), 16);
+            abi::emit_decref_if_refcounted(emitter, &PhpType::Mixed);
+            abi::emit_pop_reg_pair(emitter, ptr_reg, len_reg);
+            abi::emit_release_temporary_stack(emitter, 16);
+        }
+        _ => {
+            abi::emit_push_reg(emitter, abi::int_result_reg(emitter));
+            abi::emit_load_temporary_stack_slot(emitter, abi::int_result_reg(emitter), 16);
+            abi::emit_decref_if_refcounted(emitter, &PhpType::Mixed);
+            abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));
+            abi::emit_release_temporary_stack(emitter, 16);
+        }
+    }
 }

@@ -30,7 +30,7 @@ use super::emit::Emitter;
 use crate::parser::ast::{BinOp, Expr, ExprKind};
 use crate::types::PhpType;
 
-pub(crate) use helpers::coerce_result_to_type;
+pub(crate) use helpers::{can_coerce_result_to_type, coerce_result_to_type};
 pub(crate) use objects::{emit_method_call_with_pushed_args, push_magic_property_name_arg};
 pub(crate) use ownership::expr_result_heap_ownership;
 pub use coerce::{coerce_null_to_zero, coerce_to_string, coerce_to_truthiness};
@@ -218,7 +218,7 @@ pub fn emit_expr(
             objects::emit_nullsafe_property_access(object, property, emitter, ctx, data)
         }
         ExprKind::StaticPropertyAccess { receiver, property } => {
-            objects::emit_static_property_access(receiver, property, emitter, ctx)
+            objects::emit_static_property_access(receiver, property, emitter, ctx, data)
         }
         ExprKind::MethodCall {
             object,

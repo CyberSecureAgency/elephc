@@ -14,6 +14,7 @@ use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
 use crate::codegen::functions;
 use crate::codegen::platform::Arch;
+use crate::codegen::UNINITIALIZED_TYPED_PROPERTY_SENTINEL;
 use crate::parser::ast::Expr;
 use crate::types::PhpType;
 
@@ -331,8 +332,11 @@ pub(super) fn emit_loaded_object_property_access(
         property,
         prop_ty,
         offset,
+        class_info.declared_properties.contains(property),
         false,
         class_info.reference_properties.contains(property),
+        ctx,
+        data,
         emitter,
     )
 }
@@ -342,8 +346,11 @@ fn emit_loaded_object_property_value(
     property: &str,
     prop_ty: PhpType,
     offset: usize,
+    is_declared: bool,
     needs_deref: bool,
     is_reference: bool,
+    ctx: &mut Context,
+    data: &mut DataSection,
     emitter: &mut Emitter,
 ) -> PhpType {
     if needs_deref {
@@ -357,6 +364,12 @@ fn emit_loaded_object_property_value(
     }
 
     let object_reg = abi::int_result_reg(emitter);
+
+    if is_declared {
+        emit_uninitialized_typed_property_guard(
+            class_name, property, offset, object_reg, emitter, ctx, data,
+        );
+    }
 
     if is_reference {
         let pointer_reg = abi::symbol_scratch_reg(emitter);
@@ -418,4 +431,65 @@ fn emit_loaded_object_property_value(
     }
 
     prop_ty
+}
+
+fn emit_uninitialized_typed_property_guard(
+    class_name: &str,
+    property: &str,
+    offset: usize,
+    object_reg: &str,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) {
+    let initialized_label = ctx.next_label("typed_prop_initialized");
+    let marker_reg = abi::secondary_scratch_reg(emitter);
+    let sentinel_reg = abi::tertiary_scratch_reg(emitter);
+    abi::emit_load_from_address(emitter, marker_reg, object_reg, offset + 8);
+    abi::emit_load_int_immediate(emitter, sentinel_reg, UNINITIALIZED_TYPED_PROPERTY_SENTINEL);
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction(&format!("cmp {}, {}", marker_reg, sentinel_reg)); // check whether the typed property still carries the uninitialized marker
+            emitter.instruction(&format!("b.ne {}", initialized_label));        // continue the property read once the slot has been initialized
+        }
+        Arch::X86_64 => {
+            emitter.instruction(&format!("cmp {}, {}", marker_reg, sentinel_reg)); // check whether the typed property still carries the uninitialized marker
+            emitter.instruction(&format!("jne {}", initialized_label));         // continue the property read once the slot has been initialized
+        }
+    }
+    emit_uninitialized_typed_property_fatal(class_name, property, emitter, data);
+    emitter.label(&initialized_label);
+}
+
+fn emit_uninitialized_typed_property_fatal(
+    class_name: &str,
+    property: &str,
+    emitter: &mut Emitter,
+    data: &mut DataSection,
+) {
+    let message = format!(
+        "Fatal error: Typed property {}::${} must not be accessed before initialization\n",
+        class_name, property
+    );
+    let (label, len) = data.add_string(message.as_bytes());
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction("mov x0, #2");                                  // fd = stderr for the typed-property initialization fatal
+            abi::emit_symbol_address(emitter, "x1", &label);                    // point write() at the typed-property initialization diagnostic
+            emitter.instruction(&format!("mov x2, #{}", len));                  // pass the diagnostic byte length to write()
+            emitter.syscall(4);
+            emitter.instruction("mov x0, #1");                                  // exit status 1 indicates abnormal termination
+            emitter.syscall(1);
+        }
+        Arch::X86_64 => {
+            abi::emit_symbol_address(emitter, "rsi", &label);                   // point write() at the typed-property initialization diagnostic
+            emitter.instruction(&format!("mov edx, {}", len));                  // pass the diagnostic byte length to write()
+            emitter.instruction("mov edi, 2");                                  // fd = stderr for the typed-property initialization fatal
+            emitter.instruction("mov eax, 1");                                  // Linux x86_64 syscall 1 = write
+            emitter.instruction("syscall");                                     // emit the fatal diagnostic before terminating
+            emitter.instruction("mov edi, 1");                                  // exit status 1 indicates abnormal termination
+            emitter.instruction("mov eax, 60");                                 // Linux x86_64 syscall 60 = exit
+            emitter.instruction("syscall");                                     // terminate after the typed-property initialization fatal
+        }
+    }
 }

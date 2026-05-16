@@ -41,6 +41,8 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter) {
     strings::emit_concat(emitter);
     strings::emit_atoi(emitter);
     strings::emit_str_eq(emitter);
+    strings::emit_str_to_number(emitter);
+    strings::emit_str_loose_eq(emitter);
     strings::emit_number_format(emitter);
     strings::emit_strcopy(emitter);
     strings::emit_str_persist(emitter);
@@ -248,6 +250,7 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter) {
     arrays::emit_mixed_count(emitter);
     arrays::emit_mixed_free_deep(emitter);
     arrays::emit_mixed_is_empty(emitter);
+    arrays::emit_mixed_numeric_binops(emitter);
     arrays::emit_mixed_strict_eq(emitter);
     arrays::emit_mixed_unbox(emitter);
     arrays::emit_mixed_write_stdout(emitter);

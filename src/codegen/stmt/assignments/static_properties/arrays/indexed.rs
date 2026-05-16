@@ -13,7 +13,7 @@ use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
-use crate::codegen::expr::emit_expr;
+use crate::codegen::expr::{coerce_result_to_type, emit_expr};
 use crate::codegen::platform::Arch;
 use crate::codegen::stmt::helpers;
 use crate::names::static_property_symbol;
@@ -25,6 +25,7 @@ pub(super) fn emit_static_indexed_array_assign(
     declaring_class: &str,
     branches: &[StaticPropertyBranch],
     class_id_saved: bool,
+    prop_ty: &PhpType,
     elem_ty: &PhpType,
     index: &Expr,
     value: &Expr,
@@ -41,6 +42,7 @@ pub(super) fn emit_static_indexed_array_assign(
                 branches,
                 class_id_saved,
                 0,
+                prop_ty,
                 "x0",
                 emitter,
                 ctx,
@@ -61,6 +63,7 @@ pub(super) fn emit_static_indexed_array_assign(
                 branches,
                 class_id_saved,
                 64,
+                prop_ty,
                 "x10",
                 emitter,
                 ctx,
@@ -82,6 +85,7 @@ pub(super) fn emit_static_indexed_array_assign(
                 branches,
                 class_id_saved,
                 0,
+                prop_ty,
                 "rax",
                 emitter,
                 ctx,
@@ -101,6 +105,7 @@ pub(super) fn emit_static_indexed_array_assign(
                 branches,
                 class_id_saved,
                 48,
+                prop_ty,
                 "r10",
                 emitter,
                 ctx,
@@ -121,6 +126,7 @@ fn publish_static_array_pointer(
     branches: &[StaticPropertyBranch],
     class_id_saved: bool,
     class_id_stack_offset: usize,
+    prop_ty: &PhpType,
     source_reg: &str,
     emitter: &mut Emitter,
     ctx: &mut Context,
@@ -141,12 +147,14 @@ fn publish_static_array_pointer(
             source_reg,
             declaring_class,
             branches,
+            prop_ty,
             emitter,
             ctx,
         );
     } else {
         let symbol = static_property_symbol(declaring_class, property);
         abi::emit_store_reg_to_symbol(emitter, source_reg, &symbol, 0);
+        late_bound::clear_uninitialized_marker_after_static_store(emitter, &symbol, prop_ty);
     }
 }
 
@@ -185,6 +193,21 @@ fn prepare_static_array_assign_value(
     elem_ty: &PhpType,
 ) -> PhpType {
     let mut val_ty = emit_expr(value, emitter, ctx, data);
+    if matches!(val_ty, PhpType::Mixed | PhpType::Union(_))
+        && !matches!(elem_ty, PhpType::Mixed | PhpType::Union(_))
+        && crate::codegen::expr::can_coerce_result_to_type(&val_ty, elem_ty)
+    {
+        let release_mixed_after_coerce =
+            helpers::should_release_owned_mixed_after_coerce(value, &val_ty, elem_ty);
+        if release_mixed_after_coerce {
+            abi::emit_push_reg(emitter, abi::int_result_reg(emitter));
+        }
+        coerce_result_to_type(emitter, ctx, data, &val_ty, elem_ty);
+        if release_mixed_after_coerce {
+            helpers::release_preserved_mixed_after_coercion(emitter, elem_ty);
+        }
+        val_ty = elem_ty.clone();
+    }
     let boxed_iterable =
         crate::codegen::emit_box_iterable_value_for_mixed_container(emitter, &mut val_ty);
     if !boxed_iterable

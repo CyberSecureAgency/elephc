@@ -10,8 +10,10 @@
 
 use crate::codegen::abi;
 use crate::codegen::context::Context;
+use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
+use crate::codegen::UNINITIALIZED_TYPED_PROPERTY_SENTINEL;
 use crate::names::static_property_symbol;
 use crate::parser::ast::{StaticReceiver, Visibility};
 use crate::types::PhpType;
@@ -32,6 +34,7 @@ pub(super) fn emit_static_property_access(
     property: &str,
     emitter: &mut Emitter,
     ctx: &mut Context,
+    data: &mut DataSection,
 ) -> PhpType {
     let Some((class_name, declaring_class, prop_ty)) =
         resolve_static_property(receiver, property, ctx, emitter)
@@ -43,6 +46,9 @@ pub(super) fn emit_static_property_access(
     let branches = dynamic_static_property_branches(receiver, property, &declaring_class, ctx);
     if branches.is_empty() {
         let symbol = static_property_symbol(&declaring_class, property);
+        if static_property_has_declared_type(&declaring_class, property, ctx) {
+            emit_uninitialized_static_property_guard(&declaring_class, property, &symbol, emitter, ctx, data);
+        }
         abi::emit_load_symbol_to_result(emitter, &symbol, &prop_ty);
     } else if emit_called_class_id_into(emitter, ctx, class_id_work_reg(emitter)) {
         emit_dynamic_load_static_property_result(
@@ -53,10 +59,14 @@ pub(super) fn emit_static_property_access(
             &prop_ty,
             emitter,
             ctx,
+            data,
         );
     } else {
         emitter.comment("WARNING: missing forwarded called class id");
         let symbol = static_property_symbol(&declaring_class, property);
+        if static_property_has_declared_type(&declaring_class, property, ctx) {
+            emit_uninitialized_static_property_guard(&declaring_class, property, &symbol, emitter, ctx, data);
+        }
         abi::emit_load_symbol_to_result(emitter, &symbol, &prop_ty);
     }
     prop_ty
@@ -70,6 +80,7 @@ fn emit_dynamic_load_static_property_result(
     prop_ty: &PhpType,
     emitter: &mut Emitter,
     ctx: &mut Context,
+    data: &mut DataSection,
 ) {
     let done = ctx.next_label("static_prop_load_done");
     let mut labels = Vec::new();
@@ -79,6 +90,16 @@ fn emit_dynamic_load_static_property_result(
         labels.push((label, branch));
     }
     let fallback_symbol = static_property_symbol(fallback_declaring_class, property);
+    if static_property_has_declared_type(fallback_declaring_class, property, ctx) {
+        emit_uninitialized_static_property_guard(
+            fallback_declaring_class,
+            property,
+            &fallback_symbol,
+            emitter,
+            ctx,
+            data,
+        );
+    }
     abi::emit_load_symbol_to_result(emitter, &fallback_symbol, prop_ty);
     emit_jump(emitter, &done);
     for (label, branch) in labels {
@@ -88,6 +109,16 @@ fn emit_dynamic_load_static_property_result(
             continue;
         }
         let symbol = static_property_symbol(&branch.declaring_class, property);
+        if static_property_has_declared_type(&branch.declaring_class, property, ctx) {
+            emit_uninitialized_static_property_guard(
+                &branch.declaring_class,
+                property,
+                &symbol,
+                emitter,
+                ctx,
+                data,
+            );
+        }
         abi::emit_load_symbol_to_result(emitter, &symbol, prop_ty);
         emit_jump(emitter, &done);
     }
@@ -294,6 +325,76 @@ fn emit_private_static_property_access_fatal(emitter: &mut Emitter) {
             emitter.instruction("mov edi, 1");                                  // exit status 1 indicates abnormal termination
             emitter.instruction("mov eax, 60");                                 // Linux x86_64 syscall 60 = exit
             emitter.instruction("syscall");                                     // terminate the process after reporting the private static property access
+        }
+    }
+}
+
+fn static_property_has_declared_type(
+    declaring_class: &str,
+    property: &str,
+    ctx: &Context,
+) -> bool {
+    ctx.classes
+        .get(declaring_class)
+        .is_some_and(|class_info| class_info.declared_static_properties.contains(property))
+}
+
+fn emit_uninitialized_static_property_guard(
+    class_name: &str,
+    property: &str,
+    symbol: &str,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) {
+    let initialized_label = ctx.next_label("static_prop_initialized");
+    let marker_reg = abi::secondary_scratch_reg(emitter);
+    let sentinel_reg = abi::tertiary_scratch_reg(emitter);
+    abi::emit_load_symbol_to_reg(emitter, marker_reg, symbol, 8);
+    abi::emit_load_int_immediate(emitter, sentinel_reg, UNINITIALIZED_TYPED_PROPERTY_SENTINEL);
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction(&format!("cmp {}, {}", marker_reg, sentinel_reg)); // check whether the static typed property is still uninitialized
+            emitter.instruction(&format!("b.ne {}", initialized_label));        // continue the static property read once initialized
+        }
+        Arch::X86_64 => {
+            emitter.instruction(&format!("cmp {}, {}", marker_reg, sentinel_reg)); // check whether the static typed property is still uninitialized
+            emitter.instruction(&format!("jne {}", initialized_label));         // continue the static property read once initialized
+        }
+    }
+    emit_uninitialized_static_property_fatal(class_name, property, emitter, data);
+    emitter.label(&initialized_label);
+}
+
+fn emit_uninitialized_static_property_fatal(
+    class_name: &str,
+    property: &str,
+    emitter: &mut Emitter,
+    data: &mut DataSection,
+) {
+    let message = format!(
+        "Fatal error: Typed static property {}::${} must not be accessed before initialization\n",
+        class_name, property
+    );
+    let (label, len) = data.add_string(message.as_bytes());
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction("mov x0, #2");                                  // fd = stderr for the static typed-property initialization fatal
+            abi::emit_symbol_address(emitter, "x1", &label);                    // point write() at the static typed-property diagnostic
+            emitter.instruction(&format!("mov x2, #{}", len));                  // pass the diagnostic byte length to write()
+            emitter.syscall(4);
+            emitter.instruction("mov x0, #1");                                  // exit status 1 indicates abnormal termination
+            emitter.syscall(1);
+        }
+        Arch::X86_64 => {
+            abi::emit_symbol_address(emitter, "rsi", &label);                   // point write() at the static typed-property diagnostic
+            emitter.instruction(&format!("mov edx, {}", len));                  // pass the diagnostic byte length to write()
+            emitter.instruction("mov edi, 2");                                  // fd = stderr for the static typed-property initialization fatal
+            emitter.instruction("mov eax, 1");                                  // Linux x86_64 syscall 1 = write
+            emitter.instruction("syscall");                                     // emit the fatal diagnostic before terminating
+            emitter.instruction("mov edi, 1");                                  // exit status 1 indicates abnormal termination
+            emitter.instruction("mov eax, 60");                                 // Linux x86_64 syscall 60 = exit
+            emitter.instruction("syscall");                                     // terminate after the static typed-property initialization fatal
         }
     }
 }

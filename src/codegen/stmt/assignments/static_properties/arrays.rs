@@ -100,12 +100,14 @@ pub(crate) fn emit_static_property_array_push_stmt(
             abi::int_result_reg(emitter),
             &declaring_class,
             &branches,
+            &prop_ty,
             emitter,
             ctx,
         );
     } else {
         let symbol = static_property_symbol(&declaring_class, property);
         abi::emit_store_reg_to_symbol(emitter, abi::int_result_reg(emitter), &symbol, 0);
+        late_bound::clear_uninitialized_marker_after_static_store(emitter, &symbol, &prop_ty);
     }
 }
 
@@ -191,6 +193,7 @@ pub(crate) fn emit_static_property_array_assign_stmt(
         &declaring_class,
         &branches,
         class_id_saved,
+        &prop_ty,
         &elem_ty,
         index,
         value,

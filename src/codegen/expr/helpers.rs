@@ -53,7 +53,27 @@ pub(crate) fn coerce_result_to_type(
     if source_ty == target_ty {
         return;
     }
-    if matches!(target_ty, PhpType::Mixed | PhpType::Union(_)) {
+    if matches!(source_ty, PhpType::Mixed | PhpType::Union(_)) {
+        match target_ty.codegen_repr() {
+            PhpType::Int | PhpType::Resource(_) => {
+                crate::codegen::abi::emit_call_label(emitter, "__rt_mixed_cast_int");
+            }
+            PhpType::Pointer(_) => {
+                crate::codegen::abi::emit_call_label(emitter, "__rt_mixed_cast_int");
+            }
+            PhpType::Bool => {
+                crate::codegen::abi::emit_call_label(emitter, "__rt_mixed_cast_bool");
+            }
+            PhpType::Float => {
+                crate::codegen::abi::emit_call_label(emitter, "__rt_mixed_cast_float");
+            }
+            PhpType::Str => {
+                super::coerce_to_string(emitter, ctx, data, source_ty);
+            }
+            PhpType::Mixed | PhpType::Union(_) => {}
+            _ => {}
+        }
+    } else if matches!(target_ty, PhpType::Mixed | PhpType::Union(_)) {
         crate::codegen::emit_box_current_value_as_mixed(emitter, source_ty);
     } else if *target_ty == PhpType::Str {
         super::coerce_to_string(emitter, ctx, data, source_ty);
@@ -65,4 +85,27 @@ pub(crate) fn coerce_result_to_type(
         }
         crate::codegen::abi::emit_int_result_to_float_result(emitter);          // convert the integer-like result into the active target float-result register
     }
+}
+
+pub(crate) fn can_coerce_result_to_type(source_ty: &PhpType, target_ty: &PhpType) -> bool {
+    if source_ty == target_ty {
+        return true;
+    }
+    if matches!(source_ty, PhpType::Mixed | PhpType::Union(_)) {
+        return matches!(
+            target_ty.codegen_repr(),
+            PhpType::Int
+                | PhpType::Resource(_)
+                | PhpType::Pointer(_)
+                | PhpType::Bool
+                | PhpType::Float
+                | PhpType::Str
+                | PhpType::Mixed
+                | PhpType::Union(_)
+        );
+    }
+    matches!(target_ty, PhpType::Mixed | PhpType::Union(_))
+        || *target_ty == PhpType::Str
+        || (*target_ty == PhpType::Float
+            && matches!(source_ty, PhpType::Int | PhpType::Bool | PhpType::Void))
 }

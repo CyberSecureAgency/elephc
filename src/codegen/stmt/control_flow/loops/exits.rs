@@ -40,7 +40,27 @@ pub(crate) fn emit_return_stmt(
             crate::codegen::abi::emit_call_label(emitter, "__rt_str_persist");   // persist borrowed string before locals are freed
         }
         let target_ty = ctx.return_type.clone();
-        coerce_result_to_type(emitter, ctx, data, &ty, &target_ty);
+        if crate::codegen::expr::can_coerce_result_to_type(&ty, &target_ty) {
+            let release_mixed_after_coerce = !matches!(target_ty, PhpType::Mixed | PhpType::Union(_))
+                && super::super::super::helpers::should_release_owned_mixed_after_coerce(
+                    e,
+                    &ty,
+                    &target_ty,
+                );
+            if release_mixed_after_coerce {
+                crate::codegen::abi::emit_push_reg(
+                    emitter,
+                    crate::codegen::abi::int_result_reg(emitter),
+                );
+            }
+            coerce_result_to_type(emitter, ctx, data, &ty, &target_ty);
+            if release_mixed_after_coerce {
+                super::super::super::helpers::release_preserved_mixed_after_coercion(
+                    emitter,
+                    &target_ty,
+                );
+            }
+        }
     }
     if let Some(label) = &ctx.return_label {
         let sp_total: usize = ctx.loop_stack.iter().map(|l| l.sp_adjust).sum();

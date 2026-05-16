@@ -134,17 +134,31 @@ pub(super) fn emit_numeric_binop(
     data: &mut DataSection,
 ) -> PhpType {
     let left_ty = emit_expr(left, emitter, ctx, data);
-    coerce_numeric_mixed_to_int(emitter, &left_ty);
-    let use_float = left_ty == PhpType::Float;
+    let dynamic_candidate = matches!(op, BinOp::Add | BinOp::Sub | BinOp::Mul);
+    let left_stack_ty = if dynamic_candidate && left_ty == PhpType::Void {
+        coerce_null_to_zero(emitter, &left_ty);
+        PhpType::Int
+    } else if dynamic_candidate {
+        left_ty.clone()
+    } else {
+        coerce_numeric_mixed_to_int(emitter, &left_ty);
+        left_ty.clone()
+    };
+    let use_float = left_stack_ty == PhpType::Float;
     if use_float {
         abi::emit_push_float_reg(emitter, abi::float_result_reg(emitter));
     } else {
-        abi::emit_push_reg(emitter, abi::int_result_reg(emitter));
+        abi::emit_push_result_value(emitter, &left_stack_ty);
     }
     let right_ty = emit_expr(right, emitter, ctx, data);
+
+    if should_emit_mixed_numeric_binop(op, &left_stack_ty, &right_ty) {
+        return emit_mixed_numeric_binop(op, &left_stack_ty, &right_ty, emitter);
+    }
+
     coerce_numeric_mixed_to_int(emitter, &right_ty);
 
-    if left_ty == PhpType::Float || right_ty == PhpType::Float || *op == BinOp::Div {
+    if left_stack_ty == PhpType::Float || right_ty == PhpType::Float || *op == BinOp::Div {
         if right_ty != PhpType::Float {
             emit_promote_int_to_float(
                 emitter,
@@ -153,7 +167,7 @@ pub(super) fn emit_numeric_binop(
             );
         }
         abi::emit_push_float_reg(emitter, abi::float_result_reg(emitter));
-        if left_ty == PhpType::Float {
+        if left_stack_ty == PhpType::Float {
             let left_float_reg = match emitter.target.arch {
                 Arch::AArch64 => "d1",
                 Arch::X86_64 => "xmm1",
@@ -208,6 +222,116 @@ pub(super) fn emit_numeric_binop(
             _ => unreachable!(),
         }
         PhpType::Int
+    }
+}
+
+fn should_emit_mixed_numeric_binop(op: &BinOp, left_ty: &PhpType, right_ty: &PhpType) -> bool {
+    if !matches!(op, BinOp::Add | BinOp::Sub | BinOp::Mul) {
+        return false;
+    }
+    if matches!(left_ty, PhpType::Mixed | PhpType::Union(_))
+        || matches!(right_ty, PhpType::Mixed | PhpType::Union(_))
+    {
+        return true;
+    }
+    is_integerish_numeric(left_ty) && is_integerish_numeric(right_ty)
+}
+
+fn is_integerish_numeric(ty: &PhpType) -> bool {
+    matches!(ty, PhpType::Int | PhpType::Bool | PhpType::Void)
+}
+
+fn emit_mixed_numeric_binop(
+    op: &BinOp,
+    left_stack_ty: &PhpType,
+    right_ty: &PhpType,
+    emitter: &mut Emitter,
+) -> PhpType {
+    let right_was_boxed = !matches!(right_ty, PhpType::Mixed | PhpType::Union(_));
+    let left_was_boxed = !matches!(left_stack_ty, PhpType::Mixed | PhpType::Union(_));
+    if right_was_boxed {
+        crate::codegen::emit_box_current_value_as_mixed(emitter, right_ty);
+    }
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));
+    load_saved_numeric_operand(emitter, left_stack_ty, 16);
+    if left_was_boxed {
+        crate::codegen::emit_box_current_value_as_mixed(emitter, left_stack_ty);
+    }
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            abi::emit_pop_reg(emitter, "x1");
+        }
+        Arch::X86_64 => {
+            abi::emit_pop_reg(emitter, "rdi");
+        }
+    }
+    abi::emit_release_temporary_stack(emitter, 16);
+    let helper = match op {
+        BinOp::Add => "__rt_mixed_numeric_add",
+        BinOp::Sub => "__rt_mixed_numeric_sub",
+        BinOp::Mul => "__rt_mixed_numeric_mul",
+        _ => unreachable!(),
+    };
+    if left_was_boxed {
+        abi::emit_push_reg(emitter, abi::int_result_reg(emitter));
+    }
+    if right_was_boxed {
+        match emitter.target.arch {
+            Arch::AArch64 => {
+                abi::emit_push_reg(emitter, "x1");
+            }
+            Arch::X86_64 => {
+                abi::emit_push_reg(emitter, "rdi");
+            }
+        }
+    }
+    abi::emit_call_label(emitter, helper);
+    release_temporary_numeric_operand_boxes(emitter, left_was_boxed, right_was_boxed);
+    PhpType::Mixed
+}
+
+fn release_temporary_numeric_operand_boxes(
+    emitter: &mut Emitter,
+    left_was_boxed: bool,
+    right_was_boxed: bool,
+) {
+    if !left_was_boxed && !right_was_boxed {
+        return;
+    }
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));
+    let mut offset = 16;
+    if right_was_boxed {
+        abi::emit_load_temporary_stack_slot(emitter, abi::int_result_reg(emitter), offset);
+        abi::emit_decref_if_refcounted(emitter, &PhpType::Mixed);
+        offset += 16;
+    }
+    if left_was_boxed {
+        abi::emit_load_temporary_stack_slot(emitter, abi::int_result_reg(emitter), offset);
+        abi::emit_decref_if_refcounted(emitter, &PhpType::Mixed);
+    }
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));
+    let operand_stack_bytes = 16 * usize::from(left_was_boxed) + 16 * usize::from(right_was_boxed);
+    abi::emit_release_temporary_stack(emitter, operand_stack_bytes);
+}
+
+fn load_saved_numeric_operand(emitter: &mut Emitter, ty: &PhpType, offset: usize) {
+    match ty.codegen_repr() {
+        PhpType::Float => {
+            abi::emit_load_temporary_stack_slot(
+                emitter,
+                abi::float_result_reg(emitter),
+                offset,
+            );
+        }
+        PhpType::Str => {
+            let (ptr_reg, len_reg) = abi::string_result_regs(emitter);
+            abi::emit_load_temporary_stack_slot(emitter, ptr_reg, offset);
+            abi::emit_load_temporary_stack_slot(emitter, len_reg, offset + 8);
+        }
+        PhpType::Void | PhpType::Never => {}
+        _ => {
+            abi::emit_load_temporary_stack_slot(emitter, abi::int_result_reg(emitter), offset);
+        }
     }
 }
 

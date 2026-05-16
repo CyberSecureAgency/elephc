@@ -9,7 +9,7 @@
 //! - Helpers must state register clobbers through code structure and preserve heap ownership assumptions.
 
 use crate::codegen::platform::Arch;
-use crate::parser::ast::Expr;
+use crate::parser::ast::{BinOp, Expr, ExprKind};
 use crate::types::PhpType;
 
 use super::super::abi;
@@ -25,6 +25,57 @@ pub(super) fn retain_borrowed_heap_result(emitter: &mut Emitter, expr: &Expr, ty
 
 pub(super) fn local_slot_ownership_after_store(ty: &PhpType) -> HeapOwnership {
     HeapOwnership::local_owner_for_type(ty)
+}
+
+pub(super) fn release_preserved_mixed_after_coercion(emitter: &mut Emitter, target_ty: &PhpType) {
+    match target_ty.codegen_repr() {
+        PhpType::Float => {
+            abi::emit_push_float_reg(emitter, abi::float_result_reg(emitter));
+            abi::emit_load_temporary_stack_slot(emitter, abi::int_result_reg(emitter), 16);
+            abi::emit_decref_if_refcounted(emitter, &PhpType::Mixed);
+            abi::emit_pop_float_reg(emitter, abi::float_result_reg(emitter));
+            abi::emit_release_temporary_stack(emitter, 16);
+        }
+        PhpType::Str => {
+            let (ptr_reg, len_reg) = abi::string_result_regs(emitter);
+            abi::emit_call_label(emitter, "__rt_str_persist");                        // detach string casts from the mixed cell before releasing the boxed owner
+            abi::emit_push_reg_pair(emitter, ptr_reg, len_reg);
+            abi::emit_load_temporary_stack_slot(emitter, abi::int_result_reg(emitter), 16);
+            abi::emit_decref_if_refcounted(emitter, &PhpType::Mixed);
+            abi::emit_pop_reg_pair(emitter, ptr_reg, len_reg);
+            abi::emit_release_temporary_stack(emitter, 16);
+        }
+        PhpType::Void | PhpType::Never => {
+            abi::emit_load_temporary_stack_slot(emitter, abi::int_result_reg(emitter), 0);
+            abi::emit_decref_if_refcounted(emitter, &PhpType::Mixed);
+            abi::emit_release_temporary_stack(emitter, 16);
+        }
+        _ => {
+            abi::emit_push_reg(emitter, abi::int_result_reg(emitter));
+            abi::emit_load_temporary_stack_slot(emitter, abi::int_result_reg(emitter), 16);
+            abi::emit_decref_if_refcounted(emitter, &PhpType::Mixed);
+            abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));
+            abi::emit_release_temporary_stack(emitter, 16);
+        }
+    }
+}
+
+pub(super) fn should_release_owned_mixed_after_coerce(
+    value: &Expr,
+    source_ty: &PhpType,
+    target_ty: &PhpType,
+) -> bool {
+    matches!(source_ty, PhpType::Mixed | PhpType::Union(_))
+        && crate::codegen::expr::can_coerce_result_to_type(source_ty, target_ty)
+        && !matches!(target_ty.codegen_repr(), PhpType::Mixed | PhpType::Union(_))
+        && (expr_result_heap_ownership(value) == HeapOwnership::Owned
+            || matches!(
+                value.kind,
+                ExprKind::BinaryOp {
+                    op: BinOp::Add | BinOp::Sub | BinOp::Mul,
+                    ..
+                }
+            ))
 }
 
 pub(super) fn indexed_array_runtime_value_tag(ty: &PhpType) -> i64 {

@@ -39,6 +39,7 @@ pub(super) fn emit_function_call(
         args::regular_param_count(sig.as_ref(), args_exprs.len()),
         "ref arg",
         false,
+        true,
         emitter,
         ctx,
         data,

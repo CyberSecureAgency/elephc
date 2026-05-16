@@ -12,7 +12,7 @@ use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
-use crate::codegen::expr::emit_expr;
+use crate::codegen::expr::{coerce_result_to_type, emit_expr};
 use crate::codegen::platform::Arch;
 use crate::parser::ast::Expr;
 use crate::types::PhpType;
@@ -53,9 +53,17 @@ pub(super) fn prepare_indexed_array_assign(
         abi::store_at_offset(emitter, "x0", target.offset);                           // persist the unique array pointer in the local slot
     }
     emitter.instruction("str x0, [sp, #-16]!");                                 // push array pointer onto stack
-    emit_expr(index, emitter, ctx, data);
+    let index_ty = emit_expr(index, emitter, ctx, data);
+    coerce_result_to_type(emitter, ctx, data, &index_ty, &PhpType::Int);
     emitter.instruction("str x0, [sp, #-16]!");                                 // push computed index onto stack
     let mut val_ty = emit_expr(value, emitter, ctx, data);
+    if matches!(val_ty, PhpType::Mixed | PhpType::Union(_))
+        && !matches!(target.elem_ty, PhpType::Mixed | PhpType::Union(_))
+        && crate::codegen::expr::can_coerce_result_to_type(&val_ty, &target.elem_ty)
+    {
+        coerce_result_to_type(emitter, ctx, data, &val_ty, &target.elem_ty);
+        val_ty = target.elem_ty.clone();
+    }
     let boxed_iterable =
         crate::codegen::emit_box_iterable_value_for_mixed_container(emitter, &mut val_ty);
     let effective_store_ty =
@@ -185,9 +193,17 @@ fn prepare_indexed_array_assign_linux_x86_64(
         abi::store_at_offset(emitter, "rax", target.offset);                       // persist the unique indexed-array pointer in the local slot
     }
     abi::emit_push_reg(emitter, "rax");                                           // preserve the unique indexed-array pointer while evaluating the target index
-    emit_expr(index, emitter, ctx, data);
+    let index_ty = emit_expr(index, emitter, ctx, data);
+    coerce_result_to_type(emitter, ctx, data, &index_ty, &PhpType::Int);
     abi::emit_push_reg(emitter, "rax");                                           // preserve the computed target index while evaluating the assigned value
     let mut val_ty = emit_expr(value, emitter, ctx, data);
+    if matches!(val_ty, PhpType::Mixed | PhpType::Union(_))
+        && !matches!(target.elem_ty, PhpType::Mixed | PhpType::Union(_))
+        && crate::codegen::expr::can_coerce_result_to_type(&val_ty, &target.elem_ty)
+    {
+        coerce_result_to_type(emitter, ctx, data, &val_ty, &target.elem_ty);
+        val_ty = target.elem_ty.clone();
+    }
     let boxed_iterable =
         crate::codegen::emit_box_iterable_value_for_mixed_container(emitter, &mut val_ty);
     let effective_store_ty =

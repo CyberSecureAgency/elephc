@@ -58,6 +58,8 @@ pub(super) fn emit_runtime_linux_x86_64_minimal(emitter: &mut Emitter) {
     strings::emit_atoi(emitter);
     strings::emit_str_persist(emitter);
     strings::emit_str_eq(emitter);
+    strings::emit_str_to_number(emitter);
+    strings::emit_str_loose_eq(emitter);
     strings::emit_strtolower(emitter);
     strings::emit_strpos(emitter);
     strings::emit_strrpos(emitter);
@@ -205,6 +207,7 @@ pub(super) fn emit_runtime_linux_x86_64_minimal(emitter: &mut Emitter) {
     arrays::emit_mixed_free_deep(emitter);
     arrays::emit_mixed_unbox(emitter);
     arrays::emit_mixed_cast_string(emitter);
+    arrays::emit_mixed_numeric_binops(emitter);
     arrays::emit_mixed_write_stdout(emitter);
     arrays::emit_mixed_strict_eq(emitter);
     arrays::emit_iterable_unsupported_kind(emitter);

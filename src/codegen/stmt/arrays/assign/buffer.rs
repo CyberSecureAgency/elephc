@@ -12,7 +12,7 @@ use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
-use crate::codegen::expr::emit_expr;
+use crate::codegen::expr::{coerce_result_to_type, emit_expr};
 use crate::parser::ast::Expr;
 use crate::types::PhpType;
 
@@ -39,9 +39,17 @@ pub(super) fn emit_buffer_array_assign(
         abi::load_at_offset(emitter, buffer_reg, target.offset);                        // load the buffer header pointer from the local slot
     }
     abi::emit_push_reg(emitter, buffer_reg);                                           // preserve the buffer pointer while evaluating the index
-    emit_expr(index, emitter, ctx, data);
+    let index_ty = emit_expr(index, emitter, ctx, data);
+    coerce_result_to_type(emitter, ctx, data, &index_ty, &PhpType::Int);
     abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                        // preserve the computed element index across value evaluation
-    let val_ty = emit_expr(value, emitter, ctx, data);
+    let mut val_ty = emit_expr(value, emitter, ctx, data);
+    if matches!(val_ty, PhpType::Mixed | PhpType::Union(_))
+        && !matches!(target.elem_ty, PhpType::Mixed | PhpType::Union(_))
+        && crate::codegen::expr::can_coerce_result_to_type(&val_ty, &target.elem_ty)
+    {
+        coerce_result_to_type(emitter, ctx, data, &val_ty, &target.elem_ty);
+        val_ty = target.elem_ty.clone();
+    }
     match &val_ty {
         PhpType::Float => {
             abi::emit_push_float_reg(emitter, abi::float_result_reg(emitter));         // preserve the float payload across address computation

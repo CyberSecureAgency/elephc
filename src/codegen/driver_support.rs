@@ -21,6 +21,7 @@ use super::platform::{Arch, Target};
 use super::runtime;
 
 const X86_64_HEAP_MAGIC_HI32: u64 = 0x454C5048;
+pub(crate) const UNINITIALIZED_TYPED_PROPERTY_SENTINEL: i64 = 0x7fff_ffff_ffff_fffd;
 
 pub(super) fn emit_write_literal_stderr(emitter: &mut Emitter, label: &str, len: usize) {
     match emitter.target.arch {
@@ -139,6 +140,7 @@ pub(super) fn emit_static_property_initializers(
     ctx: &mut Context,
 ) {
     let mut initializers = Vec::new();
+    let mut uninitialized_static_properties = Vec::new();
     let mut sorted_classes: Vec<(&String, &ClassInfo)> = ctx.classes.iter().collect();
     sorted_classes.sort_by_key(|(class_name, _)| class_name.as_str());
     for (class_name, class_info) in sorted_classes {
@@ -151,7 +153,11 @@ pub(super) fn emit_static_property_initializers(
             if declaring_class != class_name {
                 continue;
             }
-            let Some(default_expr) = class_info.static_defaults.get(index).cloned().flatten() else {
+            let default_expr = class_info.static_defaults.get(index).cloned().flatten();
+            if default_expr.is_none() && class_info.declared_static_properties.contains(property_name) {
+                uninitialized_static_properties.push((class_name.clone(), property_name.clone()));
+            }
+            let Some(default_expr) = default_expr else {
                 continue;
             };
             let declared = class_info.declared_static_properties.contains(property_name);
@@ -163,6 +169,17 @@ pub(super) fn emit_static_property_initializers(
                 declared,
             ));
         }
+    }
+
+    for (class_name, property_name) in uninitialized_static_properties {
+        emitter.comment(&format!(
+            "mark static property {}::${} uninitialized",
+            class_name, property_name
+        ));
+        let marker_reg = abi::int_result_reg(emitter);
+        abi::emit_load_int_immediate(emitter, marker_reg, UNINITIALIZED_TYPED_PROPERTY_SENTINEL);
+        let symbol = crate::names::static_property_symbol(&class_name, &property_name);
+        abi::emit_store_reg_to_symbol(emitter, marker_reg, &symbol, 8);
     }
 
     for (class_name, property_name, prop_ty, default_expr, declared) in initializers {
@@ -179,6 +196,9 @@ pub(super) fn emit_static_property_initializers(
         };
         let symbol = crate::names::static_property_symbol(&class_name, &property_name);
         abi::emit_store_result_to_symbol(emitter, &symbol, &store_ty, false);
+        if !matches!(store_ty.codegen_repr(), PhpType::Str) {
+            abi::emit_store_zero_to_symbol(emitter, &symbol, 8);
+        }
     }
 }
 

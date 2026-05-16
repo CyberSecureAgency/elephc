@@ -41,6 +41,7 @@ pub(super) fn emit_loaded_expr_call(
         args::regular_param_count(callee_sig.as_ref(), args_exprs.len()),
         "indirect ref arg",
         true,
+        false,
         emitter,
         ctx,
         data,

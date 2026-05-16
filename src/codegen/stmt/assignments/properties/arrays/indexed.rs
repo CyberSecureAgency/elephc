@@ -13,7 +13,7 @@ use crate::codegen::abi;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
-use crate::codegen::expr::emit_expr;
+use crate::codegen::expr::{coerce_result_to_type, emit_expr};
 use crate::codegen::platform::Arch;
 use crate::codegen::stmt::helpers;
 use crate::parser::ast::{Expr, ExprKind};
@@ -195,6 +195,21 @@ fn prepare_property_array_assign_value(
     elem_ty: &PhpType,
 ) -> PhpType {
     let mut val_ty = emit_expr(value, emitter, ctx, data);
+    if matches!(val_ty, PhpType::Mixed | PhpType::Union(_))
+        && !matches!(elem_ty, PhpType::Mixed | PhpType::Union(_))
+        && crate::codegen::expr::can_coerce_result_to_type(&val_ty, elem_ty)
+    {
+        let release_mixed_after_coerce =
+            helpers::should_release_owned_mixed_after_coerce(value, &val_ty, elem_ty);
+        if release_mixed_after_coerce {
+            abi::emit_push_reg(emitter, abi::int_result_reg(emitter));
+        }
+        coerce_result_to_type(emitter, ctx, data, &val_ty, elem_ty);
+        if release_mixed_after_coerce {
+            helpers::release_preserved_mixed_after_coercion(emitter, elem_ty);
+        }
+        val_ty = elem_ty.clone();
+    }
     let boxed_iterable =
         crate::codegen::emit_box_iterable_value_for_mixed_container(emitter, &mut val_ty);
     if !boxed_iterable

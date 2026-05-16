@@ -99,8 +99,18 @@ pub(crate) fn emit_property_assign_stmt(
             && !matches!(val_ty, PhpType::Mixed | PhpType::Union(_))
     });
     if let Some(target_ty) = &declared_target_ty {
-        coerce_result_to_type(emitter, ctx, data, &val_ty, target_ty);
-        val_ty = target_ty.clone();
+        if crate::codegen::expr::can_coerce_result_to_type(&val_ty, target_ty) {
+            let release_mixed_after_coerce =
+                helpers::should_release_owned_mixed_after_coerce(value, &val_ty, target_ty);
+            if release_mixed_after_coerce {
+                abi::emit_push_reg(emitter, abi::int_result_reg(emitter));
+            }
+            coerce_result_to_type(emitter, ctx, data, &val_ty, target_ty);
+            if release_mixed_after_coerce {
+                helpers::release_preserved_mixed_after_coercion(emitter, target_ty);
+            }
+            val_ty = target_ty.clone();
+        }
     }
     if magic_set_class.is_none() && !boxed_to_mixed {
         helpers::retain_borrowed_heap_result(emitter, value, &val_ty);
@@ -240,8 +250,18 @@ fn emit_nullable_property_assign_stmt(
             && !matches!(val_ty, PhpType::Mixed | PhpType::Union(_))
     });
     if let Some(target_ty) = &declared_target_ty {
-        coerce_result_to_type(emitter, ctx, data, &val_ty, target_ty);
-        val_ty = target_ty.clone();
+        if crate::codegen::expr::can_coerce_result_to_type(&val_ty, target_ty) {
+            let release_mixed_after_coerce =
+                helpers::should_release_owned_mixed_after_coerce(value, &val_ty, target_ty);
+            if release_mixed_after_coerce {
+                abi::emit_push_reg(emitter, abi::int_result_reg(emitter));
+            }
+            coerce_result_to_type(emitter, ctx, data, &val_ty, target_ty);
+            if release_mixed_after_coerce {
+                helpers::release_preserved_mixed_after_coercion(emitter, target_ty);
+            }
+            val_ty = target_ty.clone();
+        }
     }
     if magic_set_class.is_none() && !boxed_to_mixed {
         helpers::retain_borrowed_heap_result(emitter, value, &val_ty);
@@ -329,9 +349,6 @@ fn declared_property_type(object: &Expr, property: &str, ctx: &Context) -> Optio
 
 fn declared_property_type_for_class(class_name: &str, property: &str, ctx: &Context) -> Option<PhpType> {
     let class_info = ctx.classes.get(class_name)?;
-    if !class_info.declared_properties.contains(property) {
-        return None;
-    }
     class_info
         .properties
         .iter()

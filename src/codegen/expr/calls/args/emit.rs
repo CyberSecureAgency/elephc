@@ -14,7 +14,7 @@ use crate::parser::ast::{Expr, ExprKind};
 use crate::types::call_args;
 use crate::types::{FunctionSig, PhpType};
 
-use super::common::{declared_target_ty, emit_ref_arg_variable_address, push_arg_value, push_expr_arg};
+use super::common::{call_target_ty, emit_ref_arg_variable_address, push_arg_value, push_expr_arg};
 use super::named;
 use super::normalize::{has_named_args, prepare_call_args};
 use super::spread::{emit_spread_into_named_params, emit_spread_tail_variadic_array_arg};
@@ -27,6 +27,7 @@ pub(crate) fn emit_pushed_call_args(
     regular_param_count: usize,
     ref_arg_context_label: &str,
     retain_non_variable_ref_args: bool,
+    coerce_inferred_params: bool,
     emitter: &mut Emitter,
     ctx: &mut Context,
     data: &mut DataSection,
@@ -61,6 +62,7 @@ pub(crate) fn emit_pushed_call_args(
         sig,
         ref_arg_context_label,
         retain_non_variable_ref_args,
+        coerce_inferred_params,
         emitter,
         ctx,
         data,
@@ -123,6 +125,7 @@ pub(crate) fn emit_pushed_non_variadic_args(
     sig: Option<&FunctionSig>,
     ref_arg_context_label: &str,
     retain_non_variable_ref_args: bool,
+    coerce_inferred_params: bool,
     emitter: &mut Emitter,
     ctx: &mut Context,
     data: &mut DataSection,
@@ -134,7 +137,7 @@ pub(crate) fn emit_pushed_non_variadic_args(
             .and_then(|sig| sig.ref_params.get(idx))
             .copied()
             .unwrap_or(false);
-        let target_ty = declared_target_ty(sig, idx);
+        let target_ty = call_target_ty(sig, idx, coerce_inferred_params);
 
         if is_ref {
             if let ExprKind::Variable(var_name) = &arg.kind {
