@@ -13,8 +13,7 @@ use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
 use crate::codegen::expr::emit_expr;
-use crate::names::function_symbol;
-use crate::parser::ast::{Expr, ExprKind};
+use crate::parser::ast::Expr;
 use crate::types::PhpType;
 use super::callback_env;
 
@@ -42,39 +41,12 @@ pub fn emit(
     // -- save array pointer --
     abi::emit_push_reg(emitter, result_reg);                                    // push the source array pointer onto the temporary stack
 
-    // -- resolve callback function address --
-    let is_closure = matches!(
-        &args[1].kind,
-        ExprKind::Closure { .. } | ExprKind::FirstClassCallable(_)
-    );
-    let mut inline_captures = Vec::new();
-    if is_closure {
-        emit_expr(&args[1], emitter, ctx, data);
-        inline_captures = callback_env::callback_captures(&args[1], ctx);
-        abi::emit_push_reg(emitter, result_reg);                                // save the synthesized callback address on the temporary stack
-    } else if let ExprKind::Variable(var_name) = &args[1].kind {
-        let var = ctx.variables.get(var_name).expect("undefined callback variable");
-        let offset = var.stack_offset;
-        abi::load_at_offset(emitter, call_reg, offset);                         // load the callback address from the callable variable slot
-    } else {
-        let func_name = match &args[1].kind {
-            ExprKind::StringLiteral(name) => name.clone(),
-            _ => panic!("array_walk() callback must be a string literal, callable expression, or callable variable"),
-        };
-        let label = function_symbol(&func_name);
-        abi::emit_symbol_address(emitter, call_reg, &label);                         // materialize the callback function address in the nested-call scratch register
-    }
-    let captures = if is_closure {
-        inline_captures
-    } else {
-        callback_env::callback_captures(&args[1], ctx)
-    };
+    // -- evaluate the callback argument and resolve its function address --
+    let captures =
+        callback_env::materialize_callback_address(&args[1], call_reg, emitter, ctx, data);
 
     // -- place callback and array pointer into the runtime argument registers --
     if !captures.is_empty() {
-        if is_closure {
-            abi::emit_pop_reg(emitter, call_reg);                                // recover the original closure entry point for env slot zero
-        }
         abi::emit_pop_reg(emitter, result_reg);                                  // recover the source array pointer before building the capture environment
         let wrapper = callback_env::emit_captured_callback_env(
             call_reg,
@@ -90,9 +62,6 @@ pub fn emit(
         abi::emit_call_label(emitter, "__rt_array_walk");                       // call the callback-driven walk runtime helper with a capture environment
         abi::emit_release_temporary_stack(emitter, wrapper.env_bytes);
         return Some(PhpType::Void);
-    } else if is_closure {
-        abi::emit_pop_reg(emitter, callback_arg_reg);                            // pop the synthesized callback address into the first runtime argument register
-        abi::emit_pop_reg(emitter, array_arg_reg);                               // pop the source array pointer into the second runtime argument register
     } else {
         abi::emit_pop_reg(emitter, array_arg_reg);                               // pop the source array pointer into the second runtime argument register
         emitter.instruction(&format!("mov {}, {}", callback_arg_reg, call_reg)); // move the callback function address into the first runtime argument register

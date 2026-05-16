@@ -14,7 +14,6 @@ use crate::codegen::emit::Emitter;
 use crate::codegen::expr::emit_expr;
 use crate::codegen::expr::calls::args;
 use crate::codegen::abi;
-use crate::names::function_symbol;
 use crate::parser::ast::{Expr, ExprKind};
 use crate::types::PhpType;
 use super::callback_env;
@@ -68,7 +67,6 @@ pub fn emit(
         crate::codegen::expr::save_concat_offset_before_nested_call(emitter, ctx);
     }
     let call_reg = abi::nested_call_reg(emitter);
-    let result_reg = abi::int_result_reg(emitter);
     let (array_reg, len_reg, tail_count_reg, tail_index_reg, index_reg, offset_reg, data_reg, peek_reg, array_new_capacity_reg, array_new_elem_size_reg, len_store_reg) =
         match emitter.target.arch {
             crate::codegen::platform::Arch::AArch64 => (
@@ -80,43 +78,20 @@ pub fn emit(
         };
 
     // -- resolve callback function address and signature --
-    let is_callable_expr = matches!(
+    let precomputed_sig = crate::codegen::callables::callable_sig(&args[0], ctx);
+    let captures =
+        callback_env::materialize_callback_address(&args[0], call_reg, emitter, ctx, data);
+    let sig = if matches!(
         &args[0].kind,
         ExprKind::Closure { .. } | ExprKind::FirstClassCallable(_)
-    );
-    let mut captures: Vec<(String, PhpType)> = Vec::new();
-    let sig = if is_callable_expr {
-        emit_expr(&args[0], emitter, ctx, data);
-        emitter.instruction(&format!("mov {}, {}", call_reg, result_reg));      // move the synthesized callback address into the nested-call scratch register
-        let deferred = ctx
-            .deferred_closures
+    ) {
+        ctx.deferred_closures
             .last()
-            .expect("call_user_func_array: missing synthesized callable signature");
-        captures = deferred.captures.clone();
-        deferred
+            .expect("call_user_func_array: missing synthesized callable signature")
             .sig
             .clone()
-    } else if let ExprKind::Variable(var_name) = &args[0].kind {
-        ctx.mark_fcc_used(var_name);
-        let var = ctx.variables.get(var_name).expect("undefined callback variable");
-        let offset = var.stack_offset;
-        abi::load_at_offset(emitter, call_reg, offset);                          // load the callback address from the callable variable slot
-        captures = ctx.closure_captures.get(var_name).cloned().unwrap_or_default();
-        ctx.closure_sigs
-            .get(var_name)
-            .expect("call_user_func_array: callable variable signature not found")
-            .clone()
     } else {
-        let func_name = match &args[0].kind {
-            ExprKind::StringLiteral(name) => name.clone(),
-            _ => panic!("call_user_func_array() callback must be a string literal, callable expression, or callable variable"),
-        };
-        let label = function_symbol(&func_name);
-        abi::emit_symbol_address(emitter, call_reg, &label);
-        ctx.functions
-            .get(&func_name)
-            .expect("call_user_func_array: function not found")
-            .clone()
+        precomputed_sig.expect("call_user_func_array: callable signature not found")
     };
 
     // Evaluate the array argument (second arg)

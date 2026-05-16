@@ -16,8 +16,7 @@ use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
 use crate::codegen::expr::emit_expr;
-use crate::names::function_symbol;
-use crate::parser::ast::{Expr, ExprKind};
+use crate::parser::ast::Expr;
 use crate::types::PhpType;
 
 pub fn emit(
@@ -47,32 +46,8 @@ pub fn emit(
     let callback_arg_reg = abi::int_arg_reg_name(emitter.target, 0);
     let array_arg_reg = abi::int_arg_reg_name(emitter.target, 1);
     let env_arg_reg = abi::int_arg_reg_name(emitter.target, 2);
-    let is_closure = matches!(
-        &args[1].kind,
-        ExprKind::Closure { .. } | ExprKind::FirstClassCallable(_)
-    );
-    let mut inline_captures = Vec::new();
-    if is_closure {
-        emit_expr(&args[1], emitter, ctx, data);
-        inline_captures = callback_env::callback_captures(&args[1], ctx);
-        emitter.instruction(&format!("mov {}, {}", call_reg, result_reg));      // keep the resolved closure callback address in the nested-call scratch register
-    } else if let ExprKind::Variable(var_name) = &args[1].kind {
-        let var = ctx.variables.get(var_name).expect("undefined callback variable");
-        let offset = var.stack_offset;
-        abi::load_at_offset(emitter, call_reg, offset);                         // load the callback address from the variable slot into the nested-call scratch register
-    } else {
-        let func_name = match &args[1].kind {
-            ExprKind::StringLiteral(name) => name.clone(),
-            _ => panic!("uksort() callback must be a string literal, callable expression, or callable variable"),
-        };
-        let label = function_symbol(&func_name);
-        abi::emit_symbol_address(emitter, call_reg, &label);                    // materialize the comparator function address in the nested-call scratch register
-    }
-    let captures = if is_closure {
-        inline_captures
-    } else {
-        callback_env::callback_captures(&args[1], ctx)
-    };
+    let captures =
+        callback_env::materialize_callback_address(&args[1], call_reg, emitter, ctx, data);
 
     // -- call runtime: callback_addr + array_ptr --
     if !captures.is_empty() {
@@ -93,19 +68,7 @@ pub fn emit(
         return Some(PhpType::Void);
     }
     abi::emit_pop_reg(emitter, array_arg_reg);                                  // restore the array pointer into the second runtime argument register
-    if is_closure {
-        emitter.instruction(&format!("mov {}, {}", callback_arg_reg, result_reg)); // move the resolved closure callback address into the first runtime argument register
-    } else if let ExprKind::Variable(var_name) = &args[1].kind {
-        let var = ctx.variables.get(var_name).expect("undefined callback variable");
-        abi::load_at_offset(emitter, callback_arg_reg, var.stack_offset);       // load the callback address from the variable slot into the first runtime argument register
-    } else {
-        let func_name = match &args[1].kind {
-            ExprKind::StringLiteral(name) => name.clone(),
-            _ => panic!("uksort() callback must be a string literal, callable expression, or callable variable"),
-        };
-        let label = function_symbol(&func_name);
-        abi::emit_symbol_address(emitter, callback_arg_reg, &label);            // materialize the comparator function address in the first runtime argument register
-    }
+    emitter.instruction(&format!("mov {}, {}", callback_arg_reg, call_reg));    // move the resolved comparator address into the first runtime argument register
     abi::emit_load_int_immediate(emitter, env_arg_reg, 0);
     abi::emit_call_label(emitter, "__rt_usort");                                // call the target-aware runtime helper that sorts the indexed array using the comparator callback
 

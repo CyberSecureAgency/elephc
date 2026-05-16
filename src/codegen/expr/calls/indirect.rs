@@ -32,7 +32,7 @@ pub(super) fn emit_loaded_expr_call(
     }
 
     let callee_sig = callee_sig_for_expr(callee, ctx);
-    let captures = captures_for_expr_call_callee(callee, ctx);
+    let captures = crate::codegen::callables::callable_captures(callee, ctx);
     crate::codegen::abi::emit_push_reg(emitter, crate::codegen::abi::int_result_reg(emitter)); // save the already-evaluated callable below later arguments
 
     let emitted_args = args::emit_pushed_call_args(
@@ -103,21 +103,6 @@ fn callee_sig_for_expr(
         }
         ExprKind::FirstClassCallable(target) => super::first_class_callable_sig(target, ctx),
         _ => None,
-    }
-}
-
-fn captures_for_expr_call_callee(callee: &Expr, ctx: &mut Context) -> Vec<(String, PhpType)> {
-    match &callee.kind {
-        ExprKind::Closure { .. } | ExprKind::FirstClassCallable(_) => ctx
-            .deferred_closures
-            .last()
-            .map(|closure| closure.captures.clone())
-            .unwrap_or_default(),
-        ExprKind::Variable(name) => {
-            ctx.mark_fcc_used(name);
-            ctx.closure_captures.get(name).cloned().unwrap_or_default()
-        }
-        _ => Vec::new(),
     }
 }
 
