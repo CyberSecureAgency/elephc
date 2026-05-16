@@ -23,6 +23,7 @@ pub(crate) fn emit_preg_replace(emitter: &mut Emitter) {
     }
 
     let regex_t_size = emitter.platform.regex_t_size();
+    let regmatch_rm_eo_off = emitter.platform.regmatch_rm_eo_offset();
     let regmatch_off = regex_t_size;
     let regmatches_size = emitter.platform.regmatch_t_size() * PREG_REPLACE_NMATCH;
     let pattern_ptr_off = regmatch_off + regmatches_size;
@@ -154,19 +155,13 @@ pub(crate) fn emit_preg_replace(emitter: &mut Emitter) {
         emitter.instruction("lsl x14, x14, #4");                                // group index * sizeof(regmatch_t)
         emitter.instruction(&format!("add x14, x14, #{}", regmatch_off));       // offset to selected regmatch_t
         emitter.instruction("ldr x15, [sp, x14]");                              // load rm_so for selected capture
-        emitter.instruction(&format!(
-            "add x14, x14, #{}",
-            emitter.platform.regmatch_rm_eo_offset()
-        ));                                                                     // offset to rm_eo
+        emitter.instruction(&format!("add x14, x14, #{}", regmatch_rm_eo_off)); // offset to rm_eo
         emitter.instruction("ldr x16, [sp, x14]");                              // load rm_eo for selected capture
     } else {
         emitter.instruction("lsl x14, x14, #3");                                // group index * sizeof(regmatch_t)
         emitter.instruction(&format!("add x14, x14, #{}", regmatch_off));       // offset to selected regmatch_t
         emitter.instruction("ldrsw x15, [sp, x14]");                            // load rm_so for selected capture
-        emitter.instruction(&format!(
-            "add x14, x14, #{}",
-            emitter.platform.regmatch_rm_eo_offset()
-        ));                                                                     // offset to rm_eo
+        emitter.instruction(&format!("add x14, x14, #{}", regmatch_rm_eo_off)); // offset to rm_eo
         emitter.instruction("ldrsw x16, [sp, x14]");                            // load rm_eo for selected capture
     }
     emitter.instruction("cmp x15, #0");                                         // capture was matched ?
@@ -243,6 +238,7 @@ pub(crate) fn emit_preg_replace(emitter: &mut Emitter) {
 
 fn emit_preg_replace_linux_x86_64(emitter: &mut Emitter) {
     let regex_t_size = emitter.platform.regex_t_size();
+    let regmatch_rm_eo_off = emitter.platform.regmatch_rm_eo_offset();
     let regmatch_off = regex_t_size;
     let regmatches_size = emitter.platform.regmatch_t_size() * PREG_REPLACE_NMATCH;
     let pattern_ptr_off = regmatch_off + regmatches_size;
@@ -377,18 +373,12 @@ fn emit_preg_replace_linux_x86_64(emitter: &mut Emitter) {
         emitter.instruction("shl r10, 4");                                      // group index * sizeof(regmatch_t)
         emitter.instruction(&format!("add r10, {}", regmatch_off));             // offset to selected regmatch_t
         emitter.instruction("mov rsi, QWORD PTR [rsp + r10]");                  // load rm_so for selected capture
-        emitter.instruction(&format!(
-            "mov rdi, QWORD PTR [rsp + r10 + {}]",
-            emitter.platform.regmatch_rm_eo_offset()
-        ));                                                                     // load rm_eo for selected capture
+        emitter.instruction(&format!("mov rdi, QWORD PTR [rsp + r10 + {}]", regmatch_rm_eo_off)); // load rm_eo for selected capture
     } else {
         emitter.instruction("shl r10, 3");                                      // group index * sizeof(regmatch_t)
         emitter.instruction(&format!("add r10, {}", regmatch_off));             // offset to selected regmatch_t
         emitter.instruction("movsxd rsi, DWORD PTR [rsp + r10]");               // load rm_so for selected capture
-        emitter.instruction(&format!(
-            "movsxd rdi, DWORD PTR [rsp + r10 + {}]",
-            emitter.platform.regmatch_rm_eo_offset()
-        ));                                                                     // load rm_eo for selected capture
+        emitter.instruction(&format!("movsxd rdi, DWORD PTR [rsp + r10 + {}]", regmatch_rm_eo_off)); // load rm_eo for selected capture
     }
     emitter.instruction("cmp rsi, 0");                                          // capture was matched ?
     emitter.instruction("jl __rt_preg_replace_backref_consume_linux_x86_64");   // unmatched captures expand to an empty string
