@@ -347,7 +347,7 @@ The fatal uncaught-exception path writes `Fatal error: uncaught exception` to st
 
 ### JSON routines
 
-**Files:** `system/json_data.rs`, `system/json_depth.rs`, `system/json_throw_error.rs`, `system/json_last_error_msg.rs`, `system/json_validate/`, `system/json_decode.rs`, `system/json_decode_mixed/`, `system/json_encode_bool.rs`, `system/json_encode_null.rs`, `system/json_encode_float.rs`, `system/json_encode_str/`, `system/json_encode_array_int.rs`, `system/json_encode_array_str.rs`, `system/json_encode_array_dynamic.rs`, `system/json_encode_assoc.rs`, `system/json_encode_mixed.rs`, `system/json_encode_object.rs`, `system/json_pretty_apply.rs`, plus `objects/stdclass.rs` for stdClass-specific JSON object encoding.
+**Files:** `system/json_data.rs`, `system/json_depth.rs`, `system/json_throw_error.rs`, `system/json_last_error_msg.rs`, `system/json_validate/`, `system/json_decode.rs`, `system/json_decode_mixed/`, `system/json_encode_bool.rs`, `system/json_encode_null.rs`, `system/json_encode_float.rs`, `system/json_encode_str/`, `system/json_encode_array_int.rs`, `system/json_encode_array_str.rs`, `system/json_encode_array_dynamic.rs`, `system/json_encode_assoc.rs`, `system/json_encode_mixed.rs`, `system/json_encode_object.rs`, `system/json_pretty.rs`, plus `objects/stdclass.rs` for stdClass-specific JSON object encoding.
 
 The `json_encode` implementation uses **type-aware dispatch** — the codegen calls a different runtime routine depending on the compile-time type of the value being encoded:
 
@@ -358,19 +358,20 @@ The `json_encode` implementation uses **type-aware dispatch** — the codegen ca
 | `__rt_json_encode_str` | Encode a string with JSON escaping (quotes, backslashes, control chars) | `x1`/`x2` = input string | `x1`/`x2` = JSON string |
 | `__rt_json_encode_array_int` | Encode an integer array as a JSON array (e.g., `[1,2,3]`) | `x0` = array ptr | `x1`/`x2` = JSON string |
 | `__rt_json_encode_array_str` | Encode a string array as a JSON array with quoted elements | `x0` = array ptr | `x1`/`x2` = JSON string |
-| `__rt_json_encode_array_dynamic` | Encode an indexed array by inspecting its packed runtime `value_type` tag at runtime (int, string, float, bool, nested array/hash, mixed, or null fallback) | `x0` = array ptr | `x1`/`x2` = JSON string |
-| `__rt_json_encode_assoc` | Encode an associative array as a JSON object (e.g., `{"key":"val"}`) | `x0` = hash ptr | `x1`/`x2` = JSON string |
+| `__rt_json_encode_array_dynamic` | Encode an indexed array by inspecting its packed runtime `value_type` tag at runtime (int, string, float, bool, nested array/hash, mixed, or null fallback), caching active JSON flags in a callee-saved register during the walk | `x0` = array ptr | `x1`/`x2` = JSON string |
+| `__rt_json_encode_assoc` | Encode an associative array as a JSON object, while tracking PHP list-shape keys during the same hash walk and compacting to JSON array form when applicable | `x0` = hash ptr | `x1`/`x2` = JSON string |
 | `__rt_json_encode_float` | Encode finite floats and record `JSON_ERROR_INF_OR_NAN` for `INF`/`NAN`, honoring throw and partial-output flags | `d0` = float | `x1`/`x2` = JSON string |
 | `__rt_json_encode_mixed` | Encode a boxed mixed payload by unboxing its runtime tag and dispatching to the concrete JSON encoder | `x0` = mixed ptr | `x1`/`x2` = JSON string |
 | `__rt_json_encode_object` | Encode class objects by consulting per-class JSON descriptors; dispatches `JsonSerializable::jsonSerialize()` when present, otherwise walks public properties | `x0` = object ptr | `x1`/`x2` = JSON string |
 | `__rt_json_encode_stdclass` | Encode the dynamic-property hash backing `stdClass`, preserving `{}` for empty instances | `x0` = stdClass hash ptr | `x1`/`x2` = JSON string |
 | `__rt_json_decode` | String-only compatibility helper used by string decode paths; trims outer whitespace and unescapes quoted JSON strings including surrogate-aware `\uXXXX` sequences | `x1`/`x2` = JSON string | `x1`/`x2` = decoded string |
-| `__rt_json_decode_mixed` | Full structural recursive decoder that returns boxed `Mixed` cells for null, bool, int, float, string, indexed arrays, associative arrays, and stdClass objects depending on `_json_decode_assoc` | `x1`/`x2` = JSON string | `x0` = Mixed* |
-| `__rt_json_validate` | RFC 8259 validator used by `json_validate()` and by `json_decode()` before structural decoding; sets syntax/depth/UTF-16 errors | `x1`/`x2` = JSON string | `x0` = 1 valid / 0 invalid |
+| `__rt_json_decode_mixed` | Checked structural recursive decoder that returns boxed `Mixed` cells for null, bool, int, float, string, indexed arrays, associative arrays, and stdClass objects depending on `_json_decode_assoc`; records syntax/depth/UTF-16 errors and returns 0 on malformed input | `x1`/`x2` = JSON string | `x0` = Mixed* or 0 |
+| `__rt_json_skip_ws` | Shared RFC 8259 whitespace skipper used by `json_decode_mixed` and its recursive array/object parsers; advances a caller-owned cursor to the next token or caller-supplied limit | JSON slice pointer, exclusive limit, cursor | updated cursor |
+| `__rt_json_validate` | Standalone RFC 8259 validator used by `json_validate()`; scalar validator helpers are also reused by `json_decode_mixed` for strings and numbers | `x1`/`x2` = JSON string | `x0` = 1 valid / 0 invalid |
 | `__rt_json_depth_enter` / `__rt_json_depth_exit` | Maintain `_json_active_depth` and compare against `_json_depth_limit` for recursive encode/decode/validate walks | global JSON state | status / updated state |
 | `__rt_json_throw_error` | Record a JSON error code and construct/throw `JsonException` when `JSON_THROW_ON_ERROR` is active | `x0` = JSON_ERROR_* code | may not return |
 | `__rt_json_last_error_msg` | Return the message string corresponding to `_json_last_error` through the `_json_err_msg_table` data table | global JSON state | `x1`/`x2` = message |
-| `__rt_json_pretty_apply` | Post-process compact JSON output into PHP-style pretty-printed output while skipping string contents | `x1`/`x2` = compact JSON | `x1`/`x2` = pretty JSON |
+| `__rt_json_pretty_push` / `__rt_json_pretty_pop` / `__rt_json_pretty_line` / `__rt_json_pretty_colon_space` | Maintain `_json_indent_depth` and append PHP-style pretty-print whitespace while each container encoder emits bytes. These helpers are no-ops unless `JSON_PRETTY_PRINT` is active, avoiding a second buffer walk. | current JSON state, `x11` write pointer for line/space helpers | updated formatting state / `x11` write pointer |
 
 ### Regex routines
 
@@ -583,6 +584,7 @@ The runtime data layer lives in `src/codegen/runtime/data/`. `fixed.rs` emits sh
 .comm _json_last_error, 8    ; last JSON_ERROR_* code
 .comm _json_active_flags, 8  ; active JSON flags for encode/decode/validate
 .comm _json_active_depth, 8  ; current recursive JSON container depth
+.comm _json_indent_depth, 8  ; current JSON_PRETTY_PRINT formatting depth
 .comm _json_depth_limit, 8   ; configured JSON depth limit
 .comm _json_validate_idx, 8  ; validator cursor index
 .comm _json_validate_ptr, 8  ; validator input pointer
