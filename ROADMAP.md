@@ -488,17 +488,7 @@ PHP-compatible Standard PHP Library coverage, rolled out in phases.
 
 `Serializable` is intentionally not implemented — it has been deprecated since PHP 8.1.
 
-## v0.22.x — Optimization and release performance pass (superseded)
-
-This section was reorganized when the EIR plan landed. The items that
-required an intermediate representation were absorbed into v0.24.x (EIR
-introduction + register allocation) and v0.25.x (EIR optimization passes).
-The remaining release-track and AST-level optimizer items moved to v0.26.x.
-
-The v0.23.x label is preserved here so that any external references stay
-resolvable. No new work is planned under this label.
-
-## v0.23.x — EIR introduction and register allocation
+## v0.24.x — EIR introduction and register allocation
 
 Introduce a domain-specific intermediate representation (EIR) between the
 AST-level optimizer and the assembly emitter, then add a real register
@@ -524,7 +514,7 @@ imposed. See `docs/internals/the-ir.md`.
 Expected outcome: feature parity at end of v0.24.0; ≥15% performance
 improvement on compute benchmarks at end of v0.24.x.
 
-## v0.24.x — EIR optimization passes
+## v0.25.x — EIR optimization passes
 
 Build the IR-level passes that the AST optimizer could not reach.
 
@@ -543,7 +533,7 @@ Expected outcome: additional 10–20% performance gain on loop-heavy and
 call-heavy benchmarks; cumulative ≥30% improvement vs end-of-v0.23
 baseline.
 
-## v0.25.x — Performance closure, legacy cleanup, and release stabilization
+## v0.26.x — Performance closure, legacy cleanup, and release stabilization
 
 Optimization work should now be driven by benchmarks, generated assembly size,
 and release-candidate validation rather than by speculative pass work.
