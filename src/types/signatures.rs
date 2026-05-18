@@ -85,6 +85,34 @@ pub(crate) fn builtin_call_sig(name: &str) -> Option<FunctionSig> {
         }
         "function_exists" => Some(fixed(&["function"])),
         "is_callable" => Some(fixed(&["value"])),
+        "class_alias" => Some(optional(
+            &["class", "alias", "autoload"],
+            2,
+            vec![bool_lit(true)],
+        )),
+        "class_exists" => Some(optional(&["class", "autoload"], 1, vec![bool_lit(true)])),
+        "interface_exists" => Some(optional(
+            &["interface", "autoload"],
+            1,
+            vec![bool_lit(true)],
+        )),
+        "trait_exists" => Some(optional(&["trait", "autoload"], 1, vec![bool_lit(true)])),
+        "enum_exists" => Some(optional(&["enum", "autoload"], 1, vec![bool_lit(true)])),
+        "get_class" => Some(optional(&["object"], 0, vec![null_lit()])),
+        "get_parent_class" => Some(optional(&["object_or_class"], 0, vec![null_lit()])),
+        "get_declared_classes" | "get_declared_interfaces" | "get_declared_traits" => {
+            Some(fixed(&[]))
+        }
+        "is_a" => Some(optional(
+            &["object_or_class", "class", "allow_string"],
+            2,
+            vec![bool_lit(false)],
+        )),
+        "is_subclass_of" => Some(optional(
+            &["object_or_class", "class", "allow_string"],
+            2,
+            vec![bool_lit(true)],
+        )),
         "class_attribute_names" | "class_get_attributes" => Some(fixed(&["class_name"])),
         "class_attribute_args" => Some(fixed(&["class_name", "attribute_name"])),
 
@@ -309,6 +337,20 @@ pub(crate) fn builtin_call_sig(name: &str) -> Option<FunctionSig> {
             0,
             vec![bool_lit(false), string_lit("")],
         )),
+
+        "spl_autoload_register" => Some(optional(
+            &["callback", "throw", "prepend"],
+            0,
+            vec![null_lit(), bool_lit(true), bool_lit(false)],
+        )),
+        "spl_autoload_unregister" => Some(fixed(&["callback"])),
+        "spl_autoload_functions" | "spl_classes" => Some(fixed(&[])),
+        "spl_autoload_extensions" => {
+            Some(optional(&["file_extensions"], 0, vec![null_lit()]))
+        }
+        "spl_autoload_call" => Some(fixed(&["class"])),
+        "spl_autoload" => Some(optional(&["class", "file_extensions"], 1, vec![null_lit()])),
+        "spl_object_id" | "spl_object_hash" => Some(fixed(&["object"])),
 
         "ptr" => Some(fixed(&["value"])),
         "ptr_is_null" | "ptr_get" | "ptr_read8" | "ptr_read32" => Some(fixed(&["pointer"])),

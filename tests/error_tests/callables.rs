@@ -90,6 +90,14 @@ fn test_error_is_subclass_of_wrong_args() {
 }
 
 #[test]
+fn test_error_is_a_wrong_args() {
+    expect_error(
+        r#"<?php is_a("Child");"#,
+        "is_a() takes 2 or 3 arguments",
+    );
+}
+
+#[test]
 fn test_error_get_declared_classes_wrong_args() {
     expect_error(
         r#"<?php get_declared_classes("extra");"#,
