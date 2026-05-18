@@ -69,6 +69,32 @@ pub(super) fn parse_expr_stmt(
     Ok(Stmt::new(StmtKind::ExprStmt(expr), span))
 }
 
+pub(super) fn parse_error_suppressed_stmt(
+    tokens: &[(Token, Span)],
+    pos: &mut usize,
+    span: Span,
+) -> Result<Stmt, CompileError> {
+    match tokens.get(*pos + 1).map(|(token, _)| token) {
+        Some(Token::Include) => {
+            *pos += 1;
+            parse_include(tokens, pos, span, false, false)
+        }
+        Some(Token::IncludeOnce) => {
+            *pos += 1;
+            parse_include(tokens, pos, span, true, false)
+        }
+        Some(Token::Require) => {
+            *pos += 1;
+            parse_include(tokens, pos, span, false, true)
+        }
+        Some(Token::RequireOnce) => {
+            *pos += 1;
+            parse_include(tokens, pos, span, true, true)
+        }
+        _ => parse_expr_stmt(tokens, pos, span),
+    }
+}
+
 pub(super) fn parse_return(
     tokens: &[(Token, Span)],
     pos: &mut usize,
