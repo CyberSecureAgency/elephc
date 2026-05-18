@@ -933,6 +933,39 @@ fn test_preg_replace_no_match() {
 }
 
 #[test]
+fn test_preg_replace_callback_matches_array() {
+    let out = compile_and_run(
+        r#"<?php
+$result = preg_replace_callback(
+    "/(\d+)/",
+    function($matches) {
+        return "[" . $matches[0] . "]";
+    },
+    "price: 123 and 456"
+);
+echo $result;
+"#,
+    );
+    assert_eq!(out, "price: [123] and [456]");
+}
+
+#[test]
+fn test_preg_replace_callback_capture_groups() {
+    let out = compile_and_run(
+        r#"<?php
+echo preg_replace_callback(
+    "/([a-z]+)-([0-9]+)/",
+    function($matches) {
+        return $matches[1] . ":" . $matches[2];
+    },
+    "id-42 and item-7"
+);
+"#,
+    );
+    assert_eq!(out, "id:42 and item:7");
+}
+
+#[test]
 fn test_preg_split_simple() {
     let out = compile_and_run(
         r#"<?php
