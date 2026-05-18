@@ -218,11 +218,12 @@ pub(crate) fn emit_preg_replace_callback(emitter: &mut Emitter) {
     emitter.label("__rt_preg_replace_callback_advance");
     emitter.instruction(&format!("str x11, [sp, #{}]", output_write_off));      // save output write pointer after callback copy
     publish_concat_offset(emitter, output_write_off);
-    emitter.instruction(&emitter.platform.regoff_load_instr(
+    let load_match_end = emitter.platform.regoff_load_instr(
         "x9",
         "sp",
         regmatch_off + emitter.platform.regmatch_rm_eo_offset(),
-    ));                                                                         // load rm_eo with the platform regoff_t width
+    );
+    emitter.instruction(&load_match_end);                                       // load rm_eo with the platform regoff_t width
     emitter.instruction("cmp x9, #0");                                          // detect zero-length regex matches
     emitter.instruction("b.gt __rt_preg_replace_callback_advance_ok");          // use native rm_eo when the match consumed bytes
     emitter.instruction("mov x9, #1");                                          // force progress for zero-length matches
