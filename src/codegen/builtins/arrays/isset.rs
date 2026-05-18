@@ -27,7 +27,7 @@ pub fn emit(
 ) -> Option<PhpType> {
     emitter.comment("isset()");
     if let ExprKind::ArrayAccess { array, index } = &args[0].kind {
-        if emit_array_access_isset(array, index, emitter, ctx, data) {
+        if emit_array_access_isset(&args[0], array, index, emitter, ctx, data) {
             return Some(PhpType::Int);
         }
     }
@@ -39,6 +39,7 @@ pub fn emit(
 }
 
 fn emit_array_access_isset(
+    access: &Expr,
     array: &Expr,
     index: &Expr,
     emitter: &mut Emitter,
@@ -55,7 +56,8 @@ fn emit_array_access_isset(
 
     match array_ty.codegen_repr() {
         PhpType::Str => {
-            emit_string_offset_isset(array, index, emitter, ctx, data);
+            emit_expr(access, emitter, ctx, data);
+            emit_string_offset_isset_result(emitter);
             true
         }
         PhpType::Array(elem_ty) => match elem_ty.codegen_repr() {
@@ -82,58 +84,6 @@ fn emit_array_access_isset(
         },
         _ => false,
     }
-}
-
-fn emit_string_offset_isset(
-    array: &Expr,
-    index: &Expr,
-    emitter: &mut Emitter,
-    ctx: &mut Context,
-    data: &mut DataSection,
-) {
-    emit_expr(array, emitter, ctx, data);
-    let (str_ptr_reg, str_len_reg) = abi::string_result_regs(emitter);
-    abi::emit_push_reg_pair(emitter, str_ptr_reg, str_len_reg);                // preserve the source string while evaluating the offset expression
-    emit_expr(index, emitter, ctx, data);
-    emitter.comment("string offset isset");
-
-    let adjusted = ctx.next_label("isset_str_idx_adjusted");
-    let missing = ctx.next_label("isset_str_idx_missing");
-    let done = ctx.next_label("isset_str_idx_done");
-
-    match emitter.target.arch {
-        Arch::AArch64 => {
-            abi::emit_pop_reg_pair(emitter, "x1", "x2");                       // restore the source string pointer and length for bounds checking
-            emitter.instruction("cmp x0, #0");                                  // check whether the requested string offset is negative
-            emitter.instruction(&format!("b.ge {}", adjusted));                 // skip negative-offset adjustment for non-negative indexes
-            emitter.instruction("add x0, x2, x0");                              // convert negative offsets to length + offset
-            emitter.label(&adjusted);
-            emitter.instruction("cmp x0, #0");                                  // reject adjusted offsets that still point before the string
-            emitter.instruction(&format!("b.lt {}", missing));                  // missing offset: isset must return false
-            emitter.instruction("cmp x0, x2");                                  // compare the adjusted offset against the string length
-            emitter.instruction(&format!("b.ge {}", missing));                  // offsets at or beyond length are not set
-            emitter.instruction("mov x0, #1");                                  // in-bounds string offsets are set even when the character is falsy
-            emitter.instruction(&format!("b {}", done));                        // skip the false result path
-            emitter.label(&missing);
-            emitter.instruction("mov x0, #0");                                  // out-of-bounds string offsets are not set
-        }
-        Arch::X86_64 => {
-            abi::emit_pop_reg_pair(emitter, "r8", "r9");                        // restore the source string pointer and length for bounds checking
-            emitter.instruction("cmp rax, 0");                                  // check whether the requested string offset is negative
-            emitter.instruction(&format!("jge {}", adjusted));                  // skip negative-offset adjustment for non-negative indexes
-            emitter.instruction("add rax, r9");                                 // convert negative offsets to length + offset
-            emitter.label(&adjusted);
-            emitter.instruction("cmp rax, 0");                                  // reject adjusted offsets that still point before the string
-            emitter.instruction(&format!("jl {}", missing));                    // missing offset: isset must return false
-            emitter.instruction("cmp rax, r9");                                 // compare the adjusted offset against the string length
-            emitter.instruction(&format!("jge {}", missing));                   // offsets at or beyond length are not set
-            emitter.instruction("mov rax, 1");                                  // in-bounds string offsets are set even when the character is falsy
-            emitter.instruction(&format!("jmp {}", done));                      // skip the false result path
-            emitter.label(&missing);
-            emitter.instruction("xor eax, eax");                                // out-of-bounds string offsets are not set
-        }
-    }
-    emitter.label(&done);
 }
 
 fn emit_indexed_offset_exists(
@@ -248,5 +198,20 @@ fn emit_not_null_result(ty: &PhpType, emitter: &mut Emitter) {
                 emitter.instruction("mov rax, 1");                              // non-nullable compiled values are set
             }
         },
+    }
+}
+
+fn emit_string_offset_isset_result(emitter: &mut Emitter) {
+    let (_, len_reg) = abi::string_result_regs(emitter);
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction(&format!("cmp {}, #0", len_reg));               // check whether string offset access produced a character
+            emitter.instruction("cset x0, ne");                                 // return true only when the string offset is in bounds
+        }
+        Arch::X86_64 => {
+            emitter.instruction(&format!("cmp {}, 0", len_reg));                // check whether string offset access produced a character
+            emitter.instruction("setne al");                                    // return true only when the string offset is in bounds
+            emitter.instruction("movzx eax, al");                               // widen the boolean byte into the canonical integer result
+        }
     }
 }
