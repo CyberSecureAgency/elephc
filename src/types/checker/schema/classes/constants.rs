@@ -197,10 +197,22 @@ fn rewrite_expr(
             object: Box::new(rewrite_expr(object, class_name, parent_name)?),
             property: property.clone(),
         },
+        ExprKind::DynamicPropertyAccess { object, property } => {
+            ExprKind::DynamicPropertyAccess {
+                object: Box::new(rewrite_expr(object, class_name, parent_name)?),
+                property: Box::new(rewrite_expr(property, class_name, parent_name)?),
+            }
+        }
         ExprKind::NullsafePropertyAccess { object, property } => {
             ExprKind::NullsafePropertyAccess {
                 object: Box::new(rewrite_expr(object, class_name, parent_name)?),
                 property: property.clone(),
+            }
+        }
+        ExprKind::NullsafeDynamicPropertyAccess { object, property } => {
+            ExprKind::NullsafeDynamicPropertyAccess {
+                object: Box::new(rewrite_expr(object, class_name, parent_name)?),
+                property: Box::new(rewrite_expr(property, class_name, parent_name)?),
             }
         }
         ExprKind::MethodCall {
