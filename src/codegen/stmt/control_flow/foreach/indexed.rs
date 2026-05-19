@@ -234,6 +234,22 @@ pub(crate) fn emit_indexed_foreach_runtime_mixed(
         return;
     }
 
+    let ref_fallback = if value_by_ref && !value_was_ref {
+        local_ref_cell_flag_key.and_then(|flag_key| {
+            super::prepare_foreach_value_ref_slot(value_var, &PhpType::Mixed, flag_key, emitter, ctx)
+        })
+    } else {
+        None
+    };
+    let saved_ref_offset = None;
+    let ref_flag_offset = if value_by_ref {
+        emitter.instruction("str xzr, [sp, #-16]!");                            // reserve and clear the by-reference foreach bound flag
+        Some(64)
+    } else {
+        None
+    };
+    let stack_size = 64 + if value_by_ref { 16 } else { 0 } + if saved_ref_offset.is_some() { 16 } else { 0 };
+
     emitter.instruction("str x0, [sp, #-16]!");                                 // preserve the indexed-array pointer for the runtime-typed foreach loop
     emitter.instruction("ldr x9, [x0]");                                        // load the indexed-array logical length
     emitter.instruction("str x9, [sp, #-16]!");                                 // preserve the array length for loop bounds checks
@@ -259,59 +275,78 @@ pub(crate) fn emit_indexed_foreach_runtime_mixed(
     }
 
     if value_by_ref {
-        abi::emit_call_label(emitter, "__rt_iterable_unsupported_kind");        // reject by-reference foreach over runtime-typed indexed iterables
-    }
-    let val_var = match ctx.variables.get(value_var) {
-        Some(v) => v,
-        None => {
-            emitter.comment(&format!("WARNING: undefined foreach value variable ${}", value_var));
-            return;
+        emitter.instruction("ldr x9, [sp, #48]");                               // reload the converted indexed-array pointer for by-reference binding
+        bind_indexed_value_ref_aarch64(
+            value_var,
+            &PhpType::Mixed,
+            ref_fallback.as_ref(),
+            ref_flag_offset.expect("missing foreach ref flag"),
+            emitter,
+            ctx,
+        );
+    } else {
+        let val_var = match ctx.variables.get(value_var) {
+            Some(v) => v,
+            None => {
+                emitter.comment(&format!("WARNING: undefined foreach value variable ${}", value_var));
+                return;
+            }
+        };
+        let val_offset = val_var.stack_offset;
+        let string_case = ctx.next_label("foreach_iter_indexed_string");
+        let loaded = ctx.next_label("foreach_iter_indexed_loaded");
+        let reuse_box = ctx.next_label("foreach_iter_indexed_mixed_reuse");
+        let store_box = ctx.next_label("foreach_iter_indexed_mixed_store");
+
+        emitter.instruction("ldr x11, [sp, #48]");                              // reload the indexed-array pointer from the foreach loop stack
+        emitter.instruction("ldr x5, [sp, #16]");                               // reload the runtime value_type tag for this indexed array
+        emitter.instruction("cmp x5, #1");                                      // does the indexed array store string slots?
+        emitter.instruction(&format!("b.eq {}", string_case));                  // strings use 16-byte slots with pointer and length
+        emitter.instruction("add x11, x11, #24");                               // skip the indexed-array header to reach 8-byte payload slots
+        emitter.instruction("ldr x3, [x11, x0, lsl #3]");                       // load the scalar or pointer payload from the current indexed slot
+        emitter.instruction("mov x4, xzr");                                     // non-string indexed payloads do not use a high payload word
+        emitter.instruction(&format!("b {}", loaded));                          // continue with the normalized payload triple
+
+        emitter.label(&string_case);
+        emitter.instruction("lsl x10, x0, #4");                                 // scale the current index by the 16-byte string slot size
+        emitter.instruction("add x11, x11, x10");                               // advance to the selected string slot
+        emitter.instruction("add x11, x11, #24");                               // skip the indexed-array header to the string payload region
+        emitter.instruction("ldr x3, [x11]");                                   // load the string pointer from the current indexed slot
+        emitter.instruction("ldr x4, [x11, #8]");                               // load the string length from the current indexed slot
+
+        emitter.label(&loaded);
+        if !ctx.ref_params.contains(value_var) {
+            emitter.instruction("str x3, [sp, #-16]!");                         // save the runtime low payload word across previous-value cleanup
+            emitter.instruction("stp x4, x5, [sp, #-16]!");                     // save the runtime high payload word and tag across cleanup
+            crate::codegen::abi::load_at_offset_scratch(emitter, "x0", val_offset, "x10");
+            emitter.instruction("bl __rt_decref_mixed");                        // release the previous owned mixed foreach value if one exists
+            emitter.instruction("ldp x4, x5, [sp], #16");                       // restore the runtime high payload word and tag after cleanup
+            emitter.instruction("ldr x3, [sp], #16");                           // restore the runtime low payload word after cleanup
         }
-    };
-    let val_offset = val_var.stack_offset;
-    let string_case = ctx.next_label("foreach_iter_indexed_string");
-    let loaded = ctx.next_label("foreach_iter_indexed_loaded");
-    let reuse_box = ctx.next_label("foreach_iter_indexed_mixed_reuse");
-    let store_box = ctx.next_label("foreach_iter_indexed_mixed_store");
-
-    emitter.instruction("ldr x11, [sp, #48]");                                  // reload the indexed-array pointer from the foreach loop stack
-    emitter.instruction("ldr x5, [sp, #16]");                                   // reload the runtime value_type tag for this indexed array
-    emitter.instruction("cmp x5, #1");                                          // does the indexed array store string slots?
-    emitter.instruction(&format!("b.eq {}", string_case));                      // strings use 16-byte slots with pointer and length
-    emitter.instruction("add x11, x11, #24");                                   // skip the indexed-array header to reach 8-byte payload slots
-    emitter.instruction("ldr x3, [x11, x0, lsl #3]");                           // load the scalar or pointer payload from the current indexed slot
-    emitter.instruction("mov x4, xzr");                                         // non-string indexed payloads do not use a high payload word
-    emitter.instruction(&format!("b {}", loaded));                              // continue with the normalized payload triple
-
-    emitter.label(&string_case);
-    emitter.instruction("lsl x10, x0, #4");                                     // scale the current index by the 16-byte string slot size
-    emitter.instruction("add x11, x11, x10");                                   // advance to the selected string slot
-    emitter.instruction("add x11, x11, #24");                                   // skip the indexed-array header to the string payload region
-    emitter.instruction("ldr x3, [x11]");                                       // load the string pointer from the current indexed slot
-    emitter.instruction("ldr x4, [x11, #8]");                                   // load the string length from the current indexed slot
-
-    emitter.label(&loaded);
-    emitter.instruction("str x3, [sp, #-16]!");                                 // save the runtime low payload word across previous-value cleanup
-    emitter.instruction("stp x4, x5, [sp, #-16]!");                             // save the runtime high payload word and tag across cleanup
-    crate::codegen::abi::load_at_offset_scratch(emitter, "x0", val_offset, "x10");
-    emitter.instruction("bl __rt_decref_mixed");                                // release the previous owned mixed foreach value if one exists
-    emitter.instruction("ldp x4, x5, [sp], #16");                               // restore the runtime high payload word and tag after cleanup
-    emitter.instruction("ldr x3, [sp], #16");                                   // restore the runtime low payload word after cleanup
-    emitter.instruction("cmp x5, #7");                                          // does the indexed slot already hold a boxed mixed value?
-    emitter.instruction(&format!("b.eq {}", reuse_box));                        // reuse existing mixed boxes instead of nesting them
-    super::super::super::super::emit_box_runtime_payload_as_mixed(emitter, "x5", "x3", "x4");
-    emitter.instruction(&format!("b {}", store_box));                           // skip the mixed-box reuse path once boxing is complete
-    emitter.label(&reuse_box);
-    emitter.instruction("mov x0, x3");                                          // move the existing mixed box pointer into the retain helper argument
-    emitter.instruction("bl __rt_incref");                                      // retain the shared mixed box for the foreach variable
-    emitter.label(&store_box);
-    crate::codegen::abi::store_at_offset_scratch(emitter, "x0", val_offset, "x10");
-    ctx.update_var_type_and_ownership(value_var, PhpType::Mixed, HeapOwnership::Owned);
+        emitter.instruction("cmp x5, #7");                                      // does the indexed slot already hold a boxed mixed value?
+        emitter.instruction(&format!("b.eq {}", reuse_box));                    // reuse existing mixed boxes instead of nesting them
+        super::super::super::super::emit_box_runtime_payload_as_mixed(emitter, "x5", "x3", "x4");
+        emitter.instruction(&format!("b {}", store_box));                       // skip the mixed-box reuse path once boxing is complete
+        emitter.label(&reuse_box);
+        emitter.instruction("mov x0, x3");                                      // move the existing mixed box pointer into the retain helper argument
+        emitter.instruction("bl __rt_incref");                                  // retain the shared mixed box for the foreach variable
+        emitter.label(&store_box);
+        super::store_foreach_value_from_regs(
+            value_var,
+            &PhpType::Mixed,
+            "x0",
+            None,
+            val_offset,
+            emitter,
+            ctx,
+        );
+        ctx.update_var_type_and_ownership(value_var, PhpType::Mixed, HeapOwnership::Owned);
+    }
 
     ctx.loop_stack.push(LoopLabels {
         continue_label: loop_cont.to_string(),
         break_label: loop_end.to_string(),
-        sp_adjust: 64,
+        sp_adjust: stack_size,
     });
     for s in body {
         emit_stmt(s, emitter, ctx, data);
@@ -324,7 +359,20 @@ pub(crate) fn emit_indexed_foreach_runtime_mixed(
     emitter.instruction("str x0, [sp]");                                        // persist the advanced foreach loop index
     emitter.instruction(&format!("b {}", loop_start));                          // continue the indexed-array iterable loop
     emitter.label(loop_end);
-    emitter.instruction("add sp, sp, #64");                                     // release index, value tag, length, and array-pointer stack slots
+    if let Some(flag_offset) = ref_flag_offset {
+        super::finish_foreach_value_ref(
+            value_var,
+            &PhpType::Mixed,
+            value_was_ref,
+            flag_offset,
+            saved_ref_offset,
+            emitter,
+            ctx,
+        );
+        emitter.instruction(&format!("add sp, sp, #{}", stack_size));           // release runtime indexed foreach stack slots and scoped reference state
+    } else {
+        emitter.instruction("add sp, sp, #64");                                 // release index, value tag, length, and array-pointer stack slots
+    }
 }
 
 fn emit_indexed_foreach_linux_x86_64(
@@ -501,8 +549,8 @@ fn emit_indexed_foreach_runtime_mixed_linux_x86_64(
     key_var: &Option<String>,
     value_var: &str,
     value_by_ref: bool,
-    _value_was_ref: bool,
-    _local_ref_cell_flag_key: Option<&str>,
+    value_was_ref: bool,
+    local_ref_cell_flag_key: Option<&str>,
     body: &[Stmt],
     loop_start: &str,
     loop_end: &str,
@@ -511,6 +559,23 @@ fn emit_indexed_foreach_runtime_mixed_linux_x86_64(
     ctx: &mut Context,
     data: &mut DataSection,
 ) {
+    let ref_fallback = if value_by_ref && !value_was_ref {
+        local_ref_cell_flag_key.and_then(|flag_key| {
+            super::prepare_foreach_value_ref_slot(value_var, &PhpType::Mixed, flag_key, emitter, ctx)
+        })
+    } else {
+        None
+    };
+    let saved_ref_offset = None;
+    let ref_flag_offset = if value_by_ref {
+        emitter.instruction("sub rsp, 16");                                     // reserve stack space for the by-reference foreach bound flag
+        emitter.instruction("mov QWORD PTR [rsp], 0");                          // clear the by-reference foreach bound flag
+        Some(64)
+    } else {
+        None
+    };
+    let stack_size = 64 + if value_by_ref { 16 } else { 0 } + if saved_ref_offset.is_some() { 16 } else { 0 };
+
     abi::emit_push_reg(emitter, "rax");                                         // preserve the indexed-array pointer for the runtime-typed foreach loop
     emitter.instruction("mov r10, QWORD PTR [rax]");                            // load the indexed-array logical length
     abi::emit_push_reg(emitter, "r10");                                         // preserve the array length for loop bounds checks
@@ -537,60 +602,79 @@ fn emit_indexed_foreach_runtime_mixed_linux_x86_64(
     }
 
     if value_by_ref {
-        abi::emit_call_label(emitter, "__rt_iterable_unsupported_kind");        // reject by-reference foreach over runtime-typed indexed iterables
-    }
-    let val_var = match ctx.variables.get(value_var) {
-        Some(v) => v,
-        None => {
-            emitter.comment(&format!("WARNING: undefined foreach value variable ${}", value_var));
-            return;
+        emitter.instruction("mov r11, QWORD PTR [rsp + 48]");                   // reload the converted indexed-array pointer for by-reference binding
+        bind_indexed_value_ref_x86_64(
+            value_var,
+            &PhpType::Mixed,
+            ref_fallback.as_ref(),
+            ref_flag_offset.expect("missing foreach ref flag"),
+            emitter,
+            ctx,
+        );
+    } else {
+        let val_var = match ctx.variables.get(value_var) {
+            Some(v) => v,
+            None => {
+                emitter.comment(&format!("WARNING: undefined foreach value variable ${}", value_var));
+                return;
+            }
+        };
+        let val_offset = val_var.stack_offset;
+        let string_case = ctx.next_label("foreach_iter_indexed_string");
+        let loaded = ctx.next_label("foreach_iter_indexed_loaded");
+        let reuse_box = ctx.next_label("foreach_iter_indexed_mixed_reuse");
+        let store_box = ctx.next_label("foreach_iter_indexed_mixed_store");
+
+        emitter.instruction("mov r11, QWORD PTR [rsp + 48]");                   // reload the indexed-array pointer from the foreach loop stack
+        emitter.instruction("mov r9, QWORD PTR [rsp + 16]");                    // reload the runtime value_type tag for this indexed array
+        emitter.instruction("cmp r9, 1");                                       // does the indexed array store string slots?
+        emitter.instruction(&format!("je {}", string_case));                    // strings use 16-byte slots with pointer and length
+        emitter.instruction("add r11, 24");                                     // skip the indexed-array header to reach 8-byte payload slots
+        emitter.instruction("mov rcx, QWORD PTR [r11 + rax * 8]");              // load the scalar or pointer payload from the current indexed slot
+        emitter.instruction("xor r8, r8");                                      // non-string indexed payloads do not use a high payload word
+        emitter.instruction(&format!("jmp {}", loaded));                        // continue with the normalized payload triple
+
+        emitter.label(&string_case);
+        emitter.instruction("mov r10, rax");                                    // copy the current index before scaling it to a string slot offset
+        emitter.instruction("shl r10, 4");                                      // scale the current index by the 16-byte string slot size
+        emitter.instruction("add r11, r10");                                    // advance to the selected string slot
+        emitter.instruction("add r11, 24");                                     // skip the indexed-array header to the string payload region
+        emitter.instruction("mov rcx, QWORD PTR [r11]");                        // load the string pointer from the current indexed slot
+        emitter.instruction("mov r8, QWORD PTR [r11 + 8]");                     // load the string length from the current indexed slot
+
+        emitter.label(&loaded);
+        if !ctx.ref_params.contains(value_var) {
+            abi::emit_push_reg(emitter, "rcx");                                 // preserve the runtime low payload word across previous-value cleanup
+            abi::emit_push_reg_pair(emitter, "r8", "r9");                       // preserve the runtime high payload word and tag across cleanup
+            crate::codegen::abi::load_at_offset_scratch(emitter, "rax", val_offset, "r10");
+            emitter.instruction("call __rt_decref_mixed");                      // release the previous owned mixed foreach value if one exists
+            abi::emit_pop_reg_pair(emitter, "r8", "r9");                        // restore the runtime high payload word and tag after cleanup
+            abi::emit_pop_reg(emitter, "rcx");                                  // restore the runtime low payload word after cleanup
         }
-    };
-    let val_offset = val_var.stack_offset;
-    let string_case = ctx.next_label("foreach_iter_indexed_string");
-    let loaded = ctx.next_label("foreach_iter_indexed_loaded");
-    let reuse_box = ctx.next_label("foreach_iter_indexed_mixed_reuse");
-    let store_box = ctx.next_label("foreach_iter_indexed_mixed_store");
-
-    emitter.instruction("mov r11, QWORD PTR [rsp + 48]");                       // reload the indexed-array pointer from the foreach loop stack
-    emitter.instruction("mov r9, QWORD PTR [rsp + 16]");                        // reload the runtime value_type tag for this indexed array
-    emitter.instruction("cmp r9, 1");                                           // does the indexed array store string slots?
-    emitter.instruction(&format!("je {}", string_case));                        // strings use 16-byte slots with pointer and length
-    emitter.instruction("add r11, 24");                                         // skip the indexed-array header to reach 8-byte payload slots
-    emitter.instruction("mov rcx, QWORD PTR [r11 + rax * 8]");                  // load the scalar or pointer payload from the current indexed slot
-    emitter.instruction("xor r8, r8");                                          // non-string indexed payloads do not use a high payload word
-    emitter.instruction(&format!("jmp {}", loaded));                            // continue with the normalized payload triple
-
-    emitter.label(&string_case);
-    emitter.instruction("mov r10, rax");                                        // copy the current index before scaling it to a string slot offset
-    emitter.instruction("shl r10, 4");                                          // scale the current index by the 16-byte string slot size
-    emitter.instruction("add r11, r10");                                        // advance to the selected string slot
-    emitter.instruction("add r11, 24");                                         // skip the indexed-array header to the string payload region
-    emitter.instruction("mov rcx, QWORD PTR [r11]");                            // load the string pointer from the current indexed slot
-    emitter.instruction("mov r8, QWORD PTR [r11 + 8]");                         // load the string length from the current indexed slot
-
-    emitter.label(&loaded);
-    abi::emit_push_reg(emitter, "rcx");                                         // preserve the runtime low payload word across previous-value cleanup
-    abi::emit_push_reg_pair(emitter, "r8", "r9");                               // preserve the runtime high payload word and tag across cleanup
-    crate::codegen::abi::load_at_offset_scratch(emitter, "rax", val_offset, "r10");
-    emitter.instruction("call __rt_decref_mixed");                              // release the previous owned mixed foreach value if one exists
-    abi::emit_pop_reg_pair(emitter, "r8", "r9");                                // restore the runtime high payload word and tag after cleanup
-    abi::emit_pop_reg(emitter, "rcx");                                          // restore the runtime low payload word after cleanup
-    emitter.instruction("cmp r9, 7");                                           // does the indexed slot already hold a boxed mixed value?
-    emitter.instruction(&format!("je {}", reuse_box));                          // reuse existing mixed boxes instead of nesting them
-    super::super::super::super::emit_box_runtime_payload_as_mixed(emitter, "r9", "rcx", "r8");
-    emitter.instruction(&format!("jmp {}", store_box));                         // skip the mixed-box reuse path once boxing is complete
-    emitter.label(&reuse_box);
-    emitter.instruction("mov rax, rcx");                                        // move the existing mixed box pointer into the retain helper argument
-    emitter.instruction("call __rt_incref");                                    // retain the shared mixed box for the foreach variable
-    emitter.label(&store_box);
-    crate::codegen::abi::store_at_offset_scratch(emitter, "rax", val_offset, "r10");
-    ctx.update_var_type_and_ownership(value_var, PhpType::Mixed, HeapOwnership::Owned);
+        emitter.instruction("cmp r9, 7");                                       // does the indexed slot already hold a boxed mixed value?
+        emitter.instruction(&format!("je {}", reuse_box));                      // reuse existing mixed boxes instead of nesting them
+        super::super::super::super::emit_box_runtime_payload_as_mixed(emitter, "r9", "rcx", "r8");
+        emitter.instruction(&format!("jmp {}", store_box));                     // skip the mixed-box reuse path once boxing is complete
+        emitter.label(&reuse_box);
+        emitter.instruction("mov rax, rcx");                                    // move the existing mixed box pointer into the retain helper argument
+        emitter.instruction("call __rt_incref");                                // retain the shared mixed box for the foreach variable
+        emitter.label(&store_box);
+        super::store_foreach_value_from_regs(
+            value_var,
+            &PhpType::Mixed,
+            "rax",
+            None,
+            val_offset,
+            emitter,
+            ctx,
+        );
+        ctx.update_var_type_and_ownership(value_var, PhpType::Mixed, HeapOwnership::Owned);
+    }
 
     ctx.loop_stack.push(LoopLabels {
         continue_label: loop_cont.to_string(),
         break_label: loop_end.to_string(),
-        sp_adjust: 64,
+        sp_adjust: stack_size,
     });
     for s in body {
         emit_stmt(s, emitter, ctx, data);
@@ -603,7 +687,20 @@ fn emit_indexed_foreach_runtime_mixed_linux_x86_64(
     emitter.instruction("mov QWORD PTR [rsp], rax");                            // persist the advanced foreach loop index
     emitter.instruction(&format!("jmp {}", loop_start));                        // continue the indexed-array iterable loop
     emitter.label(loop_end);
-    emitter.instruction("add rsp, 64");                                         // release index, value tag, length, and array-pointer stack slots
+    if let Some(flag_offset) = ref_flag_offset {
+        super::finish_foreach_value_ref(
+            value_var,
+            &PhpType::Mixed,
+            value_was_ref,
+            flag_offset,
+            saved_ref_offset,
+            emitter,
+            ctx,
+        );
+        emitter.instruction(&format!("add rsp, {}", stack_size));               // release runtime indexed foreach stack slots and scoped reference state
+    } else {
+        emitter.instruction("add rsp, 64");                                     // release index, value tag, length, and array-pointer stack slots
+    }
 }
 
 fn store_runtime_mixed_index_key_aarch64(

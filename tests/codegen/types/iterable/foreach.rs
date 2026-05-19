@@ -77,6 +77,123 @@ fn test_foreach_over_iterable_indexed_strings_uses_runtime_slot_width() {
 }
 
 #[test]
+fn test_foreach_over_untyped_parameter_with_mixed_runtime_array() {
+    let out = compile_and_run(
+        "<?php
+        function passthrough(mixed $value): mixed {
+            return $value;
+        }
+        function dump($items): void {
+            foreach ($items as $value) {
+                echo $value;
+                echo ';';
+            }
+        }
+        dump(passthrough([1, 2, 3]));
+        ",
+    );
+    assert_eq!(out, "1;2;3;");
+}
+
+#[test]
+fn test_foreach_over_mixed_parameter_assoc_array() {
+    let out = compile_and_run(
+        "<?php
+        function dump(mixed $items): void {
+            foreach ($items as $key => $value) {
+                echo $key;
+                echo '=';
+                echo $value;
+                echo ';';
+            }
+        }
+        dump(['a' => 1, 'b' => 'two']);
+        ",
+    );
+    assert_eq!(out, "a=1;b=two;");
+}
+
+#[test]
+fn test_foreach_over_mixed_json_decode_indexed_array() {
+    let out = compile_and_run(
+        r#"<?php
+        $items = json_decode("[10, 20]", true);
+        foreach ($items as $key => $value) {
+            echo $key;
+            echo '=';
+            echo $value;
+            echo ';';
+        }
+        "#,
+    );
+    assert_eq!(out, "0=10;1=20;");
+}
+
+#[test]
+fn test_foreach_over_union_parameter_array_runtime_value() {
+    let out = compile_and_run(
+        "<?php
+        function choose(bool $flag): array|bool {
+            if ($flag) {
+                return [4, 5];
+            }
+            return false;
+        }
+        function dump(array|bool $items): void {
+            foreach ($items as $key => $value) {
+                echo $key;
+                echo ':';
+                echo $value;
+                echo ';';
+            }
+        }
+        dump(choose(true));
+        ",
+    );
+    assert_eq!(out, "0:4;1:5;");
+}
+
+#[test]
+fn test_foreach_by_ref_over_mixed_indexed_array_updates_source() {
+    let out = compile_and_run(
+        "<?php
+        function rewrite(mixed $items): void {
+            foreach ($items as &$value) {
+                $value = 7;
+            }
+            foreach ($items as $value) {
+                echo $value;
+                echo ';';
+            }
+        }
+        rewrite([1, 2, 3]);
+        ",
+    );
+    assert_eq!(out, "7;7;7;");
+}
+
+#[test]
+fn test_foreach_by_ref_over_mixed_assoc_array_updates_source() {
+    let out = compile_and_run(
+        "<?php
+        function rewrite(mixed $items): void {
+            foreach ($items as $key => &$value) {
+                $value = 9;
+            }
+            foreach ($items as $key => $value) {
+                echo $key;
+                echo '=';
+                echo $value;
+                echo ';';
+            }
+        }
+        rewrite(['a' => 1, 'b' => 2]);
+        ",
+    );
+    assert_eq!(out, "a=9;b=9;");
+}
+
+#[test]
 fn test_foreach_over_iterable_iterator_object() {
     let out = compile_and_run(
         r#"<?php
@@ -312,4 +429,3 @@ fn test_iterable_variadic_arg_stays_boxed_in_runtime_array() {
     );
     assert_eq!(out, "[[1,2]]");
 }
-

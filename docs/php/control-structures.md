@@ -82,6 +82,13 @@ By-reference value binding is currently supported only for array sources;
 `iterable`-typed values is rejected at compile time. Use an array source or
 iterate by value when consuming Traversable objects.
 
+Untyped, `mixed`, and union-typed sources are dispatched at runtime. If the
+runtime value is an indexed or associative array, both by-value and by-reference
+value binding are supported. If the runtime value is an `Iterator` or
+`IteratorAggregate`, it is iterated by value; by-reference value binding over
+Traversable objects is rejected. Non-iterable runtime values produce a fatal
+diagnostic.
+
 `foreach` also accepts any object that implements the built-in `Iterator`
 interface (`current`, `key`, `next`, `valid`, `rewind`) or the
 `IteratorAggregate` interface (`getIterator(): Traversable`):

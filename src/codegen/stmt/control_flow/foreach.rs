@@ -203,6 +203,9 @@ pub(super) fn emit_foreach_stmt(
             let hash_end = ctx.next_label("foreach_mixed_hash_end");
             let hash_cont = ctx.next_label("foreach_mixed_hash_cont");
 
+            if value_by_ref {
+                push_mixed_source_cell(emitter);
+            }
             abi::emit_call_label(emitter, "__rt_mixed_unbox");                 // unwrap the mixed foreach source into tag plus payload words
             push_mixed_payload_lo(emitter);
             branch_on_mixed_iterable_tag(
@@ -216,6 +219,12 @@ pub(super) fn emit_foreach_stmt(
 
             emitter.label(&object_case);
             abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));           // restore the unboxed object pointer for Traversable foreach dispatch
+            if value_by_ref {
+                abi::emit_call_label(
+                    emitter,
+                    "__rt_iterable_unsupported_kind",
+                );                                                              // reject by-reference foreach over runtime object iterables
+            }
             iterator::emit_iterable_object_foreach(
                 receiver_var,
                 key_var,
@@ -229,6 +238,9 @@ pub(super) fn emit_foreach_stmt(
 
             emitter.label(&hash_case);
             abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));           // restore the unboxed hash pointer for associative foreach dispatch
+            if value_by_ref {
+                convert_runtime_mixed_hash_by_ref_source(emitter);
+            }
             assoc::emit_assoc_foreach(
                 key_var,
                 value_var,
@@ -249,6 +261,9 @@ pub(super) fn emit_foreach_stmt(
 
             emitter.label(&indexed_case);
             abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));           // restore the unboxed indexed-array pointer for foreach dispatch
+            if value_by_ref {
+                convert_runtime_mixed_indexed_by_ref_source(emitter);
+            }
             indexed::emit_indexed_foreach_runtime_mixed(
                 key_var,
                 value_var,
@@ -264,6 +279,9 @@ pub(super) fn emit_foreach_stmt(
                 data,
             );
             emitter.label(&done);
+            if value_by_ref {
+                discard_mixed_source_cell(emitter);
+            }
         }
         _ => {
             let elem_ty = match &arr_ty {
@@ -300,6 +318,52 @@ fn push_mixed_payload_lo(emitter: &mut Emitter) {
         }
         Arch::X86_64 => {
             abi::emit_push_reg(emitter, "rdi");                                 // preserve the unboxed mixed payload pointer while testing its runtime tag
+        }
+    }
+}
+
+fn push_mixed_source_cell(emitter: &mut Emitter) {
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the boxed Mixed source cell for by-reference array payload updates
+}
+
+fn discard_mixed_source_cell(emitter: &mut Emitter) {
+    abi::emit_pop_reg(emitter, abi::temp_int_reg(emitter.target));              // discard the preserved boxed Mixed source cell after array foreach completes
+}
+
+fn convert_runtime_mixed_indexed_by_ref_source(emitter: &mut Emitter) {
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction("ldr x1, [x0, #-8]");                           // load the packed indexed-array metadata before mixed-slot conversion
+            emitter.instruction("lsr x1, x1, #8");                              // move the runtime indexed-array value_type tag into the low bits
+            emitter.instruction("and x1, x1, #0x7f");                           // isolate the current indexed-array value_type tag
+            abi::emit_call_label(emitter, "__rt_array_to_mixed");              // convert indexed-array slots to boxed Mixed cells before binding refs
+            emitter.instruction("ldr x9, [sp]");                                // reload the preserved boxed Mixed source cell
+            emitter.instruction("str x0, [x9, #8]");                            // publish the unique converted indexed-array pointer into the Mixed cell
+        }
+        Arch::X86_64 => {
+            emitter.instruction("mov rsi, QWORD PTR [rax - 8]");                // load the packed indexed-array metadata before mixed-slot conversion
+            emitter.instruction("shr rsi, 8");                                  // move the runtime indexed-array value_type tag into the low bits
+            emitter.instruction("and rsi, 0x7f");                               // isolate the current indexed-array value_type tag
+            emitter.instruction("mov rdi, rax");                                // pass the indexed-array pointer to the mixed-slot conversion helper
+            abi::emit_call_label(emitter, "__rt_array_to_mixed");              // convert indexed-array slots to boxed Mixed cells before binding refs
+            emitter.instruction("mov r10, QWORD PTR [rsp]");                    // reload the preserved boxed Mixed source cell
+            emitter.instruction("mov QWORD PTR [r10 + 8], rax");                // publish the unique converted indexed-array pointer into the Mixed cell
+        }
+    }
+}
+
+fn convert_runtime_mixed_hash_by_ref_source(emitter: &mut Emitter) {
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            abi::emit_call_label(emitter, "__rt_hash_to_mixed");               // convert hash entries to boxed Mixed cells before binding refs
+            emitter.instruction("ldr x9, [sp]");                                // reload the preserved boxed Mixed source cell
+            emitter.instruction("str x0, [x9, #8]");                            // publish the unique converted hash pointer into the Mixed cell
+        }
+        Arch::X86_64 => {
+            emitter.instruction("mov rdi, rax");                                // pass the hash pointer to the mixed-entry conversion helper
+            abi::emit_call_label(emitter, "__rt_hash_to_mixed");               // convert hash entries to boxed Mixed cells before binding refs
+            emitter.instruction("mov r10, QWORD PTR [rsp]");                    // reload the preserved boxed Mixed source cell
+            emitter.instruction("mov QWORD PTR [r10 + 8], rax");                // publish the unique converted hash pointer into the Mixed cell
         }
     }
 }

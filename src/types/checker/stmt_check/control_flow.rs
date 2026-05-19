@@ -58,7 +58,10 @@ impl Checker {
                         env.insert(k.clone(), PhpType::Mixed);
                     }
                     env.insert(value_var.clone(), PhpType::Mixed);
-                } else if let PhpType::Iterable = &arr_ty {
+                } else if matches!(
+                    arr_ty,
+                    PhpType::Iterable | PhpType::Mixed | PhpType::Union(_)
+                ) {
                     if let Some(k) = key_var {
                         env.insert(k.clone(), PhpType::Mixed);
                     }
