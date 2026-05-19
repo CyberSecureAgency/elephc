@@ -266,6 +266,7 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter) {
     objects::emit_mixed_property_get(emitter);
     objects::emit_mixed_property_set(emitter);
     objects::emit_mixed_array_get(emitter);
+    objects::emit_mixed_array_set(emitter);
     objects::emit_json_encode_stdclass(emitter);
 
     // Buffer runtime functions

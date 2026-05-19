@@ -292,6 +292,7 @@ pub(super) fn emit_runtime_linux_x86_64_minimal(emitter: &mut Emitter) {
     objects::emit_mixed_property_get(emitter);
     objects::emit_mixed_property_set(emitter);
     objects::emit_mixed_array_get(emitter);
+    objects::emit_mixed_array_set(emitter);
     objects::emit_json_encode_stdclass(emitter);
     system::emit_preg_strip(emitter);
     system::emit_pcre_to_posix(emitter);
