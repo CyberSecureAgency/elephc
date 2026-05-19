@@ -140,7 +140,7 @@ pub fn collect_local_vars(
                     if *value_by_ref {
                         ctx.alloc_var_with_static_type(
                             value_var,
-                            PhpType::Int,
+                            elem_ty.codegen_repr(),
                             elem_ty.clone(),
                         );
                         ctx.update_var_type_static_and_ownership(

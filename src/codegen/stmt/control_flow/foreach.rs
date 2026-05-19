@@ -20,13 +20,6 @@ use crate::codegen::{abi, platform::Arch};
 use crate::parser::ast::{Expr, ExprKind, Stmt};
 use crate::types::PhpType;
 
-#[derive(Clone)]
-struct ForeachRefSnapshot {
-    ty: PhpType,
-    static_ty: PhpType,
-    ownership: HeapOwnership,
-}
-
 pub(super) fn emit_foreach_stmt(
     array: &Expr,
     key_var: &Option<String>,
@@ -49,15 +42,6 @@ pub(super) fn emit_foreach_stmt(
         _ => None,
     };
     let value_was_ref = ctx.ref_params.contains(value_var);
-    let value_ref_snapshot = if value_by_ref && value_was_ref {
-        ctx.variables.get(value_var).map(|var| ForeachRefSnapshot {
-            ty: var.ty.clone(),
-            static_ty: var.static_ty.clone(),
-            ownership: var.ownership,
-        })
-    } else {
-        None
-    };
     let arr_ty = emit_expr(array, emitter, ctx, data);
     if value_by_ref {
         ensure_unique_by_ref_source(receiver_var, &arr_ty, emitter, ctx);
@@ -285,18 +269,7 @@ pub(super) fn emit_foreach_stmt(
     }
 
     if value_by_ref {
-        if value_was_ref {
-            if let Some(snapshot) = value_ref_snapshot {
-                ctx.update_var_type_static_and_ownership(
-                    value_var,
-                    snapshot.ty,
-                    snapshot.static_ty,
-                    snapshot.ownership,
-                );
-            }
-        } else {
-            ctx.ref_params.remove(value_var);
-        }
+        ctx.ref_params.insert(value_var.to_string());
     }
 }
 
@@ -391,6 +364,140 @@ pub(super) fn bind_foreach_value_ref(
     );
 }
 
+pub(super) fn prepare_foreach_value_ref_slot(
+    value_var: &str,
+    value_ty: &PhpType,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+) {
+    if ctx.ref_params.contains(value_var) {
+        return;
+    }
+    let Some(var) = ctx.variables.get(value_var) else {
+        emitter.comment(&format!("WARNING: undefined foreach value variable ${}", value_var));
+        return;
+    };
+    let slot_offset = var.stack_offset;
+    let current_ty = var.ty.clone();
+
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the foreach source pointer while preparing the value alias cell
+    abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), 16);
+    abi::emit_call_label(emitter, "__rt_heap_alloc");                          // allocate a stable fallback cell for empty by-reference foreach loops
+    let cell_reg = abi::symbol_scratch_reg(emitter);
+    emitter.instruction(&format!("mov {}, {}", cell_reg, abi::int_result_reg(emitter))); // keep the fallback reference cell address while copying the current value
+    copy_local_value_to_ref_cell(&current_ty, slot_offset, cell_reg, emitter);
+    abi::store_at_offset_scratch(
+        emitter,
+        cell_reg,
+        slot_offset,
+        abi::temp_int_reg(emitter.target),
+    );
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // restore the foreach source pointer for loop setup
+
+    ctx.ref_params.insert(value_var.to_string());
+    ctx.update_var_type_static_and_ownership(
+        value_var,
+        value_ty.codegen_repr(),
+        value_ty.clone(),
+        HeapOwnership::borrowed_alias_for_type(value_ty),
+    );
+}
+
+fn copy_local_value_to_ref_cell(
+    value_ty: &PhpType,
+    slot_offset: usize,
+    cell_reg: &str,
+    emitter: &mut Emitter,
+) {
+    let temp_reg = abi::temp_int_reg(emitter.target);
+    match value_ty.codegen_repr() {
+        PhpType::Str => {
+            let (ptr_reg, len_reg) = abi::string_result_regs(emitter);
+            abi::load_at_offset_scratch(emitter, ptr_reg, slot_offset, temp_reg);
+            abi::load_at_offset_scratch(emitter, len_reg, slot_offset - 8, temp_reg);
+            abi::emit_push_reg(emitter, cell_reg);                              // preserve the fallback reference cell across string persistence
+            abi::emit_call_label(emitter, "__rt_str_persist");                 // detach the preserved local string before storing it in the fallback cell
+            abi::emit_pop_reg(emitter, cell_reg);                               // restore the fallback reference cell after string persistence
+            abi::emit_store_to_address(emitter, ptr_reg, cell_reg, 0);
+            abi::emit_store_to_address(emitter, len_reg, cell_reg, 8);
+        }
+        PhpType::Float => {
+            abi::load_at_offset_scratch(
+                emitter,
+                abi::float_result_reg(emitter),
+                slot_offset,
+                temp_reg,
+            );
+            abi::emit_store_to_address(emitter, abi::float_result_reg(emitter), cell_reg, 0);
+            abi::emit_store_zero_to_address(emitter, cell_reg, 8);
+        }
+        ty if ty.is_refcounted() => {
+            abi::load_at_offset_scratch(emitter, abi::int_result_reg(emitter), slot_offset, temp_reg);
+            abi::emit_push_reg(emitter, cell_reg);                              // preserve the fallback reference cell across retain
+            abi::emit_incref_if_refcounted(emitter, &ty);
+            abi::emit_pop_reg(emitter, cell_reg);                               // restore the fallback reference cell after retain
+            abi::emit_store_to_address(emitter, abi::int_result_reg(emitter), cell_reg, 0);
+            abi::emit_store_zero_to_address(emitter, cell_reg, 8);
+        }
+        _ => {
+            abi::load_at_offset_scratch(emitter, temp_reg, slot_offset, abi::secondary_scratch_reg(emitter));
+            abi::emit_store_to_address(emitter, temp_reg, cell_reg, 0);
+            abi::emit_store_zero_to_address(emitter, cell_reg, 8);
+        }
+    }
+}
+
+pub(super) fn store_foreach_value_from_regs(
+    value_var: &str,
+    value_ty: &PhpType,
+    low_reg: &str,
+    high_reg: Option<&str>,
+    direct_offset: usize,
+    emitter: &mut Emitter,
+    ctx: &Context,
+) {
+    if ctx.ref_params.contains(value_var) {
+        let pointer_reg = abi::symbol_scratch_reg(emitter);
+        abi::load_at_offset(emitter, pointer_reg, direct_offset);               // load the current foreach value alias target
+        match value_ty {
+            PhpType::Str => {
+                abi::emit_store_to_address(emitter, low_reg, pointer_reg, 0);
+                abi::emit_store_to_address(
+                    emitter,
+                    high_reg.expect("string foreach value missing length register"),
+                    pointer_reg,
+                    8,
+                );
+            }
+            PhpType::Float => {
+                abi::emit_store_to_address(emitter, low_reg, pointer_reg, 0);
+            }
+            _ => {
+                abi::emit_store_to_address(emitter, low_reg, pointer_reg, 0);
+            }
+        }
+        return;
+    }
+
+    match value_ty {
+        PhpType::Str => {
+            abi::store_at_offset_scratch(emitter, low_reg, direct_offset, abi::temp_int_reg(emitter.target));
+            abi::store_at_offset_scratch(
+                emitter,
+                high_reg.expect("string foreach value missing length register"),
+                direct_offset - 8,
+                abi::temp_int_reg(emitter.target),
+            );
+        }
+        PhpType::Float => {
+            abi::store_at_offset(emitter, low_reg, direct_offset);
+        }
+        _ => {
+            abi::store_at_offset_scratch(emitter, low_reg, direct_offset, abi::temp_int_reg(emitter.target));
+        }
+    }
+}
+
 pub(super) fn mark_foreach_value_ref_bound(flag_offset: usize, emitter: &mut Emitter) {
     match emitter.target.arch {
         Arch::AArch64 => {
@@ -403,126 +510,16 @@ pub(super) fn mark_foreach_value_ref_bound(flag_offset: usize, emitter: &mut Emi
     }
 }
 
-pub(super) fn push_saved_foreach_ref(
-    value_var: &str,
-    emitter: &mut Emitter,
-    ctx: &Context,
-) {
-    let Some(var) = ctx.variables.get(value_var) else {
-        return;
-    };
-    match emitter.target.arch {
-        Arch::AArch64 => {
-            crate::codegen::abi::load_at_offset_scratch(
-                emitter,
-                "x10",
-                var.stack_offset,
-                "x11",
-            );
-            emitter.instruction("str x10, [sp, #-16]!");                        // save the previous reference target before the scoped foreach alias
-        }
-        Arch::X86_64 => {
-            crate::codegen::abi::load_at_offset_scratch(
-                emitter,
-                "r10",
-                var.stack_offset,
-                "r11",
-            );
-            crate::codegen::abi::emit_push_reg(emitter, "r10");                 // save the previous reference target before the scoped foreach alias
-        }
-    }
-}
-
 pub(super) fn finish_foreach_value_ref(
     value_var: &str,
     value_ty: &PhpType,
-    value_was_ref: bool,
-    flag_offset: usize,
-    saved_ref_offset: Option<usize>,
-    emitter: &mut Emitter,
+    _value_was_ref: bool,
+    _flag_offset: usize,
+    _saved_ref_offset: Option<usize>,
+    _emitter: &mut Emitter,
     ctx: &mut Context,
 ) {
-    if value_was_ref {
-        let Some(saved_ref_offset) = saved_ref_offset else {
-            return;
-        };
-        let Some(var) = ctx.variables.get(value_var) else {
-            return;
-        };
-        match emitter.target.arch {
-            Arch::AArch64 => {
-                emitter.instruction(&format!("ldr x10, [sp, #{}]", saved_ref_offset)); // reload the reference target that was active before foreach
-                crate::codegen::abi::store_at_offset_scratch(
-                    emitter,
-                    "x10",
-                    var.stack_offset,
-                    "x11",
-                );
-            }
-            Arch::X86_64 => {
-                emitter.instruction(&format!("mov r10, QWORD PTR [rsp + {}]", saved_ref_offset)); // reload the reference target that was active before foreach
-                crate::codegen::abi::store_at_offset_scratch(
-                    emitter,
-                    "r10",
-                    var.stack_offset,
-                    "r11",
-                );
-            }
-        }
-        return;
-    }
-    let Some(var) = ctx.variables.get(value_var) else {
-        return;
-    };
-    let slot_offset = var.stack_offset;
-    let done = ctx.next_label("foreach_ref_done");
-
-    match emitter.target.arch {
-        Arch::AArch64 => {
-            emitter.instruction(&format!("ldr x10, [sp, #{}]", flag_offset));   // load whether the by-reference foreach ever bound a value
-            emitter.instruction("cmp x10, #0");                                 // skip alias materialization when the loop ran zero iterations
-            emitter.instruction(&format!("b.eq {}", done));                     // keep the previous value variable contents for an empty foreach
-            crate::codegen::abi::load_at_offset_scratch(emitter, "x10", slot_offset, "x11");
-            match value_ty {
-                PhpType::Str => {
-                    emitter.instruction("ldr x1, [x10]");                       // load the last referenced string pointer into the value result register
-                    emitter.instruction("ldr x2, [x10, #8]");                   // load the last referenced string length into the value result register
-                    crate::codegen::abi::store_at_offset_scratch(emitter, "x1", slot_offset, "x11");
-                    crate::codegen::abi::store_at_offset_scratch(emitter, "x2", slot_offset - 8, "x11");
-                }
-                PhpType::Float => {
-                    emitter.instruction("ldr d0, [x10]");                       // copy the last referenced float value out of the array element slot
-                    crate::codegen::abi::store_at_offset(emitter, "d0", slot_offset);
-                }
-                _ => {
-                    emitter.instruction("ldr x0, [x10]");                       // copy the last referenced scalar or pointer value out of the array element slot
-                    crate::codegen::abi::store_at_offset_scratch(emitter, "x0", slot_offset, "x11");
-                }
-            }
-        }
-        Arch::X86_64 => {
-            emitter.instruction(&format!("cmp QWORD PTR [rsp + {}], 0", flag_offset)); // check whether the by-reference foreach ever bound a value
-            emitter.instruction(&format!("je {}", done));                       // keep the previous value variable contents for an empty foreach
-            crate::codegen::abi::load_at_offset_scratch(emitter, "r10", slot_offset, "r11");
-            match value_ty {
-                PhpType::Str => {
-                    emitter.instruction("mov rax, QWORD PTR [r10]");            // load the last referenced string pointer from the array element slot
-                    emitter.instruction("mov rdx, QWORD PTR [r10 + 8]");        // load the last referenced string length from the array element slot
-                    crate::codegen::abi::store_at_offset_scratch(emitter, "rax", slot_offset, "r11");
-                    crate::codegen::abi::store_at_offset_scratch(emitter, "rdx", slot_offset - 8, "r11");
-                }
-                PhpType::Float => {
-                    emitter.instruction("movsd xmm0, QWORD PTR [r10]");         // copy the last referenced float value out of the array element slot
-                    crate::codegen::abi::store_at_offset(emitter, "xmm0", slot_offset);
-                }
-                _ => {
-                    emitter.instruction("mov rax, QWORD PTR [r10]");            // copy the last referenced scalar or pointer value out of the array element slot
-                    crate::codegen::abi::store_at_offset_scratch(emitter, "rax", slot_offset, "r11");
-                }
-            }
-        }
-    }
-    emitter.label(&done);
+    ctx.ref_params.insert(value_var.to_string());
     ctx.update_var_type_static_and_ownership(
         value_var,
         value_ty.codegen_repr(),

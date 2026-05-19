@@ -217,11 +217,11 @@ foreach ($a as $k => $v) {
 }
 "#,
     );
-    assert_eq!(out, "0=2;1=4;2=6;");
+    assert_eq!(out, "0=2;1=4;2=4;");
 }
 
 #[test]
-fn test_foreach_value_by_reference_post_assignment_does_not_mutate_array() {
+fn test_foreach_value_by_reference_post_assignment_mutates_last_element() {
     let out = compile_and_run(
         r#"<?php
 $a = [1, 2, 3];
@@ -235,7 +235,7 @@ foreach ($a as $x) {
 echo "|" . $v;
 "#,
     );
-    assert_eq!(out, "111213|99");
+    assert_eq!(out, "111299|99");
 }
 
 #[test]
@@ -255,7 +255,7 @@ echo $v;
 }
 
 #[test]
-fn test_foreach_value_by_reference_restores_existing_reference_param() {
+fn test_foreach_value_by_reference_rebinds_existing_reference_param() {
     let out = compile_and_run(
         r#"<?php
 function update(&$v) {
@@ -272,7 +272,7 @@ update($x);
 echo "|" . $x;
 "#,
     );
-    assert_eq!(out, "2|9|9");
+    assert_eq!(out, "9|9|5");
 }
 
 #[test]

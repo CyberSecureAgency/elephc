@@ -351,11 +351,11 @@ foreach ($m as $k => $v) {
 }
 "#,
     );
-    assert_eq!(out, "a=11;b=12;");
+    assert_eq!(out, "a=11;b=11;");
 }
 
 #[test]
-fn test_assoc_foreach_value_by_reference_post_assignment_does_not_mutate_array() {
+fn test_assoc_foreach_value_by_reference_post_assignment_mutates_last_element() {
     let out = compile_and_run(
         r#"<?php
 $m = ["a" => 1, "b" => 2];
@@ -369,7 +369,7 @@ foreach ($m as $k => $x) {
 echo "|" . $v;
 "#,
     );
-    assert_eq!(out, "a=11;b=12;|99");
+    assert_eq!(out, "a=11;b=99;|99");
 }
 
 #[test]
