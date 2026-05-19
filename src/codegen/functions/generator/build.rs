@@ -295,7 +295,14 @@ fn build_node(
                 if types.get(idx).copied() != Some(SlotType::Mixed) {
                     return None;
                 }
-                return build_yield_from_node(inner, Some(idx), slots, types, num, data);
+                return build_yield_from_node(
+                    inner,
+                    YieldFromResult::Local(idx),
+                    slots,
+                    types,
+                    num,
+                    data,
+                );
             }
             // Otherwise: dispatch on the slot's type.
             match types.get(idx).copied() {
@@ -312,7 +319,14 @@ fn build_node(
         }
         StmtKind::ExprStmt(expr) => match &expr.kind {
             ExprKind::YieldFrom(inner) => {
-                build_yield_from_node(inner, None, slots, types, num, data)
+                build_yield_from_node(
+                    inner,
+                    YieldFromResult::Discard,
+                    slots,
+                    types,
+                    num,
+                    data,
+                )
             }
             ExprKind::Yield { key, value } => {
                 let value = match value.as_deref() {
@@ -391,6 +405,18 @@ fn build_node(
         StmtKind::Break(_) => Some(ResumeNode::Break),
         StmtKind::Continue(_) => Some(ResumeNode::Continue),
         StmtKind::Return(opt) => {
+            if let Some(expr) = opt {
+                if let ExprKind::YieldFrom(inner) = &expr.kind {
+                    return build_yield_from_node(
+                        inner,
+                        YieldFromResult::Return,
+                        slots,
+                        types,
+                        num,
+                        data,
+                    );
+                }
+            }
             let value = match opt {
                 Some(expr) => Some(classify_mixed_expr(&expr.kind, slots, types, data)?),
                 None => None,
@@ -428,7 +454,7 @@ fn build_node(
 
 fn build_yield_from_node(
     inner: &Expr,
-    result_local: Option<usize>,
+    result: YieldFromResult,
     slots: &[String],
     types: &[SlotType],
     num: &mut StateNumberer,
@@ -441,8 +467,14 @@ fn build_yield_from_node(
             let state = num.next();
             stmts.push(ResumeNode::Yield(YieldEntry { key: None, value }, state));
         }
-        if let Some(idx) = result_local {
-            stmts.push(ResumeNode::Stmt(BodyStmt::AssignMixed(idx, MixedSource::Null)));
+        match result {
+            YieldFromResult::Discard => {}
+            YieldFromResult::Local(idx) => {
+                stmts.push(ResumeNode::Stmt(BodyStmt::AssignMixed(idx, MixedSource::Null)));
+            }
+            YieldFromResult::Return => {
+                stmts.push(ResumeNode::Return(Some(MixedSource::Null)));
+            }
         }
         return Some(ResumeNode::Block { stmts });
     }
@@ -461,7 +493,7 @@ fn build_yield_from_node(
                 args: arg_sources,
             },
             state_idx,
-            result_local,
+            result,
         });
     }
     if let ExprKind::Variable(name) = &inner.kind {
@@ -473,7 +505,7 @@ fn build_yield_from_node(
             return Some(ResumeNode::YieldFromGenerator {
                 source: YieldFromSource::IntSlot(idx),
                 state_idx,
-                result_local,
+                result,
             });
         }
         if let Some(idx) = slot_idx_of_type(name, slots, types, SlotType::Mixed) {
@@ -481,7 +513,7 @@ fn build_yield_from_node(
             return Some(ResumeNode::YieldFromGenerator {
                 source: YieldFromSource::MixedSlot(idx),
                 state_idx,
-                result_local,
+                result,
             });
         }
     }

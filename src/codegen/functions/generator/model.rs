@@ -63,13 +63,13 @@ pub(super) enum ResumeNode {
     /// `yield from <expr>` — runtime delegation. `source` describes how
     /// to materialise the inner Generator pointer. The single state index
     /// is reused on every resume call so successive `next()` invocations
-    /// advance the inner generator one step at a time. `result_local`
-    /// captures the delegated generator's terminal return value for
-    /// `$local = yield from ...`.
+    /// advance the inner generator one step at a time. `result`
+    /// describes whether the delegated terminal return value is
+    /// discarded, stored in a local, or returned by the outer generator.
     YieldFromGenerator {
         source: YieldFromSource,
         state_idx: u32,
-        result_local: Option<usize>,
+        result: YieldFromResult,
     },
     /// `return <expr>;` inside a generator body — boxes the value into
     /// the frame's `return_value` slot and terminates the generator.
@@ -121,6 +121,17 @@ pub(super) enum YieldFromSource {
     /// Iterator). We `__rt_mixed_unbox` to recover the raw object
     /// pointer before driving the delegation loop.
     MixedSlot(usize),
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum YieldFromResult {
+    Discard,
+    /// `$local = yield from ...` stores the delegated return in a
+    /// Mixed-typed local slot.
+    Local(usize),
+    /// `return yield from ...` stores the delegated return in the outer
+    /// frame's return_value slot, then terminates the outer generator.
+    Return,
 }
 
 #[derive(Clone)]

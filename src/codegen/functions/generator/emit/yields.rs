@@ -95,11 +95,11 @@ pub(super) fn emit_yield_from_generator(
     emitter: &mut Emitter,
     source: &YieldFromSource,
     state_idx: u32,
-    result_local: Option<usize>,
+    result: YieldFromResult,
     ctx: &mut ResumeCtx,
 ) {
     if emitter.target.arch == Arch::X86_64 {
-        emit_yield_from_generator_x86_64(emitter, source, state_idx, result_local, ctx);
+        emit_yield_from_generator_x86_64(emitter, source, state_idx, result, ctx);
         return;
     }
 
@@ -160,8 +160,12 @@ pub(super) fn emit_yield_from_generator(
     emitter.instruction(&format!("b {}", loop_lbl));                            // loop back to re-check valid()
 
     emitter.label(&end_lbl);
-    if let Some(idx) = result_local {
-        emit_store_yield_from_return(emitter, idx);
+    match result {
+        YieldFromResult::Discard => {}
+        YieldFromResult::Local(idx) => emit_store_yield_from_return(emitter, slot_offset(idx)),
+        YieldFromResult::Return => {
+            emit_store_yield_from_return(emitter, gen_frame::OFF_RETURN_VALUE);
+        }
     }
     if owns_delegated_iter {
         emitter.instruction(&format!("ldr x0, [x19, #{}]", gen_frame::OFF_DELEGATED_ITER)); // load the owned inner generator before clearing delegation state
@@ -177,7 +181,7 @@ fn emit_yield_from_generator_x86_64(
     emitter: &mut Emitter,
     source: &YieldFromSource,
     state_idx: u32,
-    result_local: Option<usize>,
+    result: YieldFromResult,
     ctx: &mut ResumeCtx,
 ) {
     let loop_lbl = ctx.fresh_label("yield_from_loop");
@@ -226,8 +230,12 @@ fn emit_yield_from_generator_x86_64(
     emitter.instruction(&format!("jmp {}", loop_lbl));                          // loop back to re-check valid()
 
     emitter.label(&end_lbl);
-    if let Some(idx) = result_local {
-        emit_store_yield_from_return(emitter, idx);
+    match result {
+        YieldFromResult::Discard => {}
+        YieldFromResult::Local(idx) => emit_store_yield_from_return(emitter, slot_offset(idx)),
+        YieldFromResult::Return => {
+            emit_store_yield_from_return(emitter, gen_frame::OFF_RETURN_VALUE);
+        }
     }
     if owns_delegated_iter {
         emitter.instruction(&format!("mov rax, QWORD PTR [r12 + {}]", gen_frame::OFF_DELEGATED_ITER)); // load the owned inner generator before clearing delegation state
@@ -238,9 +246,8 @@ fn emit_yield_from_generator_x86_64(
     }
 }
 
-fn emit_store_yield_from_return(emitter: &mut Emitter, local_idx: usize) {
-    let off = slot_offset(local_idx);
-    emit_replace_mixed_slot(emitter, off, |em| match em.target.arch {
+fn emit_store_yield_from_return(emitter: &mut Emitter, slot_off: usize) {
+    emit_replace_mixed_slot(emitter, slot_off, |em| match em.target.arch {
         Arch::AArch64 => {
             em.instruction(&format!("ldr x0, [x19, #{}]", gen_frame::OFF_DELEGATED_ITER)); // load the completed inner generator before reading its return value
             em.instruction("bl __rt_gen_get_return");                           // x0 = owned boxed Mixed pointer for the delegated return value

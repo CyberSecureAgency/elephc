@@ -2,12 +2,12 @@
 function base() {
     yield 1;
     yield 2;
+    return 99;
 }
 
 function pipeline() {
     yield 0;
-    yield from base();
-    return 99;
+    return yield from base();
 }
 
 $g = pipeline();

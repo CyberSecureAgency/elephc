@@ -86,6 +86,30 @@ foreach (outer() as $v) {
 }
 
 #[test]
+fn test_generator_return_yield_from_delegates_and_returns_inner_value() {
+    let out = compile_and_run(
+        r#"<?php
+function inner() {
+    yield 1;
+    return 42;
+}
+function outer() {
+    return yield from inner();
+}
+$g = outer();
+foreach ($g as $v) {
+    echo $v;
+    echo "\n";
+}
+echo "ret=";
+echo $g->getReturn();
+echo "\n";
+"#,
+    );
+    assert_eq!(out, "1\nret=42\n");
+}
+
+#[test]
 fn test_generator_yield_from_call_releases_inner_generator_after_completion() {
     let baseline = compile_and_run_with_heap_debug(
         r#"<?php

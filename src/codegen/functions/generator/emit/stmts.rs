@@ -175,8 +175,12 @@ fn emit_node(emitter: &mut Emitter, node: &ResumeNode, ctx: &mut ResumeCtx) {
         ResumeNode::Switch { subject, cases, default } => {
             emit_switch(emitter, subject, cases, default, ctx);
         }
-        ResumeNode::YieldFromGenerator { source, state_idx, result_local } => {
-            emit_yield_from_generator(emitter, source, *state_idx, *result_local, ctx);
+        ResumeNode::YieldFromGenerator { source, state_idx, result } => {
+            emit_yield_from_generator(emitter, source, *state_idx, *result, ctx);
+            if matches!(result, YieldFromResult::Return) {
+                let term = ctx.term_label.clone();
+                emit_jump(emitter, &term);
+            }
         }
         ResumeNode::Return(value) => {
             // Box the return value (if any) into the frame's return_value

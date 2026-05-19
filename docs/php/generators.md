@@ -116,6 +116,16 @@ foreach (outer() as $v) { echo $v . " "; }
 // Prints: 1 42
 ```
 
+The delegated return value can also become the outer generator's terminal
+return value directly:
+
+```php
+<?php
+function outer() {
+    return yield from inner();
+}
+```
+
 ## Generator closures
 
 Anonymous functions that contain `yield` also return `Generator`
