@@ -176,6 +176,24 @@ fn test_json_decode_stdclass_array_property() {
 }
 
 #[test]
+fn test_json_decode_nested_stdclass_array_assignment() {
+    let out = compile_and_run(
+        r#"<?php
+            $obj = json_decode("{\"users\":[{\"name\":\"Ada\",\"tags\":[\"x\",\"y\"]}]}");
+            echo $obj->users[0]->name;
+            echo "\n";
+            $obj->users[0]->tags[1] = "changed";
+            echo json_encode($obj);
+            echo "\n";
+        "#,
+    );
+    assert_eq!(
+        out,
+        "Ada\n{\"users\":[{\"name\":\"Ada\",\"tags\":[\"x\",\"changed\"]}]}\n"
+    );
+}
+
+#[test]
 fn test_json_decode_stdclass_in_array() {
     let out = compile_and_run(
         r#"<?php

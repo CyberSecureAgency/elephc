@@ -73,8 +73,11 @@ pub(crate) fn emit_property_array_assign_stmt(
         );
         return;
     }
-
     let obj_ty = emit_expr(object, emitter, ctx, data);
+    if matches!(obj_ty, PhpType::Mixed) {
+        emit_mixed_property_array_assign_stmt(property, index, value, emitter, ctx, data);
+        return;
+    }
     let target = match target::resolve_property_assign_target(&obj_ty, property, None, emitter, ctx) {
         target::PropertyAssignResolution::Resolved(target) => target,
         target::PropertyAssignResolution::UseMagicSet(_) | target::PropertyAssignResolution::UseDynamicProperty { .. } | target::PropertyAssignResolution::Abort => {
@@ -175,6 +178,58 @@ pub(crate) fn emit_property_array_assign_stmt(
             store_property_indexed_array_value_x86_64(&target.prop_ty, &state, emitter, ctx);
             extend_property_indexed_array_if_needed_x86_64(&state, emitter, ctx);
             emitter.instruction("add rsp, 48");                                 // drop the preserved object pointer, array pointer, and index after completing the property-backed indexed write
+        }
+    }
+}
+
+fn emit_mixed_property_array_assign_stmt(
+    property: &str,
+    index: &Expr,
+    value: &Expr,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) {
+    emitter.comment(&format!("{}[...] = ... via Mixed stdClass property", property));
+
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the evaluated Mixed receiver while index and RHS expressions run
+    let index_ty = emit_expr(index, emitter, ctx, data);
+    coerce_result_to_type(emitter, ctx, data, &index_ty, &PhpType::Int);
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the computed integer index until the property array cell is resolved
+    let val_ty = emit_expr(value, emitter, ctx, data);
+    if matches!(val_ty, PhpType::Mixed | PhpType::Union(_)) {
+        helpers::retain_borrowed_heap_result(emitter, value, &val_ty);
+    } else {
+        crate::codegen::emit_box_current_expr_value_as_mixed_for_container(
+            emitter, value, &val_ty,
+        );
+    }
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the boxed RHS while resolving the property cell
+
+    let (label, len) = data.add_string(property.as_bytes());
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            abi::emit_load_temporary_stack_slot(emitter, "x0", 32);
+            abi::emit_symbol_address(emitter, "x1", &label);
+            abi::emit_load_int_immediate(emitter, "x2", len as i64);
+            emitter.instruction("bl __rt_mixed_property_get");                  // resolve the property to the boxed Mixed array cell
+            abi::emit_load_temporary_stack_slot(emitter, "x3", 0);
+            abi::emit_load_temporary_stack_slot(emitter, "x1", 16);
+            emitter.instruction("mov x2, #-1");                                 // key_hi = -1 marks an integer array key
+            abi::emit_release_temporary_stack(emitter, 48);
+            emitter.instruction("bl __rt_mixed_array_set");                     // mutate the decoded Mixed array slot in place
+        }
+        Arch::X86_64 => {
+            abi::emit_load_temporary_stack_slot(emitter, "rdi", 32);
+            abi::emit_symbol_address(emitter, "rsi", &label);
+            abi::emit_load_int_immediate(emitter, "rdx", len as i64);
+            emitter.instruction("call __rt_mixed_property_get");                // resolve the property to the boxed Mixed array cell
+            emitter.instruction("mov rdi, rax");                                // pass the resolved property Mixed cell as the setter target
+            abi::emit_load_temporary_stack_slot(emitter, "rcx", 0);
+            abi::emit_load_temporary_stack_slot(emitter, "rsi", 16);
+            emitter.instruction("mov rdx, -1");                                 // key_hi = -1 marks an integer array key
+            abi::emit_release_temporary_stack(emitter, 48);
+            emitter.instruction("call __rt_mixed_array_set");                   // mutate the decoded Mixed array slot in place
         }
     }
 }

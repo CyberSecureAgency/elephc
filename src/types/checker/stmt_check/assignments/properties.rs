@@ -101,6 +101,12 @@ pub(super) fn check_property_array_assign(
     let obj_ty = checker.infer_type_with_assignment_effects(object, env)?;
     let idx_ty = checker.infer_type_with_assignment_effects(index, env)?;
     let val_ty = checker.infer_type_with_assignment_effects(value, env)?;
+    if matches!(obj_ty, PhpType::Mixed) {
+        if idx_ty != PhpType::Int {
+            return Err(CompileError::new(span, "Array index must be integer"));
+        }
+        return Ok(());
+    }
     match &obj_ty {
         PhpType::Object(class_name) => {
             let (prop_ty, property_has_declared_type) =
