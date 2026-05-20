@@ -38,6 +38,14 @@ impl Checker {
             if matches!(arg.kind, ExprKind::Spread(_)) {
                 continue;
             }
+            if seen_idx < regular_param_count && actual_ty == PhpType::Callable {
+                if let Some((param_name, _)) = param_types.get(seen_idx) {
+                    if let Some(sig) = self.resolve_expr_callable_sig(arg, caller_env)? {
+                        self.callable_param_sigs
+                            .insert((name.to_string(), param_name.clone()), sig);
+                    }
+                }
+            }
             // Untyped callable params can be resolved as the `Int` fallback
             // before method/property flow has stabilized; recheck them once
             // a later pass sees the callable argument.

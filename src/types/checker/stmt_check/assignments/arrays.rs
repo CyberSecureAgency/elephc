@@ -32,6 +32,7 @@ pub(super) fn check_array_assign(
         .ok_or_else(|| CompileError::new(span, &format!("Undefined variable: ${}", array)))?;
     let idx_ty = checker.infer_type_with_assignment_effects(index, env)?;
     let val_ty = checker.infer_type_with_assignment_effects(value, env)?;
+    super::locals::update_callable_assignment_metadata(checker, array, value, &val_ty, env)?;
     if arr_ty == PhpType::Str {
         return Err(CompileError::new(
             span,
@@ -169,6 +170,7 @@ pub(super) fn check_array_push(
         .cloned()
         .ok_or_else(|| CompileError::new(span, &format!("Undefined variable: ${}", array)))?;
     let val_ty = checker.infer_type_with_assignment_effects(value, env)?;
+    super::locals::update_callable_assignment_metadata(checker, array, value, &val_ty, env)?;
     if let PhpType::Array(elem_ty) = &arr_ty {
         if **elem_ty != val_ty {
             let merged_ty = checker

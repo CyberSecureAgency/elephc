@@ -210,6 +210,14 @@ impl Checker {
                 }
                 arg_idx = decl.params.len();
             } else if arg_idx < decl.params.len() {
+                if ty == PhpType::Callable {
+                    if let Some(sig) = self.resolve_expr_callable_sig(arg, caller_env)? {
+                        self.callable_param_sigs.insert(
+                            (name.to_string(), decl.params[arg_idx].clone()),
+                            sig,
+                        );
+                    }
+                }
                 if decl.ref_params.get(arg_idx).copied().unwrap_or(false)
                     && !matches!(arg.kind, ExprKind::Variable(_))
                 {
