@@ -194,6 +194,28 @@ fn test_foreach_by_ref_over_mixed_assoc_array_updates_source() {
 }
 
 #[test]
+fn test_nested_by_ref_foreach_unset_inner_lifetime_reset() {
+    let out = compile_and_run(
+        "<?php
+        $a = [1, 2, 3];
+        foreach ($a as &$v) {
+            foreach ($a as &$inner) {
+                $inner += 10;
+                break;
+            }
+            unset($inner);
+            $v *= 2;
+        }
+        unset($v);
+        foreach ($a as $x) {
+            echo $x . ',';
+        }
+        ",
+    );
+    assert_eq!(out, "42,4,6,");
+}
+
+#[test]
 fn test_foreach_over_iterable_iterator_object() {
     let out = compile_and_run(
         r#"<?php
