@@ -41,13 +41,16 @@ impl Checker {
     ) -> bool {
         !errors.is_empty()
             && Self::stmt_contains_method_call(stmt)
-            && errors.iter().all(|error| {
-                matches!(
-                    error.message.as_str(),
-                    "Cannot index non-array"
-                        | "Property access requires an object or typed pointer"
-                )
-            })
+            && errors
+                .iter()
+                .all(|error| Self::is_suppressible_initial_top_level_error(&error.message))
+    }
+
+    fn is_suppressible_initial_top_level_error(message: &str) -> bool {
+        matches!(
+            message,
+            "Cannot index non-array" | "Property access requires an object or typed pointer"
+        ) || (message.starts_with("Cannot call $") && message.contains("not a callable"))
     }
 
     fn seed_global_env(&self) -> TypeEnv {

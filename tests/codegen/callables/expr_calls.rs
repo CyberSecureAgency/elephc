@@ -348,6 +348,33 @@ echo $cb(9);
 }
 
 #[test]
+fn test_closure_fetched_from_object_property_through_method_runs() {
+    let out = compile_and_run(
+        r#"<?php
+class Box {
+    public $cb;
+
+    public function __construct($cb) {
+        $this->cb = $cb;
+    }
+
+    public function fetch() {
+        return $this->cb;
+    }
+}
+
+function invoke($cb, $x) {
+    return $cb($x);
+}
+
+$b = new Box(function($x) { return $x + 7; });
+echo invoke($b->fetch(), 5);
+"#,
+    );
+    assert_eq!(out, "12");
+}
+
+#[test]
 fn test_fcc_variable_static_method_named_target_preserves_late_static_binding() {
     // `B::m(...)` produces a Named target. The short-circuit calls B::m
     // directly, and `static::name()` inside m is resolved at call time so it

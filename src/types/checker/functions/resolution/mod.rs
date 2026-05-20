@@ -50,7 +50,7 @@ impl Checker {
             .unwrap_or_else(|| name.to_string());
         let name = canonical_name.as_str();
 
-        if let Some(sig) = self.functions.get(name).cloned() {
+        if let Some(mut sig) = self.functions.get(name).cloned() {
             if let Some(reason) = sig.deprecation.as_deref() {
                 let message = if reason.is_empty() {
                     format!("Call to deprecated function: {}()", name)
@@ -60,7 +60,8 @@ impl Checker {
                 self.warnings
                     .push(crate::errors::CompileWarning::new(span, &message));
             }
-            let effective_sig = Self::callable_sig_for_declared_params(&sig, &sig.declared_params);
+            let mut effective_sig =
+                Self::callable_sig_for_declared_params(&sig, &sig.declared_params);
             let normalized_args = self.normalize_named_call_args(
                 &effective_sig,
                 args,
@@ -68,6 +69,17 @@ impl Checker {
                 &format!("Function '{}'", name),
                 caller_env,
             )?;
+            if self.respecialize_resolved_function_callable_params_if_needed(
+                name,
+                &normalized_args,
+                caller_env,
+            )? {
+                sig = self.functions.get(name).cloned().ok_or_else(|| {
+                    CompileError::new(span, &format!("Undefined function: {}", name))
+                })?;
+                effective_sig =
+                    Self::callable_sig_for_declared_params(&sig, &sig.declared_params);
+            }
             return self.check_normalized_resolved_function_call(
                 name,
                 &sig,
