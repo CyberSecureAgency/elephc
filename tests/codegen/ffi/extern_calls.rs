@@ -219,6 +219,38 @@ free($pollfds);
 }
 
 #[test]
+fn test_ffi_extern_poll_in_large_function_survives_unrelated_array_local() {
+    let out = compile_and_run(
+        r#"<?php
+extern "System" {
+    function malloc(int $size): ptr;
+    function free(ptr $p): void;
+    function memset(ptr $dest, int $byte, int $count): ptr;
+    function poll(ptr $fds, int $nfds, int $timeout): int;
+}
+function run_http_server(): void {
+    $pollfds = malloc(8);
+    memset($pollfds, 0, 8);
+    $active = 0;
+    $a0 = 1; $a1 = 2; $a2 = 3; $a3 = 4;
+    $a4 = 5; $a5 = 6; $a6 = 7; $a7 = 8;
+    $retired = [];
+    $retired[0] = $a0 + $a1 + $a2 + $a3 + $a4 + $a5 + $a6 + $a7;
+    if ($retired[0] < 0) {
+        echo "never";
+    }
+    $nfds = $active + 1;
+    echo "n=" . $nfds . ";";
+    echo "rc=" . poll($pollfds, $nfds, 0);
+    free($pollfds);
+}
+run_http_server();
+"#,
+    );
+    assert_eq!(out, "n=1;rc=0");
+}
+
+#[test]
 fn test_ffi_extern_strlen_frees_borrowed_cstr_temp() {
     let baseline = compile_and_run_with_gc_stats(
         r#"<?php
