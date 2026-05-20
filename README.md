@@ -16,6 +16,14 @@ A PHP-to-native compiler. Takes a subset of PHP and compiles it directly to nati
 
 > **Want to support the project?** elephc is built and maintained independently. If you'd like to help it grow, consider [sponsoring on GitHub](https://github.com/sponsors/nahime0). Every contribution — big or small — makes a real difference.
 
+## An async HTTP server in PHP
+
+An asynchronous HTTP/1.1 server — a non-blocking `poll()` event loop, one Fiber per connection, raw TCP sockets through `extern` FFI, plus an HTTP parser and a router — written entirely in PHP and compiled to a single native binary. No interpreter, no PHP-FPM, no Nginx.
+
+![elephc HTTP server — ApacheBench latency](showcases/http-server/ab100.png)
+
+See [showcases/http-server/](showcases/http-server/) for full source and build instructions.
+
 ## DOOM rendered in PHP
 
 The flagship showcase: a real-time 3D renderer that loads original DOOM WAD files and renders E1M1 — BSP traversal, perspective projection, per-column fog, sector lighting, collision detection, step climbing — entirely in PHP compiled to a native binary.
@@ -157,6 +165,7 @@ cargo run -- hello.php
 
 | Showcase | Description |
 |---|---|
+| [HTTP server](showcases/http-server/) | Async HTTP/1.1 server with a non-blocking `poll()` event loop, one `Fiber` per connection, POSIX sockets via `extern` FFI, `ptr` buffers, HTTP parser and router |
 | [DOOM E1M1](showcases/doom/) | Real-time 3D WAD renderer with BSP traversal, SDL2 FFI, `packed class` geometry, `buffer<T>` storage, collision detection, HUD |
 | [SDL framebuffer](examples/sdl_framebuffer/) | Pixel-level rendering with SDL2 via FFI |
 | [SDL audio](examples/sdl_audio/) | Audio playback with SDL2 via FFI |
