@@ -104,7 +104,14 @@ pub(crate) fn emit_property_assign_stmt(
             && !matches!(val_ty, PhpType::Mixed | PhpType::Union(_))
     });
     if let Some(target_ty) = &declared_target_ty {
-        if crate::codegen::expr::can_coerce_result_to_type(&val_ty, target_ty) {
+        if matches!(target_ty, PhpType::Mixed | PhpType::Union(_))
+            && !matches!(val_ty, PhpType::Mixed | PhpType::Union(_))
+        {
+            crate::codegen::emit_box_current_expr_value_as_mixed_for_container(
+                emitter, value, &val_ty,
+            );
+            val_ty = target_ty.clone();
+        } else if crate::codegen::expr::can_coerce_result_to_type(&val_ty, target_ty) {
             let release_mixed_after_coerce =
                 helpers::should_release_owned_mixed_after_coerce(value, &val_ty, target_ty);
             if release_mixed_after_coerce {
@@ -132,7 +139,15 @@ pub(crate) fn emit_property_assign_stmt(
     ) {
         target::PropertyAssignResolution::Resolved(target) => target,
         target::PropertyAssignResolution::UseMagicSet(class_name) => {
-            magic_set::emit_magic_set_call(&class_name, property, &val_ty, emitter, ctx, data);
+            magic_set::emit_magic_set_call(
+                &class_name,
+                property,
+                value,
+                &val_ty,
+                emitter,
+                ctx,
+                data,
+            );
             return;
         }
         target::PropertyAssignResolution::UseDynamicProperty {
@@ -141,6 +156,7 @@ pub(crate) fn emit_property_assign_stmt(
         } => {
             dynamic_props::emit_dynamic_property_set(
                 property,
+                value,
                 &val_ty,
                 dyn_slot_offset,
                 emitter,
@@ -240,7 +256,9 @@ fn emit_dynamic_property_assign_stmt(
     emitter.comment(&format!("{} = ... via {}", property, runtime_symbol));
 
     let val_ty = emit_expr(value, emitter, ctx, data);
-    crate::codegen::emit_box_current_value_as_mixed(emitter, &val_ty);          // ensure the RHS is a Mixed* before it crosses object evaluation
+    crate::codegen::emit_box_current_expr_value_as_mixed_for_container(
+        emitter, value, &val_ty,
+    ); // ensure the RHS is a Mixed* before it crosses object evaluation
     abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // park the boxed Mixed pointer while we evaluate the receiver
 
     let _obj_ty = emit_expr(object, emitter, ctx, data);                        // receiver pointer lands in int_result_reg
@@ -295,7 +313,14 @@ fn emit_nullable_property_assign_stmt(
             && !matches!(val_ty, PhpType::Mixed | PhpType::Union(_))
     });
     if let Some(target_ty) = &declared_target_ty {
-        if crate::codegen::expr::can_coerce_result_to_type(&val_ty, target_ty) {
+        if matches!(target_ty, PhpType::Mixed | PhpType::Union(_))
+            && !matches!(val_ty, PhpType::Mixed | PhpType::Union(_))
+        {
+            crate::codegen::emit_box_current_expr_value_as_mixed_for_container(
+                emitter, value, &val_ty,
+            );
+            val_ty = target_ty.clone();
+        } else if crate::codegen::expr::can_coerce_result_to_type(&val_ty, target_ty) {
             let release_mixed_after_coerce =
                 helpers::should_release_owned_mixed_after_coerce(value, &val_ty, target_ty);
             if release_mixed_after_coerce {
@@ -337,7 +362,15 @@ fn emit_nullable_property_assign_stmt(
     ) {
         target::PropertyAssignResolution::Resolved(target) => target,
         target::PropertyAssignResolution::UseMagicSet(class_name) => {
-            magic_set::emit_magic_set_call(&class_name, property, &val_ty, emitter, ctx, data);
+            magic_set::emit_magic_set_call(
+                &class_name,
+                property,
+                value,
+                &val_ty,
+                emitter,
+                ctx,
+                data,
+            );
             abi::emit_release_temporary_stack(emitter, 16);                     // discard the saved nullable receiver after __set consumes the RHS
             return;
         }
@@ -347,6 +380,7 @@ fn emit_nullable_property_assign_stmt(
         } => {
             dynamic_props::emit_dynamic_property_set(
                 property,
+                value,
                 &val_ty,
                 dyn_slot_offset,
                 emitter,

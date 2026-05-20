@@ -67,24 +67,26 @@ pub(super) fn emit_fiber_instance_method_dispatch(
     let arg1 = abi::int_arg_reg_name(emitter.target, 1);
     match method {
         "start" => {
-            // start() takes up to 7 Mixed arguments which the codegen has just
-            // loaded into integer arg-regs 1..7. Spill them into the Fiber
-            // object's start_args[0..7] slots so the trampoline can hand them
-            // to the closure on the fresh fiber stack.
+            // start() takes up to 7 Mixed arguments. Spill only the arguments
+            // supplied by the source call into the Fiber object's start_args
+            // slots so the trampoline can hand them to the closure on the
+            // fresh fiber stack without allocating implicit default nulls.
             //
             // Honour `user_arg_max` so trailing slots that hold pre-loaded
             // closure captures (set by `new Fiber(function() use(...))`) are
-            // not overwritten. user_arg_max defaults to 7, so fibers built
-            // from a non-capturing callable still fill every slot.
+            // not overwritten.
             let max_arg_off = crate::codegen::runtime::FIBER_USER_ARG_MAX_OFFSET;
             let skip_label = ctx.next_label("fiber_start_args_done");
+            let supplied_arg_count = assignments
+                .len()
+                .min(crate::codegen::runtime::FIBER_START_ARGS_MAX as usize);
             match emitter.target.arch {
                 Arch::AArch64 => {
                     emitter.instruction(&format!("ldr x9, [x0, #{}]", max_arg_off)); // x9 = how many start_args slots start() may write
-                    for i in 0..crate::codegen::runtime::FIBER_START_ARGS_MAX {
-                        let src = abi::int_arg_reg_name(emitter.target, (i as usize) + 1);
-                        let off = crate::codegen::runtime::FIBER_START_ARGS_OFFSET + i * 8;
-                        emitter.instruction(&format!("cmp x9, #{}", i + 1));    // is this slot index still within user_arg_max?
+                    for i in 0..supplied_arg_count {
+                        let src = abi::int_arg_reg_name(emitter.target, assignments[i].start_reg);
+                        let off = crate::codegen::runtime::FIBER_START_ARGS_OFFSET + (i as i32) * 8;
+                        emitter.instruction(&format!("cmp x9, #{}", i + 1));    // is this supplied argument still within user_arg_max?
                         emitter.instruction(&format!("b.lt {}", skip_label));   // stop spilling once we hit the capture-reserved tail
                         emitter.instruction(&format!("str {}, [x0, #{}]", src, off)); // start_args[i] = caller-supplied Mixed value
                     }
@@ -92,11 +94,8 @@ pub(super) fn emit_fiber_instance_method_dispatch(
                 Arch::X86_64 => {
                     emitter.instruction(&format!("mov r11, QWORD PTR [rdi + {}]", max_arg_off)); // r11 = how many start_args slots start() may write
                     let mut overflow_slot = 0usize;
-                    for i in 0..crate::codegen::runtime::FIBER_START_ARGS_MAX {
-                        let Some(assignment) = assignments.get(i as usize) else {
-                            break;
-                        };
-                        let off = crate::codegen::runtime::FIBER_START_ARGS_OFFSET + i * 8;
+                    for (i, assignment) in assignments.iter().take(supplied_arg_count).enumerate() {
+                        let off = crate::codegen::runtime::FIBER_START_ARGS_OFFSET + (i as i32) * 8;
                         emitter.instruction(&format!("cmp r11, {}", i + 1));    // is this slot index still within user_arg_max?
                         emitter.instruction(&format!("jl {}", skip_label));     // stop spilling once we hit the capture-reserved tail
                         if assignment.in_register() {

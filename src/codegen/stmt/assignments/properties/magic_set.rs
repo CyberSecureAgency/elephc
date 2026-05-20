@@ -30,6 +30,7 @@ pub(super) fn resolve_magic_set_target(object: &Expr, property: &str, ctx: &Cont
 pub(super) fn emit_magic_set_call(
     class_name: &str,
     property: &str,
+    value: &Expr,
     val_ty: &PhpType,
     emitter: &mut Emitter,
     ctx: &mut Context,
@@ -70,7 +71,9 @@ pub(super) fn emit_magic_set_call(
                         emitter.instruction("movsd xmm0, QWORD PTR [rsp + 16]"); // reload the saved float value for Mixed boxing
                     }
                 }
-                crate::codegen::emit_box_current_value_as_mixed(emitter, val_ty);
+                crate::codegen::emit_box_current_expr_value_as_mixed_for_container(
+                    emitter, value, val_ty,
+                );
             }
             PhpType::Str => {
                 match emitter.target.arch {
@@ -82,12 +85,16 @@ pub(super) fn emit_magic_set_call(
                         emitter.instruction("mov rdx, QWORD PTR [rsp + 24]");   // reload the saved string length for Mixed boxing
                     }
                 }
-                crate::codegen::emit_box_current_value_as_mixed(emitter, val_ty);
+                crate::codegen::emit_box_current_expr_value_as_mixed_for_container(
+                    emitter, value, val_ty,
+                );
             }
             _ => {
                 abi::emit_load_temporary_stack_slot(emitter, abi::int_result_reg(emitter), 16); // reload the saved scalar/heap value for Mixed boxing
                 if !matches!(val_ty, PhpType::Mixed | PhpType::Union(_)) {
-                    crate::codegen::emit_box_current_value_as_mixed(emitter, val_ty);
+                    crate::codegen::emit_box_current_expr_value_as_mixed_for_container(
+                        emitter, value, val_ty,
+                    );
                 }
             }
         }

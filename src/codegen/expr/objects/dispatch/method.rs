@@ -15,12 +15,12 @@ use crate::codegen::emit::Emitter;
 use crate::codegen::functions;
 use crate::names::php_symbol_key;
 use crate::parser::ast::Expr;
-use crate::types::PhpType;
+use crate::types::{FunctionSig, PhpType};
 
 use super::fiber::emit_fiber_instance_method_dispatch;
 use super::prep::{compute_register_assignments, eval_and_push_args, pop_args_to_registers};
-use super::vtable::emit_dispatch_instance_method;
 use super::super::super::emit_expr;
+use super::vtable::emit_dispatch_instance_method;
 
 pub(in crate::codegen::expr::objects) fn emit_method_call_with_pushed_args(
     class_name: &str,
@@ -147,7 +147,18 @@ pub(in crate::codegen::expr::objects) fn emit_method_call(
         None
     });
     let args_to_emit = magic_args.as_deref().unwrap_or(args);
-    let emitted_args = eval_and_push_args(args_to_emit, sig.as_ref(), emitter, ctx, data);
+    let fiber_start_sig = if class_name == "Fiber" && dispatch_method == "start" {
+        Some(fiber_start_call_sig(args_to_emit.len()))
+    } else {
+        None
+    };
+    let emitted_args = eval_and_push_args(
+        args_to_emit,
+        fiber_start_sig.as_ref().or(sig.as_ref()),
+        emitter,
+        ctx,
+        data,
+    );
 
     emit_method_call_with_saved_receiver_below_args(
         &class_name,
@@ -157,4 +168,19 @@ pub(in crate::codegen::expr::objects) fn emit_method_call(
         emitter,
         ctx,
     )
+}
+
+fn fiber_start_call_sig(arg_count: usize) -> FunctionSig {
+    FunctionSig {
+        params: (0..arg_count)
+            .map(|idx| (format!("arg{}", idx), PhpType::Mixed))
+            .collect(),
+        defaults: vec![None; arg_count],
+        return_type: PhpType::Mixed,
+        declared_return: false,
+        ref_params: vec![false; arg_count],
+        declared_params: vec![false; arg_count],
+        variadic: None,
+        deprecation: None,
+    }
 }

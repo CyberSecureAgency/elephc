@@ -21,7 +21,7 @@ use super::abi;
 use super::context::{Context, HeapOwnership};
 use super::data_section::DataSection;
 use super::emit::Emitter;
-use super::expr::emit_expr;
+use super::expr::{emit_expr, expr_result_heap_ownership};
 use crate::parser::ast::{Stmt, StmtKind};
 use crate::types::PhpType;
 
@@ -198,8 +198,8 @@ pub fn emit_stmt(stmt: &Stmt, emitter: &mut Emitter, ctx: &mut Context, data: &m
         }
         StmtKind::ExprStmt(expr) => {
             emitter.blank();
-            emit_expr(expr, emitter, ctx, data);
-            // result discarded
+            let ty = emit_expr(expr, emitter, ctx, data);
+            release_discarded_expr_result(expr, &ty, emitter);
         }
         StmtKind::Continue(levels) => {
             control_flow::emit_continue_stmt(*levels, emitter, ctx);
@@ -369,6 +369,26 @@ pub fn emit_stmt(stmt: &Stmt, emitter: &mut Emitter, ctx: &mut Context, data: &m
                 data,
             );
         }
+    }
+}
+
+fn release_discarded_expr_result(
+    expr: &crate::parser::ast::Expr,
+    ty: &PhpType,
+    emitter: &mut Emitter,
+) {
+    if expr_result_heap_ownership(expr) != HeapOwnership::Owned {
+        return;
+    }
+    if matches!(ty, PhpType::Str) {
+        let (ptr_reg, _) = abi::string_result_regs(emitter);
+        let result_reg = abi::int_result_reg(emitter);
+        if ptr_reg != result_reg {
+            emitter.instruction(&format!("mov {}, {}", result_reg, ptr_reg));   // pass discarded owned string pointer to heap-free helper
+        }
+        abi::emit_call_label(emitter, "__rt_heap_free_safe");
+    } else if ty.is_refcounted() {
+        abi::emit_decref_if_refcounted(emitter, ty);
     }
 }
 

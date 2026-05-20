@@ -17,6 +17,7 @@ use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
+use crate::parser::ast::Expr;
 use crate::types::PhpType;
 
 /// Emit code that stores the current expression result (already produced by
@@ -30,6 +31,7 @@ use crate::types::PhpType;
 /// - The hashtable is already allocated (eager init at construction time).
 pub(super) fn emit_dynamic_property_set(
     property: &str,
+    value: &Expr,
     val_ty: &PhpType,
     dyn_slot_offset: usize,
     emitter: &mut Emitter,
@@ -73,7 +75,9 @@ pub(super) fn emit_dynamic_property_set(
                         emitter.instruction("movsd xmm0, QWORD PTR [rsp + 16]"); // reload the saved float for Mixed boxing
                     }
                 }
-                crate::codegen::emit_box_current_value_as_mixed(emitter, val_ty);
+                crate::codegen::emit_box_current_expr_value_as_mixed_for_container(
+                    emitter, value, val_ty,
+                );
             }
             PhpType::Str => {
                 match emitter.target.arch {
@@ -85,12 +89,16 @@ pub(super) fn emit_dynamic_property_set(
                         emitter.instruction("mov rdx, QWORD PTR [rsp + 24]");   // reload the saved string length for Mixed boxing
                     }
                 }
-                crate::codegen::emit_box_current_value_as_mixed(emitter, val_ty);
+                crate::codegen::emit_box_current_expr_value_as_mixed_for_container(
+                    emitter, value, val_ty,
+                );
             }
             _ => {
                 abi::emit_load_temporary_stack_slot(emitter, abi::int_result_reg(emitter), 16); // reload the saved scalar/heap value for Mixed boxing
                 if !matches!(val_ty, PhpType::Mixed | PhpType::Union(_)) {
-                    crate::codegen::emit_box_current_value_as_mixed(emitter, val_ty);
+                    crate::codegen::emit_box_current_expr_value_as_mixed_for_container(
+                        emitter, value, val_ty,
+                    );
                 }
             }
         }

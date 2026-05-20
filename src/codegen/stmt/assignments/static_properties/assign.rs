@@ -69,7 +69,12 @@ pub(crate) fn emit_static_property_assign_stmt(
     let mut val_ty = emit_expr(value, emitter, ctx, data);
     let boxed_to_mixed = matches!(prop_ty, PhpType::Mixed | PhpType::Union(_))
         && !matches!(val_ty, PhpType::Mixed | PhpType::Union(_));
-    if crate::codegen::expr::can_coerce_result_to_type(&val_ty, &prop_ty) {
+    if boxed_to_mixed {
+        crate::codegen::emit_box_current_expr_value_as_mixed_for_container(
+            emitter, value, &val_ty,
+        );
+        val_ty = prop_ty.clone();
+    } else if crate::codegen::expr::can_coerce_result_to_type(&val_ty, &prop_ty) {
         let release_mixed_after_coerce =
             helpers::should_release_owned_mixed_after_coerce(value, &val_ty, &prop_ty);
         if release_mixed_after_coerce {

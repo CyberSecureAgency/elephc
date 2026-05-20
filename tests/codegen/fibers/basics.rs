@@ -226,3 +226,28 @@ echo "iters=" . $i;
     );
     assert_eq!(out, "iters=50");
 }
+
+#[test]
+fn test_fiber_stored_in_mixed_property_is_released_on_reset() {
+    let out = compile_and_run_with_heap_size(
+        r#"<?php
+class Slot {
+    public $fiber = null;
+
+    public function cycle(): void {
+        $this->fiber = new Fiber(function(): void {});
+        $this->fiber->start();
+        $this->fiber = null;
+    }
+}
+
+$s = new Slot();
+for ($i = 0; $i < 300; $i++) {
+    $s->cycle();
+}
+echo "iters=" . $i;
+"#,
+        65_536,
+    );
+    assert_eq!(out, "iters=300");
+}

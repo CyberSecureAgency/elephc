@@ -59,7 +59,9 @@ pub(crate) fn emit_assign_stmt(
             && !matches!(ty, PhpType::Mixed | PhpType::Union(_))
     });
     if dest_needs_mixed_box {
-        super::super::super::emit_box_current_value_as_mixed(emitter, &ty);
+        super::super::super::emit_box_current_expr_value_as_mixed_for_container(
+            emitter, value, &ty,
+        );
         ty = PhpType::Mixed;
     }
 
@@ -84,7 +86,9 @@ pub(crate) fn emit_assign_stmt(
         let ref_needs_mixed_box =
             matches!(old_ty, PhpType::Mixed) && !matches!(ty, PhpType::Mixed | PhpType::Union(_));
         if ref_needs_mixed_box {
-            super::super::super::emit_box_current_value_as_mixed(emitter, &ty);
+            super::super::super::emit_box_current_expr_value_as_mixed_for_container(
+                emitter, value, &ty,
+            );
             ty = PhpType::Mixed;
         } else if matches!(ty, PhpType::Mixed | PhpType::Union(_))
             && !matches!(old_ty, PhpType::Mixed | PhpType::Union(_))
