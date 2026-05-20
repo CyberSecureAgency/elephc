@@ -165,6 +165,27 @@ echo "len=" . strlen("hello");
     );
     assert_eq!(out, "len=5");
 }
+
+#[test]
+fn test_ffi_extern_poll_from_method_uses_local_arguments() {
+    let out = compile_and_run(
+        r#"<?php
+extern function poll(ptr $fds, int $nfds, int $timeout): int;
+class Server {
+    public function loop(): void {
+        $pollfds = ptr_null();
+        $nfds = 0;
+        $timeout = 0;
+        echo poll($pollfds, $nfds, $timeout);
+    }
+}
+$server = new Server();
+$server->loop();
+"#,
+    );
+    assert_eq!(out, "0");
+}
+
 #[test]
 fn test_ffi_extern_strlen_frees_borrowed_cstr_temp() {
     let baseline = compile_and_run_with_gc_stats(
