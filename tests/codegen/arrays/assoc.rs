@@ -72,6 +72,19 @@ echo count($a) . ":" . $a["k0"] . ":" . $a["k4"];
 }
 
 #[test]
+fn test_assoc_array_mixed_assignment_access_preserves_scalar_payloads() {
+    let out = compile_and_run(
+        r#"<?php
+$a = [];
+$a["Host"] = "example.com";
+$a["Port"] = 80;
+echo $a["Host"] . "|" . $a["Port"];
+"#,
+    );
+    assert_eq!(out, "example.com|80");
+}
+
+#[test]
 fn test_assoc_array_dynamic_string_key_assignment_inside_function() {
     let out = compile_and_run(
         r#"<?php

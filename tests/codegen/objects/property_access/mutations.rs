@@ -88,6 +88,26 @@ echo $bucket->first();
 }
 
 #[test]
+fn test_typed_array_property_accepts_string_key_assignment() {
+    let out = compile_and_run(
+        r#"<?php
+class Req {
+    public array $headers;
+
+    public function __construct() {
+        $this->headers = [];
+        $this->headers["Host"] = "example.com";
+    }
+}
+
+$r = new Req();
+echo $r->headers["Host"];
+"#,
+    );
+    assert_eq!(out, "example.com");
+}
+
+#[test]
 fn test_class_property_compound_assign() {
     let out = compile_and_run(
         r#"<?php
@@ -192,4 +212,3 @@ echo $box->value;
     );
     assert_eq!(out, "7");
 }
-
