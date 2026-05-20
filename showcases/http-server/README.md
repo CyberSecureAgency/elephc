@@ -108,11 +108,14 @@ other connections, resuming it when more data is available.
 
 Latency distribution from an ApacheBench (`ab`) run against the server:
 
+```bash
+ab -n 100  http://127.0.0.1:8080/
+```
+
 ![ApacheBench latency percentiles](ab100.png)
 
-Half of the requests complete in about 3 ms and 99% within 7 ms, the slowest
-in 10 ms — from a single ahead-of-time compiled binary, with no interpreter
-warm-up and no JIT.
+All the requests complete in about 1 ms — from a single ahead-of-time compiled
+binary, with no interpreter warm-up and no JIT.
 
 ## Notes
 
