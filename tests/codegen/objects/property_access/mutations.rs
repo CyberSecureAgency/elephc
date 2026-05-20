@@ -108,6 +108,22 @@ echo $r->headers["Host"];
 }
 
 #[test]
+fn test_empty_array_property_default_accepts_string_key_assignment() {
+    let out = compile_and_run(
+        r#"<?php
+class Req {
+    public $headers = [];
+}
+
+$r = new Req();
+$r->headers["Host"] = "example.com";
+echo $r->headers["Host"];
+"#,
+    );
+    assert_eq!(out, "example.com");
+}
+
+#[test]
 fn test_class_property_compound_assign() {
     let out = compile_and_run(
         r#"<?php
