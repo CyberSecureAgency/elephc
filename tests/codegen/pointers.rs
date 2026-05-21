@@ -437,6 +437,32 @@ free($buf);
 }
 
 #[test]
+fn test_ptr_read_string_local_return_releases_owned_source() {
+    let out = compile_and_run_with_gc_stats(
+        r#"<?php
+extern function malloc(int $size): ptr;
+extern function free(ptr $p): void;
+
+function make_data(): string {
+    $buf = malloc(64);
+    $data = ptr_read_string($buf, 35);
+    free($buf);
+    return $data;
+}
+
+for ($i = 0; $i < 3; $i++) {
+    $x = make_data();
+}
+echo "done";
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    let (allocs, frees) = parse_gc_stats(&out.stderr);
+    assert_eq!(allocs, frees, "expected clean heap, got: {}", out.stderr);
+    assert_eq!(out.stdout, "done");
+}
+
+#[test]
 fn test_ptr_read_string_zero_length() {
     let out = compile_and_run(
         r#"<?php

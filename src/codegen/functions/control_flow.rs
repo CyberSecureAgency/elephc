@@ -25,14 +25,16 @@ pub(super) fn mark_control_flow_epilogue_unsafe(
     for stmt in stmts {
         match &stmt.kind {
             StmtKind::Assign { name, .. } => {
-                if in_control_flow {
+                if in_control_flow && assignment_needs_epilogue_guard(name, ctx) {
                     ctx.disable_epilogue_cleanup(name);
                 }
             }
             StmtKind::ListUnpack { vars, .. } => {
                 if in_control_flow {
                     for var in vars {
-                        ctx.disable_epilogue_cleanup(var);
+                        if assignment_needs_epilogue_guard(var, ctx) {
+                            ctx.disable_epilogue_cleanup(var);
+                        }
                     }
                 }
             }
@@ -145,6 +147,15 @@ pub(super) fn mark_control_flow_epilogue_unsafe(
             _ => {}
         }
     }
+}
+
+fn assignment_needs_epilogue_guard(name: &str, ctx: &Context) -> bool {
+    ctx.variables.get(name).is_some_and(|var| {
+        var.ownership == HeapOwnership::Borrowed
+            || ctx.global_vars.contains(name)
+            || ctx.static_vars.contains(name)
+            || ctx.ref_params.contains(name)
+    })
 }
 
 pub(super) fn collect_try_slots(stmts: &[crate::parser::ast::Stmt], ctx: &mut Context) {

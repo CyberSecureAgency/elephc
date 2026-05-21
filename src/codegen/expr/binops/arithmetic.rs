@@ -17,7 +17,7 @@ use super::target::{
 };
 use super::super::{
     coerce_null_to_zero, coerce_to_string, coerce_to_truthiness, emit_expr,
-    expr_result_heap_ownership, BinOp, Expr, PhpType,
+    expr_result_heap_ownership, string_result_is_owned_call_temp, BinOp, Expr, PhpType,
 };
 use crate::codegen::context::HeapOwnership;
 
@@ -153,7 +153,14 @@ pub(super) fn emit_numeric_binop(
     let right_ty = emit_expr(right, emitter, ctx, data);
 
     if should_emit_mixed_numeric_binop(op, &left_stack_ty, &right_ty) {
-        return emit_mixed_numeric_binop(op, &left_stack_ty, &right_ty, emitter);
+        return emit_mixed_numeric_binop(
+            left,
+            op,
+            &left_stack_ty,
+            right,
+            &right_ty,
+            emitter,
+        );
     }
 
     coerce_numeric_mixed_to_int(emitter, &right_ty);
@@ -242,13 +249,19 @@ fn is_integerish_numeric(ty: &PhpType) -> bool {
 }
 
 fn emit_mixed_numeric_binop(
+    left: &Expr,
     op: &BinOp,
     left_stack_ty: &PhpType,
+    right: &Expr,
     right_ty: &PhpType,
     emitter: &mut Emitter,
 ) -> PhpType {
     let right_was_boxed = !matches!(right_ty, PhpType::Mixed | PhpType::Union(_));
     let left_was_boxed = !matches!(left_stack_ty, PhpType::Mixed | PhpType::Union(_));
+    let release_left_operand =
+        left_was_boxed || mixed_numeric_operand_is_owned(left, left_stack_ty);
+    let release_right_operand =
+        right_was_boxed || mixed_numeric_operand_is_owned(right, right_ty);
     if right_was_boxed {
         crate::codegen::emit_box_current_value_as_mixed(emitter, right_ty);
     }
@@ -272,10 +285,10 @@ fn emit_mixed_numeric_binop(
         BinOp::Mul => "__rt_mixed_numeric_mul",
         _ => unreachable!(),
     };
-    if left_was_boxed {
+    if release_left_operand {
         abi::emit_push_reg(emitter, abi::int_result_reg(emitter));
     }
-    if right_was_boxed {
+    if release_right_operand {
         match emitter.target.arch {
             Arch::AArch64 => {
                 abi::emit_push_reg(emitter, "x1");
@@ -286,31 +299,37 @@ fn emit_mixed_numeric_binop(
         }
     }
     abi::emit_call_label(emitter, helper);
-    release_temporary_numeric_operand_boxes(emitter, left_was_boxed, right_was_boxed);
+    release_temporary_numeric_operands(emitter, release_left_operand, release_right_operand);
     PhpType::Mixed
 }
 
-fn release_temporary_numeric_operand_boxes(
+fn mixed_numeric_operand_is_owned(expr: &Expr, ty: &PhpType) -> bool {
+    matches!(ty, PhpType::Mixed | PhpType::Union(_))
+        && expr_result_heap_ownership(expr) == HeapOwnership::Owned
+}
+
+fn release_temporary_numeric_operands(
     emitter: &mut Emitter,
-    left_was_boxed: bool,
-    right_was_boxed: bool,
+    release_left_operand: bool,
+    release_right_operand: bool,
 ) {
-    if !left_was_boxed && !right_was_boxed {
+    if !release_left_operand && !release_right_operand {
         return;
     }
     abi::emit_push_reg(emitter, abi::int_result_reg(emitter));
     let mut offset = 16;
-    if right_was_boxed {
+    if release_right_operand {
         abi::emit_load_temporary_stack_slot(emitter, abi::int_result_reg(emitter), offset);
         abi::emit_decref_if_refcounted(emitter, &PhpType::Mixed);
         offset += 16;
     }
-    if left_was_boxed {
+    if release_left_operand {
         abi::emit_load_temporary_stack_slot(emitter, abi::int_result_reg(emitter), offset);
         abi::emit_decref_if_refcounted(emitter, &PhpType::Mixed);
     }
     abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));
-    let operand_stack_bytes = 16 * usize::from(left_was_boxed) + 16 * usize::from(right_was_boxed);
+    let operand_stack_bytes =
+        16 * usize::from(release_left_operand) + 16 * usize::from(release_right_operand);
     abi::emit_release_temporary_stack(emitter, operand_stack_bytes);
 }
 
@@ -345,6 +364,7 @@ pub(super) fn emit_concat_binop(
     let left_ty = emit_expr(left, emitter, ctx, data);
     coerce_to_string(emitter, ctx, data, &left_ty);
     let persisted_left = expr_result_heap_ownership(left) == HeapOwnership::NonHeap;
+    let release_left = persisted_left || string_result_is_owned_call_temp(left, ctx);
     if persisted_left {
         abi::emit_call_label(emitter, "__rt_str_persist");
     }
@@ -352,43 +372,59 @@ pub(super) fn emit_concat_binop(
     abi::emit_push_reg_pair(emitter, left_ptr_reg, left_len_reg);
     let right_ty = emit_expr(right, emitter, ctx, data);
     coerce_to_string(emitter, ctx, data, &right_ty);
+    let release_right = string_result_is_owned_call_temp(right, ctx);
+    let mut cleanup_operands = 0usize;
     match emitter.target.arch {
         Arch::AArch64 => {
             emitter.instruction("mov x3, x1");                                  // save right-operand string pointer into x3
             emitter.instruction("mov x4, x2");                                  // save right-operand string length into x4
             abi::emit_pop_reg_pair(emitter, "x1", "x2");
+            if release_right {
+                abi::emit_push_reg_pair(emitter, "x3", "x4");
+                cleanup_operands += 1;
+            }
+            if release_left {
+                abi::emit_push_reg_pair(emitter, "x1", "x2");
+                cleanup_operands += 1;
+            }
         }
         Arch::X86_64 => {
             emitter.instruction("mov rdi, rax");                                // save right-operand string pointer into rdi
             emitter.instruction("mov rsi, rdx");                                // save right-operand string length into rsi
             abi::emit_pop_reg_pair(emitter, "rax", "rdx");
+            if release_right {
+                abi::emit_push_reg_pair(emitter, "rdi", "rsi");
+                cleanup_operands += 1;
+            }
+            if release_left {
+                abi::emit_push_reg_pair(emitter, "rax", "rdx");
+                cleanup_operands += 1;
+            }
         }
     }
-    if persisted_left {
-        emit_preserve_concat_left_for_cleanup(emitter);
-    }
     abi::emit_call_label(emitter, "__rt_concat");
-    if persisted_left {
-        emit_release_preserved_concat_left(emitter);
+    if cleanup_operands > 0 {
+        emit_release_preserved_concat_operands(emitter, cleanup_operands);
     }
     PhpType::Str
 }
 
-fn emit_preserve_concat_left_for_cleanup(emitter: &mut Emitter) {
-    let (ptr_reg, len_reg) = abi::string_result_regs(emitter);
-    abi::emit_push_reg_pair(emitter, ptr_reg, len_reg);
-}
-
-fn emit_release_preserved_concat_left(emitter: &mut Emitter) {
+fn emit_release_preserved_concat_operands(emitter: &mut Emitter, count: usize) {
     let (ptr_reg, len_reg) = abi::string_result_regs(emitter);
 
-    // Keep the concat result live while freeing the persisted left operand that
+    // Keep the concat result live while freeing persisted operands that
     // __rt_concat has already copied into the result buffer.
     abi::emit_push_reg_pair(emitter, ptr_reg, len_reg);
-    abi::emit_load_temporary_stack_slot(emitter, abi::int_result_reg(emitter), 16);
-    abi::emit_call_label(emitter, "__rt_heap_free_safe");
+    for idx in 0..count {
+        abi::emit_load_temporary_stack_slot(
+            emitter,
+            abi::int_result_reg(emitter),
+            16 + idx * 16,
+        );
+        abi::emit_call_label(emitter, "__rt_heap_free_safe");
+    }
     abi::emit_pop_reg_pair(emitter, ptr_reg, len_reg);
-    abi::emit_release_temporary_stack(emitter, 16);
+    abi::emit_release_temporary_stack(emitter, count * 16);
 }
 
 pub(super) fn emit_bitwise_binop(

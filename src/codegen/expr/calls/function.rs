@@ -66,9 +66,17 @@ pub(super) fn emit_function_call(
     if save_concat_before_args {
         crate::codegen::abi::emit_release_temporary_stack(emitter, overflow_bytes);
         crate::codegen::abi::emit_release_temporary_stack(emitter, emitted_args.source_temp_bytes);
-        super::super::restore_concat_offset_after_nested_call(emitter, ctx, &ret_ty);
+        if ret_ty == PhpType::Str {
+            super::super::restore_concat_offset_after_owned_string_call(emitter, ctx);
+        } else {
+            super::super::restore_concat_offset_after_nested_call(emitter, ctx, &ret_ty);
+        }
     } else {
-        super::super::restore_concat_offset_after_nested_call(emitter, ctx, &ret_ty);
+        if ret_ty == PhpType::Str {
+            super::super::restore_concat_offset_after_owned_string_call(emitter, ctx);
+        } else {
+            super::super::restore_concat_offset_after_nested_call(emitter, ctx, &ret_ty);
+        }
         crate::codegen::abi::emit_release_temporary_stack(emitter, overflow_bytes);
         crate::codegen::abi::emit_release_temporary_stack(emitter, emitted_args.source_temp_bytes);
     }

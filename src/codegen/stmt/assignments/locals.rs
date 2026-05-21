@@ -12,7 +12,9 @@ use super::super::super::abi;
 use super::super::super::context::{Context, HeapOwnership};
 use super::super::super::data_section::DataSection;
 use super::super::super::emit::Emitter;
-use super::super::super::expr::{coerce_result_to_type, emit_expr};
+use super::super::super::expr::{
+    coerce_result_to_type, emit_expr, string_result_is_owned_call_temp,
+};
 use super::super::super::functions;
 use super::super::PhpType;
 use crate::names::Name;
@@ -195,7 +197,13 @@ pub(crate) fn emit_assign_stmt(
             super::super::helpers::release_owned_slot(emitter, &old_ty, offset, &ty);
         }
 
-        abi::emit_store(emitter, &ty, offset);
+        if matches!(ty, PhpType::Str) && string_result_is_owned_call_temp(value, ctx) {
+            let (ptr_reg, len_reg) = abi::string_result_regs(emitter);
+            abi::store_at_offset(emitter, ptr_reg, offset);
+            abi::store_at_offset(emitter, len_reg, offset - 8);
+        } else {
+            abi::emit_store(emitter, &ty, offset);
+        }
         ctx.update_var_type_static_and_ownership(
             name,
             ty.clone(),

@@ -115,6 +115,1039 @@ echo "done";
 }
 
 #[test]
+fn test_string_local_assigned_in_loop_is_released_on_function_exit() {
+    // Regression for locals first assigned inside control flow: the local slot is
+    // zero-initialized, so final cleanup is safe even when the loop does not run.
+    let out = compile_and_run_with_heap_size(
+        r#"<?php
+function receive_once(): void {
+    while (true) {
+        $chunk = str_repeat("x", 96);
+        break;
+    }
+}
+for ($i = 0; $i < 1000; $i++) {
+    receive_once();
+}
+echo "done";
+"#,
+        65_536,
+    );
+    assert_eq!(out, "done");
+}
+
+#[test]
+fn test_reused_object_string_property_concat_is_released_on_reset() {
+    // Mirrors the HTTP server's pooled Connection::inbuf slot: each request
+    // resets the property and then rebuilds it from an incoming chunk.
+    let out = compile_and_run_with_heap_size(
+        r#"<?php
+class Conn {
+    public string $inbuf = "";
+
+    public function reset(): void {
+        $this->inbuf = "";
+    }
+
+    public function read_once(): void {
+        $chunk = str_repeat("x", 128);
+        $this->inbuf = $this->inbuf . $chunk;
+    }
+}
+
+$conn = new Conn();
+for ($i = 0; $i < 1000; $i++) {
+    $conn->reset();
+    $conn->read_once();
+}
+echo "done";
+"#,
+        65_536,
+    );
+    assert_eq!(out, "done");
+}
+
+#[test]
+fn test_indexed_array_rebuilt_after_growth_does_not_leak() {
+    // Mirrors the HTTP reactor's per-iteration poll map: the array grows from
+    // its small initial capacity, then the next assignment must release it.
+    let out = compile_and_run_with_heap_size(
+        r#"<?php
+for ($n = 0; $n < 1000; $n++) {
+    $poll_map = [];
+    $i = 0;
+    while ($i < 64) {
+        $poll_map[] = $i;
+        $i++;
+    }
+}
+echo "done";
+"#,
+        65_536,
+    );
+    assert_eq!(out, "done");
+}
+
+#[test]
+fn test_explode_arrays_and_elements_release_on_function_exit() {
+    // Mirrors the real HTTP parser, which splits the header block and request
+    // line on every request before reading a few array elements.
+    let out = compile_and_run_with_heap_size(
+        r#"<?php
+function parse_once(string $raw): void {
+    $lines = explode("\r\n", $raw);
+    $parts = explode(" ", $lines[0]);
+    $method = $parts[0];
+    $path = $parts[1];
+}
+
+for ($i = 0; $i < 1000; $i++) {
+    parse_once("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+}
+echo "done";
+"#,
+        65_536,
+    );
+    assert_eq!(out, "done");
+}
+
+#[test]
+fn test_explode_parser_leaves_no_live_heap_blocks() {
+    let out = compile_and_run_with_gc_stats(
+        r#"<?php
+function parse_once(string $raw): void {
+    $lines = explode("\r\n", $raw);
+    $parts = explode(" ", $lines[0]);
+    $method = $parts[0];
+    $path = $parts[1];
+}
+
+for ($i = 0; $i < 3; $i++) {
+    parse_once("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+}
+echo "done";
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    let (allocs, frees) = parse_gc_stats(&out.stderr);
+    assert_eq!(allocs, frees, "expected clean heap, got: {}", out.stderr);
+    assert_eq!(out.stdout, "done");
+}
+
+#[test]
+fn test_echo_property_concat_log_line_leaves_no_live_heap_blocks() {
+    let out = compile_and_run_with_gc_stats(
+        r#"<?php
+class Req {
+    public string $method = "GET";
+    public string $path = "/";
+}
+
+class Res {
+    public int $status = 200;
+}
+
+function log_once(): void {
+    $req = new Req();
+    $res = new Res();
+    echo "  " . $req->method . " " . $req->path . " -> " . $res->status . "\n";
+}
+
+for ($i = 0; $i < 3; $i++) {
+    log_once();
+}
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    let (allocs, frees) = parse_gc_stats(&out.stderr);
+    assert_eq!(allocs, frees, "expected clean heap, got: {}", out.stderr);
+    assert_eq!(out.stdout, "  GET / -> 200\n  GET / -> 200\n  GET / -> 200\n");
+}
+
+#[test]
+fn test_http_parse_request_object_leaves_no_live_heap_blocks() {
+    let out = compile_and_run_with_gc_stats(
+        r#"<?php
+function str_index(string $haystack, string $needle): int {
+    $pos = strpos($haystack, $needle);
+    if ($pos === false) {
+        return -1;
+    }
+    return intval($pos);
+}
+
+class Request {
+    public string $method = "";
+    public string $path = "";
+    public string $query = "";
+    public string $version = "";
+    public string $body = "";
+    public string $head = "";
+}
+
+function split_head_body(Request $req, string $raw): void {
+    $split = str_index($raw, "\r\n\r\n");
+    if ($split >= 0) {
+        $body_at = intval($split + 4);
+        $req->head = substr($raw, 0, $split);
+        $req->body = substr($raw, $body_at);
+    } else {
+        $req->head = $raw;
+    }
+}
+
+function parse_target(Request $req, string $target): void {
+    $qpos = str_index($target, "?");
+    if ($qpos >= 0) {
+        $after = intval($qpos + 1);
+        $req->path = substr($target, 0, $qpos);
+        $req->query = substr($target, $after);
+    } else {
+        $req->path = $target;
+    }
+}
+
+function parse_request_line(Request $req, string $line): void {
+    $parts = explode(" ", $line);
+    if (count($parts) >= 3) {
+        $req->method = $parts[0];
+        $req->version = $parts[2];
+        parse_target($req, $parts[1]);
+    }
+}
+
+function parse_request(string $raw): Request {
+    $req = new Request();
+    split_head_body($req, $raw);
+    $lines = explode("\r\n", $req->head);
+    parse_request_line($req, $lines[0]);
+    return $req;
+}
+
+function serve_once(): void {
+    $req = parse_request("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+}
+
+for ($i = 0; $i < 3; $i++) {
+    serve_once();
+}
+echo "done";
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    let (allocs, frees) = parse_gc_stats(&out.stderr);
+    assert_eq!(allocs, frees, "expected clean heap, got: {}", out.stderr);
+    assert_eq!(out.stdout, "done");
+}
+
+#[test]
+fn test_strpos_mixed_result_local_leaves_no_live_heap_blocks() {
+    let out = compile_and_run_with_gc_stats(
+        r#"<?php
+function str_index(string $haystack, string $needle): int {
+    $pos = strpos($haystack, $needle);
+    if ($pos === false) {
+        return -1;
+    }
+    return intval($pos);
+}
+
+for ($i = 0; $i < 3; $i++) {
+    $x = str_index("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n", "\r\n\r\n");
+}
+echo "done";
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    let (allocs, frees) = parse_gc_stats(&out.stderr);
+    assert_eq!(allocs, frees, "expected clean heap, got: {}", out.stderr);
+    assert_eq!(out.stdout, "done");
+}
+
+#[test]
+fn test_direct_strpos_strict_compare_leaves_no_live_heap_blocks() {
+    let out = compile_and_run_with_gc_stats(
+        r#"<?php
+for ($i = 0; $i < 1000; $i++) {
+    if (strpos("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n", "\r\n\r\n") === false) {
+        echo "bad";
+    }
+}
+echo "done";
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    let (allocs, frees) = parse_gc_stats(&out.stderr);
+    assert_eq!(allocs, frees, "expected clean heap, got: {}", out.stderr);
+    assert_eq!(out.stdout, "done");
+}
+
+#[test]
+fn test_split_head_body_property_substr_leaves_no_live_heap_blocks() {
+    let out = compile_and_run_with_gc_stats(
+        r#"<?php
+function str_index(string $haystack, string $needle): int {
+    $pos = strpos($haystack, $needle);
+    if ($pos === false) {
+        return -1;
+    }
+    return intval($pos);
+}
+
+class Request {
+    public string $body = "";
+    public string $head = "";
+}
+
+function split_head_body(Request $req, string $raw): void {
+    $split = str_index($raw, "\r\n\r\n");
+    if ($split >= 0) {
+        $body_at = intval($split + 4);
+        $req->head = substr($raw, 0, $split);
+        $req->body = substr($raw, $body_at);
+    } else {
+        $req->head = $raw;
+    }
+}
+
+function serve_once(): void {
+    $req = new Request();
+    split_head_body($req, "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+}
+
+for ($i = 0; $i < 3; $i++) {
+    serve_once();
+}
+echo "done";
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    let (allocs, frees) = parse_gc_stats(&out.stderr);
+    assert_eq!(allocs, frees, "expected clean heap, got: {}", out.stderr);
+    assert_eq!(out.stdout, "done");
+}
+
+#[test]
+fn test_object_argument_call_leaves_no_live_heap_blocks() {
+    let out = compile_and_run_with_gc_stats(
+        r#"<?php
+class Request {
+    public int $seen = 0;
+}
+
+function mark_seen(Request $req): void {
+    $req->seen = $req->seen + 1;
+}
+
+function serve_once(): void {
+    $req = new Request();
+    mark_seen($req);
+}
+
+for ($i = 0; $i < 3; $i++) {
+    serve_once();
+}
+echo "done";
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    let (allocs, frees) = parse_gc_stats(&out.stderr);
+    assert_eq!(allocs, frees, "expected clean heap, got: {}", out.stderr);
+    assert_eq!(out.stdout, "done");
+}
+
+#[test]
+fn test_substr_property_assignment_leaves_no_live_heap_blocks() {
+    let out = compile_and_run_with_gc_stats(
+        r#"<?php
+class Request {
+    public string $body = "";
+    public string $head = "";
+}
+
+function serve_once(): void {
+    $req = new Request();
+    $raw = "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n";
+    $req->head = substr($raw, 0, 31);
+    $req->body = substr($raw, 35);
+}
+
+for ($i = 0; $i < 3; $i++) {
+    serve_once();
+}
+echo "done";
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    let (allocs, frees) = parse_gc_stats(&out.stderr);
+    assert_eq!(allocs, frees, "expected clean heap, got: {}", out.stderr);
+    assert_eq!(out.stdout, "done");
+}
+
+#[test]
+fn test_string_argument_call_leaves_no_live_heap_blocks() {
+    let out = compile_and_run_with_gc_stats(
+        r#"<?php
+function use_string(string $raw): void {
+    $n = strlen($raw);
+}
+
+for ($i = 0; $i < 3; $i++) {
+    use_string("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+}
+echo "done";
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    let (allocs, frees) = parse_gc_stats(&out.stderr);
+    assert_eq!(allocs, frees, "expected clean heap, got: {}", out.stderr);
+    assert_eq!(out.stdout, "done");
+}
+
+#[test]
+fn test_substr_of_string_argument_property_assignment_leaves_no_live_heap_blocks() {
+    let out = compile_and_run_with_gc_stats(
+        r#"<?php
+class Request {
+    public string $head = "";
+}
+
+function write_head(Request $req, string $raw): void {
+    $req->head = substr($raw, 0, 31);
+}
+
+function serve_once(): void {
+    $req = new Request();
+    write_head($req, "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+}
+
+for ($i = 0; $i < 3; $i++) {
+    serve_once();
+}
+echo "done";
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    let (allocs, frees) = parse_gc_stats(&out.stderr);
+    assert_eq!(allocs, frees, "expected clean heap, got: {}", out.stderr);
+    assert_eq!(out.stdout, "done");
+}
+
+#[test]
+fn test_empty_tail_substr_property_assignment_leaves_no_live_heap_blocks() {
+    let out = compile_and_run_with_gc_stats(
+        r#"<?php
+class Request {
+    public string $body = "";
+}
+
+function write_body(Request $req, string $raw): void {
+    $req->body = substr($raw, 35);
+}
+
+function serve_once(): void {
+    $req = new Request();
+    write_body($req, "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+}
+
+for ($i = 0; $i < 3; $i++) {
+    serve_once();
+}
+echo "done";
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    let (allocs, frees) = parse_gc_stats(&out.stderr);
+    assert_eq!(allocs, frees, "expected clean heap, got: {}", out.stderr);
+    assert_eq!(out.stdout, "done");
+}
+
+#[test]
+fn test_two_substr_property_assignments_from_string_argument_leave_no_live_heap_blocks() {
+    let out = compile_and_run_with_gc_stats(
+        r#"<?php
+class Request {
+    public string $body = "";
+    public string $head = "";
+}
+
+function write_parts(Request $req, string $raw): void {
+    $req->head = substr($raw, 0, 31);
+    $req->body = substr($raw, 35);
+}
+
+function serve_once(): void {
+    $req = new Request();
+    write_parts($req, "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+}
+
+for ($i = 0; $i < 3; $i++) {
+    serve_once();
+}
+echo "done";
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    let (allocs, frees) = parse_gc_stats(&out.stderr);
+    assert_eq!(allocs, frees, "expected clean heap, got: {}", out.stderr);
+    assert_eq!(out.stdout, "done");
+}
+
+#[test]
+fn test_substr_property_assignments_with_computed_offsets_leave_no_live_heap_blocks() {
+    let out = compile_and_run_with_gc_stats(
+        r#"<?php
+class Request {
+    public string $body = "";
+    public string $head = "";
+}
+
+function write_parts(Request $req, string $raw): void {
+    $split = 31;
+    $body_at = intval($split + 4);
+    $req->head = substr($raw, 0, $split);
+    $req->body = substr($raw, $body_at);
+}
+
+function serve_once(): void {
+    $req = new Request();
+    write_parts($req, "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+}
+
+for ($i = 0; $i < 3; $i++) {
+    serve_once();
+}
+echo "done";
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    let (allocs, frees) = parse_gc_stats(&out.stderr);
+    assert_eq!(allocs, frees, "expected clean heap, got: {}", out.stderr);
+    assert_eq!(out.stdout, "done");
+}
+
+#[test]
+fn test_substr_property_assignments_with_str_index_offset_leave_no_live_heap_blocks() {
+    let out = compile_and_run_with_gc_stats(
+        r#"<?php
+function str_index(string $haystack, string $needle): int {
+    $pos = strpos($haystack, $needle);
+    if ($pos === false) {
+        return -1;
+    }
+    return intval($pos);
+}
+
+class Request {
+    public string $body = "";
+    public string $head = "";
+}
+
+function write_parts(Request $req, string $raw): void {
+    $split = str_index($raw, "\r\n\r\n");
+    $body_at = intval($split + 4);
+    $req->head = substr($raw, 0, $split);
+    $req->body = substr($raw, $body_at);
+}
+
+function serve_once(): void {
+    $req = new Request();
+    write_parts($req, "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+}
+
+for ($i = 0; $i < 3; $i++) {
+    serve_once();
+}
+echo "done";
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    let (allocs, frees) = parse_gc_stats(&out.stderr);
+    assert_eq!(allocs, frees, "expected clean heap, got: {}", out.stderr);
+    assert_eq!(out.stdout, "done");
+}
+
+#[test]
+fn test_user_function_int_return_assigned_inside_function_leaves_no_live_heap_blocks() {
+    let out = compile_and_run_with_gc_stats(
+        r#"<?php
+function str_index(string $haystack, string $needle): int {
+    $pos = strpos($haystack, $needle);
+    if ($pos === false) {
+        return -1;
+    }
+    return intval($pos);
+}
+
+function outer(): void {
+    $split = str_index("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n", "\r\n\r\n");
+}
+
+for ($i = 0; $i < 3; $i++) {
+    outer();
+}
+echo "done";
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    let (allocs, frees) = parse_gc_stats(&out.stderr);
+    assert_eq!(allocs, frees, "expected clean heap, got: {}", out.stderr);
+    assert_eq!(out.stdout, "done");
+}
+
+#[test]
+fn test_http_response_path_releases_per_request_objects_and_strings() {
+    // Exercises the showcase's parse/route/render shape without sockets or
+    // Fibers so reactor leaks can be separated from response-path leaks.
+    let out = compile_and_run_with_heap_size(
+        r#"<?php
+class Request {
+    public string $method = "";
+    public string $path = "";
+    public string $body = "";
+    public string $head = "";
+}
+
+class Response {
+    public int $status = 200;
+    public string $ctype = "text/plain; charset=utf-8";
+    public string $body = "";
+
+    public function html(string $s): void {
+        $this->ctype = "text/html; charset=utf-8";
+        $this->body = $s;
+    }
+
+    public function render(): string {
+        $out = "HTTP/1.1 " . $this->status . " OK\r\n";
+        $out = $out . "Content-Type: " . $this->ctype . "\r\n";
+        $out = $out . "Content-Length: " . strlen($this->body) . "\r\n";
+        $out = $out . "Connection: close\r\n";
+        $out = $out . "Server: elephc-http\r\n";
+        $out = $out . "\r\n";
+        return $out . $this->body;
+    }
+}
+
+function parse_request(string $raw): Request {
+    $req = new Request();
+    $split = strpos($raw, "\r\n\r\n");
+    if ($split === false) {
+        $req->head = $raw;
+    } else {
+        $req->head = substr($raw, 0, intval($split));
+        $req->body = substr($raw, intval($split) + 4);
+    }
+    $req->method = "GET";
+    $req->path = "/";
+    return $req;
+}
+
+function route_index(): Response {
+    $res = new Response();
+    $res->html(
+        "<!doctype html>\n"
+        . "<html><head><title>elephc http-server</title></head><body>\n"
+        . "<h1>elephc http-server</h1>\n"
+        . "<p>A native HTTP/1.1 server written in PHP and compiled to native code.</p>\n"
+        . "<ul><li>/hello</li><li>/json</li><li>/stats</li></ul>\n"
+        . "</body></html>\n"
+    );
+    return $res;
+}
+
+function handle_request(Request $req): Response {
+    static $served = 0;
+    $served = $served + 1;
+    return route_index();
+}
+
+function serve_once(): void {
+    $req = parse_request("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+    $res = handle_request($req);
+    $payload = $res->render();
+}
+
+for ($i = 0; $i < 1000; $i++) {
+    serve_once();
+}
+echo "done";
+"#,
+        65_536,
+    );
+    assert_eq!(out, "done");
+}
+
+#[test]
+fn test_http_response_path_leaves_no_live_heap_blocks() {
+    let out = compile_and_run_with_gc_stats(
+        r#"<?php
+function str_index(string $haystack, string $needle): int {
+    $pos = strpos($haystack, $needle);
+    if ($pos === false) {
+        return -1;
+    }
+    return intval($pos);
+}
+
+class Request {
+    public string $method = "";
+    public string $path = "";
+    public string $query = "";
+    public string $version = "";
+    public string $body = "";
+    public string $head = "";
+}
+
+class Response {
+    public int $status = 200;
+    public string $ctype = "text/plain; charset=utf-8";
+    public string $body = "";
+
+    public function html(string $s): void {
+        $this->ctype = "text/html; charset=utf-8";
+        $this->body = $s;
+    }
+
+    public function render(): string {
+        $out = "HTTP/1.1 " . $this->status . " OK\r\n";
+        $out = $out . "Content-Type: " . $this->ctype . "\r\n";
+        $out = $out . "Content-Length: " . strlen($this->body) . "\r\n";
+        $out = $out . "Connection: close\r\n";
+        $out = $out . "Server: elephc-http\r\n";
+        $out = $out . "\r\n";
+        return $out . $this->body;
+    }
+}
+
+function split_head_body(Request $req, string $raw): void {
+    $split = str_index($raw, "\r\n\r\n");
+    if ($split >= 0) {
+        $body_at = intval($split + 4);
+        $req->head = substr($raw, 0, $split);
+        $req->body = substr($raw, $body_at);
+    } else {
+        $req->head = $raw;
+    }
+}
+
+function parse_target(Request $req, string $target): void {
+    $qpos = str_index($target, "?");
+    if ($qpos >= 0) {
+        $after = intval($qpos + 1);
+        $req->path = substr($target, 0, $qpos);
+        $req->query = substr($target, $after);
+    } else {
+        $req->path = $target;
+    }
+}
+
+function parse_request_line(Request $req, string $line): void {
+    $parts = explode(" ", $line);
+    if (count($parts) >= 3) {
+        $req->method = $parts[0];
+        $req->version = $parts[2];
+        parse_target($req, $parts[1]);
+    }
+}
+
+function parse_request(string $raw): Request {
+    $req = new Request();
+    split_head_body($req, $raw);
+    $lines = explode("\r\n", $req->head);
+    parse_request_line($req, $lines[0]);
+    return $req;
+}
+
+function route_index(): Response {
+    $res = new Response();
+    $res->html("<!doctype html>\n<html><body><h1>elephc</h1></body></html>\n");
+    return $res;
+}
+
+function handle_request(Request $req): Response {
+    static $served = 0;
+    $served = $served + 1;
+    return route_index();
+}
+
+function serve_once(): void {
+    $req = parse_request("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+    $res = handle_request($req);
+    $payload = $res->render();
+}
+
+for ($i = 0; $i < 3; $i++) {
+    serve_once();
+}
+echo "done";
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    let (allocs, frees) = parse_gc_stats(&out.stderr);
+    assert_eq!(allocs, frees, "expected clean heap, got: {}", out.stderr);
+    assert_eq!(out.stdout, "done");
+}
+
+#[test]
+fn test_response_render_loop_releases_per_request_objects() {
+    let out = compile_and_run_with_heap_size(
+        r#"<?php
+class Response {
+    public int $status = 200;
+    public string $ctype = "text/plain; charset=utf-8";
+    public string $body = "";
+
+    public function html(string $s): void {
+        $this->ctype = "text/html; charset=utf-8";
+        $this->body = $s;
+    }
+
+    public function render(): string {
+        $out = "HTTP/1.1 " . $this->status . " OK\r\n";
+        $out = $out . "Content-Type: " . $this->ctype . "\r\n";
+        $out = $out . "Content-Length: " . strlen($this->body) . "\r\n";
+        $out = $out . "Connection: close\r\n";
+        $out = $out . "Server: elephc-http\r\n";
+        $out = $out . "\r\n";
+        return $out . $this->body;
+    }
+}
+
+function route_index(): Response {
+    $res = new Response();
+    $res->html(
+        "<!doctype html>\n"
+        . "<html><head><title>elephc http-server</title></head><body>\n"
+        . "<h1>elephc http-server</h1>\n"
+        . "<p>A native HTTP/1.1 server written in PHP and compiled to native code.</p>\n"
+        . "<ul><li>/hello</li><li>/json</li><li>/stats</li></ul>\n"
+        . "</body></html>\n"
+    );
+    return $res;
+}
+
+function serve_once(): void {
+    $res = route_index();
+    $payload = $res->render();
+}
+
+for ($i = 0; $i < 1000; $i++) {
+    serve_once();
+}
+echo "done";
+"#,
+        65_536,
+    );
+    assert_eq!(out, "done");
+}
+
+#[test]
+fn test_response_render_loop_leaves_no_live_heap_blocks() {
+    let out = compile_and_run_with_gc_stats(
+        r#"<?php
+class Response {
+    public int $status = 200;
+    public string $ctype = "text/plain; charset=utf-8";
+    public string $body = "";
+
+    public function html(string $s): void {
+        $this->ctype = "text/html; charset=utf-8";
+        $this->body = $s;
+    }
+
+    public function render(): string {
+        $out = "HTTP/1.1 " . $this->status . " OK\r\n";
+        $out = $out . "Content-Type: " . $this->ctype . "\r\n";
+        $out = $out . "Content-Length: " . strlen($this->body) . "\r\n";
+        $out = $out . "Connection: close\r\n";
+        $out = $out . "Server: elephc-http\r\n";
+        $out = $out . "\r\n";
+        return $out . $this->body;
+    }
+}
+
+function route_index(): Response {
+    $res = new Response();
+    $res->html(str_repeat("x", 256));
+    return $res;
+}
+
+function serve_once(): void {
+    $res = route_index();
+    $payload = $res->render();
+}
+
+for ($i = 0; $i < 3; $i++) {
+    serve_once();
+}
+echo "done";
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    let (allocs, frees) = parse_gc_stats(&out.stderr);
+    assert_eq!(allocs, frees, "expected clean heap, got: {}", out.stderr);
+    assert_eq!(out.stdout, "done");
+}
+
+#[test]
+fn test_object_string_properties_release_on_function_exit() {
+    let out = compile_and_run_with_heap_size(
+        r#"<?php
+class Response {
+    public string $ctype = "text/plain; charset=utf-8";
+    public string $body = "";
+
+    public function html(string $s): void {
+        $this->ctype = "text/html; charset=utf-8";
+        $this->body = $s;
+    }
+}
+
+function serve_once(): void {
+    $res = new Response();
+    $res->html(str_repeat("x", 256));
+}
+
+for ($i = 0; $i < 1000; $i++) {
+    serve_once();
+}
+echo "done";
+"#,
+        65_536,
+    );
+    assert_eq!(out, "done");
+}
+
+#[test]
+fn test_returned_object_with_string_property_releases_on_caller_exit() {
+    let out = compile_and_run_with_heap_size(
+        r#"<?php
+class Response {
+    public string $body = "";
+}
+
+function make_response(): Response {
+    $res = new Response();
+    $res->body = str_repeat("x", 256);
+    return $res;
+}
+
+function serve_once(): void {
+    $res = make_response();
+}
+
+for ($i = 0; $i < 1000; $i++) {
+    serve_once();
+}
+echo "done";
+"#,
+        65_536,
+    );
+    assert_eq!(out, "done");
+}
+
+#[test]
+fn test_returned_object_with_string_property_leaves_no_live_heap_blocks() {
+    let out = compile_and_run_with_gc_stats(
+        r#"<?php
+class Response {
+    public string $body = "";
+}
+
+function make_response(): Response {
+    $res = new Response();
+    $res->body = str_repeat("x", 256);
+    return $res;
+}
+
+function serve_once(): void {
+    $res = make_response();
+}
+
+for ($i = 0; $i < 3; $i++) {
+    serve_once();
+}
+echo "done";
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    let (allocs, frees) = parse_gc_stats(&out.stderr);
+    assert_eq!(allocs, frees, "expected clean heap, got: {}", out.stderr);
+    assert_eq!(out.stdout, "done");
+}
+
+#[test]
+fn test_response_render_loop_with_local_object_releases_strings() {
+    let out = compile_and_run_with_heap_size(
+        r#"<?php
+class Response {
+    public int $status = 200;
+    public string $ctype = "text/plain; charset=utf-8";
+    public string $body = "";
+
+    public function html(string $s): void {
+        $this->ctype = "text/html; charset=utf-8";
+        $this->body = $s;
+    }
+
+    public function render(): string {
+        $out = "HTTP/1.1 " . $this->status . " OK\r\n";
+        $out = $out . "Content-Type: " . $this->ctype . "\r\n";
+        $out = $out . "Content-Length: " . strlen($this->body) . "\r\n";
+        $out = $out . "Connection: close\r\n";
+        $out = $out . "Server: elephc-http\r\n";
+        $out = $out . "\r\n";
+        return $out . $this->body;
+    }
+}
+
+function serve_once(): void {
+    $res = new Response();
+    $res->html(str_repeat("x", 256));
+    $payload = $res->render();
+}
+
+for ($i = 0; $i < 1000; $i++) {
+    serve_once();
+}
+echo "done";
+"#,
+        65_536,
+    );
+    assert_eq!(out, "done");
+}
+
+#[test]
+fn test_repeated_string_builder_return_releases_intermediates() {
+    let out = compile_and_run_with_heap_size(
+        r#"<?php
+function render_payload(string $body): string {
+    $out = "HTTP/1.1 200 OK\r\n";
+    $out = $out . "Content-Type: text/html\r\n";
+    $out = $out . "Content-Length: " . strlen($body) . "\r\n";
+    $out = $out . "Connection: close\r\n";
+    $out = $out . "Server: elephc-http\r\n";
+    $out = $out . "\r\n";
+    return $out . $body;
+}
+
+function serve_once(): void {
+    $body = str_repeat("x", 256);
+    $payload = render_payload($body);
+}
+
+for ($i = 0; $i < 1000; $i++) {
+    serve_once();
+}
+echo "done";
+"#,
+        65_536,
+    );
+    assert_eq!(out, "done");
+}
+
+#[test]
 fn test_unset_frees_string() {
     let out = compile_and_run(
         r#"<?php

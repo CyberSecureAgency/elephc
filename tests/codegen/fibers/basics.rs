@@ -251,3 +251,84 @@ echo "iters=" . $i;
     );
     assert_eq!(out, "iters=300");
 }
+
+#[test]
+fn test_fiber_capture_cycle_is_released_on_property_reset() {
+    let out = compile_and_run_with_heap_size(
+        r#"<?php
+class Slot {
+    public $fiber = null;
+    public bool $closed = false;
+
+    public function cycle(): void {
+        $self = $this;
+        $this->closed = false;
+        $this->fiber = new Fiber(function() use ($self): void {
+            $self->closed = true;
+        });
+        $this->fiber->start();
+        $this->fiber = null;
+    }
+}
+
+$s = new Slot();
+for ($i = 0; $i < 300; $i++) {
+    $s->cycle();
+}
+echo "iters=" . $i;
+"#,
+        65_536,
+    );
+    assert_eq!(out, "iters=300");
+}
+
+#[test]
+fn test_fiber_capture_cycle_reset_leaves_no_live_heap_blocks() {
+    let out = compile_and_run_with_gc_stats(
+        r#"<?php
+class Slot {
+    public $fiber = null;
+    public bool $closed = false;
+
+    public function cycle(): void {
+        $self = $this;
+        $this->closed = false;
+        $this->fiber = new Fiber(function() use ($self): void {
+            $self->closed = true;
+        });
+        $this->fiber->start();
+        $this->fiber = null;
+    }
+}
+
+$s = new Slot();
+for ($i = 0; $i < 3; $i++) {
+    $s->cycle();
+}
+unset($s);
+echo "done";
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    let (allocs, frees) = parse_gc_stats(&out.stderr);
+    assert_eq!(allocs, frees, "expected clean heap, got: {}", out.stderr);
+    assert_eq!(out.stdout, "done");
+}
+
+#[test]
+fn test_discarded_fiber_start_result_leaves_no_live_heap_blocks() {
+    let out = compile_and_run_with_gc_stats(
+        r#"<?php
+for ($i = 0; $i < 3; $i++) {
+    $f = new Fiber(function(): void {});
+    $f->start();
+    unset($f);
+}
+echo "done";
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    let (allocs, frees) = parse_gc_stats(&out.stderr);
+    assert_eq!(allocs, frees, "expected clean heap, got: {}", out.stderr);
+    assert_eq!(out.stdout, "done");
+}

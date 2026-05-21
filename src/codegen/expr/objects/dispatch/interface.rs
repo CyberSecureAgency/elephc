@@ -14,7 +14,8 @@ use crate::codegen::emit::Emitter;
 use crate::types::PhpType;
 
 use super::super::super::{
-    restore_concat_offset_after_nested_call, save_concat_offset_before_nested_call,
+    restore_concat_offset_after_nested_call, restore_concat_offset_after_owned_string_call,
+    save_concat_offset_before_nested_call,
 };
 use super::vtable::generator_runtime_label_for;
 
@@ -121,7 +122,11 @@ pub(crate) fn emit_dispatch_interface_method(
             emitter.label(&done);
         }
     }
-    restore_concat_offset_after_nested_call(emitter, ctx, &ret_ty);
+    if ret_ty == PhpType::Str {
+        restore_concat_offset_after_owned_string_call(emitter, ctx);
+    } else {
+        restore_concat_offset_after_nested_call(emitter, ctx, &ret_ty);
+    }
 
     ret_ty
 }

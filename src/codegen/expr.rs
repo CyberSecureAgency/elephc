@@ -32,7 +32,7 @@ use crate::types::PhpType;
 
 pub(crate) use helpers::{can_coerce_result_to_type, coerce_result_to_type};
 pub(crate) use objects::{emit_method_call_with_pushed_args, push_magic_property_name_arg};
-pub(crate) use ownership::expr_result_heap_ownership;
+pub(crate) use ownership::{expr_result_heap_ownership, string_result_is_owned_call_temp};
 pub use coerce::{coerce_null_to_zero, coerce_to_string, coerce_to_truthiness};
 use helpers::{retain_borrowed_heap_arg, widen_codegen_type};
 
@@ -316,7 +316,22 @@ pub(crate) fn restore_concat_offset_after_nested_call(
     ctx: &Context,
     return_ty: &PhpType,
 ) {
-    if *return_ty == PhpType::Str {
+    restore_concat_offset_after_nested_call_impl(emitter, ctx, *return_ty == PhpType::Str);
+}
+
+pub(crate) fn restore_concat_offset_after_owned_string_call(
+    emitter: &mut Emitter,
+    ctx: &Context,
+) {
+    restore_concat_offset_after_nested_call_impl(emitter, ctx, false);
+}
+
+fn restore_concat_offset_after_nested_call_impl(
+    emitter: &mut Emitter,
+    ctx: &Context,
+    persist_string_result: bool,
+) {
+    if persist_string_result {
         abi::emit_call_label(emitter, "__rt_str_persist");                      // persist returned string before restoring caller concat cursor
     }
     let scratch = abi::temp_int_reg(emitter.target);

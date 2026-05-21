@@ -15,7 +15,8 @@ use crate::types::PhpType;
 
 use super::prep::resolve_instance_method_dispatch;
 use super::super::super::{
-    restore_concat_offset_after_nested_call, save_concat_offset_before_nested_call,
+    restore_concat_offset_after_nested_call, restore_concat_offset_after_owned_string_call,
+    save_concat_offset_before_nested_call,
 };
 
 pub(crate) fn emit_dispatch_instance_method(
@@ -34,7 +35,7 @@ pub(crate) fn emit_dispatch_instance_method(
         if let Some(rt_label) = generator_runtime_label_for(method) {
             save_concat_offset_before_nested_call(emitter, ctx);
             abi::emit_call_label(emitter, rt_label);                            // direct call into the generator runtime helper
-            restore_concat_offset_after_nested_call(emitter, ctx, &ret_ty);
+            restore_concat_offset_after_user_call(emitter, ctx, &ret_ty);
             return ret_ty;
         }
     }
@@ -68,9 +69,17 @@ pub(crate) fn emit_dispatch_instance_method(
             class_name, method
         ));
     }
-    restore_concat_offset_after_nested_call(emitter, ctx, &ret_ty);
+    restore_concat_offset_after_user_call(emitter, ctx, &ret_ty);
 
     ret_ty
+}
+
+fn restore_concat_offset_after_user_call(emitter: &mut Emitter, ctx: &Context, ret_ty: &PhpType) {
+    if ret_ty == &PhpType::Str {
+        restore_concat_offset_after_owned_string_call(emitter, ctx);
+    } else {
+        restore_concat_offset_after_nested_call(emitter, ctx, ret_ty);
+    }
 }
 
 /// Map a Generator-class method name to the corresponding runtime helper

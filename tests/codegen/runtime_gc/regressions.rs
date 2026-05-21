@@ -62,6 +62,28 @@ echo count($nums) . "|" . $nums[0] . "|" . $nums[2];
 }
 
 #[test]
+fn test_nested_integerish_arithmetic_releases_mixed_temporaries() {
+    let out = compile_and_run_with_gc_stats(
+        r#"<?php
+function ready(int $slot): bool {
+    $offset = ($slot + 1) * 8 + 6;
+    return $offset != 0;
+}
+
+for ($i = 0; $i < 1000; $i++) {
+    if (ready(0)) {
+        $seen = 1;
+    }
+}
+echo "done";
+"#,
+    );
+    assert_eq!(out.stdout, "done");
+    let (allocs, frees) = parse_gc_stats(&out.stderr);
+    assert_eq!(allocs, frees, "expected clean heap, got: {}", out.stderr);
+}
+
+#[test]
 fn test_regression_make_assoc_then_iterate() {
     let out = compile_and_run(
         r#"<?php

@@ -20,7 +20,8 @@ use super::enums::emit_enum_static_method_call;
 use super::fiber::emit_fiber_static_method_dispatch;
 use super::prep::{compute_register_assignments, eval_and_push_args, pop_args_to_registers};
 use super::super::super::{
-    restore_concat_offset_after_nested_call, save_concat_offset_before_nested_call,
+    restore_concat_offset_after_nested_call, restore_concat_offset_after_owned_string_call,
+    save_concat_offset_before_nested_call,
 };
 
 pub(in crate::codegen::expr::objects) fn emit_immediate_class_id(emitter: &mut Emitter, class_id: u64) {
@@ -260,7 +261,11 @@ pub(in crate::codegen::expr::objects) fn emit_static_method_call(
     } else {
         abi::emit_call_label(emitter, &label);                                  // call the resolved static or parent/self method target
     }
-    restore_concat_offset_after_nested_call(emitter, ctx, &ret_ty);
+    if ret_ty == PhpType::Str {
+        restore_concat_offset_after_owned_string_call(emitter, ctx);
+    } else {
+        restore_concat_offset_after_nested_call(emitter, ctx, &ret_ty);
+    }
     if overflow_bytes > 0 {
         abi::emit_release_temporary_stack(emitter, overflow_bytes);             // drop spilled stack arguments after the static call returns
     }

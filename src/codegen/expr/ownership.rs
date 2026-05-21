@@ -8,8 +8,8 @@
 //! Key details:
 //! - Ownership answers must stay conservative to avoid leaks, double frees, and borrowed-value releases.
 
-use crate::codegen::context::HeapOwnership;
-use crate::parser::ast::{Expr, ExprKind};
+use crate::codegen::context::{Context, HeapOwnership};
+use crate::parser::ast::{BinOp, Expr, ExprKind};
 
 pub(crate) fn expr_result_heap_ownership(expr: &Expr) -> HeapOwnership {
     match &expr.kind {
@@ -57,6 +57,35 @@ pub(crate) fn expr_result_heap_ownership(expr: &Expr) -> HeapOwnership {
         | ExprKind::NullsafeMethodCall { .. }
         | ExprKind::StaticMethodCall { .. }
         | ExprKind::NewObject { .. } => HeapOwnership::Owned,
+        ExprKind::BinaryOp { op, .. } => {
+            if matches!(op, BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Concat) {
+                HeapOwnership::Owned
+            } else {
+                HeapOwnership::NonHeap
+            }
+        }
         _ => HeapOwnership::NonHeap,
     }
+}
+
+pub(crate) fn string_result_is_owned_call_temp(value: &Expr, ctx: &Context) -> bool {
+    match &value.kind {
+        ExprKind::FunctionCall { name, .. } => {
+            let name = name.as_str();
+            builtin_returns_owned_string(name)
+                || (ctx.functions.contains_key(name)
+                    && !ctx.extern_functions.contains_key(name)
+                    && !crate::types::checker::builtins::is_supported_builtin_function(name))
+        }
+        ExprKind::MethodCall { .. }
+        | ExprKind::NullsafeMethodCall { .. }
+        | ExprKind::StaticMethodCall { .. }
+        | ExprKind::ClosureCall { .. }
+        | ExprKind::ExprCall { .. } => true,
+        _ => false,
+    }
+}
+
+fn builtin_returns_owned_string(name: &str) -> bool {
+    matches!(name, "ptr_read_string")
 }

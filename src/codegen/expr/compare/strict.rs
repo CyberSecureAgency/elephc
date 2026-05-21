@@ -9,7 +9,7 @@
 //! - Null, type-tag, and string comparisons must follow PHP semantics before emitting boolean results.
 
 use crate::codegen::abi;
-use crate::codegen::context::Context;
+use crate::codegen::context::{Context, HeapOwnership};
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
 use crate::parser::ast::Expr;
@@ -17,7 +17,7 @@ use crate::types::PhpType;
 
 use crate::parser::ast::{BinOp, ExprKind};
 
-use super::super::emit_expr;
+use super::super::{emit_expr, expr_result_heap_ownership};
 
 pub(in crate::codegen::expr) fn emit_strict_compare(
     left: &Expr,
@@ -69,8 +69,10 @@ pub(in crate::codegen::expr) fn emit_strict_compare(
         if matches!(lt, PhpType::Mixed | PhpType::Union(_))
             || matches!(rt, PhpType::Mixed | PhpType::Union(_))
         {
-            let left_temp = !matches!(lt, PhpType::Mixed | PhpType::Union(_));
-            let right_temp = !matches!(rt, PhpType::Mixed | PhpType::Union(_));
+            let left_box_temp = !matches!(lt, PhpType::Mixed | PhpType::Union(_));
+            let right_box_temp = !matches!(rt, PhpType::Mixed | PhpType::Union(_));
+            let release_left_mixed = left_box_temp || owned_mixed_operand(left, &lt);
+            let release_right_mixed = right_box_temp || owned_mixed_operand(right, &rt);
 
             match &rt {
                 PhpType::Float => {
@@ -167,27 +169,27 @@ pub(in crate::codegen::expr) fn emit_strict_compare(
                     emitter.instruction("mov QWORD PTR [rsp + 16], rax");       // preserve the boolean comparison result across decref cleanup
                 }
             }
-            if left_temp {
+            if release_left_mixed {
                 match emitter.target.arch {
                     crate::codegen::platform::Arch::AArch64 => {
-                        emitter.instruction("ldr x0, [sp, #0]");                // reload the temporary left mixed box for cleanup
+                        emitter.instruction("ldr x0, [sp, #0]");                // reload the left mixed operand that comparison cleanup owns
                     }
                     crate::codegen::platform::Arch::X86_64 => {
-                        emitter.instruction("mov rax, QWORD PTR [rsp]");        // reload the temporary left mixed box for cleanup
+                        emitter.instruction("mov rax, QWORD PTR [rsp]");        // reload the left mixed operand that comparison cleanup owns
                     }
                 }
-                abi::emit_call_label(emitter, "__rt_decref_mixed");             // release the temporary left mixed box created for comparison
+                abi::emit_call_label(emitter, "__rt_decref_mixed");             // release the left mixed operand owned by this comparison expression
             }
-            if right_temp {
+            if release_right_mixed {
                 match emitter.target.arch {
                     crate::codegen::platform::Arch::AArch64 => {
-                        emitter.instruction("ldr x0, [sp, #8]");                // reload the temporary right mixed box for cleanup
+                        emitter.instruction("ldr x0, [sp, #8]");                // reload the right mixed operand that comparison cleanup owns
                     }
                     crate::codegen::platform::Arch::X86_64 => {
-                        emitter.instruction("mov rax, QWORD PTR [rsp + 8]");    // reload the temporary right mixed box for cleanup
+                        emitter.instruction("mov rax, QWORD PTR [rsp + 8]");    // reload the right mixed operand that comparison cleanup owns
                     }
                 }
-                abi::emit_call_label(emitter, "__rt_decref_mixed");             // release the temporary right mixed box created for comparison
+                abi::emit_call_label(emitter, "__rt_decref_mixed");             // release the right mixed operand owned by this comparison expression
             }
             match emitter.target.arch {
                 crate::codegen::platform::Arch::AArch64 => {
@@ -315,4 +317,9 @@ fn peek_expr_type(expr: &Expr, ctx: &Context) -> Option<PhpType> {
         ExprKind::Variable(name) => ctx.variables.get(name).map(|v| v.ty.clone()),
         _ => None,
     }
+}
+
+fn owned_mixed_operand(expr: &Expr, ty: &PhpType) -> bool {
+    matches!(ty, PhpType::Mixed | PhpType::Union(_))
+        && expr_result_heap_ownership(expr) == HeapOwnership::Owned
 }

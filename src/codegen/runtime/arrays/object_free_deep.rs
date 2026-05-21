@@ -74,6 +74,18 @@ pub fn emit_object_free_deep(emitter: &mut Emitter) {
     emitter.instruction(&format!("str xzr, [x0, #{}]", crate::codegen::runtime::FIBER_STACK_SIZE_OFFSET)); // null the stack_size to mirror the cleared base pointer
     emitter.label("__rt_object_free_deep_fiber_no_stack");
 
+    // -- release runtime-owned Fiber transfer and pending exception values --
+    emitter.instruction("ldr x0, [sp, #0]");                                    // reload the saved Fiber object pointer before releasing transfer_value
+    emitter.instruction(&format!("ldr x0, [x0, #{}]", crate::codegen::runtime::FIBER_TRANSFER_VALUE_OFFSET)); // x0 = boxed Mixed transfer_value owned by the Fiber
+    emitter.instruction("bl __rt_decref_mixed");                                // release the Fiber's retained transfer value, if any
+    emitter.instruction("ldr x0, [sp, #0]");                                    // reload the saved Fiber object pointer after transfer cleanup
+    emitter.instruction(&format!("str xzr, [x0, #{}]", crate::codegen::runtime::FIBER_TRANSFER_VALUE_OFFSET)); // clear transfer_value.lo after releasing it
+    emitter.instruction(&format!("str xzr, [x0, #{}]", crate::codegen::runtime::FIBER_TRANSFER_VALUE_OFFSET + 8)); // clear transfer_value.hi to match the empty slot
+    emitter.instruction(&format!("ldr x0, [x0, #{}]", crate::codegen::runtime::FIBER_PENDING_THROW_OFFSET)); // x0 = pending Throwable object parked by Fiber::throw/escape
+    emitter.instruction("bl __rt_decref_any");                                  // release a pending Throwable if one is still attached
+    emitter.instruction("ldr x0, [sp, #0]");                                    // reload the saved Fiber object pointer after pending_throw cleanup
+    emitter.instruction(&format!("str xzr, [x0, #{}]", crate::codegen::runtime::FIBER_PENDING_THROW_OFFSET)); // clear pending_throw after releasing it
+
     // -- release captured values that ride in start_args[user_arg_max..7].
     // Each capture was incref'd at construction by emit_fiber_capture_preload,
     // so the matching decref keeps refcount balanced. Slots [0..user_arg_max)
@@ -239,6 +251,19 @@ fn emit_object_free_deep_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction(&format!("mov QWORD PTR [rax + {}], 0", crate::codegen::runtime::FIBER_STACK_BASE_OFFSET)); // null stack_base for double-free safety
     emitter.instruction(&format!("mov QWORD PTR [rax + {}], 0", crate::codegen::runtime::FIBER_STACK_SIZE_OFFSET)); // null stack_size to mirror the cleared base
     emitter.label("__rt_object_free_deep_fiber_no_stack");
+
+    // -- release runtime-owned Fiber transfer and pending exception values --
+    emitter.instruction("mov rax, QWORD PTR [rbp - 8]");                        // reload the saved Fiber object pointer before releasing transfer_value
+    emitter.instruction(&format!("mov rax, QWORD PTR [rax + {}]", crate::codegen::runtime::FIBER_TRANSFER_VALUE_OFFSET)); // rax = boxed Mixed transfer_value owned by the Fiber
+    emitter.instruction("call __rt_decref_mixed");                              // release the Fiber's retained transfer value, if any
+    emitter.instruction("mov rax, QWORD PTR [rbp - 8]");                        // reload the saved Fiber object pointer after transfer cleanup
+    emitter.instruction(&format!("mov QWORD PTR [rax + {}], 0", crate::codegen::runtime::FIBER_TRANSFER_VALUE_OFFSET)); // clear transfer_value.lo after releasing it
+    emitter.instruction(&format!("mov QWORD PTR [rax + {}], 0", crate::codegen::runtime::FIBER_TRANSFER_VALUE_OFFSET + 8)); // clear transfer_value.hi to match the empty slot
+    emitter.instruction(&format!("mov rax, QWORD PTR [rax + {}]", crate::codegen::runtime::FIBER_PENDING_THROW_OFFSET)); // rax = pending Throwable object parked by Fiber::throw/escape
+    emitter.instruction("call __rt_decref_any");                                // release a pending Throwable if one is still attached
+    emitter.instruction("mov rax, QWORD PTR [rbp - 8]");                        // reload the saved Fiber object pointer after pending_throw cleanup
+    emitter.instruction(&format!("mov QWORD PTR [rax + {}], 0", crate::codegen::runtime::FIBER_PENDING_THROW_OFFSET)); // clear pending_throw after releasing it
+
     let user_arg_max_off = crate::codegen::runtime::FIBER_USER_ARG_MAX_OFFSET;
     let start_args_off = crate::codegen::runtime::FIBER_START_ARGS_OFFSET;
     emitter.instruction(&format!("mov r10, QWORD PTR [rax + {}]", user_arg_max_off)); // r10 = user_arg_max
