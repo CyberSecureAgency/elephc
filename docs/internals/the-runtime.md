@@ -36,6 +36,18 @@ __rt_throw_current throw the active exception
 __rt_build_argv    build $argv from C strings
 ```
 
+## Diagnostic routines
+
+**Source:** `src/codegen/runtime/diagnostics.rs`
+
+These helpers implement PHP's `@` error-suppression operator and the runtime warning channel. The suppression depth lives in `_rt_diag_suppression`; while it is non-zero, suppressible warnings are silently dropped instead of written to stderr. They are emitted before any PHP-visible helper so the rest of the runtime can report warnings through a single path.
+
+| Routine | What it does | Input | Output |
+|---|---|---|---|
+| `__rt_diag_push_suppression` | Enter one nested `@` suppression scope (increment `_rt_diag_suppression`) | — | — |
+| `__rt_diag_pop_suppression` | Leave one `@` suppression scope, clamped against underflow | — | — |
+| `__rt_diag_warning` | Write a runtime warning string to stderr unless suppression is active | `x1`/`x2` = message string | — |
+
 ## String routines
 
 **Source:** `src/codegen/runtime/strings/`
@@ -421,6 +433,7 @@ These routines handle file and filesystem operations through target-aware libc/s
 | `__rt_cstr` | Convert PHP string (ptr+len) to null-terminated C string |
 | `__rt_fopen` | Open file via target-aware `open()` handling, or return `-1` after emitting a suppressible warning for open failures and invalid modes |
 | `__rt_fgets` | Read line from file descriptor |
+| `__rt_fgetc` | Read a single byte from a file descriptor (tail-calls `__rt_fread` with length 1) |
 | `__rt_feof` | Check end-of-file flag for a file descriptor |
 | `__rt_fread` | Read N bytes from file descriptor |
 | `__rt_readfile` | Open a path, stream contents to stdout, and return copied byte count, `-1` on read failure, or a false sentinel on open failure |
@@ -469,6 +482,8 @@ These helpers support the compiler-specific pointer builtins.
 | `__rt_ptr_check_nonnull` | Abort with `Fatal error: null pointer dereference` if the pointer is null | `x0` = pointer/address | `x0` unchanged on success |
 | `__rt_str_to_cstr` | Copy an elephc string to temporary null-terminated heap storage for a native call | `x1`/`x2` = string | `x0` = C string pointer |
 | `__rt_cstr_to_str` | Copy a borrowed null-terminated C string back into an owned elephc string | `x0` = C string pointer | `x1`/`x2` = elephc string |
+| `__rt_ptr_read_string` | Copy a fixed-length byte range from a raw pointer into an owned elephc string | `x0` = pointer, `x1` = length | `x1`/`x2` = elephc string |
+| `__rt_ptr_write_string` | Copy an elephc string's bytes into the memory addressed by a raw pointer | `x0` = pointer, `x1`/`x2` = string | — |
 
 ## Buffer routines
 

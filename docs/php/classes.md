@@ -393,6 +393,26 @@ Traits may declare abstract hooked property contracts. A concrete class using th
 ## Property access
 `->` for properties and methods.
 
+### Dynamic property access
+
+The property name can be computed at runtime with the `$obj->{$expr}` syntax,
+where `$expr` is any expression that evaluates to a string. The same form works
+as an assignment target and combines with the nullsafe operator (`$obj?->{$expr}`).
+
+```php
+<?php
+class Point {
+    public int $x = 1;
+    public int $y = 2;
+}
+
+$p = new Point();
+$field = "x";
+echo $p->{$field};        // 1
+$p->{$field} = 9;
+echo $p->x;               // 9
+```
+
 ## Enums
 ```php
 <?php

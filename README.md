@@ -201,7 +201,7 @@ Notes:
 - `callable` parameters pass a user-defined elephc function by string name, for example `"on_signal"`.
 - Callback functions must stay C-compatible: use `int`, `float`, `bool`, `ptr`, or `void`-shaped values. String callbacks are not supported yet.
 - Raw C memory patterns are supported through ordinary extern declarations such as `malloc`, `free`, `memcpy`, and `memset`.
-- Pointer helpers include byte/word buffer access (`ptr_read8`, `ptr_read32`, `ptr_write8`, `ptr_write32`) in addition to `ptr_get` / `ptr_set`.
+- Pointer helpers include sized buffer access (`ptr_read8`/`ptr_read16`/`ptr_read32`, `ptr_write8`/`ptr_write16`/`ptr_write32`, `ptr_read_string`/`ptr_write_string`) in addition to `ptr_get` / `ptr_set`.
 
 ## What it compiles
 
@@ -279,7 +279,7 @@ The full list of supported constructs, operators, and control structures is in t
 
 **SPL/autoload:** `spl_autoload_register`, `spl_autoload_unregister`, `spl_autoload_functions`, `spl_autoload_extensions`, `spl_autoload_call`, `spl_autoload`, `spl_classes`, `spl_object_id`, `spl_object_hash`
 
-**Pointers/Buffers:** `ptr`, `ptr_null`, `ptr_is_null`, `ptr_get`, `ptr_set`, `ptr_read8`, `ptr_read32`, `ptr_write8`, `ptr_write32`, `ptr_offset`, `ptr_cast<T>`, `ptr_sizeof`, `buffer_new<T>`, `buffer_len`, `buffer_free`
+**Pointers/Buffers:** `ptr`, `ptr_null`, `ptr_is_null`, `ptr_get`, `ptr_set`, `ptr_read8`, `ptr_read16`, `ptr_read32`, `ptr_read_string`, `ptr_write8`, `ptr_write16`, `ptr_write32`, `ptr_write_string`, `ptr_offset`, `ptr_cast<T>`, `ptr_sizeof`, `buffer_new<T>`, `buffer_len`, `buffer_free`
 
 ### Constants
 

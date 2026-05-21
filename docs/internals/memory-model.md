@@ -30,8 +30,11 @@ This page explains where every value lives in memory at runtime.
 ├─────────────────────────────┤
 │   Runtime metadata (BSS)     │  _concat_off, _global_argc/_argv,
 │  (heap state, counters,      │  _heap_off, _heap_free_list,
-│   globals, static storage)   │  _heap_small_bins, _gc_allocs/_frees/_live/_peak,
+│   globals, static storage)   │  _heap_small_bins, _heap_debug_enabled,
+│                              │  _gc_allocs/_frees/_live/_peak,
 │                              │  _gc_collecting/_gc_release_suppressed,
+│                              │  _exc_handler_top, _exc_call_frame_top,
+│                              │  _exc_value, _rt_diag_suppression,
 │                              │  _json_last_error, _json_active_*,
 │                              │  _json_indent_depth, _json_validate_*,
 │                              │  _json_decode_assoc,

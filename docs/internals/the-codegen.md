@@ -117,11 +117,13 @@ pub struct Context {
     pub global_vars: HashSet<String>,         // globals active in current scope
     pub static_vars: HashSet<String>,         // statics active in current scope
     pub ref_params: HashSet<String>,          // pass-by-reference params
+    pub local_ref_cell_flags: HashMap<String, LocalRefCellFlag>, // compiler-created ref cells
     pub in_main: bool,                        // whether we're compiling top-level code
     pub all_global_var_names: HashSet<String>,
     pub all_static_vars: HashMap<(String, String), PhpType>,
     pub closure_sigs: HashMap<String, FunctionSig>,
-    pub closure_captures: HashMap<String, Vec<(String, PhpType)>>,
+    pub callable_param_sigs: HashMap<(String, String), FunctionSig>,
+    pub closure_captures: HashMap<String, Vec<(String, PhpType, bool)>>,
     pub first_class_callable_targets: HashMap<String, CallableTarget>,
     pub variable_fcc_label: HashMap<String, String>,
     pub classes: HashMap<String, ClassInfo>,
@@ -909,12 +911,14 @@ $result = match($x) {
 
 When the codegen encounters a `NewObject` expression:
 
-1. **Calculate object size**: `8 + (num_properties × 16)` — 8 bytes for the class ID, 16 bytes per property across the full inherited layout
+1. **Calculate object size**: `8 + (num_properties × 16) + dyn_props_slot` — 8 bytes for the class ID, 16 bytes per property across the full inherited layout, plus one optional 8-byte slot for the dynamic-property hash pointer when the class carries `#[\AllowDynamicProperties]`
 2. **Allocate heap memory**: call `__rt_heap_alloc` with the calculated size
 3. **Zero-initialize**: clear all property slots to zero
 4. **Store class ID**: write the class identifier at offset 0
 5. **Apply defaults**: for properties with default values, evaluate and store them at their fixed offsets
 6. **Call constructor**: if the class exposes `__construct`, pass the new object pointer as `x0` (`$this`) followed by the constructor arguments, then branch to the implementation label recorded in class metadata (which may come from an inherited constructor)
+
+Classes declared with the PHP 8.2 `#[\AllowDynamicProperties]` attribute reserve a trailing per-object hash slot so undeclared property writes/reads can be routed through a runtime side table instead of failing at compile time.
 
 The result is the object pointer in `x0`.
 

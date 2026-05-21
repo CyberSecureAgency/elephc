@@ -2,7 +2,7 @@
 title: "Generators"
 description: "Generator functions with yield, the built-in Iterator and Generator types, foreach over Iterator objects, and Generator::send for coroutine-style flow."
 sidebar:
-  order: 12
+  order: 13
 ---
 
 A *generator* is a function whose body uses the `yield` keyword. Calling a

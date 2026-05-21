@@ -25,16 +25,21 @@ extern "SDL2" {
 
 ## Supported C types
 
-| elephc type | C equivalent | Register |
+| elephc type | C equivalent | Passed in |
 |---|---|---|
-| `int` | `int64_t` / `long` | x0-x7 |
-| `float` | `double` | d0-d7 |
-| `bool` | `int` (0/1) | x0-x7 |
-| `string` | `char*` (auto null-terminated) | x0-x7 |
-| `ptr` | `void*` | x0-x7 |
-| `ptr<T>` | `T*` | x0-x7 |
+| `int` | `int64_t` / `long` | integer argument register |
+| `float` | `double` | floating-point argument register |
+| `bool` | `int` (0/1) | integer argument register |
+| `string` | `char*` (auto null-terminated) | integer argument register |
+| `ptr` | `void*` | integer argument register |
+| `ptr<T>` | `T*` | integer argument register |
 | `void` | void (return only) | — |
-| `callable` | function pointer | x0-x7 |
+| `callable` | function pointer | integer argument register |
+
+Argument registers follow the selected target's C ABI: AArch64 uses
+`x0`-`x7` for integers/pointers and `d0`-`d7` for doubles, while Linux
+x86_64 uses the System V registers (`rdi`, `rsi`, `rdx`, `rcx`, `r8`, `r9`
+for integers/pointers and `xmm0`-`xmm7` for doubles).
 
 ## String conversion
 - **Calling C**: elephc creates temporary null-terminated copy, frees after call

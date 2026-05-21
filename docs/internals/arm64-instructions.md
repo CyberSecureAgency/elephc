@@ -12,9 +12,11 @@ This is a reference for the ARM64 instructions elephc uses most often, organized
 | Instruction | Syntax | What it does |
 |---|---|---|
 | `add` | `add x0, x1, x2` | x0 = x1 + x2 |
+| `adds` | `adds x0, x1, x2` | Add and set condition flags, used for overflow-checked integer addition |
 | `sub` | `sub x0, x1, x2` | x0 = x1 - x2 |
 | `subs` | `subs x0, x0, #1` | Subtract and set condition flags, often used when decrementing a counter before a conditional branch |
 | `mul` | `mul x0, x1, x2` | x0 = x1 × x2 |
+| `smulh` | `smulh x3, x1, x2` | High 64 bits of the signed 128-bit product, used to detect multiplication overflow |
 | `udiv` | `udiv x0, x1, x2` | x0 = x1 ÷ x2 (unsigned) |
 | `sdiv` | `sdiv x0, x1, x2` | x0 = x1 ÷ x2 (signed) |
 | `msub` | `msub x0, x1, x2, x3` | x0 = x3 - (x1 × x2). Used for modulo: `a % b = a - (a/b)*b` |
@@ -67,6 +69,7 @@ These move data between registers and memory. See [Introduction to ARM64 Assembl
 | `strb` | `strb w0, [x1]` | Store lowest byte of w0 |
 | `ldrh` | `ldrh w0, [x1]` | Load 2 bytes (halfword) |
 | `strh` | `strh w0, [x1]` | Store 2 bytes |
+| `ldrsw` | `ldrsw x15, [sp, x14]` | Load 4 bytes and sign-extend to 64 bits |
 | `stp` | `stp x29, x30, [sp, #16]` | Store pair of registers (16 bytes total) |
 | `ldp` | `ldp x29, x30, [sp, #16]` | Load pair of registers |
 

@@ -283,14 +283,17 @@ Before `ClassInfo` is built, the checker flattens trait composition through `src
 pub struct InterfaceInfo {
     pub interface_id: u64,
     pub parents: Vec<String>,
+    pub properties: HashMap<String, PropertyHookContract>,
+    pub property_order: Vec<String>,
     pub methods: HashMap<String, FunctionSig>,
     pub method_declaring_interfaces: HashMap<String, String>,
     pub method_order: Vec<String>,
     pub method_slots: HashMap<String, usize>,
+    pub constants: HashMap<String, Expr>,   // interface constants (PHP 5.0+)
 }
 ```
 
-For each interface, the checker resolves `interface extends interface` transitively, rejects inheritance cycles, flattens required methods into a single signature map, and assigns a stable method ordering used by runtime metadata emission.
+For each interface, the checker resolves `interface extends interface` transitively, rejects inheritance cycles, flattens required methods into a single signature map, and assigns a stable method ordering used by runtime metadata emission. `properties` records PHP 8.4 property hook contracts required by the interface, and `constants` carries interface constants inherited from parent interfaces.
 
 ## Class type checking
 
@@ -313,6 +316,14 @@ pub struct ClassInfo {
     pub is_abstract: bool,
     pub is_final: bool,
     pub is_readonly_class: bool,
+    pub allow_dynamic_properties: bool, // #[\AllowDynamicProperties] (PHP 8.2)
+    pub constants: HashMap<String, Expr>, // user-declared class constants
+    pub attribute_names: Vec<String>,
+    pub attribute_args: Vec<Option<Vec<AttrArgValue>>>,
+    pub method_attribute_names: HashMap<String, Vec<String>>,
+    pub method_attribute_args: HashMap<String, Vec<Option<Vec<AttrArgValue>>>>,
+    pub property_attribute_names: HashMap<String, Vec<String>>,
+    pub property_attribute_args: HashMap<String, Vec<Option<Vec<AttrArgValue>>>>,
     pub properties: Vec<(String, PhpType)>,
     pub property_offsets: HashMap<String, usize>,
     pub property_declaring_classes: HashMap<String, String>,
@@ -322,6 +333,8 @@ pub struct ClassInfo {
     pub final_properties: HashSet<String>,
     pub readonly_properties: HashSet<String>,
     pub reference_properties: HashSet<String>,
+    pub abstract_properties: HashSet<String>,
+    pub abstract_property_hooks: HashMap<String, PropertyHookContract>,
     pub static_properties: Vec<(String, PhpType)>,
     pub static_defaults: Vec<Option<Expr>>,
     pub static_property_declaring_classes: HashMap<String, String>,
@@ -348,7 +361,7 @@ pub struct ClassInfo {
 }
 ```
 
-`vtable_methods` / `vtable_slots` drive ordinary inherited instance dispatch, while `static_vtable_methods` / `static_vtable_slots` carry the parallel metadata used by `static::method()` late static binding.
+`vtable_methods` / `vtable_slots` drive ordinary inherited instance dispatch, while `static_vtable_methods` / `static_vtable_slots` carry the parallel metadata used by `static::method()` late static binding. `allow_dynamic_properties` records the PHP 8.2 `#[\AllowDynamicProperties]` attribute so codegen can route undeclared property storage through a per-object side table. The `*_attribute_names` / `*_attribute_args` fields carry PHP 8 attribute metadata for the class, its methods, and its properties so the Reflection codegen path can materialize `ReflectionAttribute` objects. `abstract_property_hooks` records PHP 8.4 property hook contracts that concrete subclasses must satisfy.
 
 For abstract methods, the checker keeps the inherited signature but intentionally leaves the implementation-class entry unset until a concrete subclass provides a body. Concrete classes are rejected if any abstract or interface requirement remains unresolved after inheritance + trait flattening + interface conformance checks.
 
@@ -389,6 +402,7 @@ The type checker produces a `CheckResult`:
 pub struct CheckResult {
     pub global_env: TypeEnv,                    // variable name → type
     pub functions: HashMap<String, FunctionSig>, // function name → signature
+    pub callable_param_sigs: HashMap<(String, String), FunctionSig>, // (function, param) → callable signature
     pub interfaces: HashMap<String, InterfaceInfo>, // interface name → interface info
     pub classes: HashMap<String, ClassInfo>,     // class name → class info
     pub enums: HashMap<String, EnumInfo>,
