@@ -18,6 +18,7 @@ use super::generators;
 use super::io;
 use super::objects;
 use super::pointers;
+use super::spl;
 use super::strings;
 use super::system;
 use super::x86_minimal::emit_runtime_linux_x86_64_minimal;
@@ -258,6 +259,10 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter) {
     arrays::emit_mixed_write_stdout(emitter);
     arrays::emit_object_free_deep(emitter);
     arrays::emit_refcount(emitter);
+
+    // SPL runtime-managed containers
+    spl::emit_doubly_linked_list_runtime(emitter);
+    spl::emit_fixed_array_runtime(emitter);
 
     // Object runtime functions
     objects::emit_stdclass_new(emitter);

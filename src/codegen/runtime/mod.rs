@@ -22,6 +22,7 @@ mod io;
 mod objects;
 mod pointers;
 mod strings;
+pub(crate) mod spl;
 mod system;
 mod x86_minimal;
 

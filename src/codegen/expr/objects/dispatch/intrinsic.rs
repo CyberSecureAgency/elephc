@@ -28,8 +28,34 @@ pub(super) fn return_type_for(intrinsic: IntrinsicCall) -> PhpType {
         | IntrinsicCallKind::FiberIsRunning
         | IntrinsicCallKind::FiberIsSuspended
         | IntrinsicCallKind::FiberIsTerminated
-        | IntrinsicCallKind::GeneratorValid => PhpType::Bool,
-        IntrinsicCallKind::GeneratorNext | IntrinsicCallKind::GeneratorRewind => PhpType::Void,
+        | IntrinsicCallKind::GeneratorValid
+        | IntrinsicCallKind::SplDllIsEmpty
+        | IntrinsicCallKind::SplDllOffsetExists
+        | IntrinsicCallKind::SplDllValid
+        | IntrinsicCallKind::SplFixedOffsetExists => PhpType::Bool,
+        IntrinsicCallKind::SplDllCount
+        | IntrinsicCallKind::SplDllGetIteratorMode
+        | IntrinsicCallKind::SplFixedCount
+        | IntrinsicCallKind::SplFixedGetSize => PhpType::Int,
+        IntrinsicCallKind::SplFixedToArray | IntrinsicCallKind::SplFixedJsonSerialize => {
+            PhpType::Array(Box::new(PhpType::Mixed))
+        }
+        IntrinsicCallKind::GeneratorNext
+        | IntrinsicCallKind::GeneratorRewind
+        | IntrinsicCallKind::SplDllAdd
+        | IntrinsicCallKind::SplDllPush
+        | IntrinsicCallKind::SplDllUnshift
+        | IntrinsicCallKind::SplDllSetIteratorMode
+        | IntrinsicCallKind::SplDllOffsetSet
+        | IntrinsicCallKind::SplDllOffsetUnset
+        | IntrinsicCallKind::SplDllRewind
+        | IntrinsicCallKind::SplDllPrev
+        | IntrinsicCallKind::SplDllNext
+        | IntrinsicCallKind::SplQueueEnqueue
+        | IntrinsicCallKind::SplFixedConstruct
+        | IntrinsicCallKind::SplFixedSetSize
+        | IntrinsicCallKind::SplFixedOffsetSet
+        | IntrinsicCallKind::SplFixedOffsetUnset => PhpType::Void,
         _ => PhpType::Mixed,
     }
 }
@@ -113,6 +139,39 @@ pub(super) fn emit_instance_intrinsic_with_loaded_args(
         | IntrinsicCallKind::GeneratorSend
         | IntrinsicCallKind::GeneratorThrow
         | IntrinsicCallKind::GeneratorGetReturn => emit_generator_intrinsic(intrinsic, emitter, ctx),
+        IntrinsicCallKind::SplDllAdd
+        | IntrinsicCallKind::SplDllPop
+        | IntrinsicCallKind::SplDllShift
+        | IntrinsicCallKind::SplDllPush
+        | IntrinsicCallKind::SplDllUnshift
+        | IntrinsicCallKind::SplDllTop
+        | IntrinsicCallKind::SplDllBottom
+        | IntrinsicCallKind::SplDllCount
+        | IntrinsicCallKind::SplDllIsEmpty
+        | IntrinsicCallKind::SplDllSetIteratorMode
+        | IntrinsicCallKind::SplDllGetIteratorMode
+        | IntrinsicCallKind::SplDllOffsetExists
+        | IntrinsicCallKind::SplDllOffsetGet
+        | IntrinsicCallKind::SplDllOffsetSet
+        | IntrinsicCallKind::SplDllOffsetUnset
+        | IntrinsicCallKind::SplDllRewind
+        | IntrinsicCallKind::SplDllCurrent
+        | IntrinsicCallKind::SplDllKey
+        | IntrinsicCallKind::SplDllPrev
+        | IntrinsicCallKind::SplDllNext
+        | IntrinsicCallKind::SplDllValid
+        | IntrinsicCallKind::SplQueueEnqueue
+        | IntrinsicCallKind::SplQueueDequeue
+        | IntrinsicCallKind::SplFixedConstruct
+        | IntrinsicCallKind::SplFixedCount
+        | IntrinsicCallKind::SplFixedToArray
+        | IntrinsicCallKind::SplFixedGetSize
+        | IntrinsicCallKind::SplFixedSetSize
+        | IntrinsicCallKind::SplFixedOffsetExists
+        | IntrinsicCallKind::SplFixedOffsetGet
+        | IntrinsicCallKind::SplFixedOffsetSet
+        | IntrinsicCallKind::SplFixedOffsetUnset
+        | IntrinsicCallKind::SplFixedJsonSerialize => emit_simple_runtime_intrinsic(intrinsic, emitter),
         IntrinsicCallKind::FiberSuspend | IntrinsicCallKind::FiberGetCurrent => {
             emitter.comment(&format!(
                 "WARNING: static intrinsic used as instance call {:?}",

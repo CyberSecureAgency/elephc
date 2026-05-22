@@ -183,6 +183,13 @@ pub(super) fn check_array_push(
             span,
             "buffer<T> does not support push; allocate with buffer_new<T>(len)",
         ));
+    } else if let PhpType::Object(class_name) = &arr_ty {
+        if !checker.object_type_implements_interface(class_name, "ArrayAccess") {
+            return Err(CompileError::new(
+                span,
+                "Object array push requires ArrayAccess",
+            ));
+        }
     }
     Ok(())
 }

@@ -127,6 +127,39 @@ pub fn emit_object_free_deep(emitter: &mut Emitter) {
     emitter.instruction("b __rt_object_free_deep_no_dyn_props");                // free the custom frame storage without walking property descriptors
     emitter.label("__rt_object_free_deep_not_generator");
 
+    // -- SPL doubly-linked-list family: release custom internal storage, not PHP property slots --
+    emitter.instruction("ldr x10, [x0]");                                       // x10 = receiver class_id
+    crate::codegen::abi::emit_load_symbol_to_reg(emitter, "x11", "_spl_dll_class_id", 0); // x11 = class id of SplDoublyLinkedList
+    emitter.instruction("cmp x10, x11");                                        // is the receiver a SplDoublyLinkedList?
+    emitter.instruction("b.eq __rt_object_free_deep_spl_dll");                  // release SPL list storage for SplDoublyLinkedList
+    crate::codegen::abi::emit_load_symbol_to_reg(emitter, "x11", "_spl_stack_class_id", 0); // x11 = class id of SplStack
+    emitter.instruction("cmp x10, x11");                                        // is the receiver a SplStack?
+    emitter.instruction("b.eq __rt_object_free_deep_spl_dll");                  // release SPL list storage for SplStack
+    crate::codegen::abi::emit_load_symbol_to_reg(emitter, "x11", "_spl_queue_class_id", 0); // x11 = class id of SplQueue
+    emitter.instruction("cmp x10, x11");                                        // is the receiver a SplQueue?
+    emitter.instruction("b.ne __rt_object_free_deep_not_spl_dll");              // skip SPL list cleanup for ordinary objects
+    emitter.label("__rt_object_free_deep_spl_dll");
+    emitter.instruction("ldr x0, [sp, #0]");                                    // reload the saved SPL list object pointer
+    emitter.instruction(&format!("ldr x0, [x0, #{}]", crate::codegen::runtime::spl::SPL_DLL_STORAGE_OFFSET)); // load the owned internal Mixed storage array
+    emitter.instruction("bl __rt_decref_array");                                // release the internal array and its owned Mixed cells
+    emitter.instruction("ldr x0, [sp, #0]");                                    // reload the saved SPL list object pointer after storage release
+    emitter.instruction(&format!("str xzr, [x0, #{}]", crate::codegen::runtime::spl::SPL_DLL_STORAGE_OFFSET)); // clear the storage pointer after release
+    emitter.instruction("b __rt_object_free_deep_no_dyn_props");                // free the custom object storage without generic descriptor walking
+    emitter.label("__rt_object_free_deep_not_spl_dll");
+
+    // -- SplFixedArray custom storage: release the owned fixed-size Mixed array --
+    emitter.instruction("ldr x10, [x0]");                                       // x10 = receiver class_id
+    crate::codegen::abi::emit_load_symbol_to_reg(emitter, "x11", "_spl_fixed_array_class_id", 0); // x11 = class id of SplFixedArray
+    emitter.instruction("cmp x10, x11");                                        // is the receiver a SplFixedArray?
+    emitter.instruction("b.ne __rt_object_free_deep_not_spl_fixed");            // skip fixed-array cleanup for ordinary objects
+    emitter.instruction("ldr x0, [sp, #0]");                                    // reload the saved SplFixedArray object pointer
+    emitter.instruction(&format!("ldr x0, [x0, #{}]", crate::codegen::runtime::spl::SPL_FIXED_STORAGE_OFFSET)); // load the owned fixed-array storage
+    emitter.instruction("bl __rt_decref_array");                                // release fixed-array storage and its owned Mixed cells
+    emitter.instruction("ldr x0, [sp, #0]");                                    // reload the saved SplFixedArray object pointer after storage release
+    emitter.instruction(&format!("str xzr, [x0, #{}]", crate::codegen::runtime::spl::SPL_FIXED_STORAGE_OFFSET)); // clear storage pointer after release
+    emitter.instruction("b __rt_object_free_deep_no_dyn_props");                // free custom fixed-array storage without generic descriptor walking
+    emitter.label("__rt_object_free_deep_not_spl_fixed");
+
     // -- derive property count from the object payload size --
     emitter.instruction("ldr w9, [x0, #-16]");                                  // load the object payload size from the heap header
     emitter.instruction("sub x9, x9, #8");                                      // subtract the leading class_id field
@@ -295,6 +328,39 @@ fn emit_object_free_deep_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("call __rt_decref_any");                                // release a suspended inner generator/iterator if yield-from left one attached
     emitter.instruction("jmp __rt_object_free_deep_no_dyn_props");              // free the custom frame storage without walking property descriptors
     emitter.label("__rt_object_free_deep_not_generator");
+
+    // -- SPL doubly-linked-list family: release custom internal storage, not PHP property slots --
+    emitter.instruction("mov r10, QWORD PTR [rax]");                            // r10 = receiver class_id
+    crate::codegen::abi::emit_load_symbol_to_reg(emitter, "r11", "_spl_dll_class_id", 0); // r11 = class id of SplDoublyLinkedList
+    emitter.instruction("cmp r10, r11");                                        // is the receiver a SplDoublyLinkedList?
+    emitter.instruction("je __rt_object_free_deep_spl_dll");                    // release SPL list storage for SplDoublyLinkedList
+    crate::codegen::abi::emit_load_symbol_to_reg(emitter, "r11", "_spl_stack_class_id", 0); // r11 = class id of SplStack
+    emitter.instruction("cmp r10, r11");                                        // is the receiver a SplStack?
+    emitter.instruction("je __rt_object_free_deep_spl_dll");                    // release SPL list storage for SplStack
+    crate::codegen::abi::emit_load_symbol_to_reg(emitter, "r11", "_spl_queue_class_id", 0); // r11 = class id of SplQueue
+    emitter.instruction("cmp r10, r11");                                        // is the receiver a SplQueue?
+    emitter.instruction("jne __rt_object_free_deep_not_spl_dll");               // skip SPL list cleanup for ordinary objects
+    emitter.label("__rt_object_free_deep_spl_dll");
+    emitter.instruction("mov rax, QWORD PTR [rbp - 8]");                        // reload the saved SPL list object pointer
+    emitter.instruction(&format!("mov rax, QWORD PTR [rax + {}]", crate::codegen::runtime::spl::SPL_DLL_STORAGE_OFFSET)); // load the owned internal Mixed storage array
+    emitter.instruction("call __rt_decref_array");                              // release the internal array and its owned Mixed cells
+    emitter.instruction("mov rax, QWORD PTR [rbp - 8]");                        // reload the saved SPL list object pointer after storage release
+    emitter.instruction(&format!("mov QWORD PTR [rax + {}], 0", crate::codegen::runtime::spl::SPL_DLL_STORAGE_OFFSET)); // clear the storage pointer after release
+    emitter.instruction("jmp __rt_object_free_deep_no_dyn_props");              // free the custom object storage without generic descriptor walking
+    emitter.label("__rt_object_free_deep_not_spl_dll");
+
+    // -- SplFixedArray custom storage: release the owned fixed-size Mixed array --
+    emitter.instruction("mov r10, QWORD PTR [rax]");                            // r10 = receiver class_id
+    crate::codegen::abi::emit_load_symbol_to_reg(emitter, "r11", "_spl_fixed_array_class_id", 0); // r11 = class id of SplFixedArray
+    emitter.instruction("cmp r10, r11");                                        // is the receiver a SplFixedArray?
+    emitter.instruction("jne __rt_object_free_deep_not_spl_fixed");             // skip fixed-array cleanup for ordinary objects
+    emitter.instruction("mov rax, QWORD PTR [rbp - 8]");                        // reload the saved SplFixedArray object pointer
+    emitter.instruction(&format!("mov rax, QWORD PTR [rax + {}]", crate::codegen::runtime::spl::SPL_FIXED_STORAGE_OFFSET)); // load the owned fixed-array storage
+    emitter.instruction("call __rt_decref_array");                              // release fixed-array storage and its owned Mixed cells
+    emitter.instruction("mov rax, QWORD PTR [rbp - 8]");                        // reload the saved SplFixedArray object pointer after storage release
+    emitter.instruction(&format!("mov QWORD PTR [rax + {}], 0", crate::codegen::runtime::spl::SPL_FIXED_STORAGE_OFFSET)); // clear storage pointer after release
+    emitter.instruction("jmp __rt_object_free_deep_no_dyn_props");              // free custom fixed-array storage without generic descriptor walking
+    emitter.label("__rt_object_free_deep_not_spl_fixed");
 
     emitter.instruction("mov r10d, DWORD PTR [rax - 16]");                      // load the object payload size from the uniform heap header
     emitter.instruction("sub r10, 8");                                          // subtract the leading class_id field from the payload size to isolate property storage

@@ -60,7 +60,9 @@ pub(super) fn emit_array_assign_stmt(
     let var_static_ty = var.static_ty.clone();
     let offset = var.stack_offset;
     let is_ref = ctx.ref_params.contains(array);
-    if crate::codegen::expr::arrays::type_is_array_access_object(&var_static_ty, ctx) {
+    if crate::codegen::expr::arrays::type_is_array_access_object(&var_static_ty, ctx)
+        || crate::codegen::expr::arrays::type_is_array_access_object(&var_ty, ctx)
+    {
         let object = Expr::new(ExprKind::Variable(array.to_string()), index.span);
         crate::codegen::expr::arrays::emit_array_access_offset_set(
             &object, index, value, emitter, ctx, data,

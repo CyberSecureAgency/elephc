@@ -34,7 +34,24 @@ pub(super) fn emit_array_push_stmt(
         }
     };
     let offset = var.stack_offset;
+    let var_ty = var.ty.clone();
+    let var_static_ty = var.static_ty.clone();
     let is_ref = ctx.ref_params.contains(array);
+    if crate::codegen::expr::arrays::type_is_array_access_object(&var_static_ty, ctx)
+        || crate::codegen::expr::arrays::type_is_array_access_object(&var_ty, ctx)
+    {
+        let object = Expr::new(ExprKind::Variable(array.to_string()), value.span);
+        let null_index = Expr::new(ExprKind::Null, value.span);
+        crate::codegen::expr::arrays::emit_array_access_offset_set(
+            &object,
+            &null_index,
+            value,
+            emitter,
+            ctx,
+            data,
+        );
+        return;
+    }
     if emitter.target.arch == Arch::X86_64 {
         emit_array_push_stmt_linux_x86_64(array, value, emitter, ctx, data, offset, is_ref);
         return;

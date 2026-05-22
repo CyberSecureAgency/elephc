@@ -18,6 +18,7 @@ use super::generators;
 use super::io;
 use super::objects;
 use super::pointers;
+use super::spl;
 use super::strings;
 use super::system;
 use crate::codegen::emit::Emitter;
@@ -213,6 +214,8 @@ pub(super) fn emit_runtime_linux_x86_64_minimal(emitter: &mut Emitter) {
     arrays::emit_mixed_strict_eq(emitter);
     arrays::emit_iterable_unsupported_kind(emitter);
     arrays::emit_iterable_write_stdout(emitter);
+    spl::emit_doubly_linked_list_runtime(emitter);
+    spl::emit_fixed_array_runtime(emitter);
     buffers::emit_buffer_new(emitter);
     buffers::emit_buffer_len(emitter);
     buffers::emit_buffer_bounds_fail(emitter);

@@ -1,12 +1,12 @@
 //! Purpose:
 //! Injects SPL container class metadata into the checker.
-//! Provides nominal class/interface/signature contracts before runtime-backed SPL storage lands.
+//! Provides nominal class/interface/signature contracts for runtime-backed SPL containers.
 //!
 //! Called from:
 //! - `crate::types::checker::driver`
 //!
 //! Key details:
-//! - These declarations are metadata shells; later SPL phases attach `IntrinsicCall` lowering and runtime payloads.
+//! - Only methods with checker contracts and runtime `IntrinsicCall` backing are exposed here.
 
 use std::collections::HashMap;
 
@@ -100,7 +100,6 @@ pub(crate) fn inject_builtin_spl_classes(
             name: "SplFixedArray".to_string(),
             extends: None,
             implements: vec![
-                "IteratorAggregate".to_string(),
                 "ArrayAccess".to_string(),
                 "Countable".to_string(),
                 "JsonSerializable".to_string(),
@@ -142,7 +141,6 @@ fn spl_doubly_linked_list_methods() -> Vec<ClassMethod> {
         ),
         method("top", Vec::new(), Some(mixed_type())),
         method("bottom", Vec::new(), Some(mixed_type())),
-        method("__debugInfo", Vec::new(), Some(array_type())),
         method("count", Vec::new(), Some(TypeExpr::Int)),
         method("isEmpty", Vec::new(), Some(TypeExpr::Bool)),
         method(
@@ -177,18 +175,6 @@ fn spl_doubly_linked_list_methods() -> Vec<ClassMethod> {
         method("prev", Vec::new(), Some(TypeExpr::Void)),
         method("next", Vec::new(), Some(TypeExpr::Void)),
         method("valid", Vec::new(), Some(TypeExpr::Bool)),
-        method(
-            "unserialize",
-            vec![param("data", TypeExpr::Str)],
-            Some(TypeExpr::Void),
-        ),
-        method("serialize", Vec::new(), Some(TypeExpr::Str)),
-        method("__serialize", Vec::new(), Some(array_type())),
-        method(
-            "__unserialize",
-            vec![param("data", array_type())],
-            Some(TypeExpr::Void),
-        ),
     ]
 }
 
@@ -199,23 +185,8 @@ fn spl_fixed_array_methods() -> Vec<ClassMethod> {
             vec![param_default("size", TypeExpr::Int, int_expr(0))],
             Some(TypeExpr::Void),
         ),
-        method("__wakeup", Vec::new(), Some(TypeExpr::Void)),
-        method("__serialize", Vec::new(), Some(array_type())),
-        method(
-            "__unserialize",
-            vec![param("data", array_type())],
-            Some(TypeExpr::Void),
-        ),
         method("count", Vec::new(), Some(TypeExpr::Int)),
         method("toArray", Vec::new(), Some(array_type())),
-        static_method(
-            "fromArray",
-            vec![
-                param("array", array_type()),
-                param_default("preserveKeys", TypeExpr::Bool, bool_expr(true)),
-            ],
-            Some(named_type("SplFixedArray")),
-        ),
         method("getSize", Vec::new(), Some(TypeExpr::Int)),
         method(
             "setSize",
@@ -242,7 +213,6 @@ fn spl_fixed_array_methods() -> Vec<ClassMethod> {
             vec![param("index", mixed_type())],
             Some(TypeExpr::Void),
         ),
-        method("getIterator", Vec::new(), Some(named_type("Iterator"))),
         method("jsonSerialize", Vec::new(), Some(array_type())),
     ]
 }
@@ -262,14 +232,6 @@ fn method(
     return_type: Option<TypeExpr>,
 ) -> ClassMethod {
     class_method(name, false, params, return_type)
-}
-
-fn static_method(
-    name: &str,
-    params: Vec<(String, Option<TypeExpr>, Option<Expr>, bool)>,
-    return_type: Option<TypeExpr>,
-) -> ClassMethod {
-    class_method(name, true, params, return_type)
 }
 
 fn class_method(

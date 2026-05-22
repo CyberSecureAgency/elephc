@@ -37,6 +37,12 @@ pub(super) fn emit_new_object(
     if class_name == "Fiber" {
         return emit_new_fiber(args, emitter, ctx, data);
     }
+    if is_spl_doubly_linked_list_family(class_name) {
+        return emit_new_spl_doubly_linked_list(class_name, args, emitter, ctx);
+    }
+    if class_name == "SplFixedArray" {
+        return emit_new_spl_fixed_array(args, emitter, ctx, data);
+    }
     if super::reflection::is_reflection_owner_class(class_name) {
         return super::reflection::emit_new_reflection_owner(
             class_name, args, emitter, ctx, data,
@@ -313,6 +319,66 @@ pub(super) fn emit_new_object_core(
 
     abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // restore the allocated object pointer as the expression result for the active target ABI
     PhpType::Object(class_name.to_string())
+}
+
+fn is_spl_doubly_linked_list_family(class_name: &str) -> bool {
+    matches!(class_name, "SplDoublyLinkedList" | "SplStack" | "SplQueue")
+}
+
+fn emit_new_spl_doubly_linked_list(
+    class_name: &str,
+    args: &[Expr],
+    emitter: &mut Emitter,
+    ctx: &Context,
+) -> PhpType {
+    if !args.is_empty() {
+        emitter.comment(&format!(
+            "WARNING: {} constructor arguments ignored by runtime-managed SPL list",
+            class_name
+        ));
+    }
+    let class_id = ctx
+        .classes
+        .get(class_name)
+        .map(|info| info.class_id)
+        .unwrap_or(0);
+    emitter.comment(&format!("new {}() — SPL runtime construction", class_name));
+    abi::emit_load_int_immediate(
+        emitter,
+        abi::int_arg_reg_name(emitter.target, 0),
+        class_id as i64,
+    );                                                                          // pass the concrete SPL class id to the runtime allocator
+    abi::emit_call_label(emitter, "__rt_spl_dll_new");                         // allocate a runtime-managed SPL doubly-linked-list payload
+    PhpType::Object(class_name.to_string())
+}
+
+fn emit_new_spl_fixed_array(
+    args: &[Expr],
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> PhpType {
+    let class_id = ctx
+        .classes
+        .get("SplFixedArray")
+        .map(|info| info.class_id)
+        .unwrap_or(0);
+    emitter.comment("new SplFixedArray() — SPL runtime construction");
+    if let Some(size_expr) = args.first() {
+        let actual_ty = emit_expr(size_expr, emitter, ctx, data);
+        coerce_result_to_type(emitter, ctx, data, &actual_ty, &PhpType::Int);
+    } else {
+        abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), 0);
+    }
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve constructor size while loading class id
+    abi::emit_load_int_immediate(
+        emitter,
+        abi::int_arg_reg_name(emitter.target, 0),
+        class_id as i64,
+    );                                                                          // pass the concrete SplFixedArray class id to the runtime allocator
+    abi::emit_pop_reg(emitter, abi::int_arg_reg_name(emitter.target, 1));       // pass requested fixed-array size as the second runtime argument
+    abi::emit_call_label(emitter, "__rt_spl_fixed_new");                       // allocate a runtime-managed SplFixedArray payload
+    PhpType::Object("SplFixedArray".to_string())
 }
 
 /// Codegen interception for `new Fiber($callable)`.
