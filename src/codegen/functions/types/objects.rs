@@ -176,6 +176,11 @@ pub(super) fn infer_method_call_type(
                 if let Some(msig) = ci.methods.get("__call") {
                     return msig.return_type.clone();
                 }
+            } else if let Some(interface_info) = c.interfaces.get(cn) {
+                let method_key = php_symbol_key(method);
+                if let Some(msig) = interface_info.methods.get(&method_key) {
+                    return msig.return_type.clone();
+                }
             }
         }
     }
@@ -200,6 +205,15 @@ pub(super) fn infer_nullsafe_method_call_type(
                     };
                 }
                 if let Some(msig) = ci.methods.get("__call") {
+                    return if nullable {
+                        merge_union_members(vec![msig.return_type.clone(), PhpType::Void])
+                    } else {
+                        msig.return_type.clone()
+                    };
+                }
+            } else if let Some(interface_info) = c.interfaces.get(&cn) {
+                let method_key = php_symbol_key(method);
+                if let Some(msig) = interface_info.methods.get(&method_key) {
                     return if nullable {
                         merge_union_members(vec![msig.return_type.clone(), PhpType::Void])
                     } else {

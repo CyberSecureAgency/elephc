@@ -79,10 +79,14 @@ The compiler injects the following interfaces, available without any
 | `SplSubject` | `attach(SplObserver $observer): void`, `detach(SplObserver $observer): void`, `notify(): void` |
 | `Stringable` | `__toString(): string` |
 | `JsonSerializable` | `jsonSerialize(): mixed` |
-| `Throwable` | `getMessage(): string` |
+| `Throwable` | `getMessage(): string`, `getCode(): int`, `getFile(): string`, `getLine(): int`, `getTrace(): array`, `getTraceAsString(): string`, `getPrevious(): ?Throwable`, `__toString(): string` |
 
 `count($obj)` automatically dispatches to `Countable::count()` when
 `$obj` is an instance of a class implementing `Countable`.
+
+User classes cannot implement `Throwable` directly, matching PHP. Extend
+`Exception` or `Error` instead; user interfaces may extend `Throwable`, and
+classes that extend `Exception` or `Error` can implement those user interfaces.
 
 Classes implementing `ArrayAccess` can use PHP subscript syntax:
 `$obj[$key]` dispatches to `offsetGet()`, `$obj[$key] = $value` dispatches to

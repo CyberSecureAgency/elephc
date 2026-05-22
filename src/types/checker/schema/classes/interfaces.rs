@@ -32,6 +32,17 @@ pub(super) fn collect_interfaces(
     let mut seen_interfaces: HashSet<String> = state.interfaces.iter().cloned().collect();
     let mut queue = Vec::new();
     for interface_name in class.implements.iter().rev() {
+        if interface_is_throwable_contract(checker, interface_name)
+            && !class_can_implement_throwable_contract(state, class)
+        {
+            return Err(CompileError::new(
+                crate::span::Span::dummy(),
+                &format!(
+                    "Class {} cannot implement interface Throwable, extend Exception or Error instead",
+                    class.name
+                ),
+            ));
+        }
         if class_map.contains_key(interface_name) {
             return Err(CompileError::new(
                 crate::span::Span::dummy(),
@@ -65,6 +76,23 @@ pub(super) fn collect_interfaces(
         state.interfaces.push(interface_name);
     }
     Ok(())
+}
+
+fn interface_is_throwable_contract(checker: &Checker, interface_name: &str) -> bool {
+    php_symbol_key(interface_name) == php_symbol_key("Throwable")
+        || checker.interface_extends_interface(interface_name, "Throwable")
+}
+
+fn class_can_implement_throwable_contract(
+    state: &ClassBuildState,
+    class: &FlattenedClass,
+) -> bool {
+    class.name == "Error"
+        || class.name == "Exception"
+        || state
+            .interfaces
+            .iter()
+            .any(|interface_name| php_symbol_key(interface_name) == php_symbol_key("Throwable"))
 }
 
 pub(super) fn validate_interface_contracts(

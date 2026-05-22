@@ -17,8 +17,11 @@ use crate::types::traits::FlattenedClass;
 
 use super::exception::{
     builtin_exception_code_property, builtin_exception_constructor_method,
-    builtin_exception_get_code_method, builtin_exception_get_message_method,
-    builtin_exception_message_property, builtin_throwable_get_message_method,
+    builtin_exception_get_code_method, builtin_exception_get_file_method,
+    builtin_exception_get_line_method, builtin_exception_get_message_method,
+    builtin_exception_get_previous_method, builtin_exception_get_trace_as_string_method,
+    builtin_exception_get_trace_method, builtin_exception_message_property,
+    builtin_exception_to_string_method, builtin_throwable_methods,
 };
 use super::fiber::builtin_fiber_methods;
 
@@ -78,7 +81,7 @@ pub(crate) fn inject_builtin_throwables(
             name: "Throwable".to_string(),
             extends: Vec::new(),
             properties: Vec::new(),
-            methods: vec![builtin_throwable_get_message_method()],
+            methods: builtin_throwable_methods(),
             span: crate::span::Span::dummy(),
             constants: Vec::new(),
         },
@@ -100,6 +103,12 @@ pub(crate) fn inject_builtin_throwables(
                 builtin_exception_constructor_method(),
                 builtin_exception_get_message_method(),
                 builtin_exception_get_code_method(),
+                builtin_exception_get_file_method(),
+                builtin_exception_get_line_method(),
+                builtin_exception_get_trace_method(),
+                builtin_exception_get_trace_as_string_method(),
+                builtin_exception_get_previous_method(),
+                builtin_exception_to_string_method(),
             ],
             attributes: Vec::new(),
             constants: Vec::new(),
@@ -122,14 +131,20 @@ pub(crate) fn inject_builtin_throwables(
                 builtin_exception_constructor_method(),
                 builtin_exception_get_message_method(),
                 builtin_exception_get_code_method(),
+                builtin_exception_get_file_method(),
+                builtin_exception_get_line_method(),
+                builtin_exception_get_trace_method(),
+                builtin_exception_get_trace_as_string_method(),
+                builtin_exception_get_previous_method(),
+                builtin_exception_to_string_method(),
             ],
             attributes: Vec::new(),
             constants: Vec::new(),
         },
     );
-    // RuntimeException and JsonException inherit message + code + constructor
-    // + getMessage + getCode from Exception via the standard inheritance
-    // machinery; they don't need to redeclare anything locally.
+    // RuntimeException and JsonException inherit the Throwable API from
+    // Exception via the standard inheritance machinery; they don't need to
+    // redeclare anything locally.
     class_map.insert(
         "RuntimeException".to_string(),
         FlattenedClass {

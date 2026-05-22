@@ -27,6 +27,11 @@ impl Checker {
     ) -> Result<PhpType, CompileError> {
         let obj_ty = self.infer_type(object, env)?;
         if let PhpType::Object(class_name) = &obj_ty {
+            if self.interfaces.contains_key(class_name) {
+                return self.infer_method_call_on_interface_type(
+                    class_name, method, args, expr, env,
+                );
+            }
             return self.infer_method_call_on_class_type(class_name, method, args, expr, env);
         }
         // Method calls on a nullable / union object type (`?Foo`, `Foo|null`)
@@ -37,6 +42,15 @@ impl Checker {
             if let Some((class_name, _nullable)) =
                 self.nullsafe_object_receiver(&obj_ty, expr, "method call")?
             {
+                if self.interfaces.contains_key(&class_name) {
+                    return self.infer_method_call_on_interface_type(
+                        &class_name,
+                        method,
+                        args,
+                        expr,
+                        env,
+                    );
+                }
                 return self.infer_method_call_on_class_type(&class_name, method, args, expr, env);
             }
         }
@@ -57,12 +71,53 @@ impl Checker {
         else {
             return Ok(PhpType::Void);
         };
-        let return_ty = self.infer_method_call_on_class_type(&class_name, method, args, expr, env)?;
+        let return_ty = if self.interfaces.contains_key(&class_name) {
+            self.infer_method_call_on_interface_type(&class_name, method, args, expr, env)?
+        } else {
+            self.infer_method_call_on_class_type(&class_name, method, args, expr, env)?
+        };
         if nullable {
             Ok(self.normalize_union_type(vec![return_ty, PhpType::Void]))
         } else {
             Ok(return_ty)
         }
+    }
+
+    pub(crate) fn infer_method_call_on_interface_type(
+        &mut self,
+        interface_name: &str,
+        method: &str,
+        args: &[Expr],
+        expr: &Expr,
+        env: &TypeEnv,
+    ) -> Result<PhpType, CompileError> {
+        let method_key = php_symbol_key(method);
+        let sig = self
+            .interfaces
+            .get(interface_name)
+            .and_then(|interface_info| interface_info.methods.get(&method_key))
+            .cloned()
+            .ok_or_else(|| {
+                CompileError::new(
+                    expr.span,
+                    &format!("Undefined method: {}::{}", interface_name, method),
+                )
+            })?;
+        let normalized_args = self.normalize_named_call_args(
+            &sig,
+            args,
+            expr.span,
+            &format!("Method {}::{}", interface_name, method),
+            env,
+        )?;
+        self.check_known_callable_call(
+            &sig,
+            &normalized_args,
+            expr.span,
+            env,
+            &format!("Method {}::{}", interface_name, method),
+        )?;
+        Ok(sig.return_type)
     }
 
     pub(crate) fn infer_method_call_on_class_type(

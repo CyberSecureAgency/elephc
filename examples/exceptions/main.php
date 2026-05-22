@@ -19,7 +19,23 @@ try {
 }
 
 try {
-    throw new Error("core error");
+    throw new Error();
 } catch (Error $e) {
-    echo "caught Error: " . $e->getMessage() . PHP_EOL;
+    echo "caught Error" . PHP_EOL;
+}
+
+interface AppThrowable extends Throwable {}
+
+class AppException extends Exception implements AppThrowable {}
+
+try {
+    throw new AppException("interface catch", 7);
+} catch (Throwable $e) {
+    echo "caught Throwable: " . $e->getMessage() . " #" . $e->getCode() . PHP_EOL;
+}
+
+try {
+    throw new AppException("user interface", 9);
+} catch (AppThrowable $e) {
+    echo "caught AppThrowable: " . $e->getMessage() . " #" . $e->getCode() . PHP_EOL;
 }

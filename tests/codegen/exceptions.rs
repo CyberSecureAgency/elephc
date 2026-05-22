@@ -63,6 +63,45 @@ fn test_builtin_throwable_catches_error() {
 }
 
 #[test]
+fn test_builtin_throwable_catch_dispatches_get_message() {
+    let out = compile_and_run(
+        "<?php try { throw new Exception(\"caught\"); } catch (Throwable $e) { echo $e->getMessage(); } try { throw new Error(\"core\"); } catch (Throwable $e) { echo \":\" . $e->getMessage(); }",
+    );
+    assert_eq!(out, "caught:core");
+}
+
+#[test]
+fn test_builtin_throwable_catch_exposes_standard_api() {
+    let out = compile_and_run(
+        "<?php try { throw new Exception(\"caught\", 42); } catch (Throwable $e) { echo $e->getMessage(); echo \":\"; echo $e->getCode(); echo \":\"; echo $e->getFile(); echo \":\"; echo $e->getLine(); echo \":\"; echo count($e->getTrace()); echo \":\"; echo $e->getTraceAsString(); echo \":\"; echo $e->getPrevious() === null ? \"none\" : \"some\"; echo \":\"; echo $e->__toString(); }",
+    );
+    assert_eq!(out, "caught:42::0:0::none:caught");
+}
+
+#[test]
+fn test_user_throwable_interface_extending_builtin_throwable_dispatches_methods() {
+    let out = compile_and_run(
+        r#"<?php
+interface AppThrowable extends Throwable {}
+class AppException extends Exception implements AppThrowable {}
+
+try {
+    throw new AppException("custom", 7);
+} catch (Throwable $e) {
+    echo $e->getMessage() . ":" . $e->getCode();
+}
+
+try {
+    throw new AppException("iface", 9);
+} catch (AppThrowable $e) {
+    echo ":" . $e->getMessage() . ":" . $e->getCode();
+}
+"#,
+    );
+    assert_eq!(out, "custom:7:iface:9");
+}
+
+#[test]
 fn test_exception_throw_during_concat_resets_concat_cursor() {
     let out = compile_and_run(
         "<?php function boom() { throw new Exception(); } try { echo \"left-\" . boom(); } catch (Exception $e) { echo json_encode([\"ok\"]); }",

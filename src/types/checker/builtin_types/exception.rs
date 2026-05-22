@@ -9,7 +9,7 @@
 //! Key details:
 //! - Dummy AST members carry type contracts only; runtime behavior is implemented elsewhere.
 
-use crate::names::php_symbol_key;
+use crate::names::{Name, php_symbol_key};
 use crate::parser::ast::{
     ClassMethod, ClassProperty, Expr, ExprKind, PropertyHooks, Stmt, StmtKind, TypeExpr,
     Visibility,
@@ -118,34 +118,109 @@ pub(super) fn builtin_exception_code_property() -> ClassProperty {
 }
 
 pub(super) fn builtin_exception_get_code_method() -> ClassMethod {
-    ClassMethod {
-        name: "getCode".to_string(),
-        visibility: Visibility::Public,
-        is_static: false,
-        is_abstract: false,
-        is_final: false,
-        has_body: true,
-        params: Vec::new(),
-        variadic: None,
-        return_type: None,
-        body: vec![Stmt::new(
-            StmtKind::Return(Some(Expr::new(
-                ExprKind::PropertyAccess {
-                    object: Box::new(Expr::new(ExprKind::This, crate::span::Span::dummy())),
-                    property: "code".to_string(),
-                },
-                crate::span::Span::dummy(),
-            ))),
+    concrete_throwable_method(
+        "getCode",
+        TypeExpr::Int,
+        Expr::new(
+            ExprKind::PropertyAccess {
+                object: Box::new(Expr::new(ExprKind::This, crate::span::Span::dummy())),
+                property: "code".to_string(),
+            },
             crate::span::Span::dummy(),
-        )],
-        span: crate::span::Span::dummy(),
-        attributes: Vec::new(),
-    }
+        ),
+    )
 }
 
 pub(super) fn builtin_exception_get_message_method() -> ClassMethod {
+    concrete_throwable_method(
+        "getMessage",
+        TypeExpr::Str,
+        Expr::new(
+            ExprKind::PropertyAccess {
+                object: Box::new(Expr::new(ExprKind::This, crate::span::Span::dummy())),
+                property: "message".to_string(),
+            },
+            crate::span::Span::dummy(),
+        ),
+    )
+}
+
+pub(super) fn builtin_exception_get_file_method() -> ClassMethod {
+    concrete_throwable_method(
+        "getFile",
+        TypeExpr::Str,
+        Expr::new(
+            ExprKind::StringLiteral(String::new()),
+            crate::span::Span::dummy(),
+        ),
+    )
+}
+
+pub(super) fn builtin_exception_get_line_method() -> ClassMethod {
+    concrete_throwable_method(
+        "getLine",
+        TypeExpr::Int,
+        Expr::new(ExprKind::IntLiteral(0), crate::span::Span::dummy()),
+    )
+}
+
+pub(super) fn builtin_exception_get_trace_method() -> ClassMethod {
+    concrete_throwable_method(
+        "getTrace",
+        array_type(),
+        Expr::new(ExprKind::ArrayLiteral(Vec::new()), crate::span::Span::dummy()),
+    )
+}
+
+pub(super) fn builtin_exception_get_trace_as_string_method() -> ClassMethod {
+    concrete_throwable_method(
+        "getTraceAsString",
+        TypeExpr::Str,
+        Expr::new(
+            ExprKind::StringLiteral(String::new()),
+            crate::span::Span::dummy(),
+        ),
+    )
+}
+
+pub(super) fn builtin_exception_get_previous_method() -> ClassMethod {
+    concrete_throwable_method(
+        "getPrevious",
+        nullable_throwable_type(),
+        Expr::new(ExprKind::Null, crate::span::Span::dummy()),
+    )
+}
+
+pub(super) fn builtin_exception_to_string_method() -> ClassMethod {
+    concrete_throwable_method(
+        "__toString",
+        TypeExpr::Str,
+        Expr::new(
+            ExprKind::PropertyAccess {
+                object: Box::new(Expr::new(ExprKind::This, crate::span::Span::dummy())),
+                property: "message".to_string(),
+            },
+            crate::span::Span::dummy(),
+        ),
+    )
+}
+
+pub(super) fn builtin_throwable_methods() -> Vec<ClassMethod> {
+    vec![
+        abstract_throwable_method("getMessage", TypeExpr::Str),
+        abstract_throwable_method("getCode", TypeExpr::Int),
+        abstract_throwable_method("getFile", TypeExpr::Str),
+        abstract_throwable_method("getLine", TypeExpr::Int),
+        abstract_throwable_method("getTrace", array_type()),
+        abstract_throwable_method("getTraceAsString", TypeExpr::Str),
+        abstract_throwable_method("getPrevious", nullable_throwable_type()),
+        abstract_throwable_method("__toString", TypeExpr::Str),
+    ]
+}
+
+fn concrete_throwable_method(name: &str, return_type: TypeExpr, value: Expr) -> ClassMethod {
     ClassMethod {
-        name: "getMessage".to_string(),
+        name: name.to_string(),
         visibility: Visibility::Public,
         is_static: false,
         is_abstract: false,
@@ -153,15 +228,9 @@ pub(super) fn builtin_exception_get_message_method() -> ClassMethod {
         has_body: true,
         params: Vec::new(),
         variadic: None,
-        return_type: None,
+        return_type: Some(return_type),
         body: vec![Stmt::new(
-            StmtKind::Return(Some(Expr::new(
-                ExprKind::PropertyAccess {
-                    object: Box::new(Expr::new(ExprKind::This, crate::span::Span::dummy())),
-                    property: "message".to_string(),
-                },
-                crate::span::Span::dummy(),
-            ))),
+            StmtKind::Return(Some(value)),
             crate::span::Span::dummy(),
         )],
         span: crate::span::Span::dummy(),
@@ -169,9 +238,9 @@ pub(super) fn builtin_exception_get_message_method() -> ClassMethod {
     }
 }
 
-pub(super) fn builtin_throwable_get_message_method() -> ClassMethod {
+fn abstract_throwable_method(name: &str, return_type: TypeExpr) -> ClassMethod {
     ClassMethod {
-        name: "getMessage".to_string(),
+        name: name.to_string(),
         visibility: Visibility::Public,
         is_static: false,
         is_abstract: true,
@@ -179,16 +248,50 @@ pub(super) fn builtin_throwable_get_message_method() -> ClassMethod {
         has_body: false,
         params: Vec::new(),
         variadic: None,
-        return_type: None,
+        return_type: Some(return_type),
         body: Vec::new(),
         span: crate::span::Span::dummy(),
         attributes: Vec::new(),
     }
 }
 
+fn array_type() -> TypeExpr {
+    TypeExpr::Named(Name::unqualified("array"))
+}
+
+fn nullable_throwable_type() -> TypeExpr {
+    TypeExpr::Nullable(Box::new(TypeExpr::Named(Name::unqualified("Throwable"))))
+}
+
 pub(crate) fn patch_builtin_exception_signatures(checker: &mut Checker) {
+    let nullable_throwable =
+        checker.normalize_union_type(vec![PhpType::Object("Throwable".to_string()), PhpType::Void]);
     if let Some(interface_info) = checker.interfaces.get_mut("Throwable") {
         if let Some(sig) = interface_info.methods.get_mut(&php_symbol_key("getMessage")) {
+            sig.return_type = PhpType::Str;
+        }
+        if let Some(sig) = interface_info.methods.get_mut(&php_symbol_key("getCode")) {
+            sig.return_type = PhpType::Int;
+        }
+        if let Some(sig) = interface_info.methods.get_mut(&php_symbol_key("getFile")) {
+            sig.return_type = PhpType::Str;
+        }
+        if let Some(sig) = interface_info.methods.get_mut(&php_symbol_key("getLine")) {
+            sig.return_type = PhpType::Int;
+        }
+        if let Some(sig) = interface_info.methods.get_mut(&php_symbol_key("getTrace")) {
+            sig.return_type = PhpType::Array(Box::new(PhpType::Mixed));
+        }
+        if let Some(sig) = interface_info
+            .methods
+            .get_mut(&php_symbol_key("getTraceAsString"))
+        {
+            sig.return_type = PhpType::Str;
+        }
+        if let Some(sig) = interface_info.methods.get_mut(&php_symbol_key("getPrevious")) {
+            sig.return_type = nullable_throwable.clone();
+        }
+        if let Some(sig) = interface_info.methods.get_mut(&php_symbol_key("__toString")) {
             sig.return_type = PhpType::Str;
         }
     }
@@ -214,6 +317,27 @@ pub(crate) fn patch_builtin_exception_signatures(checker: &mut Checker) {
             }
             if let Some(sig) = class_info.methods.get_mut(&php_symbol_key("getCode")) {
                 sig.return_type = PhpType::Int;
+            }
+            if let Some(sig) = class_info.methods.get_mut(&php_symbol_key("getFile")) {
+                sig.return_type = PhpType::Str;
+            }
+            if let Some(sig) = class_info.methods.get_mut(&php_symbol_key("getLine")) {
+                sig.return_type = PhpType::Int;
+            }
+            if let Some(sig) = class_info.methods.get_mut(&php_symbol_key("getTrace")) {
+                sig.return_type = PhpType::Array(Box::new(PhpType::Mixed));
+            }
+            if let Some(sig) = class_info
+                .methods
+                .get_mut(&php_symbol_key("getTraceAsString"))
+            {
+                sig.return_type = PhpType::Str;
+            }
+            if let Some(sig) = class_info.methods.get_mut(&php_symbol_key("getPrevious")) {
+                sig.return_type = nullable_throwable.clone();
+            }
+            if let Some(sig) = class_info.methods.get_mut(&php_symbol_key("__toString")) {
+                sig.return_type = PhpType::Str;
             }
         }
     }

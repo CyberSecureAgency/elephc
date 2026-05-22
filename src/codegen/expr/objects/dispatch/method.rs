@@ -18,6 +18,7 @@ use crate::parser::ast::Expr;
 use crate::types::{FunctionSig, PhpType};
 
 use super::fiber::emit_fiber_instance_method_dispatch;
+use super::interface::emit_dispatch_interface_method;
 use super::prep::{compute_register_assignments, eval_and_push_args, pop_args_to_registers};
 use super::super::super::emit_expr;
 use super::vtable::emit_dispatch_instance_method;
@@ -35,6 +36,8 @@ pub(in crate::codegen::expr::objects) fn emit_method_call_with_pushed_args(
     let overflow_bytes = pop_args_to_registers(emitter, &assignments);
     let ret_ty = if class_name == "Fiber" {
         emit_fiber_instance_method_dispatch(method, &assignments, overflow_bytes, emitter, ctx)
+    } else if ctx.interfaces.contains_key(class_name) {
+        emit_dispatch_interface_method(class_name, method, emitter, ctx)
     } else {
         emit_dispatch_instance_method(class_name, method, emitter, ctx)
     };
@@ -135,17 +138,22 @@ pub(in crate::codegen::expr::objects) fn emit_method_call(
     let method_key = php_symbol_key(method);
     let mut dispatch_method = method_key.as_str();
     let mut magic_args = None;
-    let sig = ctx.classes.get(&class_name).and_then(|class_info| {
+    let sig = if let Some(class_info) = ctx.classes.get(&class_name) {
         if let Some(sig) = class_info.methods.get(&method_key) {
-            return Some(sig.clone());
-        }
-        if let Some(sig) = class_info.methods.get("__call") {
+            Some(sig.clone())
+        } else if let Some(sig) = class_info.methods.get("__call") {
             dispatch_method = "__call";
             magic_args = Some(super::super::magic_method_args(method, args, object.span));
-            return Some(sig.clone());
+            Some(sig.clone())
+        } else {
+            None
         }
-        None
-    });
+    } else {
+        ctx.interfaces
+            .get(&class_name)
+            .and_then(|interface_info| interface_info.methods.get(&method_key))
+            .cloned()
+    };
     let args_to_emit = magic_args.as_deref().unwrap_or(args);
     let fiber_start_sig = if class_name == "Fiber" && dispatch_method == "start" {
         Some(fiber_start_call_sig(args_to_emit.len()))

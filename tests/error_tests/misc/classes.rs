@@ -331,6 +331,46 @@ fn test_error_wrong_signature_vs_interface() {
 }
 
 #[test]
+fn test_error_user_class_cannot_implement_throwable_directly() {
+    expect_error(
+        r#"<?php
+class MyThrowable implements Throwable {
+    public function getMessage(): string { return "x"; }
+    public function getCode(): int { return 0; }
+    public function getFile(): string { return ""; }
+    public function getLine(): int { return 0; }
+    public function getTrace(): array { return []; }
+    public function getTraceAsString(): string { return ""; }
+    public function getPrevious(): ?Throwable { return null; }
+    public function __toString(): string { return "x"; }
+}
+"#,
+        "Class MyThrowable cannot implement interface Throwable, extend Exception or Error instead",
+    );
+}
+
+#[test]
+fn test_error_user_class_cannot_implement_throwable_child_interface_directly() {
+    expect_error(
+        r#"<?php
+interface MyThrowableInterface extends Throwable {}
+
+class MyThrowable implements MyThrowableInterface {
+    public function getMessage(): string { return "x"; }
+    public function getCode(): int { return 0; }
+    public function getFile(): string { return ""; }
+    public function getLine(): int { return 0; }
+    public function getTrace(): array { return []; }
+    public function getTraceAsString(): string { return ""; }
+    public function getPrevious(): ?Throwable { return null; }
+    public function __toString(): string { return "x"; }
+}
+"#,
+        "Class MyThrowable cannot implement interface Throwable, extend Exception or Error instead",
+    );
+}
+
+#[test]
 fn test_error_instantiate_abstract_class() {
     expect_error(
         "<?php abstract class Base { abstract public function run(); } $x = new Base();",
