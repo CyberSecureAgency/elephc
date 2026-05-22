@@ -188,6 +188,49 @@ SPL autoload and class-introspection helpers are documented in
 `spl_object_id()`, `spl_object_hash()`, `class_implements()`,
 `class_parents()`, and `class_uses()`.
 
+## Iterator Helper Functions
+
+The iterator helper functions cover the PHP SPL traversal helpers:
+
+| Function | Signature | Notes |
+|---|---|---|
+| `iterator_to_array()` | `iterator_to_array(Traversable\|array $iterator, bool $preserve_keys = true): array` | Rewinds object iterators, collects `current()` values, and optionally preserves `key()` results |
+| `iterator_count()` | `iterator_count(Traversable\|array $iterator): int` | Rewinds and advances object iterators until `valid()` is false |
+| `iterator_apply()` | `iterator_apply(Traversable $iterator, callable $callback, ?array $args = null): int` | Calls the callback once per valid position, stops when it returns false, and returns the invocation count |
+
+```php
+<?php
+class Range implements Iterator {
+    private int $i = 0;
+
+    public function rewind(): void { $this->i = 0; }
+    public function valid(): bool { return $this->i < 3; }
+    public function current(): int { return $this->i + 10; }
+    public function key(): string { return "k" . $this->i; }
+    public function next(): void { $this->i = $this->i + 1; }
+}
+
+$items = iterator_to_array(new Range());
+echo iterator_count(new Range());
+
+function tick(string $label): bool {
+    echo $label;
+    return true;
+}
+
+echo iterator_apply(new Range(), "tick", ["!"]);
+```
+
+AOT constraints: `iterator_count()` and `iterator_to_array()` require a
+statically known array, `Iterator`, or `IteratorAggregate` value; a generic
+`iterable` local or parameter is rejected until these helpers get the same
+runtime array/object dispatch used by `foreach`. `iterator_to_array()` requires
+a literal `preserve_keys` argument when it is supplied, and
+`preserve_keys=false` is currently supported for object iterators and indexed
+arrays. `iterator_apply()` matches PHP by accepting only statically known
+`Traversable` object sources, and supports omitted, `null`, or literal scalar
+argument arrays for the third parameter.
+
 ## Compatibility Gaps
 
 `SplFixedArray::getIterator()` is deferred because it needs the Phase 5 iterator

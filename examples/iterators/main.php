@@ -101,3 +101,26 @@ print_any(new RangeFactory(4, 7));
 
 echo is_iterable(new Range(0, 1, 1)) ? "iterator is iterable\n" : "not iterable\n";
 echo is_iterable(new RangeFactory(0, 1)) ? "aggregate is iterable\n" : "not iterable\n";
+
+echo "iterator_to_array without keys:\n";
+$values = iterator_to_array(new Range(0, 3, 1), false);
+foreach ($values as $key => $value) {
+    echo $key;
+    echo "=";
+    echo $value;
+    echo " ";
+}
+echo "\n";
+
+echo "iterator_count from aggregate:\n";
+echo iterator_count(new RangeFactory(0, 4));
+echo "\n";
+
+function iterator_tick(string $label): bool {
+    echo $label;
+    return true;
+}
+
+echo "iterator_apply callback count:\n";
+echo iterator_apply(new Range(0, 3, 1), "iterator_tick", ["*"]);
+echo "\n";
