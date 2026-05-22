@@ -26,7 +26,15 @@ pub fn emit(
 ) -> Option<PhpType> {
     emitter.comment("array_values()");
     let arr_ty = emit_expr(&args[0], emitter, ctx, data);
+    emit_loaded_values(&arr_ty, emitter, ctx, data)
+}
 
+pub(crate) fn emit_loaded_values(
+    arr_ty: &PhpType,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    _data: &mut DataSection,
+) -> Option<PhpType> {
     if let PhpType::AssocArray { value, .. } = &arr_ty {
         let val_ty = *value.clone();
         // -- associative array: iterate hash table and collect values --
@@ -205,5 +213,5 @@ pub fn emit(
 
     // -- indexed array: array_values is a no-op, but the call still returns a new alias --
     abi::emit_incref_if_refcounted(emitter, &arr_ty);                          // retain the borrowed indexed array because function-call expressions are treated as owned results by callers
-    Some(arr_ty)
+    Some(arr_ty.clone())
 }

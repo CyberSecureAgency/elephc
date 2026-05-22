@@ -191,6 +191,85 @@ pub(crate) fn emit_iterable_object_foreach(
     emitter.label(&done);
 }
 
+pub(crate) fn emit_iterable_object_loop<S, P, B, A>(
+    label_prefix: &str,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+    mut before_rewind: P,
+    mut loop_body: B,
+    mut after_loop: A,
+) where
+    P: FnMut(&IteratorDispatchTarget, &mut Emitter, &mut Context, &mut DataSection) -> S,
+    B: FnMut(&IteratorDispatchTarget, &str, &mut Emitter, &mut Context, &mut DataSection),
+    A: FnMut(S, &mut Emitter, &mut Context, &mut DataSection),
+{
+    let iterator_id = ctx
+        .interfaces
+        .get("Iterator")
+        .expect("codegen bug: missing builtin Iterator interface")
+        .interface_id;
+    let aggregate_id = ctx
+        .interfaces
+        .get("IteratorAggregate")
+        .expect("codegen bug: missing builtin IteratorAggregate interface")
+        .interface_id;
+    let direct_case = ctx.next_label(&format!("{}_iterator", label_prefix));
+    let aggregate_case = ctx.next_label(&format!("{}_aggregate", label_prefix));
+    let done = ctx.next_label(&format!("{}_done", label_prefix));
+
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the object-backed iterable while probing its Traversable shape
+    emit_branch_if_saved_receiver_implements(iterator_id, &direct_case, emitter);
+    emit_branch_if_saved_receiver_implements(aggregate_id, &aggregate_case, emitter);
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // discard the unsupported object before raising the iterable diagnostic
+    abi::emit_call_label(emitter, "__rt_iterable_unsupported_kind");            // unsupported object-backed iterables abort with a fatal diagnostic
+
+    emitter.label(&direct_case);
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // restore the Iterator object pointer for the shared loop lowering
+    let direct_start = ctx.next_label(&format!("{}_iterator_start", label_prefix));
+    let direct_end = ctx.next_label(&format!("{}_iterator_end", label_prefix));
+    let direct_cont = ctx.next_label(&format!("{}_iterator_cont", label_prefix));
+    emit_iterator_loop(
+        "Iterator",
+        &direct_start,
+        &direct_end,
+        &direct_cont,
+        emitter,
+        ctx,
+        data,
+        |dispatch_target, emitter, ctx, data| before_rewind(dispatch_target, emitter, ctx, data),
+        |dispatch_target, emitter, ctx, data| {
+            loop_body(dispatch_target, &direct_end, emitter, ctx, data)
+        },
+        |state, emitter, ctx, data| after_loop(state, emitter, ctx, data),
+    );
+    abi::emit_jump(emitter, &done);                                             // skip the IteratorAggregate branch after direct Iterator iteration
+
+    emitter.label(&aggregate_case);
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // restore the IteratorAggregate object pointer before getIterator()
+    move_result_to_receiver_arg(emitter);
+    emit_dispatch_interface_method("IteratorAggregate", "getiterator", emitter, ctx);
+    let aggregate_start = ctx.next_label(&format!("{}_aggregate_start", label_prefix));
+    let aggregate_end = ctx.next_label(&format!("{}_aggregate_end", label_prefix));
+    let aggregate_cont = ctx.next_label(&format!("{}_aggregate_cont", label_prefix));
+    emit_iterator_loop(
+        "Iterator",
+        &aggregate_start,
+        &aggregate_end,
+        &aggregate_cont,
+        emitter,
+        ctx,
+        data,
+        |dispatch_target, emitter, ctx, data| before_rewind(dispatch_target, emitter, ctx, data),
+        |dispatch_target, emitter, ctx, data| {
+            loop_body(dispatch_target, &aggregate_end, emitter, ctx, data)
+        },
+        |state, emitter, ctx, data| after_loop(state, emitter, ctx, data),
+    );
+
+    emitter.label(&done);
+}
+
 pub(crate) fn emit_iterator_loop<S, P, B, A>(
     class_name: &str,
     loop_start: &str,

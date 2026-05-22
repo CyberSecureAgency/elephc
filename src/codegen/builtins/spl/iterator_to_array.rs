@@ -14,7 +14,8 @@ use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
 use crate::codegen::expr::emit_expr;
-use crate::codegen::stmt::emit_iterator_loop;
+use crate::codegen::platform::Arch;
+use crate::codegen::stmt::{emit_iterable_object_loop, emit_iterator_loop};
 use crate::parser::ast::Expr;
 use crate::types::PhpType;
 
@@ -30,14 +31,54 @@ pub fn emit(
     emitter.comment("iterator_to_array()");
     let preserve_keys = iterator_common::preserve_keys_arg(args);
     let source_ty = emit_expr(&args[0], emitter, ctx, data);
-    if let Some(cloned_ty) = iterator_common::emit_clone_loaded_array(&source_ty, emitter) {
-        return Some(cloned_ty);
+    if preserve_keys {
+        if let Some(cloned_ty) = iterator_common::emit_clone_loaded_array(&source_ty, emitter) {
+            return Some(cloned_ty);
+        }
+    } else {
+        match source_ty.codegen_repr() {
+            PhpType::Array(_) => {
+                if let Some(cloned_ty) = iterator_common::emit_clone_loaded_array(&source_ty, emitter) {
+                    return Some(cloned_ty);
+                }
+            }
+            PhpType::AssocArray { .. } => {
+                return crate::codegen::builtins::arrays::array_values::emit_loaded_values(
+                    &source_ty,
+                    emitter,
+                    ctx,
+                    data,
+                );
+            }
+            _ => {}
+        }
+    }
+
+    if matches!(source_ty.codegen_repr(), PhpType::Iterable) {
+        emit_to_array_loaded_iterable(preserve_keys, emitter, ctx, data);
+        return Some(result_ty(preserve_keys));
     }
 
     let Some(class_name) = iterator_common::iterator_object_name(&source_ty) else {
         return Some(result_ty(preserve_keys));
     };
 
+    if class_name == "Traversable" {
+        emit_to_array_loaded_traversable_object(preserve_keys, emitter, ctx, data);
+        return Some(result_ty(preserve_keys));
+    }
+
+    emit_to_array_loaded_iterator_object(class_name, preserve_keys, emitter, ctx, data);
+    Some(result_ty(preserve_keys))
+}
+
+fn emit_to_array_loaded_iterator_object(
+    class_name: &str,
+    preserve_keys: bool,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) {
     let receiver_reg = abi::nested_call_reg(emitter);
     emitter.instruction(&format!(
         "mov {}, {}",
@@ -83,7 +124,6 @@ pub fn emit(
         |_, _, _, _| {},
     );
     abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // return the completed iterator_to_array() result container
-    Some(result_ty(preserve_keys))
 }
 
 fn result_ty(preserve_keys: bool) -> PhpType {
@@ -95,4 +135,114 @@ fn result_ty(preserve_keys: bool) -> PhpType {
     } else {
         PhpType::Array(Box::new(PhpType::Mixed))
     }
+}
+
+fn emit_to_array_loaded_traversable_object(
+    preserve_keys: bool,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) {
+    let receiver_reg = abi::nested_call_reg(emitter);
+    emitter.instruction(&format!(
+        "mov {}, {}",
+        receiver_reg,
+        abi::int_result_reg(emitter)
+    )); // preserve Traversable receiver while allocating iterator_to_array()'s result
+    if preserve_keys {
+        iterator_common::emit_new_mixed_hash(emitter);
+    } else {
+        iterator_common::emit_new_mixed_indexed_array(emitter);
+    }
+    iterator_common::emit_save_result_under_receiver(emitter);
+    iterator_common::emit_restore_receiver_from_preserved_reg(emitter, receiver_reg);
+
+    emit_iterable_object_loop(
+        "iterator_to_array_traversable",
+        emitter,
+        ctx,
+        data,
+        |_, _, _, _| (),
+        |dispatch_target, _, emitter, ctx, data| {
+            if preserve_keys {
+                iterator_common::emit_insert_current_with_iterator_key(
+                    dispatch_target,
+                    emitter,
+                    ctx,
+                    data,
+                );
+            } else {
+                iterator_common::emit_append_current_to_saved_array(
+                    dispatch_target,
+                    emitter,
+                    ctx,
+                );
+            }
+        },
+        |_, _, _, _| {},
+    );
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // return the completed iterator_to_array() result container
+}
+
+fn emit_to_array_loaded_iterable(
+    preserve_keys: bool,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) {
+    let indexed_case = ctx.next_label("iterator_to_array_iterable_indexed");
+    let hash_case = ctx.next_label("iterator_to_array_iterable_hash");
+    let object_case = ctx.next_label("iterator_to_array_iterable_object");
+    let done = ctx.next_label("iterator_to_array_iterable_done");
+
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve iterable pointer across heap-kind probing
+    abi::emit_call_label(emitter, "__rt_heap_kind");                            // classify the type-erased iterable payload
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction("cmp x0, #2");                                  // is the iterable an indexed array?
+            emitter.instruction(&format!("b.eq {}", indexed_case));             // convert or clone the indexed-array payload
+            emitter.instruction("cmp x0, #3");                                  // is the iterable an associative hash?
+            emitter.instruction(&format!("b.eq {}", hash_case));                // convert or clone the hash payload
+            emitter.instruction("cmp x0, #4");                                  // is the iterable an object?
+            emitter.instruction(&format!("b.eq {}", object_case));              // collect a Traversable object through Iterator dispatch
+        }
+        Arch::X86_64 => {
+            emitter.instruction("cmp rax, 2");                                  // is the iterable an indexed array?
+            emitter.instruction(&format!("je {}", indexed_case));               // convert or clone the indexed-array payload
+            emitter.instruction("cmp rax, 3");                                  // is the iterable an associative hash?
+            emitter.instruction(&format!("je {}", hash_case));                  // convert or clone the hash payload
+            emitter.instruction("cmp rax, 4");                                  // is the iterable an object?
+            emitter.instruction(&format!("je {}", object_case));                // collect a Traversable object through Iterator dispatch
+        }
+    }
+    abi::emit_call_label(emitter, "__rt_iterable_unsupported_kind");            // unsupported iterable payloads abort with a fatal diagnostic
+
+    emitter.label(&object_case);
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // restore the object pointer before Traversable collection
+    emit_to_array_loaded_traversable_object(preserve_keys, emitter, ctx, data);
+    abi::emit_jump(emitter, &done);                                             // skip array payload paths after object traversal
+
+    emitter.label(&hash_case);
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // restore the hash pointer before result materialization
+    if preserve_keys {
+        iterator_common::emit_clone_loaded_runtime_hash_as_mixed(emitter);
+    } else {
+        let hash_ty = PhpType::AssocArray {
+            key: Box::new(PhpType::Mixed),
+            value: Box::new(PhpType::Mixed),
+        };
+        let _ = crate::codegen::builtins::arrays::array_values::emit_loaded_values(
+            &hash_ty,
+            emitter,
+            ctx,
+            data,
+        );
+    }
+    abi::emit_jump(emitter, &done);                                             // skip indexed-array payload handling after hash materialization
+
+    emitter.label(&indexed_case);
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // restore the indexed-array pointer before result materialization
+    iterator_common::emit_clone_loaded_runtime_indexed_array_as_mixed(emitter);
+
+    emitter.label(&done);
 }

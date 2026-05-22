@@ -169,12 +169,6 @@ pub(super) fn check_builtin(
             } else {
                 true
             };
-            if !preserve_keys && matches!(source_ty, PhpType::AssocArray { .. }) {
-                return Err(CompileError::new(
-                    args[1].span,
-                    "iterator_to_array() with preserve_keys=false for associative arrays is not supported yet",
-                ));
-            }
             Ok(Some(iterator_to_array_return_type(&source_ty, preserve_keys)))
         }
         "iterator_apply" => {
@@ -185,19 +179,21 @@ pub(super) fn check_builtin(
                 ));
             }
             check_iterator_apply_source(checker, &args[0], span, env)?;
-            let callback_args = if let Some(args_expr) = args.get(2) {
-                iterator_apply_callback_args(args_expr, span)?
-            } else {
-                &[]
-            };
-            super::callables::check_callback_builtin_call(
-                checker,
-                &args[1],
-                callback_args,
-                span,
-                env,
-                "iterator_apply() callback",
-            )?;
+            match iterator_apply_callback_args(checker, args.get(2), span, env)? {
+                IteratorApplyArgs::Static(callback_args) => {
+                    super::callables::check_callback_builtin_call(
+                        checker,
+                        &args[1],
+                        callback_args,
+                        span,
+                        env,
+                        "iterator_apply() callback",
+                    )?;
+                }
+                IteratorApplyArgs::Dynamic => {
+                    check_iterator_apply_dynamic_callback(checker, &args[1], span, env)?;
+                }
+            }
             Ok(Some(PhpType::Int))
         }
         _ => Ok(None),
@@ -226,7 +222,7 @@ fn check_iterator_source(
 
 fn iterator_source_supported(checker: &Checker, ty: &PhpType) -> bool {
     match ty {
-        PhpType::Array(_) | PhpType::AssocArray { .. } => true,
+        PhpType::Array(_) | PhpType::AssocArray { .. } | PhpType::Iterable => true,
         PhpType::Object(name) => traversable_object_supported(checker, name),
         _ => false,
     }
@@ -239,16 +235,21 @@ fn check_iterator_apply_source(
     env: &TypeEnv,
 ) -> Result<PhpType, CompileError> {
     let ty = checker.infer_type(arg, env)?;
-    if matches!(&ty, PhpType::Object(name) if traversable_object_supported(checker, name)) {
+    if matches!(&ty, PhpType::Iterable)
+        || matches!(&ty, PhpType::Object(name) if traversable_object_supported(checker, name))
+    {
         return Ok(ty);
     }
     Err(CompileError::new(
         span,
-        "iterator_apply() first argument must be a statically known Traversable",
+        "iterator_apply() first argument must be Traversable",
     ))
 }
 
 fn traversable_object_supported(checker: &Checker, name: &str) -> bool {
+    if name == "Traversable" {
+        return true;
+    }
     checker.object_type_implements_interface(name, "Iterator")
         || checker.object_type_implements_interface(name, "IteratorAggregate")
 }
@@ -268,6 +269,7 @@ fn iterator_to_array_return_type(source_ty: &PhpType, preserve_keys: bool) -> Ph
             key: key.clone(),
             value: value.clone(),
         },
+        PhpType::AssocArray { value, .. } => PhpType::Array(value.clone()),
         _ if preserve_keys => PhpType::AssocArray {
             key: Box::new(PhpType::Mixed),
             value: Box::new(PhpType::Mixed),
@@ -276,15 +278,25 @@ fn iterator_to_array_return_type(source_ty: &PhpType, preserve_keys: bool) -> Ph
     }
 }
 
-fn iterator_apply_callback_args(
-    args_expr: &Expr,
+enum IteratorApplyArgs<'a> {
+    Static(&'a [Expr]),
+    Dynamic,
+}
+
+fn iterator_apply_callback_args<'a>(
+    checker: &mut Checker,
+    args_expr: Option<&'a Expr>,
     span: crate::span::Span,
-) -> Result<&[Expr], CompileError> {
+    env: &TypeEnv,
+) -> Result<IteratorApplyArgs<'a>, CompileError> {
+    let Some(args_expr) = args_expr else {
+        return Ok(IteratorApplyArgs::Static(&[]));
+    };
     match &args_expr.kind {
-        ExprKind::Null => Ok(&[]),
+        ExprKind::Null => Ok(IteratorApplyArgs::Static(&[])),
         ExprKind::ArrayLiteral(elems) => {
             if elems.iter().all(is_static_callback_arg_literal) {
-                Ok(elems.as_slice())
+                Ok(IteratorApplyArgs::Static(elems.as_slice()))
             } else {
                 Err(CompileError::new(
                     span,
@@ -292,11 +304,104 @@ fn iterator_apply_callback_args(
                 ))
             }
         }
-        _ => Err(CompileError::new(
-            span,
-            "iterator_apply() args must be null or a literal array of scalar literals",
-        )),
+        _ => {
+            let args_ty = checker.infer_type(args_expr, env)?;
+            if matches!(args_ty, PhpType::Array(_)) {
+                Ok(IteratorApplyArgs::Dynamic)
+            } else {
+                Err(CompileError::new(
+                    span,
+                    "iterator_apply() args must be null, a literal array of scalar literals, or an indexed array value",
+                ))
+            }
+        }
     }
+}
+
+fn check_iterator_apply_dynamic_callback(
+    checker: &mut Checker,
+    callback: &Expr,
+    span: crate::span::Span,
+    env: &TypeEnv,
+) -> Result<(), CompileError> {
+    if checker.expr_call_complex_callee_needs_runtime_capture(callback) {
+        return Err(CompileError::new(
+            callback.span,
+            "iterator_apply() callback does not support complex expressions that select captured callables at runtime",
+        ));
+    }
+
+    if let ExprKind::FirstClassCallable(target) = &callback.kind {
+        let sig = checker.specialize_first_class_callable_target(target, &[], span, env)?;
+        reject_dynamic_ref_args(&sig, span)?;
+        return Ok(());
+    }
+
+    if let ExprKind::Variable(var_name) = &callback.kind {
+        if let Some(target) = checker.first_class_callable_targets.get(var_name).cloned() {
+            let sig = checker.specialize_first_class_callable_target(&target, &[], span, env)?;
+            checker.callable_sigs.insert(var_name.clone(), sig.clone());
+            checker
+                .closure_return_types
+                .insert(var_name.clone(), sig.return_type.clone());
+            reject_dynamic_ref_args(&sig, span)?;
+            return Ok(());
+        }
+    }
+
+    if let ExprKind::StringLiteral(cb_name) = &callback.kind {
+        if let Some(extern_name) = checker.canonical_extern_function_name_folded(cb_name) {
+            if let Some(sig) = checker.functions.get(extern_name.as_str()).cloned() {
+                reject_dynamic_ref_args(&sig, span)?;
+                return Ok(());
+            }
+        }
+        if let Some(builtin_name) = super::canonical_builtin_function_name(cb_name) {
+            if let Some(sig) = crate::types::first_class_callable_builtin_sig(&builtin_name) {
+                reject_dynamic_ref_args(&sig, span)?;
+                return Ok(());
+            }
+        }
+        let cb_name = checker
+            .canonical_function_name_folded(cb_name)
+            .unwrap_or_else(|| cb_name.clone());
+        if let Some(sig) = checker.functions.get(cb_name.as_str()).cloned() {
+            reject_dynamic_ref_args(&sig, span)?;
+            return Ok(());
+        }
+        if let Some(decl) = checker.fn_decls.get(cb_name.as_str()) {
+            if decl.ref_params.iter().any(|is_ref| *is_ref) {
+                return Err(CompileError::new(
+                    span,
+                    "iterator_apply() requires a literal args array when the callback has pass-by-reference parameters",
+                ));
+            }
+            return Ok(());
+        }
+    }
+
+    if let Some(sig) = checker.resolve_expr_callable_sig(callback, env)? {
+        reject_dynamic_ref_args(&sig, span)?;
+        return Ok(());
+    }
+
+    Err(CompileError::new(
+        callback.span,
+        "iterator_apply() callback must have a statically known callable signature",
+    ))
+}
+
+fn reject_dynamic_ref_args(
+    sig: &crate::types::FunctionSig,
+    span: crate::span::Span,
+) -> Result<(), CompileError> {
+    if sig.ref_params.iter().any(|is_ref| *is_ref) {
+        return Err(CompileError::new(
+            span,
+            "iterator_apply() requires a literal args array when the callback has pass-by-reference parameters",
+        ));
+    }
+    Ok(())
 }
 
 fn is_static_callback_arg_literal(expr: &Expr) -> bool {

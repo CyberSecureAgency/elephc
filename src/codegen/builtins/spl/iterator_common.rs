@@ -52,14 +52,62 @@ pub(super) fn emit_count_loaded_array(source_ty: &PhpType, emitter: &mut Emitter
 pub(super) fn emit_clone_loaded_array(source_ty: &PhpType, emitter: &mut Emitter) -> Option<PhpType> {
     match source_ty.codegen_repr() {
         PhpType::Array(elem_ty) => {
+            if emitter.target.arch == Arch::X86_64 {
+                emitter.instruction("mov rdi, rax");                            // pass the loaded indexed array to the shallow-clone helper
+            }
             abi::emit_call_label(emitter, "__rt_array_clone_shallow");
             Some(PhpType::Array(elem_ty))
         }
         PhpType::AssocArray { key, value } => {
+            if emitter.target.arch == Arch::X86_64 {
+                emitter.instruction("mov rdi, rax");                            // pass the loaded hash to the shallow-clone helper
+            }
             abi::emit_call_label(emitter, "__rt_hash_clone_shallow");
             Some(PhpType::AssocArray { key, value })
         }
         _ => None,
+    }
+}
+
+pub(super) fn emit_clone_loaded_runtime_indexed_array_as_mixed(emitter: &mut Emitter) {
+    if emitter.target.arch == Arch::X86_64 {
+        emitter.instruction("mov rdi, rax");                                    // pass the runtime indexed array to the shallow-clone helper
+    }
+    abi::emit_call_label(emitter, "__rt_array_clone_shallow");
+    emit_loaded_runtime_indexed_array_as_mixed(emitter);
+}
+
+pub(super) fn emit_loaded_runtime_indexed_array_as_mixed(emitter: &mut Emitter) {
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction("ldr x1, [x0, #-8]");                           // load packed indexed-array metadata before widening to Mixed slots
+            emitter.instruction("lsr x1, x1, #8");                              // move the runtime value_type tag into the low bits
+            emitter.instruction("and x1, x1, #0x7f");                           // isolate the indexed-array value_type tag for conversion
+            abi::emit_call_label(emitter, "__rt_array_to_mixed");              // convert cloned indexed-array slots to boxed Mixed cells
+        }
+        Arch::X86_64 => {
+            emitter.instruction("mov rsi, QWORD PTR [rax - 8]");                // load packed indexed-array metadata before widening to Mixed slots
+            emitter.instruction("shr rsi, 8");                                  // move the runtime value_type tag into the low bits
+            emitter.instruction("and rsi, 0x7f");                               // isolate the indexed-array value_type tag for conversion
+            emitter.instruction("mov rdi, rax");                                // pass the cloned indexed array to the Mixed conversion helper
+            abi::emit_call_label(emitter, "__rt_array_to_mixed");              // convert cloned indexed-array slots to boxed Mixed cells
+        }
+    }
+}
+
+pub(super) fn emit_clone_loaded_runtime_hash_as_mixed(emitter: &mut Emitter) {
+    if emitter.target.arch == Arch::X86_64 {
+        emitter.instruction("mov rdi, rax");                                    // pass the runtime hash to the shallow-clone helper
+    }
+    abi::emit_call_label(emitter, "__rt_hash_clone_shallow");
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            abi::emit_call_label(emitter, "__rt_hash_to_mixed");               // convert cloned hash entries to boxed Mixed cells
+        }
+        Arch::X86_64 => {
+            emitter.instruction("mov rdi, rax");                                // pass the cloned hash to the Mixed conversion helper
+            abi::emit_call_label(emitter, "__rt_hash_to_mixed");               // convert cloned hash entries to boxed Mixed cells
+        }
     }
 }
 

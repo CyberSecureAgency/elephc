@@ -44,7 +44,7 @@ pub(crate) use assignments::{
 };
 pub(crate) use io::emit_expr_to_stdout;
 pub(crate) use control_flow::{
-    emit_iterator_loop, reload_iterator_receiver, IteratorDispatchTarget,
+    emit_iterable_object_loop, emit_iterator_loop, reload_iterator_receiver, IteratorDispatchTarget,
 };
 
 fn current_function_name(ctx: &Context) -> String {

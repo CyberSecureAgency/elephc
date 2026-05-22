@@ -11,13 +11,16 @@
 
 use crate::codegen::abi;
 use crate::codegen::builtins::arrays::callback_env;
+use crate::codegen::builtins::arrays::call_user_func_array::{
+    self, LoadedArraySource,
+};
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
 use crate::codegen::expr::calls::args as call_args;
 use crate::codegen::expr::emit_expr;
 use crate::codegen::platform::Arch;
-use crate::codegen::stmt::emit_iterator_loop;
+use crate::codegen::stmt::{emit_iterable_object_loop, emit_iterator_loop};
 use crate::parser::ast::{Expr, ExprKind};
 use crate::types::{FunctionSig, PhpType};
 
@@ -32,10 +35,16 @@ pub fn emit(
 ) -> Option<PhpType> {
     emitter.comment("iterator_apply()");
     let source_ty = emit_expr(&args[0], emitter, ctx, data);
-    let Some(class_name) = iterator_common::iterator_object_name(&source_ty).map(str::to_string) else {
-        return Some(PhpType::Int);
+    let source_kind = match source_ty.codegen_repr() {
+        PhpType::Iterable => ApplySourceKind::RuntimeIterable,
+        PhpType::Object(class_name) if class_name == "Traversable" => {
+            ApplySourceKind::TraversableObject
+        }
+        PhpType::Object(class_name) => ApplySourceKind::StaticObject(class_name),
+        _ => {
+            return Some(PhpType::Int);
+        }
     };
-
     abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve iterator receiver while resolving the callback
 
     let call_reg = abi::nested_call_reg(emitter);
@@ -61,52 +70,141 @@ pub fn emit(
     abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), 0);
     abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // save iterator_apply()'s callback-invocation counter
     abi::emit_push_reg(emitter, call_reg);                                      // save the resolved callback address beneath the loop receiver
-    abi::emit_load_temporary_stack_slot(emitter, abi::int_result_reg(emitter), 32); // reload the preserved receiver as the loop-driver input
 
-    let callback_args = callback_args(args);
+    let callback_arg_source = if let Some(args_expr) = dynamic_callback_args(args) {
+        let arg_array_ty = emit_expr(args_expr, emitter, ctx, data);
+        abi::emit_push_reg(emitter, abi::int_result_reg(emitter));              // save iterator_apply()'s evaluated callback-argument array for every invocation
+        CallbackArgSource::Dynamic {
+            args_offset: 16,
+            callback_offset: 32,
+            count_offset: 48,
+            arg_array_ty,
+        }
+    } else {
+        CallbackArgSource::Literal {
+            args: literal_callback_args(args),
+            callback_offset: 16,
+            count_offset: 32,
+        }
+    };
+    let receiver_offset = match callback_arg_source {
+        CallbackArgSource::Dynamic { .. } => 48,
+        CallbackArgSource::Literal { .. } => 32,
+    };
+    abi::emit_load_temporary_stack_slot(
+        emitter,
+        abi::int_result_reg(emitter),
+        receiver_offset,
+    );
+
     let loop_start = ctx.next_label("iterator_apply_start");
     let loop_end = ctx.next_label("iterator_apply_end");
     let loop_cont = ctx.next_label("iterator_apply_cont");
-    emit_iterator_loop(
-        &class_name,
-        &loop_start,
-        &loop_end,
-        &loop_cont,
-        emitter,
-        ctx,
-        data,
-        |_, _, _, _| (),
-        |_, emitter, ctx, data| {
-            emit_callback_invocation(
-                &args[1],
-                callback_args,
+    match source_kind {
+        ApplySourceKind::StaticObject(class_name) => {
+            emit_iterator_loop(
+                &class_name,
+                &loop_start,
+                &loop_end,
+                &loop_cont,
+                emitter,
+                ctx,
+                data,
+                |_, _, _, _| (),
+                |_, emitter, ctx, data| {
+                    emit_callback_invocation(
+                        &callback_arg_source,
+                        &captures,
+                        sig.as_ref(),
+                        &ret_ty,
+                        &loop_end,
+                        emitter,
+                        ctx,
+                        data,
+                    );
+                },
+                |_, _, _, _| {},
+            );
+        }
+        ApplySourceKind::TraversableObject => {
+            emit_iterable_object_loop(
+                "iterator_apply_traversable",
+                emitter,
+                ctx,
+                data,
+                |_, _, _, _| (),
+                |_, active_loop_end, emitter, ctx, data| {
+                    emit_callback_invocation(
+                        &callback_arg_source,
+                        &captures,
+                        sig.as_ref(),
+                        &ret_ty,
+                        active_loop_end,
+                        emitter,
+                        ctx,
+                        data,
+                    );
+                },
+                |_, _, _, _| {},
+            );
+        }
+        ApplySourceKind::RuntimeIterable => {
+            emit_apply_loaded_iterable(
+                &callback_arg_source,
                 &captures,
                 sig.as_ref(),
                 &ret_ty,
-                &loop_end,
                 emitter,
                 ctx,
                 data,
             );
-        },
-        |_, _, _, _| {},
-    );
+        }
+    }
+    if matches!(callback_arg_source, CallbackArgSource::Dynamic { .. }) {
+        abi::emit_release_temporary_stack(emitter, 16);                         // discard the evaluated iterator_apply() args array
+    }
     abi::emit_release_temporary_stack(emitter, 16);                             // discard the saved callback address after iteration
     abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // return the final iterator_apply() invocation count
     abi::emit_release_temporary_stack(emitter, 16);                             // discard the receiver preserved while resolving the callback
     Some(PhpType::Int)
 }
 
-fn callback_args(args: &[Expr]) -> &[Expr] {
+enum ApplySourceKind {
+    StaticObject(String),
+    TraversableObject,
+    RuntimeIterable,
+}
+
+enum CallbackArgSource<'a> {
+    Literal {
+        args: &'a [Expr],
+        callback_offset: usize,
+        count_offset: usize,
+    },
+    Dynamic {
+        args_offset: usize,
+        callback_offset: usize,
+        count_offset: usize,
+        arg_array_ty: PhpType,
+    },
+}
+
+fn literal_callback_args(args: &[Expr]) -> &[Expr] {
     match args.get(2).map(|arg| &arg.kind) {
         Some(ExprKind::ArrayLiteral(elems)) => elems.as_slice(),
         _ => &[],
     }
 }
 
+fn dynamic_callback_args(args: &[Expr]) -> Option<&Expr> {
+    match args.get(2) {
+        Some(arg) if !matches!(arg.kind, ExprKind::ArrayLiteral(_) | ExprKind::Null) => Some(arg),
+        _ => None,
+    }
+}
+
 fn emit_callback_invocation(
-    callback: &Expr,
-    callback_args: &[Expr],
+    callback_arg_source: &CallbackArgSource<'_>,
     captures: &[(String, PhpType, bool)],
     sig: Option<&FunctionSig>,
     ret_ty: &PhpType,
@@ -116,7 +214,54 @@ fn emit_callback_invocation(
     data: &mut DataSection,
 ) {
     let call_reg = abi::nested_call_reg(emitter);
-    abi::emit_load_temporary_stack_slot(emitter, call_reg, 16);
+    let callback_offset = match callback_arg_source {
+        CallbackArgSource::Literal {
+            callback_offset, ..
+        }
+        | CallbackArgSource::Dynamic {
+            callback_offset, ..
+        } => *callback_offset,
+    };
+    abi::emit_load_temporary_stack_slot(emitter, call_reg, callback_offset);
+
+    if let CallbackArgSource::Dynamic {
+        args_offset,
+        count_offset,
+        arg_array_ty,
+        ..
+    } = callback_arg_source
+    {
+        let save_concat_before_args = emitter.target.arch == Arch::X86_64;
+        if save_concat_before_args {
+            crate::codegen::expr::save_concat_offset_before_nested_call(emitter, ctx);
+        }
+        let sig = sig.expect("iterator_apply(): dynamic args require a callable signature");
+        let dynamic_ret_ty = call_user_func_array::emit_loaded_array_callback_call(
+            LoadedArraySource::TemporaryStackSlot(*args_offset),
+            arg_array_ty,
+            None,
+            call_reg,
+            captures,
+            sig,
+            save_concat_before_args,
+            emitter,
+            ctx,
+            data,
+        );
+        crate::codegen::expr::coerce_to_truthiness(emitter, ctx, &dynamic_ret_ty);
+        iterator_common::emit_increment_saved_count_at_offset(*count_offset, emitter);
+        emit_branch_if_callback_false(emitter, loop_end);
+        return;
+    }
+
+    let (callback_args, count_offset) = match callback_arg_source {
+        CallbackArgSource::Literal {
+            args,
+            count_offset,
+            ..
+        } => (*args, *count_offset),
+        CallbackArgSource::Dynamic { .. } => unreachable!(),
+    };
 
     let save_concat_before_args = emitter.target.arch == Arch::X86_64;
     if save_concat_before_args {
@@ -162,10 +307,59 @@ fn emit_callback_invocation(
         abi::emit_release_temporary_stack(emitter, overflow_bytes);
     }
 
-    let _ = callback;
     crate::codegen::expr::coerce_to_truthiness(emitter, ctx, ret_ty);
-    iterator_common::emit_increment_saved_count_at_offset(32, emitter);
+    iterator_common::emit_increment_saved_count_at_offset(count_offset, emitter);
     emit_branch_if_callback_false(emitter, loop_end);
+}
+
+fn emit_apply_loaded_iterable(
+    callback_arg_source: &CallbackArgSource<'_>,
+    captures: &[(String, PhpType, bool)],
+    sig: Option<&FunctionSig>,
+    ret_ty: &PhpType,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) {
+    let object_case = ctx.next_label("iterator_apply_iterable_object");
+
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve iterable pointer across heap-kind probing
+    abi::emit_call_label(emitter, "__rt_heap_kind");                            // classify the iterator_apply() Traversable candidate
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction("cmp x0, #4");                                  // is the iterable payload an object?
+            emitter.instruction(&format!("b.eq {}", object_case));              // dispatch object payloads through Traversable runtime checks
+        }
+        Arch::X86_64 => {
+            emitter.instruction("cmp rax, 4");                                  // is the iterable payload an object?
+            emitter.instruction(&format!("je {}", object_case));                // dispatch object payloads through Traversable runtime checks
+        }
+    }
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // discard non-object iterable payload before reporting unsupported input
+    abi::emit_call_label(emitter, "__rt_iterable_unsupported_kind");            // iterator_apply() cannot traverse array payloads
+
+    emitter.label(&object_case);
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // restore object payload before Traversable dispatch
+    emit_iterable_object_loop(
+        "iterator_apply_iterable",
+        emitter,
+        ctx,
+        data,
+        |_, _, _, _| (),
+        |_, active_loop_end, emitter, ctx, data| {
+            emit_callback_invocation(
+                callback_arg_source,
+                captures,
+                sig,
+                ret_ty,
+                active_loop_end,
+                emitter,
+                ctx,
+                data,
+            );
+        },
+        |_, _, _, _| {},
+    );
 }
 
 fn emit_branch_if_callback_false(emitter: &mut Emitter, loop_end: &str) {

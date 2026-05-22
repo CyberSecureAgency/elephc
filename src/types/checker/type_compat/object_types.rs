@@ -118,6 +118,9 @@ impl Checker {
     }
 
     pub(crate) fn object_type_implements_iterable(&self, type_name: &str) -> bool {
+        if type_name == "Traversable" {
+            return true;
+        }
         if self.classes.contains_key(type_name) {
             return self.class_implements_interface(type_name, "Iterator")
                 || self.class_implements_interface(type_name, "IteratorAggregate");

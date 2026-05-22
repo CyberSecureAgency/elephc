@@ -22,7 +22,7 @@ use crate::span::Span;
 use crate::types::PhpType;
 
 pub(crate) use iterator::{
-    emit_iterator_loop, reload_iterator_receiver, IteratorDispatchTarget,
+    emit_iterable_object_loop, emit_iterator_loop, reload_iterator_receiver, IteratorDispatchTarget,
 };
 
 pub(super) struct ForeachRefFallback {

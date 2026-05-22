@@ -15,7 +15,7 @@ use crate::codegen::expr::emit_expr;
 use crate::codegen::expr::calls::args;
 use crate::codegen::abi;
 use crate::parser::ast::{Expr, ExprKind};
-use crate::types::PhpType;
+use crate::types::{FunctionSig, PhpType};
 use super::callback_env;
 use super::super::callable_lookup::{lookup_function, FunctionLookup};
 
@@ -52,6 +52,11 @@ fn emit_array_value_type_stamp(emitter: &mut Emitter, array_reg: &str, elem_ty: 
             emitter.instruction(&format!("mov QWORD PTR [{} - 8], r10", array_reg)); // persist the packed array kind word in the heap header
         }
     }
+}
+
+pub(crate) enum LoadedArraySource {
+    Result,
+    TemporaryStackSlot(usize),
 }
 
 pub fn emit(
@@ -97,15 +102,6 @@ pub fn emit(
         crate::codegen::expr::save_concat_offset_before_nested_call(emitter, ctx);
     }
     let call_reg = abi::nested_call_reg(emitter);
-    let (array_reg, len_reg, tail_count_reg, tail_index_reg, index_reg, offset_reg, data_reg, peek_reg, array_new_capacity_reg, array_new_elem_size_reg, len_store_reg) =
-        match emitter.target.arch {
-            crate::codegen::platform::Arch::AArch64 => (
-                "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x9", "x0", "x1", "x10"
-            ),
-            crate::codegen::platform::Arch::X86_64 => (
-                "r13", "r14", "r15", "rbx", "rcx", "r8", "r9", "r11", "rdi", "rsi", "r10"
-            ),
-        };
 
     // -- resolve callback function address and signature --
     let precomputed_sig = crate::codegen::callables::callable_sig(&args[0], ctx);
@@ -126,20 +122,65 @@ pub fn emit(
 
     // Evaluate the array argument (second arg)
     let arr_ty = emit_expr(&args[1], emitter, ctx, data);
-
-    // Determine element type and size from the array type
-    let elem_ty = match &arr_ty {
-        PhpType::Array(t) => *t.clone(),
-        PhpType::AssocArray { value, .. } => *value.clone(),
-        _ => PhpType::Int,
-    };
-    let elem_size = args::array_element_stride(&elem_ty);
     let literal_arg_elems = match &args[1].kind {
         ExprKind::ArrayLiteral(elems) => Some(elems.as_slice()),
         _ => None,
     };
 
-    emitter.instruction(&format!("mov {}, {}", array_reg, abi::int_result_reg(emitter))); // preserve the callback-argument array pointer across element boxing
+    let ret_ty = emit_loaded_array_callback_call(
+        LoadedArraySource::Result,
+        &arr_ty,
+        literal_arg_elems,
+        call_reg,
+        &captures,
+        &sig,
+        save_concat_before_args,
+        emitter,
+        ctx,
+        data,
+    );
+
+    Some(ret_ty)
+}
+
+pub(crate) fn emit_loaded_array_callback_call(
+    array_source: LoadedArraySource,
+    arr_ty: &PhpType,
+    literal_arg_elems: Option<&[Expr]>,
+    call_reg: &str,
+    captures: &[(String, PhpType, bool)],
+    sig: &FunctionSig,
+    concat_saved_before_args: bool,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> PhpType {
+    let (array_reg, len_reg, tail_count_reg, tail_index_reg, index_reg, offset_reg, data_reg, peek_reg, array_new_capacity_reg, array_new_elem_size_reg, len_store_reg) =
+        match emitter.target.arch {
+            crate::codegen::platform::Arch::AArch64 => (
+                "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x9", "x0", "x1", "x10"
+            ),
+            crate::codegen::platform::Arch::X86_64 => (
+                "r13", "r14", "r15", "rbx", "rcx", "r8", "r9", "r11", "rdi", "rsi", "r10"
+            ),
+        };
+
+    // Determine element type and size from the array type
+    let elem_ty = match arr_ty {
+        PhpType::Array(t) => *t.clone(),
+        PhpType::AssocArray { value, .. } => *value.clone(),
+        _ => PhpType::Int,
+    };
+    let elem_size = args::array_element_stride(&elem_ty);
+
+    match array_source {
+        LoadedArraySource::Result => {
+            emitter.instruction(&format!("mov {}, {}", array_reg, abi::int_result_reg(emitter))); // preserve the callback-argument array pointer across element boxing
+        }
+        LoadedArraySource::TemporaryStackSlot(offset) => {
+            abi::emit_load_temporary_stack_slot(emitter, array_reg, offset);
+        }
+    }
     abi::emit_load_from_address(emitter, len_reg, array_reg, 0);                // load callback-argument array length
 
     // -- extract elements from array and push them as regular call arguments --
@@ -459,11 +500,11 @@ pub fn emit(
     let ret_ty = sig.return_type.clone();
 
     // -- call callback via the resolved address in x19 --
-    if !save_concat_before_args {
+    if !concat_saved_before_args {
         crate::codegen::expr::save_concat_offset_before_nested_call(emitter, ctx);
     }
     abi::emit_call_reg(emitter, call_reg);
-    if save_concat_before_args {
+    if concat_saved_before_args {
         abi::emit_release_temporary_stack(emitter, overflow_bytes);
         crate::codegen::expr::restore_concat_offset_after_nested_call(emitter, ctx, &ret_ty);
     } else {
@@ -471,5 +512,5 @@ pub fn emit(
         abi::emit_release_temporary_stack(emitter, overflow_bytes);
     }
 
-    Some(ret_ty)
+    ret_ty
 }
