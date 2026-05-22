@@ -93,11 +93,25 @@ function print_any(iterable $items): void {
     echo "\n";
 }
 
+function print_reindexed(iterable $items): void {
+    $values = iterator_to_array($items, false);
+    foreach ($values as $key => $value) {
+        echo $key;
+        echo "=";
+        echo $value;
+        echo " ";
+    }
+    echo "\n";
+}
+
 echo "iterable parameter from Iterator:\n";
 print_any(new Range(2, 5, 1));
 
 echo "iterable parameter from IteratorAggregate:\n";
 print_any(new RangeFactory(4, 7));
+
+echo "iterator_to_array from iterable parameter:\n";
+print_reindexed(["a" => 10, "b" => 20]);
 
 echo is_iterable(new Range(0, 1, 1)) ? "iterator is iterable\n" : "not iterable\n";
 echo is_iterable(new RangeFactory(0, 1)) ? "aggregate is iterable\n" : "not iterable\n";
@@ -122,5 +136,6 @@ function iterator_tick(string $label): bool {
 }
 
 echo "iterator_apply callback count:\n";
-echo iterator_apply(new Range(0, 3, 1), "iterator_tick", ["*"]);
+$labels = ["*"];
+echo iterator_apply(new Range(0, 3, 1), "iterator_tick", $labels);
 echo "\n";

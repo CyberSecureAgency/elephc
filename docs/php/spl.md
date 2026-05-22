@@ -221,15 +221,14 @@ function tick(string $label): bool {
 echo iterator_apply(new Range(), "tick", ["!"]);
 ```
 
-AOT constraints: `iterator_count()` and `iterator_to_array()` require a
-statically known array, `Iterator`, or `IteratorAggregate` value; a generic
-`iterable` local or parameter is rejected until these helpers get the same
-runtime array/object dispatch used by `foreach`. `iterator_to_array()` requires
-a literal `preserve_keys` argument when it is supplied, and
-`preserve_keys=false` is currently supported for object iterators and indexed
-arrays. `iterator_apply()` matches PHP by accepting only statically known
-`Traversable` object sources, and supports omitted, `null`, or literal scalar
-argument arrays for the third parameter.
+AOT constraints: `iterator_to_array()` still requires a literal
+`preserve_keys` argument when it is supplied. `iterator_apply()` accepts
+statically known Traversable objects and runtime-dispatched `Traversable` or
+`iterable` values; if an `iterable` value is an array at runtime, the program
+aborts because PHP's `iterator_apply()` signature requires `Traversable`.
+The third `iterator_apply()` argument may be omitted, `null`, a literal scalar
+array, or a dynamic indexed array value. Dynamic associative arrays with string
+keys are rejected because PHP treats them as named callback arguments.
 
 ## Compatibility Gaps
 
