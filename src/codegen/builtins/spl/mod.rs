@@ -158,8 +158,10 @@ const SPL_CLASS_NAMES: &[&str] = &[
     "Stringable",
     "Throwable",
     "Traversable",
+    "TypeError",
     "UnderflowException",
     "UnexpectedValueException",
+    "ValueError",
 ];
 
 fn emit_args_for_side_effects(

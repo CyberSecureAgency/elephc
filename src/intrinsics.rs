@@ -47,6 +47,9 @@ pub enum IntrinsicCallKind {
     SplDllIsEmpty,
     SplDllSetIteratorMode,
     SplDllGetIteratorMode,
+    SplDllSerialize,
+    SplDllUnserialize,
+    SplDllSerializeArray,
     SplDllOffsetExists,
     SplDllOffsetGet,
     SplDllOffsetSet,
@@ -64,11 +67,13 @@ pub enum IntrinsicCallKind {
     SplFixedToArray,
     SplFixedGetSize,
     SplFixedSetSize,
+    SplFixedFromArray,
     SplFixedOffsetExists,
     SplFixedOffsetGet,
     SplFixedOffsetSet,
     SplFixedOffsetUnset,
     SplFixedJsonSerialize,
+    SplFixedUnserialize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -244,6 +249,9 @@ const INTRINSICS: &[IntrinsicSpec] = &[
     spl_instance_spec("spldoublylinkedlist", "SplDoublyLinkedList", "isempty", IntrinsicCallKind::SplDllIsEmpty, "__rt_spl_dll_is_empty"),
     spl_instance_spec("spldoublylinkedlist", "SplDoublyLinkedList", "setiteratormode", IntrinsicCallKind::SplDllSetIteratorMode, "__rt_spl_dll_set_iterator_mode"),
     spl_instance_spec("spldoublylinkedlist", "SplDoublyLinkedList", "getiteratormode", IntrinsicCallKind::SplDllGetIteratorMode, "__rt_spl_dll_get_iterator_mode"),
+    spl_instance_spec("spldoublylinkedlist", "SplDoublyLinkedList", "serialize", IntrinsicCallKind::SplDllSerialize, "__rt_spl_dll_serialize"),
+    spl_instance_spec("spldoublylinkedlist", "SplDoublyLinkedList", "unserialize", IntrinsicCallKind::SplDllUnserialize, "__rt_spl_dll_unserialize"),
+    spl_instance_spec("spldoublylinkedlist", "SplDoublyLinkedList", "__serialize", IntrinsicCallKind::SplDllSerializeArray, "__rt_spl_dll_serialize_array"),
     spl_instance_spec("spldoublylinkedlist", "SplDoublyLinkedList", "offsetexists", IntrinsicCallKind::SplDllOffsetExists, "__rt_spl_dll_offset_exists"),
     spl_instance_spec("spldoublylinkedlist", "SplDoublyLinkedList", "offsetget", IntrinsicCallKind::SplDllOffsetGet, "__rt_spl_dll_offset_get"),
     spl_instance_spec("spldoublylinkedlist", "SplDoublyLinkedList", "offsetset", IntrinsicCallKind::SplDllOffsetSet, "__rt_spl_dll_offset_set"),
@@ -265,6 +273,9 @@ const INTRINSICS: &[IntrinsicSpec] = &[
     spl_instance_spec("splstack", "SplStack", "isempty", IntrinsicCallKind::SplDllIsEmpty, "__rt_spl_dll_is_empty"),
     spl_instance_spec("splstack", "SplStack", "setiteratormode", IntrinsicCallKind::SplDllSetIteratorMode, "__rt_spl_dll_set_iterator_mode"),
     spl_instance_spec("splstack", "SplStack", "getiteratormode", IntrinsicCallKind::SplDllGetIteratorMode, "__rt_spl_dll_get_iterator_mode"),
+    spl_instance_spec("splstack", "SplStack", "serialize", IntrinsicCallKind::SplDllSerialize, "__rt_spl_dll_serialize"),
+    spl_instance_spec("splstack", "SplStack", "unserialize", IntrinsicCallKind::SplDllUnserialize, "__rt_spl_dll_unserialize"),
+    spl_instance_spec("splstack", "SplStack", "__serialize", IntrinsicCallKind::SplDllSerializeArray, "__rt_spl_dll_serialize_array"),
     spl_instance_spec("splstack", "SplStack", "offsetexists", IntrinsicCallKind::SplDllOffsetExists, "__rt_spl_dll_offset_exists"),
     spl_instance_spec("splstack", "SplStack", "offsetget", IntrinsicCallKind::SplDllOffsetGet, "__rt_spl_dll_offset_get"),
     spl_instance_spec("splstack", "SplStack", "offsetset", IntrinsicCallKind::SplDllOffsetSet, "__rt_spl_dll_offset_set"),
@@ -286,6 +297,9 @@ const INTRINSICS: &[IntrinsicSpec] = &[
     spl_instance_spec("splqueue", "SplQueue", "isempty", IntrinsicCallKind::SplDllIsEmpty, "__rt_spl_dll_is_empty"),
     spl_instance_spec("splqueue", "SplQueue", "setiteratormode", IntrinsicCallKind::SplDllSetIteratorMode, "__rt_spl_dll_set_iterator_mode"),
     spl_instance_spec("splqueue", "SplQueue", "getiteratormode", IntrinsicCallKind::SplDllGetIteratorMode, "__rt_spl_dll_get_iterator_mode"),
+    spl_instance_spec("splqueue", "SplQueue", "serialize", IntrinsicCallKind::SplDllSerialize, "__rt_spl_dll_serialize"),
+    spl_instance_spec("splqueue", "SplQueue", "unserialize", IntrinsicCallKind::SplDllUnserialize, "__rt_spl_dll_unserialize"),
+    spl_instance_spec("splqueue", "SplQueue", "__serialize", IntrinsicCallKind::SplDllSerializeArray, "__rt_spl_dll_serialize_array"),
     spl_instance_spec("splqueue", "SplQueue", "offsetexists", IntrinsicCallKind::SplDllOffsetExists, "__rt_spl_dll_offset_exists"),
     spl_instance_spec("splqueue", "SplQueue", "offsetget", IntrinsicCallKind::SplDllOffsetGet, "__rt_spl_dll_offset_get"),
     spl_instance_spec("splqueue", "SplQueue", "offsetset", IntrinsicCallKind::SplDllOffsetSet, "__rt_spl_dll_offset_set"),
@@ -303,11 +317,13 @@ const INTRINSICS: &[IntrinsicSpec] = &[
     spl_instance_spec("splfixedarray", "SplFixedArray", "toarray", IntrinsicCallKind::SplFixedToArray, "__rt_spl_fixed_to_array"),
     spl_instance_spec("splfixedarray", "SplFixedArray", "getsize", IntrinsicCallKind::SplFixedGetSize, "__rt_spl_fixed_count"),
     spl_instance_spec("splfixedarray", "SplFixedArray", "setsize", IntrinsicCallKind::SplFixedSetSize, "__rt_spl_fixed_set_size"),
+    spl_static_spec("splfixedarray", "SplFixedArray", "fromarray", IntrinsicCallKind::SplFixedFromArray, "__rt_spl_fixed_from_array"),
     spl_instance_spec("splfixedarray", "SplFixedArray", "offsetexists", IntrinsicCallKind::SplFixedOffsetExists, "__rt_spl_fixed_offset_exists"),
     spl_instance_spec("splfixedarray", "SplFixedArray", "offsetget", IntrinsicCallKind::SplFixedOffsetGet, "__rt_spl_fixed_offset_get"),
     spl_instance_spec("splfixedarray", "SplFixedArray", "offsetset", IntrinsicCallKind::SplFixedOffsetSet, "__rt_spl_fixed_offset_set"),
     spl_instance_spec("splfixedarray", "SplFixedArray", "offsetunset", IntrinsicCallKind::SplFixedOffsetUnset, "__rt_spl_fixed_offset_unset"),
     spl_instance_spec("splfixedarray", "SplFixedArray", "jsonserialize", IntrinsicCallKind::SplFixedJsonSerialize, "__rt_spl_fixed_to_array"),
+    spl_instance_spec("splfixedarray", "SplFixedArray", "__unserialize", IntrinsicCallKind::SplFixedUnserialize, "__rt_spl_fixed_unserialize"),
 ];
 
 const fn spl_instance_spec(
@@ -320,6 +336,23 @@ const fn spl_instance_spec(
     IntrinsicSpec {
         kind,
         form: IntrinsicCallForm::Instance,
+        class_key,
+        class_name,
+        method_key,
+        runtime_helper: Some(runtime_helper),
+    }
+}
+
+const fn spl_static_spec(
+    class_key: &'static str,
+    class_name: &'static str,
+    method_key: &'static str,
+    kind: IntrinsicCallKind,
+    runtime_helper: &'static str,
+) -> IntrinsicSpec {
+    IntrinsicSpec {
+        kind,
+        form: IntrinsicCallForm::Static,
         class_key,
         class_name,
         method_key,

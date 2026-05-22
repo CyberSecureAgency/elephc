@@ -59,7 +59,7 @@ pub(crate) fn codegen_declared_type(type_expr: &TypeExpr, ctx: &Context) -> PhpT
             "mixed" => PhpType::Mixed,
             "callable" => PhpType::Callable,
             "void" => PhpType::Void,
-            "array" => PhpType::Array(Box::new(PhpType::Int)),
+            "array" => PhpType::Array(Box::new(PhpType::Mixed)),
             _ if ctx.packed_classes.contains_key(name.as_str()) => {
                 PhpType::Packed(name.as_str().to_string())
             }

@@ -67,8 +67,10 @@ const BUILTIN_CLASS_LIKE_NAMES: &[&str] = &[
     "Stringable",
     "Throwable",
     "Traversable",
+    "TypeError",
     "UnderflowException",
     "UnexpectedValueException",
+    "ValueError",
     "stdClass",
 ];
 

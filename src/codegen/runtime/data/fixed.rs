@@ -68,6 +68,62 @@ pub(crate) fn emit_runtime_data_fixed(heap_size: usize) -> String {
         ".globl _str_repeat_times_msg\n_str_repeat_times_msg:\n    .ascii {:?}\n",
         STR_REPEAT_TIMES_MSG
     ));
+    for (label, message) in [
+        ("_spl_dll_pop_empty_msg", "Can't pop from an empty datastructure"),
+        ("_spl_dll_shift_empty_msg", "Can't shift from an empty datastructure"),
+        ("_spl_dll_peek_empty_msg", "Can't peek at an empty datastructure"),
+        (
+            "_spl_dll_add_range_msg",
+            "SplDoublyLinkedList::add(): Argument #1 ($index) is out of range",
+        ),
+        (
+            "_spl_dll_offset_get_range_msg",
+            "SplDoublyLinkedList::offsetGet(): Argument #1 ($index) is out of range",
+        ),
+        (
+            "_spl_dll_offset_set_range_msg",
+            "SplDoublyLinkedList::offsetSet(): Argument #1 ($index) is out of range",
+        ),
+        (
+            "_spl_dll_offset_unset_range_msg",
+            "SplDoublyLinkedList::offsetUnset(): Argument #1 ($index) is out of range",
+        ),
+        (
+            "_spl_dll_offset_exists_type_msg",
+            "SplDoublyLinkedList::offsetExists(): Argument #1 ($index) must be of type int, non-int given",
+        ),
+        (
+            "_spl_dll_offset_get_type_msg",
+            "SplDoublyLinkedList::offsetGet(): Argument #1 ($index) must be of type int, non-int given",
+        ),
+        (
+            "_spl_dll_offset_set_type_msg",
+            "SplDoublyLinkedList::offsetSet(): Argument #1 ($index) must be of type ?int, non-int given",
+        ),
+        (
+            "_spl_dll_offset_unset_type_msg",
+            "SplDoublyLinkedList::offsetUnset(): Argument #1 ($index) must be of type int, non-int given",
+        ),
+        (
+            "_spl_fixed_construct_size_msg",
+            "SplFixedArray::__construct(): Argument #1 ($size) must be greater than or equal to 0",
+        ),
+        (
+            "_spl_fixed_set_size_msg",
+            "SplFixedArray::setSize(): Argument #1 ($size) must be greater than or equal to 0",
+        ),
+        (
+            "_spl_fixed_offset_type_msg",
+            "Cannot access offset of type non-int on SplFixedArray",
+        ),
+        ("_spl_fixed_offset_range_msg", "Index invalid or out of range"),
+        (
+            "_spl_fixed_from_array_keys_msg",
+            "array must contain only positive integer keys",
+        ),
+    ] {
+        out.push_str(&format!(".globl {label}\n{label}:\n    .ascii {message:?}\n"));
+    }
     out.push_str(".globl _uncaught_exc_msg\n_uncaught_exc_msg:\n    .ascii \"Fatal error: uncaught exception\\n\"\n");
     out.push_str(".globl _instanceof_target_type_msg\n_instanceof_target_type_msg:\n    .ascii \"Fatal error: Class name must be a valid object or a string\\n\"\n");
     out.push_str(".globl _diag_file_get_contents_failed_msg\n_diag_file_get_contents_failed_msg:\n    .ascii \"Warning: file_get_contents(): Failed to open stream\\n\"\n");

@@ -297,6 +297,8 @@ pub(crate) fn patch_builtin_exception_signatures(checker: &mut Checker) {
     }
     for class_name in [
         "Error",
+        "TypeError",
+        "ValueError",
         "Exception",
         "RuntimeException",
         "JsonException",

@@ -363,9 +363,14 @@ fn collect_x86_emitted_class_names(
     for builtin in [
         "Throwable",
         "Error",
+        "TypeError",
+        "ValueError",
         "Exception",
         "RuntimeException",
         "JsonException",
+        "InvalidArgumentException",
+        "OutOfBoundsException",
+        "OutOfRangeException",
     ] {
         names.insert(builtin.to_string());
     }

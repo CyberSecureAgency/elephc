@@ -6,14 +6,15 @@
 //! - `crate::types::checker::driver`
 //!
 //! Key details:
-//! - Only methods with checker contracts and runtime `IntrinsicCall` backing are exposed here.
+//! - Direct storage and legacy serialization methods use runtime `IntrinsicCall` backing.
+//! - Structured serialization/debug helpers keep small synthetic PHP bodies.
 
 use std::collections::HashMap;
 
 use crate::errors::CompileError;
 use crate::names::{php_symbol_key, Name};
 use crate::parser::ast::{
-    ClassConst, ClassMethod, Expr, ExprKind, Stmt, StmtKind, TypeExpr, Visibility,
+    BinOp, ClassConst, ClassMethod, Expr, ExprKind, Stmt, StmtKind, TypeExpr, Visibility,
 };
 use crate::types::traits::FlattenedClass;
 
@@ -175,6 +176,30 @@ fn spl_doubly_linked_list_methods() -> Vec<ClassMethod> {
         method("prev", Vec::new(), Some(TypeExpr::Void)),
         method("next", Vec::new(), Some(TypeExpr::Void)),
         method("valid", Vec::new(), Some(TypeExpr::Bool)),
+        method("serialize", Vec::new(), Some(TypeExpr::Str)),
+        method(
+            "unserialize",
+            vec![param("data", TypeExpr::Str)],
+            Some(TypeExpr::Void),
+        ),
+        method_with_body(
+            "__serialize",
+            Vec::new(),
+            Some(array_type()),
+            dll_serialize_array_body(),
+        ),
+        method_with_body(
+            "__unserialize",
+            vec![param("data", array_type())],
+            Some(TypeExpr::Void),
+            dll_unserialize_body(),
+        ),
+        method_with_body(
+            "__debugInfo",
+            Vec::new(),
+            Some(array_type()),
+            dll_debug_info_body(),
+        ),
     ]
 }
 
@@ -185,6 +210,23 @@ fn spl_fixed_array_methods() -> Vec<ClassMethod> {
             vec![param_default("size", TypeExpr::Int, int_expr(0))],
             Some(TypeExpr::Void),
         ),
+        method_with_body("__wakeup", Vec::new(), Some(TypeExpr::Void), Vec::new()),
+        class_method(
+            "fromArray",
+            true,
+            vec![
+                param("array", array_type()),
+                param_default("preserveKeys", TypeExpr::Bool, bool_expr(true)),
+            ],
+            Some(named_type("SplFixedArray")),
+        ),
+        method_with_body(
+            "__serialize",
+            Vec::new(),
+            Some(array_type()),
+            vec![return_stmt(method_call(this_expr(), "toArray", Vec::new()))],
+        ),
+        method("__unserialize", vec![param("data", array_type())], Some(TypeExpr::Void)),
         method("count", Vec::new(), Some(TypeExpr::Int)),
         method("toArray", Vec::new(), Some(array_type())),
         method("getSize", Vec::new(), Some(TypeExpr::Int)),
@@ -234,11 +276,36 @@ fn method(
     class_method(name, false, params, return_type)
 }
 
+fn method_with_body(
+    name: &str,
+    params: Vec<(String, Option<TypeExpr>, Option<Expr>, bool)>,
+    return_type: Option<TypeExpr>,
+    body: Vec<Stmt>,
+) -> ClassMethod {
+    class_method_with_body(name, false, params, return_type, body)
+}
+
 fn class_method(
     name: &str,
     is_static: bool,
     params: Vec<(String, Option<TypeExpr>, Option<Expr>, bool)>,
     return_type: Option<TypeExpr>,
+) -> ClassMethod {
+    class_method_with_body(
+        name,
+        is_static,
+        params,
+        return_type.clone(),
+        dummy_body_for(return_type.as_ref()),
+    )
+}
+
+fn class_method_with_body(
+    name: &str,
+    is_static: bool,
+    params: Vec<(String, Option<TypeExpr>, Option<Expr>, bool)>,
+    return_type: Option<TypeExpr>,
+    body: Vec<Stmt>,
 ) -> ClassMethod {
     ClassMethod {
         name: name.to_string(),
@@ -249,8 +316,8 @@ fn class_method(
         has_body: true,
         params,
         variadic: None,
-        return_type: return_type.clone(),
-        body: dummy_body_for(return_type.as_ref()),
+        return_type,
+        body,
         span: crate::span::Span::dummy(),
         attributes: Vec::new(),
     }
@@ -273,10 +340,11 @@ fn dummy_body_for(return_type: Option<&TypeExpr>) -> Vec<Stmt> {
 }
 
 fn return_body(value: Expr) -> Vec<Stmt> {
-    vec![Stmt::new(
-        StmtKind::Return(Some(value)),
-        crate::span::Span::dummy(),
-    )]
+    vec![return_stmt(value)]
+}
+
+fn return_stmt(value: Expr) -> Stmt {
+    Stmt::new(StmtKind::Return(Some(value)), crate::span::Span::dummy())
 }
 
 fn param(name: &str, ty: TypeExpr) -> (String, Option<TypeExpr>, Option<Expr>, bool) {
@@ -320,4 +388,164 @@ fn array_type() -> TypeExpr {
 
 fn named_type(name: &str) -> TypeExpr {
     TypeExpr::Named(Name::unqualified(name))
+}
+
+fn expr(kind: ExprKind) -> Expr {
+    Expr::new(kind, crate::span::Span::dummy())
+}
+
+fn string_expr(value: &str) -> Expr {
+    expr(ExprKind::StringLiteral(value.to_string()))
+}
+
+fn var_expr(name: &str) -> Expr {
+    expr(ExprKind::Variable(name.to_string()))
+}
+
+fn this_expr() -> Expr {
+    expr(ExprKind::This)
+}
+
+fn binary_expr(left: Expr, op: BinOp, right: Expr) -> Expr {
+    expr(ExprKind::BinaryOp {
+        left: Box::new(left),
+        op,
+        right: Box::new(right),
+    })
+}
+
+fn not_expr(value: Expr) -> Expr {
+    expr(ExprKind::Not(Box::new(value)))
+}
+
+fn method_call(object: Expr, method: &str, args: Vec<Expr>) -> Expr {
+    expr(ExprKind::MethodCall {
+        object: Box::new(object),
+        method: method.to_string(),
+        args,
+    })
+}
+
+fn array_access(array: Expr, index: Expr) -> Expr {
+    expr(ExprKind::ArrayAccess {
+        array: Box::new(array),
+        index: Box::new(index),
+    })
+}
+
+fn assign_stmt(name: &str, value: Expr) -> Stmt {
+    Stmt::new(
+        StmtKind::Assign {
+            name: name.to_string(),
+            value,
+        },
+        crate::span::Span::dummy(),
+    )
+}
+
+fn expr_stmt(value: Expr) -> Stmt {
+    Stmt::new(StmtKind::ExprStmt(value), crate::span::Span::dummy())
+}
+
+fn array_push_stmt(array: &str, value: Expr) -> Stmt {
+    Stmt::new(
+        StmtKind::ArrayPush {
+            array: array.to_string(),
+            value,
+        },
+        crate::span::Span::dummy(),
+    )
+}
+
+fn while_stmt(condition: Expr, body: Vec<Stmt>) -> Stmt {
+    Stmt::new(
+        StmtKind::While { condition, body },
+        crate::span::Span::dummy(),
+    )
+}
+
+fn foreach_stmt(array: Expr, key_var: Option<&str>, value_var: &str, body: Vec<Stmt>) -> Stmt {
+    Stmt::new(
+        StmtKind::Foreach {
+            array,
+            key_var: key_var.map(str::to_string),
+            value_var: value_var.to_string(),
+            value_by_ref: false,
+            body,
+        },
+        crate::span::Span::dummy(),
+    )
+}
+
+fn increment_stmt(name: &str) -> Stmt {
+    assign_stmt(name, binary_expr(var_expr(name), BinOp::Add, int_expr(1)))
+}
+
+fn dll_items_snapshot_prelude() -> Vec<Stmt> {
+    vec![
+        assign_stmt("items", expr(ExprKind::ArrayLiteral(Vec::new()))),
+        assign_stmt("i", int_expr(0)),
+        assign_stmt("limit", method_call(this_expr(), "count", Vec::new())),
+        while_stmt(
+            binary_expr(var_expr("i"), BinOp::Lt, var_expr("limit")),
+            vec![
+                array_push_stmt("items", method_call(this_expr(), "offsetGet", vec![var_expr("i")])),
+                increment_stmt("i"),
+            ],
+        ),
+    ]
+}
+
+fn dll_serialize_array_body() -> Vec<Stmt> {
+    let mut body = dll_items_snapshot_prelude();
+    body.push(return_stmt(expr(ExprKind::ArrayLiteral(vec![
+        method_call(this_expr(), "getIteratorMode", Vec::new()),
+        var_expr("items"),
+        expr(ExprKind::ArrayLiteral(Vec::new())),
+    ]))));
+    body
+}
+
+fn dll_debug_info_body() -> Vec<Stmt> {
+    let mut body = vec![
+        assign_stmt("mode", method_call(this_expr(), "getIteratorMode", Vec::new())),
+        expr_stmt(method_call(this_expr(), "setIteratorMode", vec![int_expr(0)])),
+    ];
+    body.extend(dll_items_snapshot_prelude());
+    body.push(expr_stmt(method_call(
+        this_expr(),
+        "setIteratorMode",
+        vec![var_expr("mode")],
+    )));
+    body.push(return_stmt(expr(ExprKind::ArrayLiteralAssoc(vec![
+        (
+            string_expr("\0SplDoublyLinkedList\0flags"),
+            var_expr("mode"),
+        ),
+        (
+            string_expr("\0SplDoublyLinkedList\0dllist"),
+            var_expr("items"),
+        ),
+    ]))));
+    body
+}
+
+fn dll_unserialize_body() -> Vec<Stmt> {
+    vec![
+        expr_stmt(method_call(
+            this_expr(),
+            "setIteratorMode",
+            vec![array_access(var_expr("data"), int_expr(0))],
+        )),
+        while_stmt(
+            not_expr(method_call(this_expr(), "isEmpty", Vec::new())),
+            vec![expr_stmt(method_call(this_expr(), "pop", Vec::new()))],
+        ),
+        foreach_stmt(
+            array_access(var_expr("data"), int_expr(1)),
+            None,
+            "value",
+            vec![expr_stmt(method_call(this_expr(), "push", vec![var_expr("value")]))],
+        ),
+    ]
 }
