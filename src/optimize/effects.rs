@@ -46,10 +46,11 @@ pub(super) fn stmt_effect(stmt: &Stmt) -> Effect {
         StmtKind::Throw(expr) => expr_effect(expr).with_side_effects().with_may_throw(),
         StmtKind::Assign { value, .. }
         | StmtKind::TypedAssign { value, .. }
-        | StmtKind::ArrayPush { value, .. }
-        | StmtKind::StaticPropertyAssign { value, .. }
-        | StmtKind::StaticPropertyArrayPush { value, .. } => {
+        | StmtKind::StaticPropertyAssign { value, .. } => {
             expr_effect(value).with_side_effects()
+        }
+        StmtKind::ArrayPush { value, .. } | StmtKind::StaticPropertyArrayPush { value, .. } => {
+            expr_effect(value).with_side_effects().with_may_throw()
         }
         StmtKind::ArrayAssign { index, value, .. }
         | StmtKind::PropertyArrayAssign { index, value, .. }
@@ -57,17 +58,24 @@ pub(super) fn stmt_effect(stmt: &Stmt) -> Effect {
             expr_effect(index)
                 .combine(expr_effect(value))
                 .with_side_effects()
+                .with_may_throw()
         }
         StmtKind::NestedArrayAssign { target, value } => {
             expr_effect(target)
                 .combine(expr_effect(value))
                 .with_side_effects()
+                .with_may_throw()
         }
-        StmtKind::PropertyAssign { object, value, .. }
-        | StmtKind::PropertyArrayPush { object, value, .. } => {
+        StmtKind::PropertyAssign { object, value, .. } => {
             expr_effect(object)
                 .combine(expr_effect(value))
                 .with_side_effects()
+        }
+        StmtKind::PropertyArrayPush { object, value, .. } => {
+            expr_effect(object)
+                .combine(expr_effect(value))
+                .with_side_effects()
+                .with_may_throw()
         }
         StmtKind::If {
             condition,
@@ -267,7 +275,10 @@ pub(super) fn expr_effect(expr: &Expr) -> Effect {
                     .map(|expr| expr_effect(expr))
                     .unwrap_or(Effect::PURE),
             ),
-        ExprKind::ArrayAccess { array, index } => expr_effect(array).combine(expr_effect(index)),
+        ExprKind::ArrayAccess { array, index } => expr_effect(array)
+            .combine(expr_effect(index))
+            .with_side_effects()
+            .with_may_throw(),
         ExprKind::Ternary {
             condition,
             then_expr,

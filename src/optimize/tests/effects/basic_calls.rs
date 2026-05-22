@@ -26,7 +26,7 @@ fn test_effect_analysis_recognizes_pure_builtin_calls() {
 }
 
 #[test]
-fn test_effect_analysis_treats_property_and_array_reads_as_pure() {
+fn test_effect_analysis_treats_property_reads_as_pure_and_array_reads_as_observable() {
     let property = Expr::new(
         ExprKind::PropertyAccess {
             object: Box::new(Expr::var("entry")),
@@ -44,8 +44,9 @@ fn test_effect_analysis_treats_property_and_array_reads_as_pure() {
 
     assert!(!expr_has_side_effects(&property));
     assert!(!expr_effect(&property).may_throw);
-    assert!(!expr_has_side_effects(&array));
-    assert!(!expr_effect(&array).may_throw);
+    assert!(expr_has_side_effects(&array));
+    assert!(expr_effect(&array).may_throw);
+    assert!(expr_is_observable(&array));
 }
 
 #[test]
