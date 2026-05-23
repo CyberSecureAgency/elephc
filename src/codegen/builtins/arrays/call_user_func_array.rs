@@ -733,6 +733,17 @@ pub(crate) fn emit_loaded_array_unknown_callback_call(
     ctx: &mut Context,
     data: &mut DataSection,
 ) -> PhpType {
+    if captures.is_empty() {
+        return emit_loaded_array_unknown_callback_call_dynamic(
+            array_source,
+            arr_ty,
+            call_reg,
+            concat_saved_before_args,
+            emitter,
+            ctx,
+        );
+    }
+
     let (array_reg, len_reg) = match emitter.target.arch {
         Arch::AArch64 => ("x20", "x21"),
         Arch::X86_64 => ("r13", "r14"),
@@ -790,6 +801,391 @@ pub(crate) fn emit_loaded_array_unknown_callback_call(
 
     emitter.label(&done_label);
     PhpType::Int
+}
+
+fn unknown_callback_register_arg_capacity(target: crate::codegen::platform::Target, elem_ty: &PhpType) -> usize {
+    match elem_ty.codegen_repr() {
+        PhpType::Float => 8,
+        PhpType::Str => match target.arch {
+            Arch::AArch64 => 4,
+            Arch::X86_64 => 3,
+        },
+        PhpType::Void | PhpType::Never => 0,
+        _ => match target.arch {
+            Arch::AArch64 => 8,
+            Arch::X86_64 => 6,
+        },
+    }
+}
+
+fn emit_loaded_array_unknown_callback_call_dynamic(
+    array_source: LoadedArraySource,
+    arr_ty: &PhpType,
+    call_reg: &str,
+    concat_saved_before_args: bool,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+) -> PhpType {
+    let (array_reg, len_reg, overflow_count_reg, overflow_bytes_reg) = match emitter.target.arch {
+        Arch::AArch64 => ("x20", "x21", "x22", "x23"),
+        Arch::X86_64 => ("r13", "r14", "r15", "rbx"),
+    };
+    let elem_ty = match arr_ty {
+        PhpType::Array(elem_ty) => *elem_ty.clone(),
+        _ => PhpType::Int,
+    };
+    let register_arg_capacity = unknown_callback_register_arg_capacity(emitter.target, &elem_ty);
+    let register_temp_bytes = register_arg_capacity * 16;
+
+    match array_source {
+        LoadedArraySource::Result => {
+            emitter.instruction(&format!("mov {}, {}", array_reg, abi::int_result_reg(emitter))); // preserve the callback-argument array pointer for dynamic unknown-signature dispatch
+        }
+        LoadedArraySource::TemporaryStackSlot(offset) => {
+            abi::emit_load_temporary_stack_slot(emitter, array_reg, offset);
+        }
+    }
+    abi::emit_load_from_address(emitter, len_reg, array_reg, 0);                // load the dynamic callback-argument count
+    emit_unknown_dynamic_overflow_size(
+        len_reg,
+        overflow_count_reg,
+        overflow_bytes_reg,
+        register_arg_capacity,
+        emitter,
+        ctx,
+    );
+    emit_dynamic_stack_adjust(emitter, overflow_bytes_reg, true);
+    abi::emit_reserve_temporary_stack(emitter, register_temp_bytes);
+
+    emit_unknown_dynamic_register_arg_temps(
+        array_reg,
+        len_reg,
+        &elem_ty,
+        register_arg_capacity,
+        emitter,
+        ctx,
+    );
+    emit_unknown_dynamic_stack_args(
+        array_reg,
+        overflow_count_reg,
+        &elem_ty,
+        register_arg_capacity,
+        register_temp_bytes,
+        emitter,
+        ctx,
+    );
+    emit_unknown_dynamic_load_register_args(
+        len_reg,
+        &elem_ty,
+        register_arg_capacity,
+        emitter,
+        ctx,
+    );
+
+    abi::emit_release_temporary_stack(emitter, register_temp_bytes);
+    let ret_ty = PhpType::Int;
+    if !concat_saved_before_args {
+        crate::codegen::expr::save_concat_offset_before_nested_call(emitter, ctx);
+    }
+    abi::emit_call_reg(emitter, call_reg);
+    if concat_saved_before_args {
+        emit_dynamic_stack_adjust(emitter, overflow_bytes_reg, false);
+        crate::codegen::expr::restore_concat_offset_after_nested_call(emitter, ctx, &ret_ty);
+    } else {
+        crate::codegen::expr::restore_concat_offset_after_nested_call(emitter, ctx, &ret_ty);
+        emit_dynamic_stack_adjust(emitter, overflow_bytes_reg, false);
+    }
+
+    ret_ty
+}
+
+fn emit_unknown_dynamic_overflow_size(
+    len_reg: &str,
+    overflow_count_reg: &str,
+    overflow_bytes_reg: &str,
+    register_arg_capacity: usize,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+) {
+    let has_overflow = ctx.next_label("cufa_unknown_dynamic_overflow");
+    let done = ctx.next_label("cufa_unknown_dynamic_overflow_done");
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction(&format!("mov {}, #0", overflow_count_reg));    // default to no stack-passed unknown callback arguments
+            emitter.instruction(&format!("cmp {}, #{}", len_reg, register_arg_capacity)); // compare runtime arity with the register argument capacity
+            emitter.instruction(&format!("b.gt {}", has_overflow));             // compute stack spill bytes only when runtime arity exceeds registers
+            emitter.instruction(&format!("b {}", done));                        // skip overflow sizing for register-only calls
+            emitter.label(&has_overflow);
+            emitter.instruction(&format!("sub {}, {}, #{}", overflow_count_reg, len_reg, register_arg_capacity)); // count callback arguments that must be stack-passed
+            emitter.label(&done);
+            emitter.instruction(&format!("lsl {}, {}, #4", overflow_bytes_reg, overflow_count_reg)); // convert stack-passed argument count to 16-byte ABI slots
+        }
+        Arch::X86_64 => {
+            emitter.instruction(&format!("mov {}, 0", overflow_count_reg));     // default to no stack-passed unknown callback arguments
+            emitter.instruction(&format!("cmp {}, {}", len_reg, register_arg_capacity)); // compare runtime arity with the register argument capacity
+            emitter.instruction(&format!("jg {}", has_overflow));               // compute stack spill bytes only when runtime arity exceeds registers
+            emitter.instruction(&format!("jmp {}", done));                      // skip overflow sizing for register-only calls
+            emitter.label(&has_overflow);
+            emitter.instruction(&format!("mov {}, {}", overflow_count_reg, len_reg)); // seed overflow count from the runtime callback arity
+            emitter.instruction(&format!("sub {}, {}", overflow_count_reg, register_arg_capacity)); // count callback arguments that must be stack-passed
+            emitter.label(&done);
+            emitter.instruction(&format!("mov {}, {}", overflow_bytes_reg, overflow_count_reg)); // copy overflow count before scaling to bytes
+            emitter.instruction(&format!("shl {}, 4", overflow_bytes_reg));     // convert stack-passed argument count to 16-byte ABI slots
+        }
+    }
+}
+
+fn emit_dynamic_stack_adjust(emitter: &mut Emitter, bytes_reg: &str, subtract: bool) {
+    match (emitter.target.arch, subtract) {
+        (Arch::AArch64, true) => {
+            emitter.instruction(&format!("sub sp, sp, {}", bytes_reg));         // reserve dynamic stack space for unknown callback overflow arguments
+        }
+        (Arch::AArch64, false) => {
+            emitter.instruction(&format!("add sp, sp, {}", bytes_reg));         // release dynamic stack space for unknown callback overflow arguments
+        }
+        (Arch::X86_64, true) => {
+            emitter.instruction(&format!("sub rsp, {}", bytes_reg));            // reserve dynamic stack space for unknown callback overflow arguments
+        }
+        (Arch::X86_64, false) => {
+            emitter.instruction(&format!("add rsp, {}", bytes_reg));            // release dynamic stack space for unknown callback overflow arguments
+        }
+    }
+}
+
+fn emit_unknown_dynamic_register_arg_temps(
+    array_reg: &str,
+    len_reg: &str,
+    elem_ty: &PhpType,
+    register_arg_capacity: usize,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+) {
+    for arg_idx in 0..register_arg_capacity {
+        let load_label = ctx.next_label("cufa_unknown_dynamic_reg_load");
+        let done_label = ctx.next_label("cufa_unknown_dynamic_reg_done");
+        match emitter.target.arch {
+            Arch::AArch64 => {
+                emitter.instruction(&format!("cmp {}, #{}", len_reg, arg_idx + 1)); // check whether this register-passed callback argument exists
+                emitter.instruction(&format!("b.ge {}", load_label));           // materialize the register argument when present
+                emitter.instruction(&format!("b {}", done_label));              // leave absent optional unknown callback argument registers untouched
+            }
+            Arch::X86_64 => {
+                emitter.instruction(&format!("cmp {}, {}", len_reg, arg_idx + 1)); // check whether this register-passed callback argument exists
+                emitter.instruction(&format!("jge {}", load_label));            // materialize the register argument when present
+                emitter.instruction(&format!("jmp {}", done_label));            // leave absent optional unknown callback argument registers untouched
+            }
+        }
+        emitter.label(&load_label);
+        args::load_array_element_to_result(
+            emitter,
+            elem_ty,
+            array_reg,
+            24 + arg_idx * args::array_element_stride(elem_ty),
+        );
+        abi::emit_incref_if_refcounted(emitter, &elem_ty.codegen_repr());       // retain borrowed heap arguments before passing them to the unknown callback
+        emit_store_current_result_to_sp_offset(emitter, elem_ty, arg_idx * 16);
+        emitter.label(&done_label);
+    }
+}
+
+fn emit_unknown_dynamic_stack_args(
+    array_reg: &str,
+    overflow_count_reg: &str,
+    elem_ty: &PhpType,
+    register_arg_capacity: usize,
+    register_temp_bytes: usize,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+) {
+    let loop_label = ctx.next_label("cufa_unknown_dynamic_stack_loop");
+    let done_label = ctx.next_label("cufa_unknown_dynamic_stack_done");
+    let (idx_reg, source_idx_reg, source_reg, dest_reg, offset_reg) = match emitter.target.arch {
+        Arch::AArch64 => ("x24", "x25", "x26", "x27", "x28"),
+        Arch::X86_64 => ("rcx", "r10", "r11", "rsi", "rdx"),
+    };
+    abi::emit_load_int_immediate(emitter, idx_reg, 0);
+    emitter.label(&loop_label);
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction(&format!("cmp {}, {}", idx_reg, overflow_count_reg)); // stop after all stack-passed unknown callback args are materialized
+            emitter.instruction(&format!("b.ge {}", done_label));               // leave the overflow materialization loop
+            emitter.instruction(&format!("add {}, {}, #{}", source_idx_reg, idx_reg, register_arg_capacity)); // convert overflow index to source array index
+        }
+        Arch::X86_64 => {
+            emitter.instruction(&format!("cmp {}, {}", idx_reg, overflow_count_reg)); // stop after all stack-passed unknown callback args are materialized
+            emitter.instruction(&format!("jge {}", done_label));                // leave the overflow materialization loop
+            emitter.instruction(&format!("mov {}, {}", source_idx_reg, idx_reg)); // seed source array index from overflow index
+            emitter.instruction(&format!("add {}, {}", source_idx_reg, register_arg_capacity)); // convert overflow index to source array index
+        }
+    }
+    emit_dynamic_array_element_to_result(
+        array_reg,
+        source_idx_reg,
+        source_reg,
+        offset_reg,
+        elem_ty,
+        emitter,
+    );
+    abi::emit_incref_if_refcounted(emitter, &elem_ty.codegen_repr());           // retain borrowed heap overflow arguments before passing them to the unknown callback
+    emit_unknown_dynamic_stack_arg_address(
+        idx_reg,
+        dest_reg,
+        offset_reg,
+        register_temp_bytes,
+        emitter,
+    );
+    emit_store_current_result_to_address(emitter, elem_ty, dest_reg);
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction(&format!("add {}, {}, #1", idx_reg, idx_reg));  // advance to the next stack-passed unknown callback argument
+            emitter.instruction(&format!("b {}", loop_label));                  // continue materializing overflow arguments
+        }
+        Arch::X86_64 => {
+            emitter.instruction(&format!("add {}, 1", idx_reg));                // advance to the next stack-passed unknown callback argument
+            emitter.instruction(&format!("jmp {}", loop_label));                // continue materializing overflow arguments
+        }
+    }
+    emitter.label(&done_label);
+}
+
+fn emit_dynamic_array_element_to_result(
+    array_reg: &str,
+    index_reg: &str,
+    source_reg: &str,
+    offset_reg: &str,
+    elem_ty: &PhpType,
+    emitter: &mut Emitter,
+) {
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction(&format!("mov {}, {}", source_reg, array_reg)); // seed the dynamic source element pointer from the callback-argument array
+            emitter.instruction(&format!("add {}, {}, #24", source_reg, source_reg)); // skip the indexed array header before dynamic argument lookup
+            if args::array_element_stride(elem_ty) == 16 {
+                emitter.instruction(&format!("lsl {}, {}, #4", offset_reg, index_reg)); // scale dynamic source index by the string element width
+            } else {
+                emitter.instruction(&format!("lsl {}, {}, #3", offset_reg, index_reg)); // scale dynamic source index by the scalar element width
+            }
+            emitter.instruction(&format!("add {}, {}, {}", source_reg, source_reg, offset_reg)); // address the selected dynamic callback argument slot
+        }
+        Arch::X86_64 => {
+            emitter.instruction(&format!("mov {}, {}", source_reg, array_reg)); // seed the dynamic source element pointer from the callback-argument array
+            emitter.instruction(&format!("add {}, 24", source_reg));            // skip the indexed array header before dynamic argument lookup
+            emitter.instruction(&format!("mov {}, {}", offset_reg, index_reg)); // copy dynamic source index before scaling
+            emitter.instruction(&format!("imul {}, {}", offset_reg, args::array_element_stride(elem_ty))); // scale dynamic source index by the element width
+            emitter.instruction(&format!("add {}, {}", source_reg, offset_reg)); // address the selected dynamic callback argument slot
+        }
+    }
+    args::load_array_element_to_result(emitter, elem_ty, source_reg, 0);
+}
+
+fn emit_unknown_dynamic_stack_arg_address(
+    idx_reg: &str,
+    dest_reg: &str,
+    offset_reg: &str,
+    register_temp_bytes: usize,
+    emitter: &mut Emitter,
+) {
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction(&format!("mov {}, sp", dest_reg));              // seed overflow destination from the current stack pointer
+            emitter.instruction(&format!("add {}, {}, #{}", dest_reg, dest_reg, register_temp_bytes)); // skip register-argument temp slots to reach outgoing stack args
+            emitter.instruction(&format!("lsl {}, {}, #4", offset_reg, idx_reg)); // scale overflow argument index by the 16-byte ABI slot width
+            emitter.instruction(&format!("add {}, {}, {}", dest_reg, dest_reg, offset_reg)); // address the outgoing overflow argument slot
+        }
+        Arch::X86_64 => {
+            emitter.instruction(&format!("lea {}, [rsp + {}]", dest_reg, register_temp_bytes)); // address the first outgoing overflow argument slot
+            emitter.instruction(&format!("mov {}, {}", offset_reg, idx_reg));   // copy overflow argument index before scaling to bytes
+            emitter.instruction(&format!("shl {}, 4", offset_reg));             // scale overflow argument index by the 16-byte ABI slot width
+            emitter.instruction(&format!("add {}, {}", dest_reg, offset_reg));  // address the outgoing overflow argument slot
+        }
+    }
+}
+
+fn emit_unknown_dynamic_load_register_args(
+    len_reg: &str,
+    elem_ty: &PhpType,
+    register_arg_capacity: usize,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+) {
+    for arg_idx in 0..register_arg_capacity {
+        let load_label = ctx.next_label("cufa_unknown_dynamic_arg_load");
+        let done_label = ctx.next_label("cufa_unknown_dynamic_arg_done");
+        match emitter.target.arch {
+            Arch::AArch64 => {
+                emitter.instruction(&format!("cmp {}, #{}", len_reg, arg_idx + 1)); // check whether this final register argument exists
+                emitter.instruction(&format!("b.ge {}", load_label));           // load the ABI register when the argument was provided
+                emitter.instruction(&format!("b {}", done_label));              // skip absent unknown callback argument registers
+            }
+            Arch::X86_64 => {
+                emitter.instruction(&format!("cmp {}, {}", len_reg, arg_idx + 1)); // check whether this final register argument exists
+                emitter.instruction(&format!("jge {}", load_label));            // load the ABI register when the argument was provided
+                emitter.instruction(&format!("jmp {}", done_label));            // skip absent unknown callback argument registers
+            }
+        }
+        emitter.label(&load_label);
+        emit_load_sp_offset_to_arg_register(emitter, elem_ty, arg_idx * 16, arg_idx);
+        emitter.label(&done_label);
+    }
+}
+
+fn emit_store_current_result_to_sp_offset(emitter: &mut Emitter, ty: &PhpType, offset: usize) {
+    let stack_reg = match emitter.target.arch {
+        Arch::AArch64 => "sp",
+        Arch::X86_64 => "rsp",
+    };
+    emit_store_current_result_to_address_offset(emitter, ty, stack_reg, offset);
+}
+
+fn emit_store_current_result_to_address(emitter: &mut Emitter, ty: &PhpType, address_reg: &str) {
+    emit_store_current_result_to_address_offset(emitter, ty, address_reg, 0);
+}
+
+fn emit_store_current_result_to_address_offset(
+    emitter: &mut Emitter,
+    ty: &PhpType,
+    address_reg: &str,
+    offset: usize,
+) {
+    match ty.codegen_repr() {
+        PhpType::Float => {
+            abi::emit_store_to_address(emitter, abi::float_result_reg(emitter), address_reg, offset);
+        }
+        PhpType::Str => {
+            let (ptr_reg, len_reg) = abi::string_result_regs(emitter);
+            abi::emit_store_to_address(emitter, ptr_reg, address_reg, offset);
+            abi::emit_store_to_address(emitter, len_reg, address_reg, offset + 8);
+        }
+        PhpType::Void | PhpType::Never => {}
+        _ => {
+            abi::emit_store_to_address(emitter, abi::int_result_reg(emitter), address_reg, offset);
+        }
+    }
+}
+
+fn emit_load_sp_offset_to_arg_register(
+    emitter: &mut Emitter,
+    ty: &PhpType,
+    offset: usize,
+    arg_idx: usize,
+) {
+    match ty.codegen_repr() {
+        PhpType::Float => {
+            let reg = abi::float_arg_reg_name(emitter.target, arg_idx);
+            abi::emit_load_temporary_stack_slot(emitter, reg, offset);
+        }
+        PhpType::Str => {
+            let ptr_reg = abi::int_arg_reg_name(emitter.target, arg_idx * 2);
+            let len_reg = abi::int_arg_reg_name(emitter.target, arg_idx * 2 + 1);
+            abi::emit_load_temporary_stack_slot(emitter, ptr_reg, offset);
+            abi::emit_load_temporary_stack_slot(emitter, len_reg, offset + 8);
+        }
+        PhpType::Void | PhpType::Never => {}
+        _ => {
+            let reg = abi::int_arg_reg_name(emitter.target, arg_idx);
+            abi::emit_load_temporary_stack_slot(emitter, reg, offset);
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

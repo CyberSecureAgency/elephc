@@ -285,6 +285,50 @@ echo call_user_func_array(make_callback(), $args);
 }
 
 #[test]
+fn test_call_user_func_array_unknown_signature_dynamic_args_overflow_stack() {
+    let out = compile_and_run(
+        r#"<?php
+function make_callback(): callable {
+    return function(
+        $a1, $a2, $a3, $a4, $a5,
+        $a6, $a7, $a8, $a9, $a10,
+        $a11, $a12, $a13, $a14, $a15,
+        $a16, $a17, $a18, $a19, $a20
+    ): int {
+        return $a1 + $a2 + $a3 + $a4 + $a5
+            + $a6 + $a7 + $a8 + $a9 + $a10
+            + $a11 + $a12 + $a13 + $a14 + $a15
+            + $a16 + $a17 + $a18 + $a19 + $a20;
+    };
+}
+
+$args = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+         11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+echo call_user_func_array(make_callback(), $args);
+"#,
+    );
+    assert_eq!(out, "210");
+}
+
+#[test]
+fn test_call_user_func_array_unknown_signature_dynamic_string_args_overflow_stack() {
+    let out = compile_and_run(
+        r#"<?php
+function make_callback(): callable {
+    return function(string $a, string $b, string $c, string $d, string $e, string $f): int {
+        echo $a . $b . $c . $d . $e . $f;
+        return 1;
+    };
+}
+
+$args = ["a", "b", "c", "d", "e", "f"];
+echo call_user_func_array(make_callback(), $args);
+"#,
+    );
+    assert_eq!(out, "abcdef1");
+}
+
+#[test]
 fn test_call_user_func_array_dynamic_assoc_args_for_known_signature() {
     let out = compile_and_run(
         r#"<?php
