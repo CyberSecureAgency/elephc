@@ -445,6 +445,65 @@ echo call_user_func_array(make_callback(), $args);
 }
 
 #[test]
+fn test_call_user_func_array_dynamic_assoc_args_for_returned_untyped_callable_signature() {
+    let out = compile_and_run(
+        r#"<?php
+function make_callback(): callable {
+    return function($left, $right): int {
+        return ($left * 10) + $right;
+    };
+}
+
+$args = ["right" => 2, "left" => 1];
+echo call_user_func_array(make_callback(), $args);
+"#,
+    );
+    assert_eq!(out, "12");
+}
+
+#[test]
+fn test_call_user_func_array_dynamic_assoc_args_for_callable_without_static_signature() {
+    let out = compile_and_run(
+        r#"<?php
+$callbacks = [
+    function($left, $right): int {
+        return ($left * 10) + $right;
+    },
+    function($right, $left): int {
+        return ($right * 100) + $left;
+    }
+];
+$idx = 0;
+$cb = $callbacks[$idx];
+$args = ["right" => 2, "left" => 1];
+echo call_user_func_array($cb, $args);
+"#,
+    );
+    assert_eq!(out, "12");
+}
+
+#[test]
+fn test_call_user_func_array_dynamic_assoc_unknown_signature_boxes_string_return() {
+    let out = compile_and_run(
+        r#"<?php
+$callbacks = [
+    function($left, $right): string {
+        return "sum:" . ($left + $right);
+    },
+    function($right, $left): string {
+        return "alt:" . ($right + $left);
+    }
+];
+$idx = 0;
+$cb = $callbacks[$idx];
+$args = ["right" => 2, "left" => 1];
+echo call_user_func_array($cb, $args);
+"#,
+    );
+    assert_eq!(out, "sum:3");
+}
+
+#[test]
 fn test_call_user_func_array_variadic_float_tail_count() {
     let out = compile_and_run(
         "<?php

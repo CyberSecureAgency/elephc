@@ -495,6 +495,96 @@ echo iterator_apply(new Range(), make_label(), $args);
 }
 
 #[test]
+fn test_iterator_apply_dynamic_assoc_args_for_returned_untyped_callable_signature() {
+    let out = compile_and_run(
+        r#"<?php
+class Range implements Iterator {
+    private int $i;
+    public function __construct() { $this->i = 0; }
+    public function rewind(): void { $this->i = 0; }
+    public function valid(): bool { return $this->i < 2; }
+    public function current(): int { return $this->i; }
+    public function key(): int { return $this->i; }
+    public function next(): void { $this->i = $this->i + 1; }
+}
+function make_label(): callable {
+    return function($left, $right): bool {
+        echo ($left * 10) + $right;
+        return true;
+    };
+}
+$args = ["right" => 2, "left" => 1];
+echo iterator_apply(new Range(), make_label(), $args);
+"#,
+    );
+    assert_eq!(out, "12122");
+}
+
+#[test]
+fn test_iterator_apply_dynamic_assoc_args_for_callable_without_static_signature() {
+    let out = compile_and_run(
+        r#"<?php
+class Range implements Iterator {
+    private int $i;
+    public function __construct() { $this->i = 0; }
+    public function rewind(): void { $this->i = 0; }
+    public function valid(): bool { return $this->i < 2; }
+    public function current(): int { return $this->i; }
+    public function key(): int { return $this->i; }
+    public function next(): void { $this->i = $this->i + 1; }
+}
+$callbacks = [
+    function($left, $right): bool {
+        echo ($left * 10) + $right;
+        return true;
+    },
+    function($right, $left): bool {
+        echo ($right * 100) + $left;
+        return true;
+    }
+];
+$idx = 0;
+$cb = $callbacks[$idx];
+$args = ["right" => 2, "left" => 1];
+echo iterator_apply(new Range(), $cb, $args);
+"#,
+    );
+    assert_eq!(out, "12122");
+}
+
+#[test]
+fn test_iterator_apply_dynamic_assoc_unknown_signature_uses_string_truthiness() {
+    let out = compile_and_run(
+        r#"<?php
+class Range implements Iterator {
+    private int $i;
+    public function __construct() { $this->i = 0; }
+    public function rewind(): void { $this->i = 0; }
+    public function valid(): bool { return $this->i < 2; }
+    public function current(): int { return $this->i; }
+    public function key(): int { return $this->i; }
+    public function next(): void { $this->i = $this->i + 1; }
+}
+$callbacks = [
+    function($left, $right): string {
+        echo ($left * 10) + $right;
+        return "";
+    },
+    function($right, $left): string {
+        echo ($right * 100) + $left;
+        return "";
+    }
+];
+$idx = 0;
+$cb = $callbacks[$idx];
+$args = ["right" => 2, "left" => 1];
+echo iterator_apply(new Range(), $cb, $args);
+"#,
+    );
+    assert_eq!(out, "121");
+}
+
+#[test]
 fn test_iterator_apply_dynamic_assoc_args_for_known_signature() {
     let out = compile_and_run(
         r#"<?php

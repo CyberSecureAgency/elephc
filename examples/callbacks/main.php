@@ -58,6 +58,15 @@ echo "\n";
 $format_args = ["value" => "cb"];
 echo "method callable call_user_func_array: " . call_user_func_array($format, $format_args) . "\n";
 
+$named_callbacks = [
+    function($left, $right) { return ($left * 10) + $right; },
+    function($right, $left) { return ($right * 100) + $left; }
+];
+$named_choice = 0;
+$named_callback = $named_callbacks[$named_choice];
+$named_args = ["right" => 2, "left" => 1];
+echo "dynamic named call_user_func_array: " . call_user_func_array($named_callback, $named_args) . "\n";
+
 function bump(&$value) {
     $value = $value + 1;
 }

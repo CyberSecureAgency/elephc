@@ -15,6 +15,7 @@ use crate::codegen::expr::emit_expr;
 use crate::codegen::expr::calls::args;
 use crate::codegen::platform::Arch;
 use crate::codegen::abi;
+use crate::names::function_symbol;
 use crate::parser::ast::{Expr, ExprKind};
 use crate::types::{FunctionSig, PhpType};
 use super::callback_env;
@@ -55,9 +56,17 @@ fn emit_array_value_type_stamp(emitter: &mut Emitter, array_reg: &str, elem_ty: 
     }
 }
 
+#[derive(Clone, Copy)]
 pub(crate) enum LoadedArraySource {
     Result,
     TemporaryStackSlot(usize),
+}
+
+#[derive(Clone)]
+struct RuntimeCallableCase {
+    label: String,
+    sig: FunctionSig,
+    captures: Vec<(String, PhpType, bool)>,
 }
 
 pub fn emit(
@@ -158,7 +167,19 @@ pub fn emit(
         } else {
             let inferred_arg_array_ty =
                 crate::codegen::functions::infer_contextual_type(&args[1], ctx);
-            if matches!(inferred_arg_array_ty, PhpType::AssocArray { .. })
+            if should_use_unknown_indexed_dispatch(&sig, &inferred_arg_array_ty, &args[1]) {
+                let arr_ty = emit_expr(&args[1], emitter, ctx, data);
+                emit_loaded_array_unknown_callback_call(
+                    LoadedArraySource::Result,
+                    &arr_ty,
+                    call_reg,
+                    &captures,
+                    save_concat_before_args,
+                    emitter,
+                    ctx,
+                    data,
+                )
+            } else if matches!(inferred_arg_array_ty, PhpType::AssocArray { .. })
                 && sig.variadic.is_some()
             {
                 let arr_ty = emit_expr(&args[1], emitter, ctx, data);
@@ -203,6 +224,19 @@ pub fn emit(
     };
 
     Some(ret_ty)
+}
+
+fn should_use_unknown_indexed_dispatch(
+    sig: &FunctionSig,
+    arg_array_ty: &PhpType,
+    arg_array: &Expr,
+) -> bool {
+    matches!(arg_array_ty, PhpType::Array(_))
+        && !matches!(arg_array.kind, ExprKind::ArrayLiteral(_))
+        && sig.variadic.is_none()
+        && sig.ref_params.iter().all(|is_ref| !*is_ref)
+        && sig.defaults.iter().all(Option::is_none)
+        && sig.declared_params.iter().all(|declared| !*declared)
 }
 
 fn emit_spread_callback_call_from_array_expr(
@@ -345,11 +379,7 @@ pub(crate) fn emit_loaded_array_callback_call(
                 continue;
             }
             let has_default = sig.defaults.get(i).and_then(|d| d.as_ref()).is_some();
-            let target_ty = if args::declared_target_ty(Some(&sig), i).is_some() || has_default {
-                sig.params.get(i).map(|(_, ty)| ty)
-            } else {
-                None
-            };
+            let target_ty = callback_arg_target_ty(sig, i, has_default, &elem_ty);
             if let Some(default_expr) = sig.defaults.get(i).and_then(|d| d.as_ref()) {
                 let load_label = ctx.next_label("cufa_ref_load_arg");
                 let done_label = ctx.next_label("cufa_ref_arg_done");
@@ -395,11 +425,7 @@ pub(crate) fn emit_loaded_array_callback_call(
             continue;
         }
         let has_default = sig.defaults.get(i).and_then(|d| d.as_ref()).is_some();
-        let target_ty = if args::declared_target_ty(Some(&sig), i).is_some() || has_default {
-            sig.params.get(i).map(|(_, ty)| ty)
-        } else {
-            None
-        };
+        let target_ty = callback_arg_target_ty(sig, i, has_default, &elem_ty);
         let pushed_ty = target_ty
             .map(PhpType::codegen_repr)
             .unwrap_or_else(|| elem_ty.codegen_repr());
@@ -697,6 +723,22 @@ pub(crate) fn emit_loaded_array_callback_call(
     ret_ty
 }
 
+fn callback_arg_target_ty<'a>(
+    sig: &'a FunctionSig,
+    index: usize,
+    has_default: bool,
+    source_elem_ty: &PhpType,
+) -> Option<&'a PhpType> {
+    if args::declared_target_ty(Some(sig), index).is_some()
+        || has_default
+        || matches!(source_elem_ty.codegen_repr(), PhpType::Mixed)
+    {
+        sig.params.get(index).map(|(_, ty)| ty)
+    } else {
+        None
+    }
+}
+
 fn emit_loaded_assoc_array_callback_call(
     array_source: LoadedArraySource,
     arr_ty: &PhpType,
@@ -736,11 +778,7 @@ fn emit_loaded_assoc_array_callback_call(
 
     for i in 0..regular_param_count {
         let has_default = sig.defaults.get(i).and_then(|d| d.as_ref()).is_some();
-        let target_ty = if args::declared_target_ty(Some(sig), i).is_some() || has_default {
-            sig.params.get(i).map(|(_, ty)| ty)
-        } else {
-            None
-        };
+        let target_ty = callback_arg_target_ty(sig, i, has_default, &elem_ty);
         let param_name = sig.params.get(i).map(|(name, _)| name.as_str());
         emitter.comment("lookup call_user_func_array() named argument");
         args::emit_hash_lookup_for_param_or_index(
@@ -1191,6 +1229,19 @@ pub(crate) fn emit_loaded_array_unknown_callback_call(
     ctx: &mut Context,
     data: &mut DataSection,
 ) -> PhpType {
+    if matches!(arr_ty, PhpType::AssocArray { .. }) {
+        return emit_loaded_assoc_array_unknown_callback_call(
+            array_source,
+            arr_ty,
+            call_reg,
+            captures,
+            concat_saved_before_args,
+            emitter,
+            ctx,
+            data,
+        );
+    }
+
     if captures.is_empty() {
         return emit_loaded_array_unknown_callback_call_dynamic(
             array_source,
@@ -1271,6 +1322,104 @@ pub(crate) fn emit_loaded_array_unknown_callback_call(
 
     emitter.label(&done_label);
     PhpType::Int
+}
+
+fn emit_loaded_assoc_array_unknown_callback_call(
+    array_source: LoadedArraySource,
+    arr_ty: &PhpType,
+    call_reg: &str,
+    captures: &[(String, PhpType, bool)],
+    concat_saved_before_args: bool,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> PhpType {
+    let done_label = ctx.next_label("cufa_unknown_assoc_done");
+    let cases = runtime_callable_cases(ctx, captures);
+    let pushed_array = matches!(array_source, LoadedArraySource::Result);
+    let array_source = match array_source {
+        LoadedArraySource::Result => {
+            abi::emit_push_reg(emitter, abi::int_result_reg(emitter));          // preserve the associative callback-argument hash for runtime signature dispatch
+            LoadedArraySource::TemporaryStackSlot(0)
+        }
+        LoadedArraySource::TemporaryStackSlot(offset) => LoadedArraySource::TemporaryStackSlot(offset),
+    };
+
+    for case in &cases {
+        let next_case = ctx.next_label("cufa_unknown_assoc_next");
+        emit_branch_if_callable_case_mismatch(call_reg, &case.label, &next_case, emitter);
+        let case_ret_ty = emit_loaded_assoc_array_callback_call(
+            array_source,
+            arr_ty,
+            call_reg,
+            &case.captures,
+            &case.sig,
+            concat_saved_before_args,
+            emitter,
+            ctx,
+            data,
+        );
+        crate::codegen::emit_box_current_value_as_mixed(emitter, &case_ret_ty.codegen_repr());
+        abi::emit_jump(emitter, &done_label);
+        emitter.label(&next_case);
+    }
+
+    emit_call_user_func_array_unknown_assoc_abort(emitter, data);
+    emitter.label(&done_label);
+    if pushed_array {
+        abi::emit_release_temporary_stack(emitter, 16);                         // discard the preserved associative callback-argument hash
+    }
+    PhpType::Mixed
+}
+
+fn runtime_callable_cases(
+    ctx: &Context,
+    captures: &[(String, PhpType, bool)],
+) -> Vec<RuntimeCallableCase> {
+    let mut cases = Vec::new();
+    for (name, sig) in &ctx.functions {
+        if ctx.extern_functions.contains_key(name) {
+            continue;
+        }
+        cases.push(RuntimeCallableCase {
+            label: function_symbol(name),
+            sig: sig.clone(),
+            captures: Vec::new(),
+        });
+    }
+    for deferred in &ctx.deferred_closures {
+        if deferred.hidden_params.as_slice() != captures {
+            continue;
+        }
+        cases.push(RuntimeCallableCase {
+            label: deferred.label.clone(),
+            sig: deferred.sig.clone(),
+            captures: captures.to_vec(),
+        });
+    }
+    cases.sort_by(|left, right| left.label.cmp(&right.label));
+    cases.dedup_by(|left, right| left.label == right.label);
+    cases
+}
+
+fn emit_branch_if_callable_case_mismatch(
+    call_reg: &str,
+    candidate_label: &str,
+    next_case: &str,
+    emitter: &mut Emitter,
+) {
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            abi::emit_symbol_address(emitter, "x9", candidate_label);
+            emitter.instruction(&format!("cmp {}, x9", call_reg));              // does the runtime callable pointer match this AOT signature case?
+            emitter.instruction(&format!("b.ne {}", next_case));                // try the next callable signature case when the pointer differs
+        }
+        Arch::X86_64 => {
+            abi::emit_symbol_address(emitter, "r10", candidate_label);
+            emitter.instruction(&format!("cmp {}, r10", call_reg));             // does the runtime callable pointer match this AOT signature case?
+            emitter.instruction(&format!("jne {}", next_case));                 // try the next callable signature case when the pointer differs
+        }
+    }
 }
 
 fn unknown_callback_register_arg_capacity(target: crate::codegen::platform::Target, elem_ty: &PhpType) -> usize {
@@ -1995,6 +2144,30 @@ fn emit_call_user_func_array_missing_arg_abort(emitter: &mut Emitter, data: &mut
             emitter.instruction(&format!("mov edx, {}", message_len));          // pass the diagnostic byte length to write()
             emitter.instruction("mov eax, 1");                                  // Linux x86_64 syscall 1 = write
             emitter.instruction("syscall");                                     // emit the fatal callback argument diagnostic
+            abi::emit_exit(emitter, 1);
+        }
+    }
+}
+
+fn emit_call_user_func_array_unknown_assoc_abort(emitter: &mut Emitter, data: &mut DataSection) {
+    let (message_label, message_len) = data.add_string(
+        b"Fatal error: call_user_func_array() could not resolve named callback arguments for this callable\n",
+    );
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction("mov x0, #2");                                  // write the callback metadata diagnostic to stderr
+            emitter.adrp("x1", &message_label);
+            emitter.add_lo12("x1", "x1", &message_label);
+            emitter.instruction(&format!("mov x2, #{}", message_len));          // pass the callback metadata diagnostic byte length to write()
+            emitter.syscall(4);
+            abi::emit_exit(emitter, 1);
+        }
+        Arch::X86_64 => {
+            emitter.instruction("mov edi, 2");                                  // write the callback metadata diagnostic to stderr
+            abi::emit_symbol_address(emitter, "rsi", &message_label);
+            emitter.instruction(&format!("mov edx, {}", message_len));          // pass the callback metadata diagnostic byte length to write()
+            emitter.instruction("mov eax, 1");                                  // Linux x86_64 syscall 1 = write
+            emitter.instruction("syscall");                                     // emit the fatal callback metadata diagnostic
             abi::emit_exit(emitter, 1);
         }
     }

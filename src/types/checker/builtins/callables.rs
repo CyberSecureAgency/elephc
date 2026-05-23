@@ -487,10 +487,7 @@ pub(super) fn check_builtin(
                 return Ok(Some(PhpType::Int));
             }
             if callback_ty == PhpType::Callable && matches!(arg_array_ty, PhpType::AssocArray { .. }) {
-                return Err(CompileError::new(
-                    args[1].span,
-                    "call_user_func_array() associative argument arrays require callable parameter metadata",
-                ));
+                return Ok(Some(PhpType::Mixed));
             }
             Err(CompileError::new(
                 args[0].span,

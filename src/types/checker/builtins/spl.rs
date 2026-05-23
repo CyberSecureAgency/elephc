@@ -462,12 +462,6 @@ fn check_iterator_apply_dynamic_callback(
 
     let callback_ty = checker.infer_type(callback, env)?;
     if callback_ty == PhpType::Callable {
-        if associative_args {
-            return Err(CompileError::new(
-                span,
-                "iterator_apply() associative args require callable parameter metadata",
-            ));
-        }
         return Ok(());
     }
 

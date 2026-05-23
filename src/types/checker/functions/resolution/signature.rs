@@ -225,12 +225,20 @@ fn inferred_specific_array_type_from_infos(
 
 fn matching_callable_sig(return_sigs: &[FunctionSig]) -> Option<FunctionSig> {
     let first = return_sigs.first()?.clone();
-    if !first.declared_params.iter().all(|declared| *declared) {
-        return None;
-    }
     if return_sigs.iter().all(|sig| sig == &first) {
-        Some(first)
+        Some(callable_return_codegen_sig(first))
     } else {
         None
     }
+}
+
+fn callable_return_codegen_sig(mut sig: FunctionSig) -> FunctionSig {
+    for (idx, (_, ty)) in sig.params.iter_mut().enumerate() {
+        if !sig.declared_params.get(idx).copied().unwrap_or(false)
+            && matches!(ty, PhpType::Mixed)
+        {
+            *ty = PhpType::Int;
+        }
+    }
+    sig
 }
