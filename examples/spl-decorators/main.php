@@ -1,6 +1,6 @@
 <?php
 echo "iterator iterator:\n";
-$wrapped = new IteratorIterator(new ArrayIterator(["one" => 1, "two" => 2]));
+$wrapped = new IteratorIterator(new ArrayObject(["one" => 1, "two" => 2]));
 foreach ($wrapped as $key => $value) {
     echo $key;
     echo "=";

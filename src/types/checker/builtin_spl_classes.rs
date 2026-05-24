@@ -264,6 +264,13 @@ pub(crate) fn patch_builtin_spl_storage_signatures(checker: &mut Checker) {
             }
         }
     }
+    if let Some(class_info) = checker.classes.get_mut("IteratorIterator") {
+        if let Some(sig) = class_info.methods.get_mut("__construct") {
+            if let Some((_, ty)) = sig.params.first_mut() {
+                *ty = PhpType::Object("Traversable".to_string());
+            }
+        }
+    }
 }
 
 const SPL_CLASS_NAMES: &[&str] = &[

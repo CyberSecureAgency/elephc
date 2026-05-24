@@ -1,6 +1,6 @@
 //! Purpose:
 //! End-to-end tests for SPL iterator decorator classes.
-//! Covers forwarding, limited windows, no-rewind behavior, and infinite cycling.
+//! Covers forwarding, IteratorAggregate normalization, limited windows, no-rewind behavior, and infinite cycling.
 //!
 //! Called from:
 //! - `cargo test --test codegen_tests` through the SPL test module.
@@ -56,6 +56,28 @@ foreach ($wrap as $k => $v) {
 "#,
     );
     assert_eq!(out, "10:a=10;b=20;");
+}
+
+#[test]
+fn test_iterator_iterator_normalizes_iterator_aggregate_inputs() {
+    let out = compile_and_run(
+        r#"<?php
+function dump_wrapped(Traversable $items): void {
+    $wrap = new IteratorIterator($items);
+    foreach ($wrap as $k => $v) {
+        echo $k;
+        echo "=";
+        echo $v;
+        echo ";";
+    }
+    echo "|";
+}
+
+dump_wrapped(new ArrayObject(["left" => "L", "right" => "R"]));
+dump_wrapped(new ArrayIterator(["direct" => "I"]));
+"#,
+    );
+    assert_eq!(out, "left=L;right=R;|direct=I;|");
 }
 
 #[test]

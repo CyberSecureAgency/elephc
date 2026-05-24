@@ -9,7 +9,7 @@
 //! - Object handles, property storage, and class ids must stay consistent with emitted class tables.
 
 use crate::codegen::{abi, runtime_value_tag};
-use crate::codegen::context::Context;
+use crate::codegen::context::{Context, HeapOwnership};
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
 use crate::codegen::expr::calls::args as call_args;
@@ -20,9 +20,11 @@ use crate::parser::ast::{Expr, ExprKind, TypeExpr};
 use crate::types::PhpType;
 
 use super::super::{
-    coerce_result_to_type, emit_expr, restore_concat_offset_after_nested_call,
+    coerce_result_to_type, emit_expr, expr_result_heap_ownership,
+    restore_concat_offset_after_nested_call,
     save_concat_offset_before_nested_call,
 };
+use super::dispatch::emit_dispatch_interface_method;
 
 const X86_64_HEAP_MAGIC_HI32: u64 = 0x454C5048;
 const NULL_SENTINEL: i64 = 0x7fff_ffff_ffff_fffe;
@@ -45,6 +47,9 @@ pub(super) fn emit_new_object(
     }
     if matches!(class_name, "ArrayIterator" | "ArrayObject") {
         return emit_new_spl_array_storage_object(class_name, args, emitter, ctx, data);
+    }
+    if class_name == "IteratorIterator" {
+        return emit_new_iterator_iterator(args, emitter, ctx, data);
     }
     if super::reflection::is_reflection_owner_class(class_name) {
         return super::reflection::emit_new_reflection_owner(
@@ -460,6 +465,124 @@ fn emit_new_spl_array_storage_object(
     abi::emit_release_temporary_stack(emitter, 32);                             // discard preserved flags and source array after storage initialization
     abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // restore the initialized SPL storage object as the expression result
     PhpType::Object(class_name.to_string())
+}
+
+fn emit_new_iterator_iterator(
+    args: &[Expr],
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> PhpType {
+    emitter.comment("new IteratorIterator() — Traversable normalization");
+    let Some(class_info) = ctx.classes.get("IteratorIterator").cloned() else {
+        emitter.comment("WARNING: missing IteratorIterator metadata");
+        return PhpType::Object("IteratorIterator".to_string());
+    };
+    let inner_offset = class_info.property_offsets.get("inner").copied().unwrap_or(8);
+
+    emit_new_object_core("IteratorIterator", &[], false, emitter, ctx, data);
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the allocated IteratorIterator while normalizing the constructor source
+
+    if let Some(iterator_expr) = args.first() {
+        let source_ty = emit_expr(iterator_expr, emitter, ctx, data);
+        emit_normalize_loaded_traversable_to_iterator(iterator_expr, &source_ty, emitter, ctx);
+    } else {
+        emitter.comment("WARNING: IteratorIterator constructor missing Traversable source");
+        abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), 0);
+    }
+
+    store_iterator_inner_property_from_result(emitter, inner_offset);
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // restore the initialized IteratorIterator as the expression result
+    PhpType::Object("IteratorIterator".to_string())
+}
+
+fn emit_normalize_loaded_traversable_to_iterator(
+    source_expr: &Expr,
+    source_ty: &PhpType,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+) {
+    let iterator_id = ctx
+        .interfaces
+        .get("Iterator")
+        .expect("codegen bug: missing builtin Iterator interface")
+        .interface_id;
+    let aggregate_id = ctx
+        .interfaces
+        .get("IteratorAggregate")
+        .expect("codegen bug: missing builtin IteratorAggregate interface")
+        .interface_id;
+    let direct_case = ctx.next_label("iterator_iterator_source_iterator");
+    let aggregate_case = ctx.next_label("iterator_iterator_source_aggregate");
+    let done = ctx.next_label("iterator_iterator_source_done");
+    let source_is_borrowed = expr_result_heap_ownership(source_expr) != HeapOwnership::Owned;
+
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the Traversable candidate while probing its runtime interface shape
+    emit_branch_if_saved_traversable_implements(iterator_id, &direct_case, emitter);
+    emit_branch_if_saved_traversable_implements(aggregate_id, &aggregate_case, emitter);
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // discard the unsupported Traversable candidate before reporting a fatal diagnostic
+    abi::emit_call_label(emitter, "__rt_iterable_unsupported_kind");            // invalid Traversable metadata aborts defensively
+
+    emitter.label(&direct_case);
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // restore the direct Iterator object pointer
+    if source_is_borrowed {
+        abi::emit_incref_if_refcounted(emitter, &source_ty.codegen_repr());
+    }
+    abi::emit_jump(emitter, &done);                                             // direct Iterator inputs are already normalized
+
+    emitter.label(&aggregate_case);
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // restore the IteratorAggregate object pointer before getIterator()
+    move_loaded_result_to_receiver_arg(emitter);
+    emit_dispatch_interface_method("IteratorAggregate", "getiterator", emitter, ctx);
+
+    emitter.label(&done);
+}
+
+fn emit_branch_if_saved_traversable_implements(
+    interface_id: u64,
+    target_label: &str,
+    emitter: &mut Emitter,
+) {
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction("ldr x0, [sp]");                                // load the saved Traversable candidate as matcher argument 1
+            abi::emit_load_int_immediate(emitter, "x1", interface_id as i64);
+            abi::emit_load_int_immediate(emitter, "x2", 1);
+            abi::emit_call_label(emitter, "__rt_exception_matches");            // test whether the candidate implements the requested Traversable interface
+            emitter.instruction("cmp x0, #0");                                  // did the runtime interface matcher succeed?
+            emitter.instruction(&format!("b.ne {}", target_label));             // branch to the matching normalization path
+        }
+        Arch::X86_64 => {
+            emitter.instruction("mov rdi, QWORD PTR [rsp]");                    // load the saved Traversable candidate as matcher argument 1
+            abi::emit_load_int_immediate(emitter, "rsi", interface_id as i64);
+            abi::emit_load_int_immediate(emitter, "rdx", 1);
+            abi::emit_call_label(emitter, "__rt_exception_matches");            // test whether the candidate implements the requested Traversable interface
+            emitter.instruction("test rax, rax");                               // did the runtime interface matcher succeed?
+            emitter.instruction(&format!("jne {}", target_label));              // branch to the matching normalization path
+        }
+    }
+}
+
+fn move_loaded_result_to_receiver_arg(emitter: &mut Emitter) {
+    if emitter.target.arch == Arch::X86_64 {
+        emitter.instruction("mov rdi, rax");                                    // move the object result into the SysV receiver argument register
+    }
+}
+
+fn store_iterator_inner_property_from_result(emitter: &mut Emitter, inner_offset: usize) {
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction("ldr x9, [sp]");                                // reload the IteratorIterator object pointer
+            emitter.instruction(&format!("str x0, [x9, #{}]", inner_offset));   // store the normalized inner Iterator object
+            emitter.instruction("mov x10, #6");                                 // runtime property tag 6 = object
+            emitter.instruction(&format!("str x10, [x9, #{}]", inner_offset + 8)); // stamp the inner property as an object
+        }
+        Arch::X86_64 => {
+            emitter.instruction("mov r11, QWORD PTR [rsp]");                    // reload the IteratorIterator object pointer
+            emitter.instruction(&format!("mov QWORD PTR [r11 + {}], rax", inner_offset)); // store the normalized inner Iterator object
+            emitter.instruction(&format!("mov QWORD PTR [r11 + {}], 6", inner_offset + 8)); // stamp the inner property as an object
+        }
+    }
 }
 
 fn emit_empty_mixed_array(emitter: &mut Emitter) {

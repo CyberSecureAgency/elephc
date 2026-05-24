@@ -200,7 +200,7 @@ Supported methods:
 | `EmptyIterator` | `current()`, `key()`, `next()`, `rewind()`, `valid()` |
 | `ArrayIterator` | `__construct(array $array = [], int $flags = 0)`, `current()`, `key()`, `next()`, `rewind()`, `valid()`, `seek(int $offset): void`, `count(): int`, `offsetExists()`, `offsetGet()`, `offsetSet()`, `offsetUnset()`, `append()`, `getArrayCopy()` |
 | `ArrayObject` | `__construct(array $array = [], int $flags = 0)`, `getIterator(): ArrayIterator`, `count(): int`, `offsetExists()`, `offsetGet()`, `offsetSet()`, `offsetUnset()`, `append()`, `getArrayCopy()` |
-| `IteratorIterator` | `__construct(Iterator $iterator)`, `current()`, `key()`, `next()`, `rewind()`, `valid()`, `getInnerIterator(): ?Iterator` |
+| `IteratorIterator` | `__construct(Traversable $iterator)`, `current()`, `key()`, `next()`, `rewind()`, `valid()`, `getInnerIterator(): ?Iterator` |
 | `LimitIterator` | `__construct(Iterator $iterator, int $offset = 0, int $limit = -1)`, `rewind()`, `next()`, `valid()`, `seek(int $offset): void`, `getPosition(): int`, plus inherited forwarding methods |
 | `NoRewindIterator` | `__construct(Iterator $iterator)`, `rewind()` no-op, plus inherited forwarding methods |
 | `InfiniteIterator` | `__construct(Iterator $iterator)`, `next()` cycles to the start when the inner iterator is exhausted, plus inherited forwarding methods |
@@ -223,6 +223,12 @@ foreach ($obj as $key => $value) {
     echo $value;
 }
 
+$wrapped = new IteratorIterator($obj);
+foreach ($wrapped as $key => $value) {
+    echo $key;
+    echo $value;
+}
+
 $limited = new LimitIterator(
     new InfiniteIterator(new ArrayIterator([1, 2])),
     0,
@@ -235,9 +241,10 @@ foreach ($limited as $value) {
 
 `ArrayIterator` and `ArrayObject` preserve insertion-order keys for array
 inputs and for writes through `ArrayAccess`. Appends use the current storage
-length as the next integer key. The simple decorators currently wrap concrete
-`Iterator` objects; generic `IteratorAggregate` constructor inputs are not
-expanded to their inner iterator yet.
+length as the next integer key. `IteratorIterator` accepts any `Traversable`;
+when passed an `IteratorAggregate`, it calls `getIterator()` once and wraps the
+returned iterator. `LimitIterator`, `NoRewindIterator`, and `InfiniteIterator`
+follow PHP's constructors and require an `Iterator` directly.
 
 ## Autoload and Introspection
 
@@ -304,9 +311,8 @@ source argument array.
 
 ## Compatibility Gaps
 
-`IteratorIterator`, `LimitIterator`, `NoRewindIterator`, and `InfiniteIterator`
-currently accept `Iterator` constructor inputs rather than every `Traversable`
-shape. `SplFixedArray::getIterator()` is still deferred until the fixed-array
+`IteratorIterator` does not model PHP's optional `$class` constructor argument
+yet. `SplFixedArray::getIterator()` is still deferred until the fixed-array
 runtime is wired to return an `ArrayIterator`. The Phase 4 containers otherwise
 keep their runtime-backed method surface aligned with PHP's empty-container,
 invalid-offset, serialization, and fixed-array key behaviors.
