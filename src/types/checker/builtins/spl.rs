@@ -15,8 +15,23 @@ use crate::types::{PhpType, TypeEnv};
 
 use super::super::Checker;
 
+/// Result type for SPL builtin type-checking: `Ok(None)` means the builtin is not
+/// handled by this module (caller should try the next handler), `Ok(Some(t))` means
+/// the builtin was handled and returns type `t`, and `Err(e)` is a type-error.
 type BuiltinResult = Result<Option<PhpType>, CompileError>;
 
+/// Type-checks a call to an SPL autoload or object-helper builtin.
+///
+/// Returns `Ok(None)` for unknown SPL builtins (caller falls through); `Ok(Some(t))`
+/// for handled builtins with inferred return type `t`; `Err` if argument count, types,
+/// or literal constraints are violated.
+///
+/// # Arguments
+/// * `checker` – mutable checker state used to infer argument types
+/// * `name` – lowercase SPL builtin name (e.g. `"spl_autoload_register"`);
+/// * `args` – call arguments to validate
+/// * `span` – source location for error reporting
+/// * `env` – current type environment
 pub(super) fn check_builtin(
     checker: &mut Checker,
     name: &str,

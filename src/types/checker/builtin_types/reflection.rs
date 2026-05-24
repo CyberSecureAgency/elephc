@@ -22,6 +22,9 @@ use crate::types::PhpType;
 
 use super::super::Checker;
 
+/// Injects the four built-in reflection types into `class_map` after verifying
+/// none are already declared. Each type is a dummy shell; runtime population
+/// happens in codegen. Returns an error if any reflection name is already in use.
 pub(crate) fn inject_builtin_reflection(
     interface_map: &HashMap<String, super::InterfaceDeclInfo>,
     class_map: &mut HashMap<String, FlattenedClass>,
@@ -102,6 +105,8 @@ pub(crate) fn inject_builtin_reflection(
     Ok(())
 }
 
+/// Builds a `ClassProperty` for a built-in reflection type with the given name,
+/// visibility, optional type expression, and optional default value.
 fn builtin_property(
     name: &str,
     visibility: Visibility,
@@ -124,6 +129,7 @@ fn builtin_property(
     }
 }
 
+/// Returns a `StringLiteral` expression with an empty string value.
 fn empty_string() -> Option<Expr> {
     Some(Expr::new(
         ExprKind::StringLiteral(String::new()),
@@ -131,6 +137,7 @@ fn empty_string() -> Option<Expr> {
     ))
 }
 
+/// Returns an `ArrayLiteral` expression with no elements.
 fn empty_array() -> Option<Expr> {
     Some(Expr::new(
         ExprKind::ArrayLiteral(Vec::new()),
@@ -138,6 +145,7 @@ fn empty_array() -> Option<Expr> {
     ))
 }
 
+/// Returns an `IntLiteral` expression with the given value.
 fn int_lit(value: i64) -> Option<Expr> {
     Some(Expr::new(
         ExprKind::IntLiteral(value),
@@ -145,14 +153,17 @@ fn int_lit(value: i64) -> Option<Expr> {
     ))
 }
 
+/// Returns a `TypeExpr` for the unqualified name `array`.
 fn array_type() -> TypeExpr {
     TypeExpr::Named(crate::names::Name::unqualified("array"))
 }
 
+/// Returns a `TypeExpr` for the unqualified name `mixed`.
 fn mixed_type() -> TypeExpr {
     TypeExpr::Named(crate::names::Name::unqualified("mixed"))
 }
 
+/// Returns a private parameterless `__construct` method for `ReflectionAttribute`.
 fn builtin_reflection_attribute_constructor_method() -> ClassMethod {
     let dummy_span = crate::span::Span::dummy();
     ClassMethod {
@@ -171,6 +182,8 @@ fn builtin_reflection_attribute_constructor_method() -> ClassMethod {
     }
 }
 
+/// Returns a public `getName()` method that returns the private `__name` property
+/// as a `Str`.
 fn builtin_reflection_attribute_get_name_method() -> ClassMethod {
     let dummy_span = crate::span::Span::dummy();
     ClassMethod {
@@ -198,6 +211,8 @@ fn builtin_reflection_attribute_get_name_method() -> ClassMethod {
     }
 }
 
+/// Returns a public `getArguments()` method that returns the private `__args`
+/// property as an `array`.
 fn builtin_reflection_attribute_get_arguments_method() -> ClassMethod {
     let dummy_span = crate::span::Span::dummy();
     ClassMethod {
@@ -225,6 +240,8 @@ fn builtin_reflection_attribute_get_arguments_method() -> ClassMethod {
     }
 }
 
+/// Returns a public `newInstance()` method that returns `null` (placeholder until
+/// codegen supplies the real implementation).
 fn builtin_reflection_attribute_new_instance_method() -> ClassMethod {
     let dummy_span = crate::span::Span::dummy();
     ClassMethod {
@@ -246,6 +263,10 @@ fn builtin_reflection_attribute_new_instance_method() -> ClassMethod {
     }
 }
 
+/// Builds a `FlattenedClass` for `ReflectionClass`, `ReflectionMethod`, or
+/// `ReflectionProperty` with a private `__attrs` array property and two methods:
+/// `__construct` (public, accepting the supplied params) and `getAttributes`
+/// (public, returning the `__attrs` array).
 fn builtin_reflection_owner_class(
     name: &str,
     constructor_params: Vec<(&str, Option<TypeExpr>, Option<Expr>, bool)>,
@@ -272,6 +293,8 @@ fn builtin_reflection_owner_class(
     }
 }
 
+/// Builds a public `__construct` method for a reflection owner class using the
+/// provided parameter list: each tuple is (name, type_expr, default, by_ref).
 fn builtin_reflection_owner_constructor_method(
     params: Vec<(&str, Option<TypeExpr>, Option<Expr>, bool)>,
 ) -> ClassMethod {
@@ -295,6 +318,8 @@ fn builtin_reflection_owner_constructor_method(
     }
 }
 
+/// Returns a public `getAttributes()` method that returns the private `__attrs`
+/// property as an `array` of `ReflectionAttribute` objects.
 fn builtin_reflection_owner_get_attributes_method() -> ClassMethod {
     let dummy_span = crate::span::Span::dummy();
     ClassMethod {
@@ -322,6 +347,12 @@ fn builtin_reflection_owner_get_attributes_method() -> ClassMethod {
     }
 }
 
+/// Overrides the return types on the synthesized reflection class methods inside
+/// `checker` to match PHP's actual signatures:
+/// - `__construct` → `void`
+/// - `getName` / `getArguments` → `string` / `array`
+/// - `newInstance` → `mixed`
+/// - `getAttributes` → `array<ReflectionAttribute>`
 pub(crate) fn patch_builtin_reflection_signatures(checker: &mut Checker) {
     if let Some(class_info) = checker.classes.get_mut("ReflectionAttribute") {
         if let Some(sig) = class_info.methods.get_mut("__construct") {

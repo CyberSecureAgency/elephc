@@ -20,6 +20,9 @@ use crate::types::traits::FlattenedClass;
 
 use super::builtin_types::InterfaceDeclInfo;
 
+/// Injects SplDoublyLinkedList, SplStack, SplQueue, and SplFixedArray into the
+/// checker's class_map with full method signatures and interface contracts.
+/// Fails if any SPL class name is already registered in interface_map or class_map.
 pub(crate) fn inject_builtin_spl_classes(
     interface_map: &mut HashMap<String, InterfaceDeclInfo>,
     class_map: &mut HashMap<String, FlattenedClass>,
@@ -125,6 +128,8 @@ const PHASE4_SPL_CLASS_NAMES: &[&str] = &[
     "SplFixedArray",
 ];
 
+/// Returns the method definitions for SplDoublyLinkedList, including Iterator,
+/// Countable, ArrayAccess, and Serializable/JSONSerializable interface methods.
 fn spl_doubly_linked_list_methods() -> Vec<ClassMethod> {
     vec![
         method(
@@ -203,6 +208,8 @@ fn spl_doubly_linked_list_methods() -> Vec<ClassMethod> {
     ]
 }
 
+/// Returns the method definitions for SplFixedArray, including ArrayAccess,
+/// Countable, JsonSerializable, and factory-method fromArray.
 fn spl_fixed_array_methods() -> Vec<ClassMethod> {
     vec![
         method(
@@ -259,6 +266,7 @@ fn spl_fixed_array_methods() -> Vec<ClassMethod> {
     ]
 }
 
+/// Returns the constant definitions for SplDoublyLinkedList (IT_MODE_* values).
 fn spl_doubly_linked_list_constants() -> Vec<ClassConst> {
     vec![
         class_const("IT_MODE_LIFO", 2),
@@ -268,6 +276,8 @@ fn spl_doubly_linked_list_constants() -> Vec<ClassConst> {
     ]
 }
 
+/// Builds a non-static ClassMethod from name, params, and return type.
+/// Params is a tuple of (name, type, default_expr, is_variadic).
 fn method(
     name: &str,
     params: Vec<(String, Option<TypeExpr>, Option<Expr>, bool)>,
@@ -276,6 +286,7 @@ fn method(
     class_method(name, false, params, return_type)
 }
 
+/// Builds a non-static ClassMethod with an explicit body of statements.
 fn method_with_body(
     name: &str,
     params: Vec<(String, Option<TypeExpr>, Option<Expr>, bool)>,
@@ -285,6 +296,8 @@ fn method_with_body(
     class_method_with_body(name, false, params, return_type, body)
 }
 
+/// Builds a ClassMethod (static or non-static) with a dummy body that returns
+/// a zero-valued expression for the given return type.
 fn class_method(
     name: &str,
     is_static: bool,
@@ -300,6 +313,7 @@ fn class_method(
     )
 }
 
+/// Builds a ClassMethod (static or non-static) with an explicit body of statements.
 fn class_method_with_body(
     name: &str,
     is_static: bool,
@@ -323,6 +337,8 @@ fn class_method_with_body(
     }
 }
 
+/// Generates a dummy method body that returns a zero/empty value appropriate
+/// for the return type: nothing for void, 0/false/" "/[] for scalar types, null otherwise.
 fn dummy_body_for(return_type: Option<&TypeExpr>) -> Vec<Stmt> {
     match return_type {
         Some(TypeExpr::Void) | None => Vec::new(),
@@ -339,18 +355,22 @@ fn dummy_body_for(return_type: Option<&TypeExpr>) -> Vec<Stmt> {
     }
 }
 
+/// Wraps a value expression in a Return statement.
 fn return_body(value: Expr) -> Vec<Stmt> {
     vec![return_stmt(value)]
 }
 
+/// Builds a Return statement wrapping the given expression.
 fn return_stmt(value: Expr) -> Stmt {
     Stmt::new(StmtKind::Return(Some(value)), crate::span::Span::dummy())
 }
 
+/// Builds a parameter tuple with no default: (name, Some(type), None, false).
 fn param(name: &str, ty: TypeExpr) -> (String, Option<TypeExpr>, Option<Expr>, bool) {
     (name.to_string(), Some(ty), None, false)
 }
 
+/// Builds a parameter tuple with a default expression: (name, Some(type), Some(default), false).
 fn param_default(
     name: &str,
     ty: TypeExpr,
@@ -359,6 +379,7 @@ fn param_default(
     (name.to_string(), Some(ty), Some(default), false)
 }
 
+/// Builds a public ClassConst with an integer value derived from int_expr(value).
 fn class_const(name: &str, value: i64) -> ClassConst {
     ClassConst {
         name: name.to_string(),
@@ -370,42 +391,52 @@ fn class_const(name: &str, value: i64) -> ClassConst {
     }
 }
 
+/// Constructs a literal integer expression with the given i64 value.
 fn int_expr(value: i64) -> Expr {
     Expr::new(ExprKind::IntLiteral(value), crate::span::Span::dummy())
 }
 
+/// Constructs a literal boolean expression from a bool value.
 fn bool_expr(value: bool) -> Expr {
     Expr::new(ExprKind::BoolLiteral(value), crate::span::Span::dummy())
 }
 
+/// Returns a TypeExpr for the built-in `mixed` type.
 fn mixed_type() -> TypeExpr {
     named_type("mixed")
 }
 
+/// Returns a TypeExpr for the built-in `array` type.
 fn array_type() -> TypeExpr {
     named_type("array")
 }
 
+/// Returns a TypeExpr for an unqualified (global) type name.
 fn named_type(name: &str) -> TypeExpr {
     TypeExpr::Named(Name::unqualified(name))
 }
 
+/// Wraps ExprKind in an Expr with a dummy span.
 fn expr(kind: ExprKind) -> Expr {
     Expr::new(kind, crate::span::Span::dummy())
 }
 
+/// Constructs a string literal expression with the given static string value.
 fn string_expr(value: &str) -> Expr {
     expr(ExprKind::StringLiteral(value.to_string()))
 }
 
+/// Constructs a variable reference expression for the given variable name.
 fn var_expr(name: &str) -> Expr {
     expr(ExprKind::Variable(name.to_string()))
 }
 
+/// Constructs a `$this` expression.
 fn this_expr() -> Expr {
     expr(ExprKind::This)
 }
 
+/// Constructs a binary operation expression from left, operator, and right.
 fn binary_expr(left: Expr, op: BinOp, right: Expr) -> Expr {
     expr(ExprKind::BinaryOp {
         left: Box::new(left),
@@ -414,10 +445,12 @@ fn binary_expr(left: Expr, op: BinOp, right: Expr) -> Expr {
     })
 }
 
+/// Constructs a logical NOT expression wrapping the given value.
 fn not_expr(value: Expr) -> Expr {
     expr(ExprKind::Not(Box::new(value)))
 }
 
+/// Constructs a method-call expression on a given object with positional args.
 fn method_call(object: Expr, method: &str, args: Vec<Expr>) -> Expr {
     expr(ExprKind::MethodCall {
         object: Box::new(object),
@@ -426,6 +459,7 @@ fn method_call(object: Expr, method: &str, args: Vec<Expr>) -> Expr {
     })
 }
 
+/// Constructs an array-access expression (array[index]).
 fn array_access(array: Expr, index: Expr) -> Expr {
     expr(ExprKind::ArrayAccess {
         array: Box::new(array),
@@ -433,6 +467,7 @@ fn array_access(array: Expr, index: Expr) -> Expr {
     })
 }
 
+/// Constructs a simple assignment statement (name = value).
 fn assign_stmt(name: &str, value: Expr) -> Stmt {
     Stmt::new(
         StmtKind::Assign {
@@ -443,10 +478,12 @@ fn assign_stmt(name: &str, value: Expr) -> Stmt {
     )
 }
 
+/// Constructs a bare expression statement from the given expression.
 fn expr_stmt(value: Expr) -> Stmt {
     Stmt::new(StmtKind::ExprStmt(value), crate::span::Span::dummy())
 }
 
+/// Constructs an array_push statement (array[] = value) for the named array.
 fn array_push_stmt(array: &str, value: Expr) -> Stmt {
     Stmt::new(
         StmtKind::ArrayPush {
@@ -457,6 +494,7 @@ fn array_push_stmt(array: &str, value: Expr) -> Stmt {
     )
 }
 
+/// Constructs a while loop statement with the given condition and body statements.
 fn while_stmt(condition: Expr, body: Vec<Stmt>) -> Stmt {
     Stmt::new(
         StmtKind::While { condition, body },
@@ -464,6 +502,8 @@ fn while_stmt(condition: Expr, body: Vec<Stmt>) -> Stmt {
     )
 }
 
+/// Constructs a foreach statement over an array, optionally binding the key to key_var.
+/// value_by_ref controls whether the value is captured by reference.
 fn foreach_stmt(array: Expr, key_var: Option<&str>, value_var: &str, body: Vec<Stmt>) -> Stmt {
     Stmt::new(
         StmtKind::Foreach {
@@ -477,10 +517,14 @@ fn foreach_stmt(array: Expr, key_var: Option<&str>, value_var: &str, body: Vec<S
     )
 }
 
+/// Constructs an assignment statement that increments the named variable by 1.
 fn increment_stmt(name: &str) -> Stmt {
     assign_stmt(name, binary_expr(var_expr(name), BinOp::Add, int_expr(1)))
 }
 
+/// Builds the shared prelude for serializing a DLL: initializes `$items = []`,
+/// `$i = 0`, `$limit = $this->count()`, then appends `$items[] = $this->offsetGet($i++)`
+/// in a while loop until `$i < $limit`. Used by both serialize and debugInfo bodies.
 fn dll_items_snapshot_prelude() -> Vec<Stmt> {
     vec![
         assign_stmt("items", expr(ExprKind::ArrayLiteral(Vec::new()))),
@@ -496,6 +540,8 @@ fn dll_items_snapshot_prelude() -> Vec<Stmt> {
     ]
 }
 
+/// Builds the body for SplDoublyLinkedList::__serialize: captures iterator mode
+/// and a snapshot of all items as an array [mode, items, []].
 fn dll_serialize_array_body() -> Vec<Stmt> {
     let mut body = dll_items_snapshot_prelude();
     body.push(return_stmt(expr(ExprKind::ArrayLiteral(vec![
@@ -506,6 +552,9 @@ fn dll_serialize_array_body() -> Vec<Stmt> {
     body
 }
 
+/// Builds the body for SplDoublyLinkedList::__debugInfo: saves iterator mode,
+/// switches to mode 0 (fifo, keep), snapshots items, restores original mode,
+/// returns associative array [\0SplDoublyLinkedList\0flags => mode, \0SplDoublyLinkedList\0dllist => items].
 fn dll_debug_info_body() -> Vec<Stmt> {
     let mut body = vec![
         assign_stmt("mode", method_call(this_expr(), "getIteratorMode", Vec::new())),
@@ -530,6 +579,9 @@ fn dll_debug_info_body() -> Vec<Stmt> {
     body
 }
 
+/// Builds the body for SplDoublyLinkedList::__unserialize: sets iterator mode
+/// from data[0], clears the list via pop in a while-not-empty loop, then pushes
+/// all items from data[1] in order.
 fn dll_unserialize_body() -> Vec<Stmt> {
     vec![
         expr_stmt(method_call(

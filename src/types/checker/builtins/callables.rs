@@ -19,6 +19,11 @@ mod preg_replace_callback;
 
 type BuiltinResult = Result<Option<PhpType>, CompileError>;
 
+/// Validates that `call_user_func_array()` receives a literal array argument when the
+/// target callback has pass-by-reference parameters.
+///
+/// Returns `Ok(())` if no ref params exist or if the array is a literal.
+/// Returns an error if ref params exist but the array is not a literal.
 fn validate_call_user_func_array_ref_args(
     sig: &crate::types::FunctionSig,
     arg_array: &Expr,
@@ -36,6 +41,10 @@ fn validate_call_user_func_array_ref_args(
     ))
 }
 
+/// Produces a dummy expression of the appropriate scalar type for an array's element.
+///
+/// Selects `Str`, `Float`, `Bool`, or `Int` based on the element type of `arr_ty`.
+/// Used to fabricate placeholder call arguments when type-checking array-callback builtins.
 fn dummy_arg_for_array_scalar_elem(arr_ty: &PhpType, span: crate::span::Span) -> Expr {
     let elem_ty = match arr_ty {
         PhpType::Array(elem_ty) => elem_ty.as_ref(),
@@ -50,6 +59,14 @@ fn dummy_arg_for_array_scalar_elem(arr_ty: &PhpType, span: crate::span::Span) ->
     }
 }
 
+/// Type-checks a callback expression passed to an array-callback builtin (e.g., `array_map()`).
+///
+/// Resolves the callback to its signature, checks arity, validates parameter types,
+/// and returns the inferred return type. Handles `FirstClassCallable`, `Variable`,
+/// `StringLiteral`, and `resolve_expr_callable_sig` callback forms.
+///
+/// Returns the callback's return type on success, or an error if the callback
+/// does not have a statically known callable signature.
 fn check_callback_builtin_call(
     checker: &mut Checker,
     callback: &Expr,
@@ -131,6 +148,11 @@ fn check_callback_builtin_call(
     ))
 }
 
+/// Type-checks a callable-family builtin call.
+///
+/// Validates arity, argument types, warning-producing cases, and inferred return types.
+/// Returns `Ok(Some(PhpType))` for handled builtins, `Ok(None)` for unknown names,
+/// or a `CompileError` for type/arity violations.
 pub(super) fn check_builtin(
     checker: &mut Checker,
     name: &str,
