@@ -47,13 +47,26 @@ pub(crate) fn materialize_callback_address(
         }
         ExprKind::Variable(name) => {
             let var = ctx.variables.get(name).expect("undefined callback variable");
-            abi::load_at_offset(emitter, call_reg, var.stack_offset);           // load the callback address from the callable variable slot
+            abi::load_at_offset(emitter, call_reg, var.stack_offset);           // load the callback descriptor from the callable variable slot
+            if ctx.ref_params.contains(name) {
+                abi::emit_load_from_address(emitter, call_reg, call_reg, 0);
+            }
+            crate::codegen::callable_descriptor::emit_load_entry_from_descriptor(
+                emitter,
+                call_reg,
+                call_reg,
+            );
             crate::codegen::callables::callable_captures(callback, ctx)
         }
         _ => {
             emit_expr(callback, emitter, ctx, data);
             let result_reg = abi::int_result_reg(emitter);
-            emitter.instruction(&format!("mov {}, {}", call_reg, result_reg));  // keep the evaluated callback address in the nested-call scratch register
+            emitter.instruction(&format!("mov {}, {}", call_reg, result_reg));  // keep the evaluated callback descriptor in the nested-call scratch register
+            crate::codegen::callable_descriptor::emit_load_entry_from_descriptor(
+                emitter,
+                call_reg,
+                call_reg,
+            );
             crate::codegen::callables::callable_captures(callback, ctx)
         }
     }
@@ -181,6 +194,11 @@ pub(crate) fn emit_persistent_callback_env_from_result(
 
     let env_bytes = (captures.len() + 1) * 16;
     emitter.comment("persistent callback capture environment");
+    crate::codegen::callable_descriptor::emit_load_entry_from_descriptor(
+        emitter,
+        abi::int_result_reg(emitter),
+        abi::int_result_reg(emitter),
+    );
     abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                 // preserve the original callback entry address while allocating its env
     match emitter.target.arch {
         Arch::AArch64 => {

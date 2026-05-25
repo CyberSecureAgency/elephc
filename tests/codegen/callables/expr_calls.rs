@@ -79,6 +79,20 @@ echo $f("2");
 }
 
 #[test]
+fn test_callable_by_ref_parameter_dereferences_descriptor_before_call() {
+    let out = compile_and_run(
+        r#"<?php
+function run(callable &$cb) {
+    echo $cb(4);
+}
+$cb = function($n) { return $n + 3; };
+run($cb);
+"#,
+    );
+    assert_eq!(out, "7");
+}
+
+#[test]
 fn test_closure_via_function_parameter_preserves_signature() {
     let out = compile_and_run(
         r#"<?php

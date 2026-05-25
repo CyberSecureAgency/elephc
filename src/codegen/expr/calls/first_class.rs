@@ -339,7 +339,14 @@ pub(super) fn emit_first_class_callable(
         needed: true,
     });
 
-    emitter.comment("first-class callable: load wrapper address");
-    abi::emit_symbol_address(emitter, abi::int_result_reg(emitter), &wrapper_label);
+    emitter.comment("first-class callable: load descriptor");
+    crate::codegen::callable_descriptor::emit_load_descriptor_address(
+        emitter,
+        data,
+        abi::int_result_reg(emitter),
+        &wrapper_label,
+        None,
+        crate::codegen::callable_descriptor::CALLABLE_DESC_KIND_FIRST_CLASS,
+    );
     PhpType::Callable
 }

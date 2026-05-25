@@ -494,7 +494,7 @@ Named-argument calls split evaluation order from ABI order. `src/codegen/expr/ca
 
 Closures (`function($x) { ... }`) and arrow functions (`fn($x) => ...`) are compiled as separate labeled functions, similar to user-defined functions. The key difference is **deferred emission** — the closure body is not emitted inline. Instead:
 
-1. **At the closure expression site**: the codegen generates a unique label (e.g., `_closure_1`) and loads its address into `x0` using `adrp` + `add`. The address is then stored in the variable's stack slot as a `Callable` (8-byte function pointer).
+1. **At the closure expression site**: the codegen generates a unique entry label (e.g., `_closure_1`), creates a static callable descriptor in `.data`, and loads the descriptor address into `x0`. The descriptor pointer is then stored in the variable's stack slot as a `Callable` (8 bytes).
 
 2. **The body is deferred**: the closure's parameter list, body statements, captured variables, and label are pushed onto `ctx.deferred_closures`. This avoids emitting function code in the middle of the current function's instruction stream.
 
@@ -526,17 +526,18 @@ This means captures are passed **by value** — modifying a captured variable in
 When a closure variable is called (`$fn(1, 2)`), the codegen:
 
 1. Evaluates each argument and pushes results onto the stack
-2. Loads the closure function address from the variable's stack slot into `x9`
-3. Pushes `x9` temporarily while popping arguments into ABI registers
-4. Pops `x9` back and calls `blr x9` — an indirect branch through a register
+2. Loads the closure descriptor from the variable's stack slot into `x9`
+3. Loads the native entry address from the descriptor's entry slot
+4. Pushes `x9` temporarily while popping arguments into ABI registers
+5. Pops `x9` back and calls `blr x9` — an indirect branch through a register
 
 `blr` (Branch with Link to Register) is like `bl` but the target address comes from a register rather than a label. This is what makes closures work — the compiler doesn't know at compile time which function will be called, so it uses an indirect jump.
 
 ### Closures as callback arguments
 
-Built-in functions like `array_map`, `array_filter`, `array_reduce`, `array_walk`, `usort`, `uksort`, and `uasort` accept callback values. The callback function pointer is passed in a register (like any other `Callable` argument) and the runtime routine calls it via `blr`.
+Built-in functions like `array_map`, `array_filter`, `array_reduce`, `array_walk`, `usort`, `uksort`, and `uasort` accept callback values. PHP callable storage carries a descriptor pointer; callback runtimes receive the native entry loaded from that descriptor plus an optional environment pointer, then call the entry via `blr`.
 
-For captured closures passed through callback runtimes such as `array_map`, `array_filter`, `array_reduce`, `array_walk`, `usort`, `uksort`, and `uasort`, codegen builds a temporary callback environment containing the original closure pointer plus its hidden `use (...)` values. The runtime passes that environment to a generated callback wrapper, and the wrapper re-materializes the original visible arguments plus hidden captures before calling the closure. `call_user_func()` and `call_user_func_array()` do not need a runtime loop, so they append the hidden capture arguments directly at the indirect call site. Dynamic callback dispatch uses `codegen::callable_dispatch` cases carrying the entry label, PHP-visible name when one exists, signature metadata, and hidden captures. Pointer-selected callbacks compare the runtime function pointer with user functions and currently emitted closure/FCC wrappers; runtime string-name callbacks compare case-insensitively against user-function names before loading the matched entry address. Both paths then reuse the indexed or named argument lowering for the matched signature. When `call_user_func_array()` targets a by-reference callback and receives a literal argument array, codegen passes frame-slot addresses for variable elements in by-reference positions instead of loading array payload values.
+For captured closures passed through callback runtimes such as `array_map`, `array_filter`, `array_reduce`, `array_walk`, `usort`, `uksort`, and `uasort`, codegen builds a temporary callback environment containing the original entry address plus its hidden `use (...)` values. The runtime passes that environment to a generated callback wrapper, and the wrapper re-materializes the original visible arguments plus hidden captures before calling the closure. `call_user_func()` and `call_user_func_array()` do not need a runtime loop, so they append the hidden capture arguments directly at the indirect call site. Dynamic callback dispatch uses `codegen::callable_dispatch` cases carrying the entry label, PHP-visible name when one exists, signature metadata, and hidden captures. Descriptor-selected callbacks load the entry slot before comparing it with user functions and currently emitted closure/FCC wrappers; runtime string-name callbacks compare case-insensitively against user-function names before loading the matched entry address. Both paths then reuse the indexed or named argument lowering for the matched signature. When `call_user_func_array()` targets a by-reference callback and receives a literal argument array, codegen passes frame-slot addresses for variable elements in by-reference positions instead of loading array payload values.
 
 First-class callable wrappers reuse this hidden argument path when the callable target carries context. `$obj->method(...)` records the receiver as a hidden capture; non-local receiver expressions are evaluated once into a hidden temporary before wrapper creation. `static::method(...)` records the forwarded called-class id, or `$this` in an instance method, so late static binding is preserved for direct callable calls and for callback paths that forward an environment.
 
@@ -557,9 +558,9 @@ The generated `Generator` object has a custom payload layout rather than ordinar
 
 **Files:** `src/codegen/expr/objects/allocation.rs`, `src/codegen/expr/objects/dispatch/`, `src/codegen/expr/objects/fiber_wrapper.rs`, `src/codegen/functions/fiber_wrapper.rs`, `src/codegen/runtime/fibers/`
 
-`Fiber` is a built-in class, but codegen does not lower it through the ordinary object constructor and method-dispatch path. `new Fiber($callable)` is intercepted and delegated to `__rt_fiber_construct`, which allocates the larger runtime-managed Fiber object, creates its guarded native stack, stores the original callable pointer, and records the generated wrapper label that adapts Fiber start values to the callback ABI.
+`Fiber` is a built-in class, but codegen does not lower it through the ordinary object constructor and method-dispatch path. `new Fiber($callable)` is intercepted and delegated to `__rt_fiber_construct`, which allocates the larger runtime-managed Fiber object, creates its guarded native stack, stores the original callable descriptor pointer, and records the generated wrapper label that adapts Fiber start values to the callback ABI.
 
-Each accepted Fiber callback gets a deferred entry wrapper emitted next to deferred closure bodies. The wrapper runs on the Fiber stack, reloads boxed `start()` values from `start_args[0..6]`, unboxes them to the callback's declared parameter types, appends any preloaded closure captures from reserved Fiber-owned slots, calls the original closure/function pointer with normal ABI materialization, and boxes the terminal return value back to `mixed`.
+Each accepted Fiber callback gets a deferred entry wrapper emitted next to deferred closure bodies. The wrapper runs on the Fiber stack, reloads boxed `start()` values from `start_args[0..6]`, unboxes them to the callback's declared parameter types, appends any preloaded closure captures from reserved Fiber-owned slots, loads the original entry from the stored callable descriptor, calls it with normal ABI materialization, and boxes the terminal return value back to `mixed`.
 
 Instance and static Fiber methods are also intercepted:
 

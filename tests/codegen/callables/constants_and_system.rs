@@ -268,6 +268,20 @@ fn test_call_user_func_array_string_builtin_callback() {
 }
 
 #[test]
+fn test_call_user_func_by_ref_callable_parameter_uses_descriptor_entry() {
+    let out = compile_and_run(
+        r#"<?php
+function run(callable &$cb): void {
+    echo call_user_func($cb, 6);
+}
+$cb = function($n) { return $n * 2; };
+run($cb);
+"#,
+    );
+    assert_eq!(out, "12");
+}
+
+#[test]
 fn test_call_user_func_dynamic_string_user_callback() {
     let out = compile_and_run(
         r#"<?php

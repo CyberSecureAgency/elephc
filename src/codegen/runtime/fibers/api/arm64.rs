@@ -57,7 +57,7 @@ pub(super) fn emit_throw_state_error(emitter: &mut Emitter) {
 }
 
 /// __rt_fiber_construct: allocate and initialise a Fiber object.
-/// Input:  x0 = callable (closure object pointer; may be NULL for diagnostics)
+/// Input:  x0 = callable descriptor pointer (may be NULL for diagnostics)
 ///         x1 = class_id assigned by the type checker for the Fiber class
 ///         x2 = wrapper entry that adapts Fiber Mixed traffic to the callable ABI
 /// Output: x0 = pointer to the new Fiber object (16-byte heap header sits at -8)
@@ -115,7 +115,7 @@ pub(super) fn emit_construct(emitter: &mut Emitter) {
     emitter.instruction(&format!("str x9, [x21, #{}]", FIBER_USER_ARG_MAX_OFFSET)); // user_arg_max stored on the freshly built fiber
 
     // -- record the captured callable --
-    emitter.instruction(&format!("str x19, [x21, #{}]", FIBER_CALLABLE_OFFSET)); // callable.lo = closure pointer
+    emitter.instruction(&format!("str x19, [x21, #{}]", FIBER_CALLABLE_OFFSET)); // callable.lo = descriptor pointer
     emitter.instruction(&format!("str x22, [x21, #{}]", FIBER_CALLABLE_WRAPPER_OFFSET)); // callable wrapper = Fiber entry ABI adapter
 
     // -- allocate the per-fiber stack via mmap; alloc returns base/top/total --

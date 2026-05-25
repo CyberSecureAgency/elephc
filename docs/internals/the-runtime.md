@@ -188,7 +188,7 @@ Each routine follows the same pattern — inputs in registers, output in standar
 
 These routines implement the runtime fallback path for `is_callable()` when the argument is not a compile-time literal or statically known callable value. They consult generated metadata for builtins, user functions, public methods, public static methods, and `__invoke` objects.
 
-Dynamic invocation builtins use a separate AOT descriptor path in codegen rather than these boolean helpers: `call_user_func()`, `call_user_func_array()`, and `iterator_apply()` compare runtime string names or pointer-selected callable values against generated cases carrying entry labels, PHP-visible names, signatures, defaults, by-reference flags, variadic metadata, and capture lists. The generated cases now include user functions, supported builtin wrappers, public static-method strings, closures/first-class callables, invokable object calls, and tracked callable arrays.
+Dynamic invocation builtins use a separate AOT descriptor path in codegen rather than these boolean helpers: `call_user_func()`, `call_user_func_array()`, and `iterator_apply()` compare runtime string names or descriptor-selected callable entries against generated cases carrying entry labels, PHP-visible names, signatures, defaults, by-reference flags, variadic metadata, and capture lists. The generated cases now include user functions, supported builtin wrappers, public static-method strings, closures/first-class callables, invokable object calls, and tracked callable arrays.
 
 | Routine | What it does | Input | Output |
 |---|---|---|---|
@@ -571,7 +571,7 @@ These helpers implement PHP 8.1-style cooperative coroutines. They are emitted o
 | `__rt_fiber_free_stack` | Return a mapped fiber stack to the OS | stack base, mapped size | — |
 | `__rt_fiber_switch` | Save the current callee-saved context and restore the target fiber/main context | target `Fiber*` or null for main | resumes when this context is switched back to |
 | `__rt_fiber_entry` | Trampoline run on first entry to a fiber stack; calls the generated wrapper, records return/escape state, and switches back | active `_fiber_current` | does not return normally inside the fiber |
-| `__rt_fiber_construct` | Allocate and initialize the runtime-managed Fiber object and its initial stack frame | callable pointer, `Fiber` class id, generated wrapper pointer | `Fiber*` |
+| `__rt_fiber_construct` | Allocate and initialize the runtime-managed Fiber object and its initial stack frame | callable descriptor pointer, `Fiber` class id, generated wrapper pointer | `Fiber*` |
 | `__rt_fiber_throw_state_error` | Allocate a `FiberError` and throw it through the normal exception runtime | message pointer and length | does not return |
 | `__rt_fiber_start` | Start a not-yet-started fiber and return its first yielded value or null on immediate termination | `Fiber*` | boxed `mixed` payload |
 | `__rt_fiber_resume` | Resume a suspended fiber with a boxed payload | `Fiber*`, boxed `mixed` value | boxed `mixed` payload |

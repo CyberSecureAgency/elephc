@@ -330,12 +330,12 @@ fn emit_branch_if_address_mismatch(
     match emitter.target.arch {
         Arch::AArch64 => {
             abi::emit_symbol_address(emitter, "x9", candidate_label);
-            emitter.instruction(&format!("cmp {}, x9", call_reg));              // does the runtime callable pointer match this AOT signature case?
+            emitter.instruction(&format!("cmp {}, x9", call_reg));              // does the runtime callable entry match this AOT signature case?
             emitter.instruction(&format!("b.ne {}", next_case));                // try the next callable signature case when the pointer differs
         }
         Arch::X86_64 => {
             abi::emit_symbol_address(emitter, "r10", candidate_label);
-            emitter.instruction(&format!("cmp {}, r10", call_reg));             // does the runtime callable pointer match this AOT signature case?
+            emitter.instruction(&format!("cmp {}, r10", call_reg));             // does the runtime callable entry match this AOT signature case?
             emitter.instruction(&format!("jne {}", next_case));                 // try the next callable signature case when the pointer differs
         }
     }

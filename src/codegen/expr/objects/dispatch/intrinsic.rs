@@ -373,8 +373,13 @@ fn emit_callback_filter_accept_intrinsic(
     save_concat_offset_before_nested_call(emitter, ctx);
     match emitter.target.arch {
         Arch::AArch64 => {
-            emitter.instruction(&format!("ldr x9, [x0, #{}]", callback_offset)); // load the stored callback entry address
+            emitter.instruction(&format!("ldr x9, [x0, #{}]", callback_offset)); // load the stored callback descriptor pointer
             emitter.instruction(&format!("ldr x10, [x0, #{}]", callback_env_offset)); // load the optional persistent callback environment
+            crate::codegen::callable_descriptor::emit_load_entry_from_descriptor(
+                emitter,
+                "x9",
+                "x9",
+            );
             emitter.instruction("mov x0, x1");                                  // shift current value into callback argument 1
             emitter.instruction("mov x1, x2");                                  // shift current key into callback argument 2
             emitter.instruction("mov x2, x3");                                  // shift inner iterator into callback argument 3
@@ -387,8 +392,13 @@ fn emit_callback_filter_accept_intrinsic(
             emitter.label(&done);
         }
         Arch::X86_64 => {
-            emitter.instruction(&format!("mov r10, QWORD PTR [rdi + {}]", callback_offset)); // load the stored callback entry address
+            emitter.instruction(&format!("mov r10, QWORD PTR [rdi + {}]", callback_offset)); // load the stored callback descriptor pointer
             emitter.instruction(&format!("mov r11, QWORD PTR [rdi + {}]", callback_env_offset)); // load the optional persistent callback environment
+            crate::codegen::callable_descriptor::emit_load_entry_from_descriptor(
+                emitter,
+                "r10",
+                "r10",
+            );
             emitter.instruction("mov rdi, rsi");                                // shift current value into callback argument 1
             emitter.instruction("mov rsi, rdx");                                // shift current key into callback argument 2
             emitter.instruction("mov rdx, rcx");                                // shift inner iterator into callback argument 3

@@ -564,7 +564,14 @@ fn emit_new_callback_filter_iterator(
                 ctx,
             );
             store_pointer_property_from_result(emitter, callback_env_offset);
-            abi::emit_symbol_address(emitter, abi::int_result_reg(emitter), &wrapper_label);
+            crate::codegen::callable_descriptor::emit_load_descriptor_address(
+                emitter,
+                data,
+                abi::int_result_reg(emitter),
+                &wrapper_label,
+                None,
+                crate::codegen::callable_descriptor::CALLABLE_DESC_KIND_CALLBACK_ADAPTER,
+            );
             store_callable_property_from_result(emitter, callback_offset);
         }
     } else {
@@ -1013,13 +1020,13 @@ fn store_callable_property_from_result(emitter: &mut Emitter, property_offset: u
     match emitter.target.arch {
         Arch::AArch64 => {
             emitter.instruction("ldr x9, [sp]");                                // reload the object pointer that owns the callable property
-            emitter.instruction(&format!("str x0, [x9, #{}]", property_offset)); // store the callable wrapper entry address
-            emitter.instruction(&format!("str xzr, [x9, #{}]", property_offset + 8)); // clear callable property metadata because callables are raw code pointers
+            emitter.instruction(&format!("str x0, [x9, #{}]", property_offset)); // store the callable descriptor pointer
+            emitter.instruction(&format!("str xzr, [x9, #{}]", property_offset + 8)); // clear the unused inline property metadata slot for callable descriptors
         }
         Arch::X86_64 => {
             emitter.instruction("mov r11, QWORD PTR [rsp]");                    // reload the object pointer that owns the callable property
-            emitter.instruction(&format!("mov QWORD PTR [r11 + {}], rax", property_offset)); // store the callable wrapper entry address
-            emitter.instruction(&format!("mov QWORD PTR [r11 + {}], 0", property_offset + 8)); // clear callable property metadata because callables are raw code pointers
+            emitter.instruction(&format!("mov QWORD PTR [r11 + {}], rax", property_offset)); // store the callable descriptor pointer
+            emitter.instruction(&format!("mov QWORD PTR [r11 + {}], 0", property_offset + 8)); // clear the unused inline property metadata slot for callable descriptors
         }
     }
 }

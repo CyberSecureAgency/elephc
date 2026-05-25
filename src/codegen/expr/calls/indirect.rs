@@ -93,6 +93,11 @@ pub(super) fn emit_loaded_expr_call(
     let call_reg = crate::codegen::abi::nested_call_reg(emitter);
     let arg_temp_bytes = args::pushed_temp_bytes(&arg_types) + emitted_args.source_temp_bytes;
     crate::codegen::abi::emit_load_temporary_stack_slot(emitter, call_reg, arg_temp_bytes);
+    crate::codegen::callable_descriptor::emit_load_entry_from_descriptor(
+        emitter,
+        call_reg,
+        call_reg,
+    );
     push_captures_as_hidden_args(&captures, emitter, ctx, &mut arg_types);
 
     let assignments =

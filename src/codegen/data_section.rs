@@ -10,13 +10,21 @@
 
 use std::collections::HashMap;
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum DataWord {
+    U64(u64),
+    Symbol(String),
+}
+
 pub struct DataSection {
     entries: Vec<(String, Vec<u8>)>,
     float_entries: Vec<(String, u64)>,
+    word_entries: Vec<(String, Vec<DataWord>)>,
     comm_entries: Vec<(String, usize)>,
     counter: usize,
     dedup: HashMap<Vec<u8>, String>,
     float_dedup: HashMap<u64, String>,
+    word_dedup: HashMap<Vec<DataWord>, String>,
     comm_dedup: HashMap<String, String>,
 }
 
@@ -25,10 +33,12 @@ impl DataSection {
         Self {
             entries: Vec::new(),
             float_entries: Vec::new(),
+            word_entries: Vec::new(),
             comm_entries: Vec::new(),
             counter: 0,
             dedup: HashMap::new(),
             float_dedup: HashMap::new(),
+            word_dedup: HashMap::new(),
             comm_dedup: HashMap::new(),
         }
     }
@@ -68,8 +78,23 @@ impl DataSection {
         label
     }
 
+    pub fn add_words(&mut self, words: Vec<DataWord>) -> String {
+        if let Some(label) = self.word_dedup.get(&words) {
+            return label.clone();
+        }
+        let label = format!("_data_{}", self.counter);
+        self.counter += 1;
+        self.word_dedup.insert(words.clone(), label.clone());
+        self.word_entries.push((label.clone(), words));
+        label
+    }
+
     pub fn emit(&self) -> String {
-        if self.entries.is_empty() && self.float_entries.is_empty() && self.comm_entries.is_empty() {
+        if self.entries.is_empty()
+            && self.float_entries.is_empty()
+            && self.word_entries.is_empty()
+            && self.comm_entries.is_empty()
+        {
             return String::new();
         }
 
@@ -94,6 +119,19 @@ impl DataSection {
         }
         for (label, bits) in &self.float_entries {
             out.push_str(&format!(".p2align 3\n.globl {}\n{}:\n    .quad 0x{:016x}\n", label, label, bits));
+        }
+        for (label, words) in &self.word_entries {
+            out.push_str(&format!(".p2align 3\n.globl {}\n{}:\n", label, label));
+            for word in words {
+                match word {
+                    DataWord::U64(value) => {
+                        out.push_str(&format!("    .quad 0x{:016x}\n", value));
+                    }
+                    DataWord::Symbol(symbol) => {
+                        out.push_str(&format!("    .quad {}\n", symbol));
+                    }
+                }
+            }
         }
         out
     }
@@ -123,5 +161,20 @@ mod tests {
 
         assert!(asm.contains(r#".ascii "a\000b""#));
         assert!(!asm.contains(r#"\x00b"#));
+    }
+
+    #[test]
+    fn test_symbol_word_records_emit_quad_symbols() {
+        let mut data = DataSection::new();
+        let label = data.add_words(vec![
+            super::DataWord::U64(1),
+            super::DataWord::Symbol("_fn_demo".to_string()),
+        ]);
+
+        let asm = data.emit();
+
+        assert!(asm.contains(&format!(".globl {}\n{}:\n", label, label)));
+        assert!(asm.contains("    .quad 0x0000000000000001\n"));
+        assert!(asm.contains("    .quad _fn_demo\n"));
     }
 }
