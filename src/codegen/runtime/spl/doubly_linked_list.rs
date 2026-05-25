@@ -1714,7 +1714,7 @@ fn emit_unserialize_x86_64(emitter: &mut Emitter) {
     emitter.label("__rt_spl_dll_unserialize_clear_done_x86");
     emitter.instruction("mov r9, QWORD PTR [rbp - 32]");                        // reload storage pointer after clearing
     emitter.instruction("mov QWORD PTR [r9], 0");                               // reset internal storage length to zero
-    emitter.instruction("add rdi, rsi, 2");                                     // skip leading legacy 'i:' flags prefix
+    emitter.instruction("lea rdi, [rsi + 2]");                                  // skip leading legacy 'i:' flags prefix
     emitter.instruction("mov rsi, QWORD PTR [rbp - 24]");                       // pass input end pointer to decimal parser
     emitter.instruction("call __rt_spl_dll_parse_dec_x86");                     // parse iterator mode flags
     emitter.instruction("mov r9, QWORD PTR [rbp - 8]");                         // reload receiver for mode update

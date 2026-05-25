@@ -18,6 +18,13 @@ pub(in crate::codegen) fn collect_required_class_names(program: &Program) -> Has
     names
 }
 
+pub(in crate::codegen) fn collect_required_class_names_in_stmts(
+    stmts: &[Stmt],
+    names: &mut HashSet<String>,
+) {
+    collect_required_class_names_in_body(stmts, names);
+}
+
 fn collect_required_class_names_in_body(stmts: &[Stmt], names: &mut HashSet<String>) {
     for stmt in stmts {
         match &stmt.kind {

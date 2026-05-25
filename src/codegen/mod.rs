@@ -106,7 +106,10 @@ pub(crate) use driver_support::{
 pub use driver_support::generate_runtime;
 use platform::Target;
 use prescan::{collect_constants, collect_global_var_names, collect_static_vars};
-use program_usage::{collect_required_class_names, program_has_dynamic_instanceof};
+use program_usage::{
+    collect_required_class_names, collect_required_class_names_in_stmts,
+    program_has_dynamic_instanceof,
+};
 
 pub fn generate_user_asm(
     program: &Program,
@@ -466,6 +469,11 @@ fn expand_emitted_class_dependencies(
             {
                 changed |= names.insert(impl_class.clone());
             }
+            let previous_len = names.len();
+            for method in &class_info.method_decls {
+                collect_required_class_names_in_stmts(&method.body, names);
+            }
+            changed |= names.len() != previous_len;
         }
         if !changed {
             break;

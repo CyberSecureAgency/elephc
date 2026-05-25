@@ -1138,6 +1138,7 @@ fn emit_copy_from_array_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov rsi, QWORD PTR [rax - 8]");                        // load packed array kind and value-type metadata
     emitter.instruction("shr rsi, 8");                                          // move value_type tag down to the low byte
     emitter.instruction("and rsi, 0x7f");                                       // isolate the indexed-array value_type tag without COW metadata
+    emitter.instruction("mov rdi, rax");                                        // pass the source indexed array pointer to the converter
     emitter.instruction("call __rt_array_to_mixed");                            // normalize source slots to boxed Mixed cells
     emitter.instruction("mov QWORD PTR [rbp - 16], rax");                       // save possibly-converted source array
     emitter.instruction("mov rsi, QWORD PTR [rax]");                            // load source logical length
