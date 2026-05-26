@@ -234,15 +234,16 @@ pub(super) fn emit_closure(
         variadic: variadic.clone(),
         deprecation: None,
     };
+    let hidden_params = capture_types.clone();
 
     let param_names: Vec<String> = params.iter().map(|(n, _, _, _)| n.clone()).collect();
     ctx.deferred_closures.push(DeferredClosure {
         label: closure_label.clone(),
         params: param_names,
         body: body.to_vec(),
-        sig,
+        sig: sig.clone(),
         captures: capture_types.clone(),
-        hidden_params: capture_types,
+        hidden_params: hidden_params.clone(),
         current_class: ctx.current_class.clone(),
         // Real closure literals are only reachable through their wrapper, so the
         // dead-wrapper stub optimisation never applies here.
@@ -250,13 +251,19 @@ pub(super) fn emit_closure(
     });
 
     emitter.comment("closure: load callable descriptor");
-    crate::codegen::callable_descriptor::emit_load_descriptor_address(
+    crate::codegen::callable_descriptor::emit_load_descriptor_address_with_meta(
         emitter,
         data,
         abi::int_result_reg(emitter),
         &closure_label,
         None,
         crate::codegen::callable_descriptor::CALLABLE_DESC_KIND_CLOSURE,
+        Some(&sig),
+        &capture_types,
+        &hidden_params,
+        crate::codegen::callable_descriptor::CallableDescriptorInvocation::new(
+            crate::codegen::callable_descriptor::CallableDescriptorShape::Closure,
+        ),
     );
     PhpType::Callable
 }

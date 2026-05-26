@@ -572,13 +572,20 @@ fn emit_new_callback_filter_iterator(
                 ctx,
             );
             store_pointer_property_from_result(emitter, callback_env_offset);
-            crate::codegen::callable_descriptor::emit_load_descriptor_address(
+            let callback_sig = callback_filter_callable_sig();
+            crate::codegen::callable_descriptor::emit_load_descriptor_address_with_meta(
                 emitter,
                 data,
                 abi::int_result_reg(emitter),
                 &wrapper_label,
                 None,
                 crate::codegen::callable_descriptor::CALLABLE_DESC_KIND_CALLBACK_ADAPTER,
+                Some(&callback_sig),
+                &captures,
+                &[],
+                crate::codegen::callable_descriptor::CallableDescriptorInvocation::new(
+                    crate::codegen::callable_descriptor::CallableDescriptorShape::CallbackAdapter,
+                ),
             );
             store_callable_property_from_result(emitter, callback_offset);
         }

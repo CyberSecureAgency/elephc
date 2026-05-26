@@ -90,6 +90,15 @@ $static_string_callback = "DynamicFormatter::tag";
 $static_string_args = ["value" => 7, "prefix" => "id"];
 echo "dynamic static string call_user_func_array: " . call_user_func_array($static_string_callback, $static_string_args) . "\n";
 
+function collect_labels($head = 5, ...$rest) {
+    echo $head . ":" . count($rest);
+}
+
+$dynamic_collect = "COLLECT_LABELS";
+echo "dynamic string defaults/variadic: ";
+call_user_func_array($dynamic_collect, []);
+echo "\n";
+
 $dynamic_formatter = new DynamicFormatter();
 $method_array_callback = [$dynamic_formatter, "wrap"];
 echo "method array call_user_func: " . call_user_func($method_array_callback, "ok") . "\n";

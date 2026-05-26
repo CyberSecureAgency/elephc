@@ -725,6 +725,22 @@ call_user_func_array("summarize", $args);
     assert_eq!(out, "1:x=2;y=3;");
 }
 
+/// Verifies that runtime string callback dispatch preserves descriptor default and variadic metadata.
+#[test]
+fn test_call_user_func_array_dynamic_string_uses_descriptor_default_and_variadic_metadata() {
+    let out = compile_and_run(
+        r#"<?php
+function collect($head = 5, ...$rest) {
+    echo $head . ":" . count($rest);
+}
+$callback = "COLLECT";
+$args = [];
+call_user_func_array($callback, $args);
+"#,
+    );
+    assert_eq!(out, "5:0");
+}
+
 /// Verifies that call user func array first class dynamic assoc args for variadic callback.
 #[test]
 fn test_call_user_func_array_first_class_dynamic_assoc_args_for_variadic_callback() {

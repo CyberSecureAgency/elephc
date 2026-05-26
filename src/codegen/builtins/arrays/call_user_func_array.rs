@@ -1368,7 +1368,7 @@ pub(crate) fn emit_loaded_array_unknown_callback_call(
     }
 
     let elem_ty = callback_array_elem_ty(arr_ty);
-    let cases = callable_dispatch::runtime_callable_cases(ctx, captures, Some(&elem_ty));
+    let cases = callable_dispatch::runtime_callable_cases(ctx, data, captures, Some(&elem_ty));
     if !cases.is_empty() {
         return emit_loaded_indexed_array_unknown_callback_call(
             array_source,
@@ -1409,7 +1409,7 @@ pub(crate) fn emit_loaded_array_string_callback_call(
     data: &mut DataSection,
 ) -> PhpType {
     let elem_ty = callback_array_elem_ty(arr_ty);
-    let cases = callable_dispatch::runtime_callable_cases(ctx, &[], Some(&elem_ty));
+    let cases = callable_dispatch::runtime_callable_cases(ctx, data, &[], Some(&elem_ty));
     let done_label = ctx.next_label("cufa_string_done");
     let pushed_array = matches!(array_source, LoadedArraySource::Result);
     let (array_source, string_ptr_offset, string_len_offset) = match array_source {
@@ -1659,7 +1659,7 @@ fn emit_loaded_assoc_array_unknown_callback_call(
 ) -> PhpType {
     let done_label = ctx.next_label("cufa_unknown_assoc_done");
     let elem_ty = callback_array_elem_ty(arr_ty);
-    let cases = callable_dispatch::runtime_callable_cases(ctx, captures, Some(&elem_ty));
+    let cases = callable_dispatch::runtime_callable_cases(ctx, data, captures, Some(&elem_ty));
     let pushed_array = matches!(array_source, LoadedArraySource::Result);
     let array_source = match array_source {
         LoadedArraySource::Result => {
