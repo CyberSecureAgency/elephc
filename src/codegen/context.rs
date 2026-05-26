@@ -188,6 +188,9 @@ pub struct Context {
     /// Runtime-dispatch wrappers synthesized for PHP builtin callbacks selected
     /// by a dynamic string name. The key is the canonical builtin name.
     pub runtime_callable_builtin_wrappers: HashMap<String, String>,
+    /// Runtime-dispatch wrappers synthesized for extern callbacks selected by
+    /// a dynamic string name. The key is the declared extern function name.
+    pub runtime_callable_extern_wrappers: HashMap<String, String>,
     /// Runtime-dispatch wrappers synthesized for `Class::method` string
     /// callbacks. The key is the PHP-visible `Class::method` name.
     pub runtime_callable_static_method_wrappers: HashMap<String, String>,
@@ -324,6 +327,7 @@ impl Context {
             callable_return_sigs: HashMap::new(),
             closure_captures: HashMap::new(),
             runtime_callable_builtin_wrappers: HashMap::new(),
+            runtime_callable_extern_wrappers: HashMap::new(),
             runtime_callable_static_method_wrappers: HashMap::new(),
             callable_array_targets: HashMap::new(),
             first_class_callable_targets: HashMap::new(),

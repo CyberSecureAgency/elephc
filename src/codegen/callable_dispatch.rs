@@ -17,11 +17,11 @@ use crate::codegen::context::{Context, DeferredClosure, DeferredRuntimeCallableI
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
-use crate::names::{function_symbol, Name};
+use crate::names::{function_symbol, php_symbol_key, Name};
 use crate::parser::ast::{Expr, ExprKind, StaticReceiver, Stmt, StmtKind, Visibility};
 use crate::span::Span;
 use crate::types::{
-    callable_wrapper_sig, first_class_callable_builtin_sig, FunctionSig, PhpType,
+    callable_wrapper_sig, first_class_callable_builtin_sig, ExternFunctionSig, FunctionSig, PhpType,
 };
 use crate::types::checker::builtins::supported_builtin_function_names;
 
@@ -54,8 +54,32 @@ pub(crate) fn runtime_callable_cases(
     let mut cases = Vec::new();
     let source_elem_ty = source_arg_ty.map(runtime_case_source_elem_ty);
     if captures.is_empty() {
+        for (name, sig) in runtime_extern_wrappers(ctx) {
+            let case_sig = callable_wrapper_sig(&sig);
+            let label = ensure_runtime_extern_wrapper(ctx, &name, &case_sig);
+            let invoker_label = ensure_runtime_descriptor_invoker(ctx, captures, &case_sig);
+            let descriptor_label = runtime_case_descriptor(
+                data,
+                &label,
+                Some(&name),
+                callable_descriptor::CALLABLE_DESC_KIND_EXTERN,
+                &case_sig,
+                &[],
+                &[],
+                CallableDescriptorInvocation::named(CallableDescriptorShape::Extern, &name),
+                invoker_label.as_deref(),
+            );
+            cases.push(RuntimeCallableCase {
+                label,
+                descriptor_label,
+                php_name: Some(name),
+                sig: case_sig,
+                captures: Vec::new(),
+                has_invoker: invoker_label.is_some(),
+            });
+        }
         for name in supported_builtin_function_names() {
-            if runtime_builtin_wrapper_excluded(name) {
+            if runtime_builtin_wrapper_excluded(name) || runtime_extern_named(ctx, name) {
                 continue;
             }
             let Some(sig) = first_class_callable_builtin_sig(name) else {
@@ -234,6 +258,46 @@ fn ensure_runtime_descriptor_invoker(
     Some(label)
 }
 
+/// Provides runtime extern wrapper metadata in deterministic declaration-name order.
+fn runtime_extern_wrappers(ctx: &Context) -> Vec<(String, FunctionSig)> {
+    let mut wrappers: Vec<(String, FunctionSig)> = ctx
+        .extern_functions
+        .iter()
+        .map(|(name, extern_sig)| {
+            let sig = ctx
+                .functions
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| function_sig_from_extern(extern_sig));
+            (name.clone(), sig)
+        })
+        .collect();
+    wrappers.sort_by(|left, right| left.0.cmp(&right.0));
+    wrappers
+}
+
+/// Converts extern metadata to the PHP-facing wrapper signature used by descriptor dispatch.
+fn function_sig_from_extern(sig: &ExternFunctionSig) -> FunctionSig {
+    FunctionSig {
+        params: sig.params.clone(),
+        defaults: vec![None; sig.params.len()],
+        return_type: sig.return_type.clone(),
+        declared_return: true,
+        ref_params: vec![false; sig.params.len()],
+        declared_params: vec![true; sig.params.len()],
+        variadic: None,
+        deprecation: None,
+    }
+}
+
+/// Returns whether an extern declaration shadows a builtin callback name.
+fn runtime_extern_named(ctx: &Context, name: &str) -> bool {
+    let name_key = php_symbol_key(name);
+    ctx.extern_functions
+        .keys()
+        .any(|extern_name| php_symbol_key(extern_name) == name_key)
+}
+
 /// Provides the Runtime static method wrappers helper used by the callable dispatch module.
 fn runtime_static_method_wrappers(ctx: &Context) -> Vec<(String, String, FunctionSig)> {
     let mut wrappers = Vec::new();
@@ -281,6 +345,33 @@ fn ensure_runtime_builtin_wrapper(
         needed: true,
     });
     ctx.runtime_callable_builtin_wrappers
+        .insert(name.to_string(), label.clone());
+    label
+}
+
+/// Ensures a PHP-ABI extern wrapper is available before runtime descriptor dispatch uses it.
+fn ensure_runtime_extern_wrapper(
+    ctx: &mut Context,
+    name: &str,
+    sig: &FunctionSig,
+) -> String {
+    if let Some(label) = ctx.runtime_callable_extern_wrappers.get(name) {
+        return label.clone();
+    }
+
+    let label = ctx.next_label("callable_extern");
+    let params: Vec<String> = sig.params.iter().map(|(name, _)| name.clone()).collect();
+    ctx.deferred_closures.push(DeferredClosure {
+        label: label.clone(),
+        params,
+        body: extern_wrapper_body(name, sig),
+        sig: sig.clone(),
+        captures: Vec::new(),
+        hidden_params: Vec::new(),
+        current_class: None,
+        needed: true,
+    });
+    ctx.runtime_callable_extern_wrappers
         .insert(name.to_string(), label.clone());
     label
 }
@@ -349,8 +440,18 @@ fn static_method_wrapper_body(class_name: &str, method_name: &str, sig: &Functio
     }
 }
 
+/// Builds the synthetic function body for an extern wrapper.
+fn extern_wrapper_body(name: &str, sig: &FunctionSig) -> Vec<Stmt> {
+    function_wrapper_body(name, sig)
+}
+
 /// Builds the synthetic method body for builtin wrapper.
 fn builtin_wrapper_body(name: &str, sig: &FunctionSig) -> Vec<Stmt> {
+    function_wrapper_body(name, sig)
+}
+
+/// Builds the synthetic body that forwards visible wrapper parameters to a function call.
+fn function_wrapper_body(name: &str, sig: &FunctionSig) -> Vec<Stmt> {
     let last_param_idx = sig.params.len().saturating_sub(1);
     let args: Vec<Expr> = sig
         .params

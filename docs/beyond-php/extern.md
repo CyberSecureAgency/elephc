@@ -65,6 +65,11 @@ Argument expressions are evaluated in PHP source order, then elephc loads the
 resulting values into the target C ABI registers. This matters when positional,
 named, or spread arguments have side effects.
 
+Declared extern functions can also be selected by dynamic PHP string callbacks
+such as `call_user_func($cb, ...)` and `call_user_func_array($cb, $args)`.
+The runtime descriptor uses an extern invocation shape and a generated PHP-ABI
+wrapper; the wrapper performs the C ABI call after PHP argument normalization.
+
 ## Callbacks
 ```php
 <?php
