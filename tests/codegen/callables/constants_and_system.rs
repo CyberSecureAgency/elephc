@@ -1169,6 +1169,30 @@ echo call_user_func_array($callback, passthrough(["name" => "Ada", "extra" => "x
     let _ = fs::remove_dir_all(dir);
 }
 
+/// Verifies that capture-free closure descriptors expose the uniform array invoker.
+#[test]
+fn test_call_user_func_array_closure_descriptor_uses_invoker() {
+    let source = r#"<?php
+$callbacks = [function(string $name, string $prefix = "hi"): string {
+    return $prefix . " " . $name;
+}];
+$args = ["name" => "Ada", "prefix" => "yo"];
+echo call_user_func_array($callbacks[0], $args);
+"#;
+    let out = compile_and_run(source);
+    assert_eq!(out, "yo Ada");
+
+    let dir = make_cli_test_dir("elephc_closure_descriptor_invoker");
+    let (user_asm, _runtime_asm, _required_libraries) =
+        compile_source_to_asm_with_options(source, &dir, 8_388_608, false, false);
+    assert!(
+        user_asm.contains("callable_invoker"),
+        "capture-free closure dispatch should emit a descriptor invoker:\n{}",
+        user_asm
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
 /// Verifies that call user func array first class dynamic assoc args for variadic callback.
 #[test]
 fn test_call_user_func_array_first_class_dynamic_assoc_args_for_variadic_callback() {

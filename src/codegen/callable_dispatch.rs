@@ -176,30 +176,40 @@ pub(crate) fn runtime_callable_cases(
             has_invoker: invoker_label.is_some(),
         });
     }
+    let mut deferred_closure_cases = Vec::new();
     for deferred in &mut ctx.deferred_closures {
         if deferred.hidden_params.as_slice() != captures {
             continue;
         }
         let sig = specialized_runtime_case_sig(&deferred.sig, source_elem_ty.as_ref());
         deferred.sig = sig.clone();
+        deferred_closure_cases.push((
+            deferred.label.clone(),
+            sig,
+            deferred.captures.clone(),
+            deferred.hidden_params.clone(),
+        ));
+    }
+    for (label, sig, closure_captures, hidden_params) in deferred_closure_cases {
+        let invoker_label = ensure_runtime_descriptor_invoker(ctx, captures, &sig);
         let descriptor_label = runtime_case_descriptor(
             data,
-            &deferred.label,
+            &label,
             None,
             callable_descriptor::CALLABLE_DESC_KIND_CLOSURE,
             &sig,
-            &deferred.captures,
-            &deferred.hidden_params,
+            &closure_captures,
+            &hidden_params,
             CallableDescriptorInvocation::new(CallableDescriptorShape::Closure),
-            None,
+            invoker_label.as_deref(),
         );
         cases.push(RuntimeCallableCase {
-            label: deferred.label.clone(),
+            label,
             descriptor_label,
             php_name: None,
             sig,
             captures: captures.to_vec(),
-            has_invoker: false,
+            has_invoker: invoker_label.is_some(),
         });
     }
     cases.sort_by(|left, right| left.label.cmp(&right.label));
