@@ -993,7 +993,8 @@ echo call_user_func_array(make_callback(), $args);
 /// Verifies that call user func array unknown signature captured callback dynamic args overflow stack.
 #[test]
 fn test_call_user_func_array_unknown_signature_captured_callback_dynamic_args_overflow_stack() {
-    let out = compile_and_run(
+    let dir = make_cli_test_dir("elephc_cufa_unknown_stacked_capture_descriptor_invoker");
+    let (user_asm, _runtime_asm, required_libraries) = compile_source_to_asm_with_options(
         r#"<?php
 $base = 10;
 $callbacks = [
@@ -1014,8 +1015,27 @@ $args = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
          11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
 echo call_user_func_array($cb, $args);
 "#,
+        &dir,
+        8_388_608,
+        false,
+        false,
+    );
+    assert!(
+        user_asm.contains("cufa_descriptor_invoker_ready"),
+        "stacked closure captures should route through the descriptor invoker:\n{}",
+        user_asm
+    );
+    let out = assemble_and_run(
+        &user_asm,
+        get_runtime_obj(),
+        &dir,
+        &required_libraries,
+        &default_link_paths(),
+        &[],
     );
     assert_eq!(out, "220");
+
+    let _ = fs::remove_dir_all(&dir);
 }
 
 /// Verifies that call user func array unknown signature dynamic string args overflow stack.

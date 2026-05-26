@@ -1432,9 +1432,6 @@ fn emit_case_descriptor_for_invoker<'a>(
         return None;
     }
     if let Some(source) = descriptor_source {
-        if descriptor_invoker_would_stack_hidden_capture(case, emitter) {
-            return None;
-        }
         emit_loaded_descriptor_source_to_reg(source, descriptor_reg, emitter);
         return Some(case.invoker_label.as_deref());
     }
@@ -1443,32 +1440,6 @@ fn emit_case_descriptor_for_invoker<'a>(
         return Some(None);
     }
     None
-}
-
-/// Returns whether this case would pass a descriptor-loaded hidden capture on the stack.
-fn descriptor_invoker_would_stack_hidden_capture(
-    case: &RuntimeCallableCase,
-    emitter: &Emitter,
-) -> bool {
-    if case.captures.is_empty() {
-        return false;
-    }
-    let mut arg_types: Vec<PhpType> = case
-        .sig
-        .params
-        .iter()
-        .map(|(_, ty)| ty.codegen_repr())
-        .collect();
-    arg_types.extend(
-        case.captures
-            .iter()
-            .map(|(_, ty, by_ref)| if *by_ref { PhpType::Int } else { ty.codegen_repr() }),
-    );
-    let assignments = abi::build_outgoing_arg_assignments_for_target(emitter.target, &arg_types, 0);
-    assignments
-        .iter()
-        .skip(case.sig.params.len())
-        .any(|assignment| !assignment.in_register())
 }
 
 /// Materializes the descriptor invoker argument as a boxed Mixed container.
@@ -1753,22 +1724,6 @@ fn emit_loaded_indexed_array_unknown_callback_call(
             ctx,
             data,
         );
-        if descriptor_invoker_would_stack_hidden_capture(case, emitter) {
-            let case_ret_ty = emit_loaded_array_unknown_callback_call_by_arity(
-                array_source,
-                arr_ty,
-                call_reg,
-                &case.captures,
-                concat_saved_before_args,
-                emitter,
-                ctx,
-                data,
-            );
-            crate::codegen::emit_box_current_value_as_mixed(emitter, &case_ret_ty.codegen_repr());
-            abi::emit_jump(emitter, &done_label);
-            emitter.label(&next_case);
-            continue;
-        }
         if let Some(invoker_label) =
             emit_case_descriptor_for_invoker(case, descriptor_source, call_reg, emitter)
         {

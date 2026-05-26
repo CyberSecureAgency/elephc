@@ -449,7 +449,8 @@ echo iterator_apply(new Range(), make_label(), $args);
 /// Verifies that iterator apply unknown signature captured callback dynamic args overflow stack.
 #[test]
 fn test_iterator_apply_unknown_signature_captured_callback_dynamic_args_overflow_stack() {
-    let out = compile_and_run(
+    let dir = make_cli_test_dir("elephc_iterator_apply_stacked_capture_descriptor_invoker");
+    let (user_asm, _runtime_asm, required_libraries) = compile_source_to_asm_with_options(
         r#"<?php
 class Range implements Iterator {
     private int $i;
@@ -481,8 +482,27 @@ $args = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
 echo ":";
 echo iterator_apply(new Range(), $cb, $args);
 "#,
+        &dir,
+        8_388_608,
+        false,
+        false,
+    );
+    assert!(
+        user_asm.contains("cufa_descriptor_invoker_ready"),
+        "iterator_apply should route stacked closure captures through the descriptor invoker:\n{}",
+        user_asm
+    );
+    let out = assemble_and_run(
+        &user_asm,
+        get_runtime_obj(),
+        &dir,
+        &required_libraries,
+        &default_link_paths(),
+        &[],
     );
     assert_eq!(out, ":2201");
+
+    let _ = fs::remove_dir_all(&dir);
 }
 
 /// Verifies that iterator apply dynamic assoc args for returned callable signature.
