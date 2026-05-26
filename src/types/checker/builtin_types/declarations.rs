@@ -129,6 +129,7 @@ pub(crate) fn inject_builtin_throwables(
             ],
             attributes: Vec::new(),
             constants: Vec::new(),
+            used_traits: Vec::new(),
         },
     );
     class_map.insert(
@@ -157,6 +158,7 @@ pub(crate) fn inject_builtin_throwables(
             ],
             attributes: Vec::new(),
             constants: Vec::new(),
+            used_traits: Vec::new(),
         },
     );
     // RuntimeException and JsonException inherit the Throwable API from
@@ -175,6 +177,7 @@ pub(crate) fn inject_builtin_throwables(
             methods: Vec::new(),
             attributes: Vec::new(),
             constants: Vec::new(),
+            used_traits: Vec::new(),
         },
     );
     class_map.insert(
@@ -190,6 +193,7 @@ pub(crate) fn inject_builtin_throwables(
             methods: Vec::new(),
             attributes: Vec::new(),
             constants: Vec::new(),
+            used_traits: Vec::new(),
         },
     );
 
@@ -206,6 +210,7 @@ pub(crate) fn inject_builtin_throwables(
             methods: Vec::new(),
             attributes: Vec::new(),
             constants: Vec::new(),
+            used_traits: Vec::new(),
         },
     );
     class_map.insert(
@@ -221,6 +226,7 @@ pub(crate) fn inject_builtin_throwables(
             methods: Vec::new(),
             attributes: Vec::new(),
             constants: Vec::new(),
+            used_traits: Vec::new(),
         },
     );
 
@@ -242,6 +248,7 @@ pub(crate) fn inject_builtin_throwables(
             methods: builtin_fiber_methods(),
             attributes: Vec::new(),
             constants: Vec::new(),
+            used_traits: Vec::new(),
         },
     );
 
@@ -259,6 +266,7 @@ pub(crate) fn inject_builtin_throwables(
             methods: Vec::new(),
             attributes: Vec::new(),
             constants: Vec::new(),
+            used_traits: Vec::new(),
         },
     );
 

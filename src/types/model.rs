@@ -72,7 +72,7 @@ impl PhpType {
             PhpType::Array(_) => 8,          // pointer to heap
             PhpType::AssocArray { .. } => 8, // pointer to heap
             PhpType::Buffer(_) => 8,         // pointer to buffer header
-            PhpType::Callable => 8,          // function address
+            PhpType::Callable => 8,          // callable descriptor address
             PhpType::Object(_) => 8,         // pointer to heap
             PhpType::Packed(_) => 8,         // metadata-only nominal type, usually accessed by pointer
             PhpType::Pointer(_) => 8,        // 64-bit address

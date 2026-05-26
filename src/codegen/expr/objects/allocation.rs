@@ -8,31 +8,31 @@
 //! Key details:
 //! - Object handles, property storage, and class ids must stay consistent with emitted class tables.
 
-use crate::codegen::abi;
-use crate::codegen::context::Context;
+use crate::codegen::builtins::arrays::callback_env;
+use crate::codegen::{abi, runtime_value_tag};
+use crate::codegen::context::{Context, HeapOwnership};
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
 use crate::codegen::expr::calls::args as call_args;
 use crate::codegen::platform::Arch;
 use crate::codegen::UNINITIALIZED_TYPED_PROPERTY_SENTINEL;
 use crate::names::method_symbol;
-use crate::parser::ast::{Expr, ExprKind, TypeExpr};
-use crate::types::PhpType;
+use crate::parser::ast::{CallableTarget, Expr, ExprKind, TypeExpr};
+use crate::types::{FunctionSig, PhpType};
 
 use super::super::{
-    coerce_result_to_type, emit_expr, restore_concat_offset_after_nested_call,
+    coerce_result_to_type, emit_expr, expr_result_heap_ownership,
+    restore_concat_offset_after_nested_call,
     save_concat_offset_before_nested_call,
 };
+use super::dispatch::emit_dispatch_interface_method;
 
-/// Magic high-32 bits baked into every x86_64 object heap header so `__rt_heap_alloc` can
-/// identify object-kind allocations without consulting the uniform header tag field.
 const X86_64_HEAP_MAGIC_HI32: u64 = 0x454C5048;
-/// Sentinel written to the hi word of typed properties that carry no value yet (e.g., uninitialized
-/// properties with no default). The runtime uses this to distinguish truly empty slots from
-/// explicitly null-valued ones.
 const NULL_SENTINEL: i64 = 0x7fff_ffff_ffff_fffe;
+const ITERATOR_ITERATOR_DOWNCAST_MESSAGE: &str =
+    "Class to downcast to not found or not base class or does not implement Traversable";
 
-/// Lowers `new Class(...)` for known classes, routing to runtime helpers for built-in types.
+/// Emits assembly for new object.
 pub(super) fn emit_new_object(
     class_name: &str,
     args: &[Expr],
@@ -49,6 +49,15 @@ pub(super) fn emit_new_object(
     if class_name == "SplFixedArray" {
         return emit_new_spl_fixed_array(args, emitter, ctx, data);
     }
+    if matches!(class_name, "ArrayIterator" | "ArrayObject") {
+        return emit_new_spl_array_storage_object(class_name, args, emitter, ctx, data);
+    }
+    if class_name == "IteratorIterator" {
+        return emit_new_iterator_iterator(args, emitter, ctx, data);
+    }
+    if matches!(class_name, "CallbackFilterIterator" | "RecursiveCallbackFilterIterator") {
+        return emit_new_callback_filter_iterator(class_name, args, emitter, ctx, data);
+    }
     if super::reflection::is_reflection_owner_class(class_name) {
         return super::reflection::emit_new_reflection_owner(
             class_name, args, emitter, ctx, data,
@@ -57,7 +66,7 @@ pub(super) fn emit_new_object(
     emit_new_object_core(class_name, args, true, emitter, ctx, data)
 }
 
-/// Lowers the core allocation path for `new Class(...)` with optional constructor invocation.
+/// Emits assembly for new object core.
 pub(super) fn emit_new_object_core(
     class_name: &str,
     args: &[Expr],
@@ -328,15 +337,12 @@ pub(super) fn emit_new_object_core(
     PhpType::Object(class_name.to_string())
 }
 
-/// Returns true for SPL container classes that use a shared runtime doubly-linked-list
-/// representation regardless of the concrete subtype (SplDoublyLinkedList, SplStack, SplQueue).
+/// Returns true when SPL doubly linked list family.
 fn is_spl_doubly_linked_list_family(class_name: &str) -> bool {
     matches!(class_name, "SplDoublyLinkedList" | "SplStack" | "SplQueue")
 }
 
-/// Allocates and constructs an SPL doubly-linked-list variant (SplDoublyLinkedList, SplStack,
-/// SplQueue). Constructor arguments are ignored — the runtime helper owns all field setup.
-/// Class id is retrieved from `ctx.classes`; defaults to 0 if the class is unknown.
+/// Emits assembly for new SPL doubly linked list.
 fn emit_new_spl_doubly_linked_list(
     class_name: &str,
     args: &[Expr],
@@ -364,9 +370,7 @@ fn emit_new_spl_doubly_linked_list(
     PhpType::Object(class_name.to_string())
 }
 
-/// Allocates a runtime-managed SplFixedArray. If a size argument is provided it is emitted and
-/// coerced to int; otherwise the size defaults to 0. The allocated array is returned as
-/// `PhpType::Object("SplFixedArray")`.
+/// Emits assembly for new SPL fixed array.
 fn emit_new_spl_fixed_array(
     args: &[Expr],
     emitter: &mut Emitter,
@@ -396,13 +400,814 @@ fn emit_new_spl_fixed_array(
     PhpType::Object("SplFixedArray".to_string())
 }
 
-/// Handles `new Fiber($callable)` by delegating allocation, stack setup, and field
-/// initialisation to `__rt_fiber_construct`. The standard `emit_new_object` path would
-/// size the object as `8 + num_props * 16` which for Fiber (zero declared properties) yields
-/// only the object header and not enough room for the runtime-managed Fiber payload.
-/// Returns `PhpType::Object("Fiber")`. Captured closure variables are pre-loaded into the
-/// Fiber's `start_args` slots before the constructor returns so they are accessible when
-/// the fiber is first started.
+/// Emits assembly for new SPL array storage object.
+fn emit_new_spl_array_storage_object(
+    class_name: &str,
+    args: &[Expr],
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> PhpType {
+    emitter.comment(&format!("new {}() — SPL array storage construction", class_name));
+    let Some(class_info) = ctx.classes.get(class_name).cloned() else {
+        emitter.comment(&format!("WARNING: missing {} metadata", class_name));
+        return PhpType::Object(class_name.to_string());
+    };
+    let keys_offset = *class_info.property_offsets.get("keys").unwrap_or(&8);
+    let values_offset = *class_info.property_offsets.get("values").unwrap_or(&24);
+    let flags_offset = class_info
+        .property_offsets
+        .get("flags")
+        .copied()
+        .unwrap_or(if class_name == "ArrayIterator" { 56 } else { 40 });
+    let position_offset = class_info.property_offsets.get("position").copied();
+
+    emit_new_object_core(class_name, &[], false, emitter, ctx, data);
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the allocated SPL storage object while constructor arguments are normalized
+
+    let source_ty = if let Some(source_expr) = args.first() {
+        let ty = emit_expr(source_expr, emitter, ctx, data);
+        if matches!(ty, PhpType::Array(_) | PhpType::AssocArray { .. }) {
+            ty
+        } else {
+            emitter.comment("WARNING: ArrayIterator/ArrayObject source was not statically typed as array");
+            emit_empty_mixed_array(emitter);
+            PhpType::Array(Box::new(PhpType::Mixed))
+        }
+    } else {
+        emit_empty_mixed_array(emitter);
+        PhpType::Array(Box::new(PhpType::Mixed))
+    };
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the source array for both keys and values extraction
+
+    if let Some(flags_expr) = args.get(1) {
+        let flags_ty = emit_expr(flags_expr, emitter, ctx, data);
+        coerce_result_to_type(emitter, ctx, data, &flags_ty, &PhpType::Int);
+    } else {
+        abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), 0);
+    }
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve ArrayIterator/ArrayObject flags until property storage is ready
+
+    load_storage_source_from_stack(emitter);
+    let keys_ty = crate::codegen::builtins::arrays::array_keys::emit_loaded_keys(
+        &source_ty,
+        emitter,
+        ctx,
+    )
+    .unwrap_or_else(|| PhpType::Array(Box::new(PhpType::Mixed)));
+    emit_convert_loaded_indexed_array_to_mixed(&keys_ty, emitter);
+    store_storage_array_property_from_result(emitter, keys_offset, 32);
+
+    load_storage_source_from_stack(emitter);
+    let values_ty = crate::codegen::builtins::arrays::array_values::emit_loaded_values(
+        &source_ty,
+        emitter,
+        ctx,
+        data,
+    )
+    .unwrap_or_else(|| PhpType::Array(Box::new(PhpType::Mixed)));
+    emit_convert_loaded_indexed_array_to_mixed(&values_ty, emitter);
+    store_storage_array_property_from_result(emitter, values_offset, 32);
+
+    store_storage_int_property_from_stack(emitter, flags_offset, 0, 32);
+    if let Some(position_offset) = position_offset {
+        store_storage_zero_property(emitter, position_offset, 32);
+    }
+
+    abi::emit_release_temporary_stack(emitter, 32);                             // discard preserved flags and source array after storage initialization
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // restore the initialized SPL storage object as the expression result
+    PhpType::Object(class_name.to_string())
+}
+
+/// Emits assembly for new iterator iterator.
+fn emit_new_iterator_iterator(
+    args: &[Expr],
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> PhpType {
+    emitter.comment("new IteratorIterator() — Traversable normalization");
+    let Some(class_info) = ctx.classes.get("IteratorIterator").cloned() else {
+        emitter.comment("WARNING: missing IteratorIterator metadata");
+        return PhpType::Object("IteratorIterator".to_string());
+    };
+    let inner_offset = class_info.property_offsets.get("inner").copied().unwrap_or(8);
+    let normalized_args =
+        normalize_iterator_iterator_constructor_args(&class_info, args, emitter, ctx, data);
+
+    emit_new_object_core("IteratorIterator", &[], false, emitter, ctx, data);
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the allocated IteratorIterator while normalizing the constructor source
+
+    if let Some(iterator_expr) = normalized_args.first() {
+        let source_ty = emit_expr(iterator_expr, emitter, ctx, data);
+        abi::emit_push_reg(emitter, abi::int_result_reg(emitter));              // preserve the Traversable candidate while evaluating the optional downcast class
+        emit_iterator_iterator_downcast_arg_status(normalized_args.get(1), emitter, ctx, data);
+        emit_normalize_saved_traversable_to_iterator(iterator_expr, &source_ty, emitter, ctx);
+    } else {
+        emitter.comment("WARNING: IteratorIterator constructor missing Traversable source");
+        abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), 0);
+    }
+
+    store_iterator_inner_property_from_result(emitter, inner_offset);
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // restore the initialized IteratorIterator as the expression result
+    PhpType::Object("IteratorIterator".to_string())
+}
+
+/// Emits assembly for new callback filter iterator.
+fn emit_new_callback_filter_iterator(
+    class_name: &str,
+    args: &[Expr],
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> PhpType {
+    emitter.comment(&format!("new {}() — callback filter construction", class_name));
+    let Some(class_info) = ctx.classes.get(class_name).cloned() else {
+        emitter.comment(&format!("WARNING: missing {} metadata", class_name));
+        return PhpType::Object(class_name.to_string());
+    };
+    let inner_offset = class_info.property_offsets.get("inner").copied().unwrap_or(8);
+    let callback_offset = class_info
+        .property_offsets
+        .get("callback")
+        .copied()
+        .unwrap_or(24);
+    let callback_env_offset = class_info
+        .property_offsets
+        .get("callbackEnv")
+        .copied()
+        .unwrap_or(40);
+    let normalized_args = normalize_constructor_args(&class_info, args, emitter, ctx, data);
+
+    emit_new_object_core(class_name, &[], false, emitter, ctx, data);
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the allocated callback-filter object while constructor arguments are stored
+
+    if let Some(iterator_expr) = normalized_args.first() {
+        let actual_ty = emit_expr(iterator_expr, emitter, ctx, data);
+        coerce_result_to_type(
+            emitter,
+            ctx,
+            data,
+            &actual_ty,
+            &PhpType::Object("Iterator".to_string()),
+        );
+    } else {
+        emitter.comment(&format!("WARNING: {} constructor missing Iterator source", class_name));
+        abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), 0);
+    }
+    store_iterator_inner_property_from_result(emitter, inner_offset);
+
+    if let Some(callback_expr) = normalized_args.get(1) {
+        let (_callback_ty, captures, target_visible_arg_types) =
+            emit_callback_filter_callable_arg(callback_expr, emitter, ctx, data);
+        if captures.is_empty() {
+            store_callable_property_from_result(emitter, callback_offset);
+            store_pointer_property_zero(emitter, callback_env_offset);
+        } else {
+            let wrapper_label = callback_env::emit_persistent_callback_env_from_result(
+                &captures,
+                callback_filter_visible_arg_types(),
+                target_visible_arg_types,
+                emitter,
+                ctx,
+            );
+            store_pointer_property_from_result(emitter, callback_env_offset);
+            crate::codegen::callable_descriptor::emit_load_descriptor_address(
+                emitter,
+                data,
+                abi::int_result_reg(emitter),
+                &wrapper_label,
+                None,
+                crate::codegen::callable_descriptor::CALLABLE_DESC_KIND_CALLBACK_ADAPTER,
+            );
+            store_callable_property_from_result(emitter, callback_offset);
+        }
+    } else {
+        emitter.comment(&format!("WARNING: {} constructor missing callback", class_name));
+        abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), 0);
+        store_pointer_property_zero(emitter, callback_env_offset);
+        abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), 0);
+        store_callable_property_from_result(emitter, callback_offset);
+    }
+
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // restore the initialized callback-filter object as the expression result
+    PhpType::Object(class_name.to_string())
+}
+
+/// Normalizes iterator iterator constructor args into the representation expected by later lowering.
+fn normalize_iterator_iterator_constructor_args(
+    class_info: &crate::types::ClassInfo,
+    args: &[Expr],
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> Vec<Expr> {
+    normalize_constructor_args(class_info, args, emitter, ctx, data)
+}
+
+/// Normalizes constructor args into the representation expected by later lowering.
+fn normalize_constructor_args(
+    class_info: &crate::types::ClassInfo,
+    args: &[Expr],
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> Vec<Expr> {
+    let Some(sig) = class_info.methods.get("__construct") else {
+        return args.to_vec();
+    };
+    let call_span = args
+        .first()
+        .map(|arg| arg.span)
+        .unwrap_or_else(crate::span::Span::dummy);
+    let regular_param_count = call_args::regular_param_count(Some(sig), args.len());
+    call_args::preevaluate_named_call_args_to_temps(
+        sig,
+        args,
+        call_span,
+        regular_param_count,
+        false,
+        emitter,
+        ctx,
+        data,
+    )
+    .args
+}
+
+/// Computes the callable signature metadata for callback filter callable.
+fn callback_filter_callable_sig() -> FunctionSig {
+    FunctionSig {
+        params: vec![
+            ("current".to_string(), PhpType::Mixed),
+            ("key".to_string(), PhpType::Mixed),
+            ("iterator".to_string(), PhpType::Object("Iterator".to_string())),
+        ],
+        defaults: vec![None, None, None],
+        return_type: PhpType::Bool,
+        declared_return: false,
+        ref_params: vec![false, false, false],
+        declared_params: vec![false, false, false],
+        variadic: None,
+        deprecation: None,
+    }
+}
+
+/// Provides the Callback filter visible arg types helper used by the allocation module.
+fn callback_filter_visible_arg_types() -> Vec<PhpType> {
+    vec![
+        PhpType::Mixed,
+        PhpType::Mixed,
+        PhpType::Object("Iterator".to_string()),
+    ]
+}
+
+/// Emits assembly for callback filter callable arg.
+fn emit_callback_filter_callable_arg(
+    callback_expr: &Expr,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> (PhpType, Vec<(String, PhpType, bool)>, Vec<PhpType>) {
+    let previous_sig = ctx
+        .expected_first_class_callable_sig
+        .replace(callback_filter_callable_sig());
+    let (callback_ty, capture_source) = if let ExprKind::Variable(name) = &callback_expr.kind {
+        if let Some(CallableTarget::Function(function_name)) =
+            ctx.first_class_callable_targets.get(name).cloned()
+        {
+            let synthetic = Expr::new(
+                ExprKind::FirstClassCallable(CallableTarget::Function(function_name)),
+                callback_expr.span,
+            );
+            (emit_expr(&synthetic, emitter, ctx, data), synthetic)
+        } else {
+            (emit_expr(callback_expr, emitter, ctx, data), callback_expr.clone())
+        }
+    } else {
+        (emit_expr(callback_expr, emitter, ctx, data), callback_expr.clone())
+    };
+    let captures = crate::codegen::callables::callable_captures(&capture_source, ctx);
+    let target_visible_arg_types = callback_filter_target_arg_types(&capture_source, ctx);
+    ctx.expected_first_class_callable_sig = previous_sig;
+    (callback_ty, captures, target_visible_arg_types)
+}
+
+/// Provides the Callback filter target arg types helper used by the allocation module.
+fn callback_filter_target_arg_types(callback_expr: &Expr, ctx: &Context) -> Vec<PhpType> {
+    let sig = match &callback_expr.kind {
+        ExprKind::Closure { .. } | ExprKind::FirstClassCallable(_) => {
+            ctx.deferred_closures.last().map(|closure| closure.sig.clone())
+        }
+        _ => crate::codegen::callables::callable_sig(callback_expr, ctx),
+    };
+    sig.map(|sig| {
+        sig.params
+            .into_iter()
+            .take(3)
+            .map(|(_, ty)| ty)
+            .collect::<Vec<_>>()
+    })
+    .filter(|types| types.len() == 3)
+    .unwrap_or_else(callback_filter_visible_arg_types)
+}
+
+/// Emits assembly for iterator iterator downcast arg status.
+fn emit_iterator_iterator_downcast_arg_status(
+    class_expr: Option<&Expr>,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) {
+    let Some(class_expr) = class_expr else {
+        emit_push_iterator_iterator_downcast_status(emitter, 0, 0);
+        return;
+    };
+
+    let class_ty = emit_expr(class_expr, emitter, ctx, data).codegen_repr();
+    match class_ty {
+        PhpType::Str => emit_push_iterator_iterator_downcast_status_from_string(emitter, ctx),
+        PhpType::Void | PhpType::Never => {
+            emit_push_iterator_iterator_downcast_status(emitter, 0, 0);
+        }
+        PhpType::Mixed | PhpType::Union(_) => {
+            emit_push_iterator_iterator_downcast_status_from_mixed(emitter, ctx);
+        }
+        _ => emit_push_iterator_iterator_downcast_status(emitter, 2, 0),
+    }
+}
+
+/// Emits assembly for push iterator iterator downcast status from string.
+fn emit_push_iterator_iterator_downcast_status_from_string(
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+) {
+    abi::emit_call_label(emitter, "__rt_instanceof_lookup");                    // resolve the optional downcast class-string argument
+    emit_push_iterator_iterator_downcast_status_from_lookup(emitter, ctx);
+}
+
+/// Emits assembly for push iterator iterator downcast status from mixed.
+fn emit_push_iterator_iterator_downcast_status_from_mixed(
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+) {
+    let string_case = ctx.next_label("iterator_iterator_downcast_string");
+    let null_case = ctx.next_label("iterator_iterator_downcast_null");
+    let invalid_case = ctx.next_label("iterator_iterator_downcast_invalid");
+    let done = ctx.next_label("iterator_iterator_downcast_done");
+
+    abi::emit_call_label(emitter, "__rt_mixed_unbox");                          // inspect nullable mixed downcast values at runtime
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction("cmp x0, #1");                                  // runtime tag 1 means the downcast argument is a string
+            emitter.instruction(&format!("b.eq {}", string_case));              // resolve string downcast targets through class metadata
+            emitter.instruction("cmp x0, #8");                                  // runtime tag 8 means the downcast argument is null
+            emitter.instruction(&format!("b.eq {}", null_case));                // null behaves like the omitted second constructor argument
+            emitter.instruction(&format!("b {}", invalid_case));                // non-string, non-null mixed payloads are invalid downcast targets
+        }
+        Arch::X86_64 => {
+            emitter.instruction("cmp rax, 1");                                  // runtime tag 1 means the downcast argument is a string
+            emitter.instruction(&format!("je {}", string_case));                // resolve string downcast targets through class metadata
+            emitter.instruction("cmp rax, 8");                                  // runtime tag 8 means the downcast argument is null
+            emitter.instruction(&format!("je {}", null_case));                  // null behaves like the omitted second constructor argument
+            emitter.instruction(&format!("jmp {}", invalid_case));              // non-string, non-null mixed payloads are invalid downcast targets
+        }
+    }
+
+    emitter.label(&string_case);
+    if emitter.target.arch == Arch::X86_64 {
+        emitter.instruction("mov rax, rdi");                                    // move the unboxed string pointer into the lookup input register
+    }
+    emit_push_iterator_iterator_downcast_status_from_string(emitter, ctx);
+    abi::emit_jump(emitter, &done);                                             // converge after pushing the resolved downcast metadata
+
+    emitter.label(&null_case);
+    emit_push_iterator_iterator_downcast_status(emitter, 0, 0);
+    abi::emit_jump(emitter, &done);                                             // converge after pushing the omitted/null downcast marker
+
+    emitter.label(&invalid_case);
+    emit_push_iterator_iterator_downcast_status(emitter, 2, 0);
+
+    emitter.label(&done);
+}
+
+/// Emits assembly for push iterator iterator downcast status from lookup.
+fn emit_push_iterator_iterator_downcast_status_from_lookup(
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+) {
+    let invalid_case = ctx.next_label("iterator_iterator_downcast_lookup_invalid");
+    let done = ctx.next_label("iterator_iterator_downcast_lookup_done");
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction("cmp x0, #0");                                  // did the class-string lookup resolve to a declared target?
+            emitter.instruction(&format!("b.eq {}", invalid_case));             // unknown downcast class names fail when the source is an aggregate
+            emitter.instruction("cmp x2, #0");                                  // only concrete class targets are valid downcast classes
+            emitter.instruction(&format!("b.ne {}", invalid_case));             // interface names are not valid IteratorIterator downcast classes
+            emitter.instruction("mov x0, #1");                                  // status 1 means a concrete downcast class id follows
+            emitter.instruction(&format!("b {}", done));                        // keep the resolved class id in x1
+
+            emitter.label(&invalid_case);
+            emitter.instruction("mov x0, #2");                                  // status 2 means the class argument must throw for aggregates
+            emitter.instruction("mov x1, #0");                                  // invalid targets have no usable class id
+        }
+        Arch::X86_64 => {
+            emitter.instruction("test rax, rax");                               // did the class-string lookup resolve to a declared target?
+            emitter.instruction(&format!("je {}", invalid_case));               // unknown downcast class names fail when the source is an aggregate
+            emitter.instruction("test rdx, rdx");                               // only concrete class targets are valid downcast classes
+            emitter.instruction(&format!("jne {}", invalid_case));              // interface names are not valid IteratorIterator downcast classes
+            emitter.instruction("mov rax, 1");                                  // status 1 means a concrete downcast class id follows
+            emitter.instruction(&format!("jmp {}", done));                      // keep the resolved class id in rdi
+
+            emitter.label(&invalid_case);
+            emitter.instruction("mov rax, 2");                                  // status 2 means the class argument must throw for aggregates
+            emitter.instruction("xor edi, edi");                                // invalid targets have no usable class id
+        }
+    }
+    emitter.label(&done);
+    match emitter.target.arch {
+        Arch::AArch64 => abi::emit_push_reg_pair(emitter, "x0", "x1"),
+        Arch::X86_64 => abi::emit_push_reg_pair(emitter, "rax", "rdi"),
+    }
+}
+
+/// Emits assembly for push iterator iterator downcast status.
+fn emit_push_iterator_iterator_downcast_status(
+    emitter: &mut Emitter,
+    status: i64,
+    class_id: i64,
+) {
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            abi::emit_load_int_immediate(emitter, "x0", status);
+            abi::emit_load_int_immediate(emitter, "x1", class_id);
+            abi::emit_push_reg_pair(emitter, "x0", "x1");
+        }
+        Arch::X86_64 => {
+            abi::emit_load_int_immediate(emitter, "rax", status);
+            abi::emit_load_int_immediate(emitter, "rdi", class_id);
+            abi::emit_push_reg_pair(emitter, "rax", "rdi");
+        }
+    }
+}
+
+/// Emits assembly for normalize saved traversable to iterator.
+fn emit_normalize_saved_traversable_to_iterator(
+    source_expr: &Expr,
+    source_ty: &PhpType,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+) {
+    let iterator_id = ctx
+        .interfaces
+        .get("Iterator")
+        .expect("codegen bug: missing builtin Iterator interface")
+        .interface_id;
+    let aggregate_id = ctx
+        .interfaces
+        .get("IteratorAggregate")
+        .expect("codegen bug: missing builtin IteratorAggregate interface")
+        .interface_id;
+    let direct_case = ctx.next_label("iterator_iterator_source_iterator");
+    let aggregate_case = ctx.next_label("iterator_iterator_source_aggregate");
+    let done = ctx.next_label("iterator_iterator_source_done");
+    let source_is_borrowed = expr_result_heap_ownership(source_expr) != HeapOwnership::Owned;
+
+    emit_branch_if_saved_traversable_implements(iterator_id, 16, &direct_case, emitter);
+    emit_branch_if_saved_traversable_implements(aggregate_id, 16, &aggregate_case, emitter);
+    abi::emit_release_temporary_stack(emitter, 32);                             // discard downcast metadata and unsupported Traversable candidate
+    abi::emit_call_label(emitter, "__rt_iterable_unsupported_kind");            // invalid Traversable metadata aborts defensively
+
+    emitter.label(&direct_case);
+    abi::emit_release_temporary_stack(emitter, 16);                             // discard ignored downcast metadata for direct Iterator inputs
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // restore the direct Iterator object pointer
+    if source_is_borrowed {
+        abi::emit_incref_if_refcounted(emitter, &source_ty.codegen_repr());
+    }
+    abi::emit_jump(emitter, &done);                                             // direct Iterator inputs are already normalized
+
+    emitter.label(&aggregate_case);
+    emit_validate_iterator_iterator_aggregate_downcast(aggregate_id, emitter, ctx);
+    abi::emit_release_temporary_stack(emitter, 16);                             // discard validated downcast metadata before dispatching getIterator()
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // restore the IteratorAggregate object pointer before getIterator()
+    move_loaded_result_to_receiver_arg(emitter);
+    emit_dispatch_interface_method("IteratorAggregate", "getiterator", emitter, ctx);
+
+    emitter.label(&done);
+}
+
+/// Emits assembly for branch if saved traversable implements.
+fn emit_branch_if_saved_traversable_implements(
+    interface_id: u64,
+    candidate_stack_offset: usize,
+    target_label: &str,
+    emitter: &mut Emitter,
+) {
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction(&format!("ldr x0, [sp, #{}]", candidate_stack_offset)); // load the saved Traversable candidate as matcher argument 1
+            abi::emit_load_int_immediate(emitter, "x1", interface_id as i64);
+            abi::emit_load_int_immediate(emitter, "x2", 1);
+            abi::emit_call_label(emitter, "__rt_exception_matches");            // test whether the candidate implements the requested Traversable interface
+            emitter.instruction("cmp x0, #0");                                  // did the runtime interface matcher succeed?
+            emitter.instruction(&format!("b.ne {}", target_label));             // branch to the matching normalization path
+        }
+        Arch::X86_64 => {
+            emitter.instruction(&format!("mov rdi, QWORD PTR [rsp + {}]", candidate_stack_offset)); // load the saved Traversable candidate as matcher argument 1
+            abi::emit_load_int_immediate(emitter, "rsi", interface_id as i64);
+            abi::emit_load_int_immediate(emitter, "rdx", 1);
+            abi::emit_call_label(emitter, "__rt_exception_matches");            // test whether the candidate implements the requested Traversable interface
+            emitter.instruction("test rax, rax");                               // did the runtime interface matcher succeed?
+            emitter.instruction(&format!("jne {}", target_label));              // branch to the matching normalization path
+        }
+    }
+}
+
+/// Emits assembly for validate iterator iterator aggregate downcast.
+fn emit_validate_iterator_iterator_aggregate_downcast(
+    aggregate_interface_id: u64,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+) {
+    let skip = ctx.next_label("iterator_iterator_downcast_skip");
+    let throw = ctx.next_label("iterator_iterator_downcast_throw");
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction("ldr x9, [sp]");                                // load downcast status: 0 omitted/null, 1 class id, 2 invalid
+            emitter.instruction(&format!("cbz x9, {}", skip));                  // omitted/null class arguments do not constrain IteratorAggregate inputs
+            emitter.instruction("cmp x9, #1");                                  // only status 1 carries a valid concrete class id
+            emitter.instruction(&format!("b.ne {}", throw));                    // invalid class names and interfaces throw LogicException for aggregates
+            emitter.instruction("ldr x0, [sp, #16]");                           // pass the saved IteratorAggregate object to the class matcher
+            emitter.instruction("ldr x1, [sp, #8]");                            // pass the requested downcast class id to the class matcher
+            abi::emit_load_int_immediate(emitter, "x2", 0);
+            abi::emit_call_label(emitter, "__rt_exception_matches");            // require the aggregate object to be an instance of the requested class
+            emitter.instruction("cmp x0, #0");                                  // did the aggregate object match the requested class?
+            emitter.instruction(&format!("b.eq {}", throw));                    // non-base downcast classes are rejected like PHP
+            emitter.instruction("ldr x0, [sp, #8]");                            // pass the requested class id to the metadata-only interface checker
+            abi::emit_load_int_immediate(emitter, "x1", aggregate_interface_id as i64);
+            abi::emit_call_label(emitter, "__rt_class_implements_interface");   // require the downcast class itself to implement IteratorAggregate
+            emitter.instruction("cmp x0, #0");                                  // did the downcast class implement IteratorAggregate?
+            emitter.instruction(&format!("b.eq {}", throw));                    // non-Traversable base classes are rejected like PHP
+            emitter.instruction(&format!("b {}", skip));                        // the aggregate downcast class is valid
+        }
+        Arch::X86_64 => {
+            emitter.instruction("mov r10, QWORD PTR [rsp]");                    // load downcast status: 0 omitted/null, 1 class id, 2 invalid
+            emitter.instruction("test r10, r10");                               // is there an explicit downcast class to validate?
+            emitter.instruction(&format!("je {}", skip));                       // omitted/null class arguments do not constrain IteratorAggregate inputs
+            emitter.instruction("cmp r10, 1");                                  // only status 1 carries a valid concrete class id
+            emitter.instruction(&format!("jne {}", throw));                     // invalid class names and interfaces throw LogicException for aggregates
+            emitter.instruction("mov rdi, QWORD PTR [rsp + 16]");               // pass the saved IteratorAggregate object to the class matcher
+            emitter.instruction("mov rsi, QWORD PTR [rsp + 8]");                // pass the requested downcast class id to the class matcher
+            abi::emit_load_int_immediate(emitter, "rdx", 0);
+            abi::emit_call_label(emitter, "__rt_exception_matches");            // require the aggregate object to be an instance of the requested class
+            emitter.instruction("test rax, rax");                               // did the aggregate object match the requested class?
+            emitter.instruction(&format!("je {}", throw));                      // non-base downcast classes are rejected like PHP
+            emitter.instruction("mov rdi, QWORD PTR [rsp + 8]");                // pass the requested class id to the metadata-only interface checker
+            abi::emit_load_int_immediate(emitter, "rsi", aggregate_interface_id as i64);
+            abi::emit_call_label(emitter, "__rt_class_implements_interface");   // require the downcast class itself to implement IteratorAggregate
+            emitter.instruction("test rax, rax");                               // did the downcast class implement IteratorAggregate?
+            emitter.instruction(&format!("je {}", throw));                      // non-Traversable base classes are rejected like PHP
+            emitter.instruction(&format!("jmp {}", skip));                      // the aggregate downcast class is valid
+        }
+    }
+
+    emitter.label(&throw);
+    emit_throw_iterator_iterator_downcast_logic_exception(emitter);
+    emitter.label(&skip);
+}
+
+/// Emits assembly for throw iterator iterator downcast logic exception.
+fn emit_throw_iterator_iterator_downcast_logic_exception(emitter: &mut Emitter) {
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction("mov x0, #32");                                 // request Throwable payload storage
+            emitter.instruction("bl __rt_heap_alloc");                          // allocate the LogicException object payload
+            emitter.instruction("mov x9, #6");                                  // heap kind 6 = object instance
+            emitter.instruction("str x9, [x0, #-8]");                           // stamp allocation as a runtime object
+            abi::emit_symbol_address(emitter, "x9", "_spl_logic_exception_class_id");
+            emitter.instruction("ldr x9, [x9]");                                // load LogicException's runtime class id for this program
+            emitter.instruction("str x9, [x0]");                                // store class id at object header
+            abi::emit_symbol_address(emitter, "x9", "_iterator_iterator_downcast_msg");
+            emitter.instruction("str x9, [x0, #8]");                            // store static exception message pointer
+            emitter.instruction(&format!("mov x9, #{}", ITERATOR_ITERATOR_DOWNCAST_MESSAGE.len())); // load static exception message length
+            emitter.instruction("str x9, [x0, #16]");                           // store exception message length
+            emitter.instruction("str xzr, [x0, #24]");                          // exception code defaults to zero
+            abi::emit_symbol_address(emitter, "x9", "_exc_value");
+            emitter.instruction("str x0, [x9]");                                // publish the active exception object
+            emitter.instruction("b __rt_throw_current");                        // enter the standard exception unwinder
+        }
+        Arch::X86_64 => {
+            emitter.instruction("push rbp");                                    // preserve caller frame pointer for exception allocation
+            emitter.instruction("mov rbp, rsp");                                // establish aligned helper frame
+            emitter.instruction("sub rsp, 16");                                 // keep the nested heap allocation call 16-byte aligned
+            emitter.instruction("mov rax, 32");                                 // request Throwable payload storage
+            emitter.instruction("call __rt_heap_alloc");                        // allocate the LogicException object payload
+            emitter.instruction("mov r10, 0x4548504c00000006");                 // x86_64 heap-kind word: HE LP magic + kind 6 object
+            emitter.instruction("mov QWORD PTR [rax - 8], r10");                // stamp allocation as a runtime object
+            emitter.instruction("mov r10, QWORD PTR [rip + _spl_logic_exception_class_id]"); // load LogicException's runtime class id for this program
+            emitter.instruction("mov QWORD PTR [rax], r10");                    // store class id at object header
+            emitter.instruction("lea r10, [rip + _iterator_iterator_downcast_msg]"); // materialize static exception message pointer
+            emitter.instruction("mov QWORD PTR [rax + 8], r10");                // store static exception message pointer
+            emitter.instruction(&format!("mov QWORD PTR [rax + 16], {}", ITERATOR_ITERATOR_DOWNCAST_MESSAGE.len())); // store static exception message length
+            emitter.instruction("mov QWORD PTR [rax + 24], 0");                 // exception code defaults to zero
+            emitter.instruction("mov QWORD PTR [rip + _exc_value], rax");       // publish the active exception object
+            emitter.instruction("mov rsp, rbp");                                // release helper frame before throwing
+            emitter.instruction("pop rbp");                                     // restore caller frame pointer before throwing
+            emitter.instruction("jmp __rt_throw_current");                      // enter the standard exception unwinder
+        }
+    }
+}
+
+/// Moves loaded result to receiver arg into the register or storage slot expected by the next operation.
+fn move_loaded_result_to_receiver_arg(emitter: &mut Emitter) {
+    if emitter.target.arch == Arch::X86_64 {
+        emitter.instruction("mov rdi, rax");                                    // move the object result into the SysV receiver argument register
+    }
+}
+
+/// Stores iterator inner property from result into runtime storage or stack state.
+fn store_iterator_inner_property_from_result(emitter: &mut Emitter, inner_offset: usize) {
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction("ldr x9, [sp]");                                // reload the IteratorIterator object pointer
+            emitter.instruction(&format!("str x0, [x9, #{}]", inner_offset));   // store the normalized inner Iterator object
+            emitter.instruction("mov x10, #6");                                 // runtime property tag 6 = object
+            emitter.instruction(&format!("str x10, [x9, #{}]", inner_offset + 8)); // stamp the inner property as an object
+        }
+        Arch::X86_64 => {
+            emitter.instruction("mov r11, QWORD PTR [rsp]");                    // reload the IteratorIterator object pointer
+            emitter.instruction(&format!("mov QWORD PTR [r11 + {}], rax", inner_offset)); // store the normalized inner Iterator object
+            emitter.instruction(&format!("mov QWORD PTR [r11 + {}], 6", inner_offset + 8)); // stamp the inner property as an object
+        }
+    }
+}
+
+/// Stores callable property from result into runtime storage or stack state.
+fn store_callable_property_from_result(emitter: &mut Emitter, property_offset: usize) {
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction("ldr x9, [sp]");                                // reload the object pointer that owns the callable property
+            emitter.instruction(&format!("str x0, [x9, #{}]", property_offset)); // store the callable descriptor pointer
+            emitter.instruction(&format!("str xzr, [x9, #{}]", property_offset + 8)); // clear the unused inline property metadata slot for callable descriptors
+        }
+        Arch::X86_64 => {
+            emitter.instruction("mov r11, QWORD PTR [rsp]");                    // reload the object pointer that owns the callable property
+            emitter.instruction(&format!("mov QWORD PTR [r11 + {}], rax", property_offset)); // store the callable descriptor pointer
+            emitter.instruction(&format!("mov QWORD PTR [r11 + {}], 0", property_offset + 8)); // clear the unused inline property metadata slot for callable descriptors
+        }
+    }
+}
+
+/// Stores pointer property from result into runtime storage or stack state.
+fn store_pointer_property_from_result(emitter: &mut Emitter, property_offset: usize) {
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction("ldr x9, [sp]");                                // reload the object pointer that owns the raw pointer property
+            emitter.instruction(&format!("str x0, [x9, #{}]", property_offset)); // store the raw pointer payload
+            emitter.instruction(&format!("str xzr, [x9, #{}]", property_offset + 8)); // clear pointer property metadata because it is not PHP-owned
+        }
+        Arch::X86_64 => {
+            emitter.instruction("mov r11, QWORD PTR [rsp]");                    // reload the object pointer that owns the raw pointer property
+            emitter.instruction(&format!("mov QWORD PTR [r11 + {}], rax", property_offset)); // store the raw pointer payload
+            emitter.instruction(&format!("mov QWORD PTR [r11 + {}], 0", property_offset + 8)); // clear pointer property metadata because it is not PHP-owned
+        }
+    }
+}
+
+/// Stores pointer property zero into runtime storage or stack state.
+fn store_pointer_property_zero(emitter: &mut Emitter, property_offset: usize) {
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction("ldr x9, [sp]");                                // reload the object pointer that owns the raw pointer property
+            emitter.instruction(&format!("str xzr, [x9, #{}]", property_offset)); // initialize the raw pointer payload as null
+            emitter.instruction(&format!("str xzr, [x9, #{}]", property_offset + 8)); // clear pointer property metadata because it is not PHP-owned
+        }
+        Arch::X86_64 => {
+            emitter.instruction("mov r11, QWORD PTR [rsp]");                    // reload the object pointer that owns the raw pointer property
+            emitter.instruction(&format!("mov QWORD PTR [r11 + {}], 0", property_offset)); // initialize the raw pointer payload as null
+            emitter.instruction(&format!("mov QWORD PTR [r11 + {}], 0", property_offset + 8)); // clear pointer property metadata because it is not PHP-owned
+        }
+    }
+}
+
+/// Emits assembly for empty mixed array.
+fn emit_empty_mixed_array(emitter: &mut Emitter) {
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction("mov x0, #4");                                  // allocate a small empty storage array for SPL keys/values
+            emitter.instruction("mov x1, #8");                                  // Mixed storage uses pointer-sized slots
+        }
+        Arch::X86_64 => {
+            emitter.instruction("mov rdi, 4");                                  // allocate a small empty storage array for SPL keys/values
+            emitter.instruction("mov rsi, 8");                                  // Mixed storage uses pointer-sized slots
+        }
+    }
+    abi::emit_call_label(emitter, "__rt_array_new");                           // allocate empty indexed storage
+    emit_convert_loaded_indexed_array_to_mixed(&PhpType::Array(Box::new(PhpType::Int)), emitter);
+}
+
+/// Loads storage source from stack from runtime storage or stack state.
+fn load_storage_source_from_stack(emitter: &mut Emitter) {
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction("ldr x0, [sp, #16]");                           // reload the preserved constructor source array
+        }
+        Arch::X86_64 => {
+            emitter.instruction("mov rax, QWORD PTR [rsp + 16]");               // reload the preserved constructor source array
+        }
+    }
+}
+
+/// Emits assembly for convert loaded indexed array to mixed.
+fn emit_convert_loaded_indexed_array_to_mixed(array_ty: &PhpType, emitter: &mut Emitter) {
+    let elem_ty = match array_ty {
+        PhpType::Array(elem_ty) => elem_ty.as_ref(),
+        _ => &PhpType::Mixed,
+    };
+    let tag = runtime_value_tag(&elem_ty.codegen_repr()) as i64;
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction(&format!("mov x1, #{}", tag));                  // pass the current indexed-array value_type tag to the Mixed converter
+        }
+        Arch::X86_64 => {
+            emitter.instruction("mov rdi, rax");                                // pass the loaded indexed-array pointer to the Mixed converter
+            emitter.instruction(&format!("mov rsi, {}", tag));                  // pass the current indexed-array value_type tag to the Mixed converter
+        }
+    }
+    abi::emit_call_label(emitter, "__rt_array_to_mixed");                      // normalize SPL storage arrays to boxed Mixed slots
+}
+
+/// Stores storage array property from result into runtime storage or stack state.
+fn store_storage_array_property_from_result(
+    emitter: &mut Emitter,
+    property_offset: usize,
+    object_stack_offset: usize,
+) {
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction(&format!("ldr x9, [sp, #{}]", object_stack_offset)); // reload the SPL storage object pointer
+            emitter.instruction(&format!("str x0, [x9, #{}]", property_offset)); // store the initialized storage array pointer
+            emitter.instruction("mov x10, #4");                                 // runtime property tag 4 = indexed array
+            emitter.instruction(&format!("str x10, [x9, #{}]", property_offset + 8)); // stamp the property as an indexed array
+        }
+        Arch::X86_64 => {
+            emitter.instruction(&format!("mov r11, QWORD PTR [rsp + {}]", object_stack_offset)); // reload the SPL storage object pointer
+            emitter.instruction(&format!("mov QWORD PTR [r11 + {}], rax", property_offset)); // store the initialized storage array pointer
+            emitter.instruction(&format!("mov QWORD PTR [r11 + {}], 4", property_offset + 8)); // stamp the property as an indexed array
+        }
+    }
+}
+
+/// Stores storage integer property from stack into runtime storage or stack state.
+fn store_storage_int_property_from_stack(
+    emitter: &mut Emitter,
+    property_offset: usize,
+    value_stack_offset: usize,
+    object_stack_offset: usize,
+) {
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction(&format!("ldr x9, [sp, #{}]", object_stack_offset)); // reload the SPL storage object pointer
+            emitter.instruction(&format!("ldr x10, [sp, #{}]", value_stack_offset)); // reload the preserved integer property value
+            emitter.instruction(&format!("str x10, [x9, #{}]", property_offset)); // store the integer property value
+            emitter.instruction(&format!("str xzr, [x9, #{}]", property_offset + 8)); // clear scalar property metadata
+        }
+        Arch::X86_64 => {
+            emitter.instruction(&format!("mov r11, QWORD PTR [rsp + {}]", object_stack_offset)); // reload the SPL storage object pointer
+            emitter.instruction(&format!("mov r10, QWORD PTR [rsp + {}]", value_stack_offset)); // reload the preserved integer property value
+            emitter.instruction(&format!("mov QWORD PTR [r11 + {}], r10", property_offset)); // store the integer property value
+            emitter.instruction(&format!("mov QWORD PTR [r11 + {}], 0", property_offset + 8)); // clear scalar property metadata
+        }
+    }
+}
+
+/// Stores storage zero property into runtime storage or stack state.
+fn store_storage_zero_property(
+    emitter: &mut Emitter,
+    property_offset: usize,
+    object_stack_offset: usize,
+) {
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction(&format!("ldr x9, [sp, #{}]", object_stack_offset)); // reload the SPL storage object pointer
+            emitter.instruction(&format!("str xzr, [x9, #{}]", property_offset)); // initialize the integer property to zero
+            emitter.instruction(&format!("str xzr, [x9, #{}]", property_offset + 8)); // clear scalar property metadata
+        }
+        Arch::X86_64 => {
+            emitter.instruction(&format!("mov r11, QWORD PTR [rsp + {}]", object_stack_offset)); // reload the SPL storage object pointer
+            emitter.instruction(&format!("mov QWORD PTR [r11 + {}], 0", property_offset)); // initialize the integer property to zero
+            emitter.instruction(&format!("mov QWORD PTR [r11 + {}], 0", property_offset + 8)); // clear scalar property metadata
+        }
+    }
+}
+
+/// Codegen interception for `new Fiber($callable)`.
+///
+/// The standard `emit_new_object` path would size the object as `8 + num_props * 16`,
+/// which for Fiber (zero declared properties) yields only the object header and
+/// not enough room for the runtime-managed Fiber payload. We instead delegate the
+/// entire allocation, stack setup, and field initialisation to `__rt_fiber_construct`,
+/// passing the captured closure plus the runtime class id so `instanceof Fiber` keeps
+/// working.
 fn emit_new_fiber(
     args: &[Expr],
     emitter: &mut Emitter,

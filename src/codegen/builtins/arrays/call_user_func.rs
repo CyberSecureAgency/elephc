@@ -16,6 +16,8 @@ use crate::codegen::abi;
 use crate::parser::ast::{Expr, ExprKind};
 use crate::types::{FunctionSig, PhpType};
 use super::callback_env;
+use super::callable_forms;
+use super::call_user_func_array;
 use super::super::callable_lookup::{lookup_function, FunctionLookup};
 
 /// Emits `call_user_func($callback, ...$args)` builtin calls.
@@ -72,12 +74,37 @@ pub fn emit(
             Some(FunctionLookup::UserFunction(_)) | Some(FunctionLookup::IncludeVariant(_)) | None => {}
         }
     }
+    if let Some(ret_ty) = callable_forms::emit_call_user_func_form(
+        &args[0],
+        &args[1..],
+        emitter,
+        ctx,
+        data,
+    ) {
+        return Some(ret_ty);
+    }
     let save_concat_before_args =
         emitter.target.arch == crate::codegen::platform::Arch::X86_64;
     if save_concat_before_args {
         crate::codegen::expr::save_concat_offset_before_nested_call(emitter, ctx);
     }
     let call_reg = abi::nested_call_reg(emitter);
+    if call_user_func_array::callback_is_runtime_string(&args[0], ctx) {
+        let arg_array = Expr::new(
+            ExprKind::ArrayLiteral(args[1..].to_vec()),
+            args[0].span,
+        );
+        let ret_ty = call_user_func_array::emit_dynamic_string_callback_with_array_expr(
+            &args[0],
+            &arg_array,
+            call_reg,
+            save_concat_before_args,
+            emitter,
+            ctx,
+            data,
+        );
+        return Some(ret_ty);
+    }
 
     // -- resolve callback function address --
     let is_callable_expr = matches!(

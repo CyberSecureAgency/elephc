@@ -28,6 +28,7 @@ pub struct CheckResult {
     pub global_env: TypeEnv,
     pub functions: HashMap<String, FunctionSig>,
     pub callable_param_sigs: HashMap<(String, String), FunctionSig>,
+    pub callable_return_sigs: HashMap<String, FunctionSig>,
     pub interfaces: HashMap<String, InterfaceInfo>,
     pub classes: HashMap<String, ClassInfo>,
     pub enums: HashMap<String, EnumInfo>,
@@ -66,6 +67,7 @@ mod tests {
         crate::parser::parse(&tokens).expect("parse failed")
     }
 
+    /// Verifies that linux crypto builtin linking tracks target not host.
     #[test]
     fn test_linux_crypto_builtin_linking_tracks_target_not_host() {
         let program = parse_program("<?php echo md5(\"abc\");");

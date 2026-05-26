@@ -498,8 +498,17 @@ block the EIR migration unless it exposes core dispatch, ownership, or lvalue
 gaps that must be fixed first.
 
 - [x] Phase 4 — `SplDoublyLinkedList`, `SplStack`, `SplQueue`, `SplFixedArray`
-- [ ] Phase 5 — iterator decorators (`ArrayIterator`, `ArrayObject`, `IteratorIterator`, `LimitIterator`, `NoRewindIterator`, `InfiniteIterator`, `EmptyIterator`, `AppendIterator`, `MultipleIterator`, `CallbackFilterIterator`, `FilterIterator`, `CachingIterator`, `RecursiveArrayIterator`, `RecursiveCallbackFilterIterator`, `RecursiveFilterIterator`, `RecursiveIteratorIterator`, `ParentIterator`); functions `iterator_to_array`, `iterator_count`, `iterator_apply`, `class_implements`, `class_parents`, `class_uses`
-- [ ] Phase 5 follow-up — iterator-dependent Phase 4 parity: `SplFixedArray::getIterator()` plus `IteratorAggregate`/`InternalIterator` runtime wiring once iterator classes are available
+- [x] Runtime callable dispatch metadata foundation — shared AOT callable cases for entry-selected callbacks and runtime string-name user callbacks, reused by `call_user_func()`, `call_user_func_array()`, and `iterator_apply()`
+- [x] Phase 5 storage foundation — `EmptyIterator`, `ArrayIterator`, `ArrayObject`
+- [x] Phase 5 simple iterator decorators — `IteratorIterator`, `LimitIterator`, `NoRewindIterator`, `InfiniteIterator`
+- [x] Phase 5 multi-source iterator decorators — `AppendIterator`, `MultipleIterator`
+- [x] Phase 5 filter/cache decorators — `FilterIterator`, `CallbackFilterIterator`, `CachingIterator`
+- [x] Phase 5 recursive iterator family — `RecursiveArrayIterator`, `RecursiveFilterIterator`, `RecursiveCallbackFilterIterator`, `RecursiveIteratorIterator`, `ParentIterator`
+- [x] Phase 5 — iterator decorators (`ArrayIterator`, `ArrayObject`, `IteratorIterator`, `LimitIterator`, `NoRewindIterator`, `InfiniteIterator`, `EmptyIterator`, `AppendIterator`, `MultipleIterator`, `CallbackFilterIterator`, `FilterIterator`, `CachingIterator`, `RecursiveArrayIterator`, `RecursiveCallbackFilterIterator`, `RecursiveFilterIterator`, `RecursiveIteratorIterator`, `ParentIterator`); functions `iterator_to_array`, `iterator_count`, `iterator_apply`, `class_implements`, `class_parents`, `class_uses`
+- [x] Runtime callable dispatch expansion — generated descriptor cases for dynamic string builtin callbacks and public `Class::method` strings, plus `call_user_func()` / `call_user_func_array()` support for invokable objects and callable arrays stored directly or in local variables
+- [x] Runtime callable descriptor ABI/storage foundation — closure, first-class callable, SPL callback-adapter, object-property, array, local, and Fiber storage now carries descriptor pointers; indirect call sites and callback runtimes load the entry ABI slot before invocation
+- [ ] Universal runtime callable descriptors — complete runtime descriptor metadata for signature/default/by-ref/variadic handling, receiver/capture environments, and invocation support for string, array, closure, first-class callable, object `__invoke`, static/instance method, builtin, and extern callable shapes
+- [x] Phase 5 follow-up — iterator-dependent Phase 4 parity: `SplFixedArray::getIterator()` plus `IteratorAggregate`/`InternalIterator` runtime wiring once iterator classes are available
 - [ ] Phase 6 — `SplHeap`, `SplMaxHeap`, `SplMinHeap`, `SplPriorityQueue`, `SplObjectStorage`, and per-instance handle finalization
 - [ ] Phase 7 — `RegexIterator`, `RecursiveRegexIterator`
 - [ ] Phase 8 — file/directory iterators: `SplFileInfo`, `SplFileObject`, `SplTempFileObject`, `DirectoryIterator`, `FilesystemIterator`, `GlobIterator`, `RecursiveDirectoryIterator`, `RecursiveCachingIterator`

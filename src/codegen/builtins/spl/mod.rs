@@ -18,6 +18,11 @@ use crate::codegen::platform::Arch;
 use crate::parser::ast::{Expr, ExprKind};
 use crate::types::PhpType;
 
+mod iterator_common;
+mod iterator_apply;
+mod iterator_count;
+mod iterator_to_array;
+
 const EXTS_PTR_SYMBOL: &str = "_spl_autoload_exts_ptr";
 const EXTS_LEN_SYMBOL: &str = "_spl_autoload_exts_len";
 
@@ -41,6 +46,9 @@ pub fn emit(
         "spl_object_id" => Some(emit_object_id(args, emitter, ctx, data)),
         "spl_object_hash" => Some(emit_object_hash(args, emitter, ctx, data)),
         "spl_classes" => Some(emit_classes(emitter, data)),
+        "iterator_apply" => iterator_apply::emit(name, args, emitter, ctx, data),
+        "iterator_count" => iterator_count::emit(name, args, emitter, ctx, data),
+        "iterator_to_array" => iterator_to_array::emit(name, args, emitter, ctx, data),
         _ => None,
     }
 }
@@ -80,9 +88,9 @@ fn emit_object_hash(
 
 /// Materialises the SPL class/interface registry as an indexed string array.
 ///
-/// Names are a static snapshot of compiler-shipped SPL/core class-like names.
-/// Phases will extend this list as iterator decorators, heaps, and file
-/// iterators are implemented. The array stores (pointer, length) pairs per entry.
+/// Names mirror the compiler-shipped SPL/core interfaces, Throwable types,
+/// SPL exceptions, Phase 4 containers, and Phase 5 iterator foundations.
+/// The array stores (pointer, length) pairs per entry.
 fn emit_classes(emitter: &mut Emitter, data: &mut DataSection) -> PhpType {
     let names = SPL_CLASS_NAMES;
     emitter.comment("spl_classes() — AOT snapshot of shipped SPL types");
@@ -133,25 +141,42 @@ fn emit_classes(emitter: &mut Emitter, data: &mut DataSection) -> PhpType {
 /// with `inject_builtin_interfaces`, `inject_builtin_spl_exceptions`, and
 /// `inject_builtin_spl_classes`.
 const SPL_CLASS_NAMES: &[&str] = &[
+    "AppendIterator",
     "ArrayAccess",
+    "ArrayIterator",
+    "ArrayObject",
     "BadFunctionCallException",
     "BadMethodCallException",
+    "CachingIterator",
+    "CallbackFilterIterator",
     "Countable",
     "DomainException",
+    "EmptyIterator",
     "Error",
     "Exception",
+    "FilterIterator",
+    "InfiniteIterator",
     "InvalidArgumentException",
     "Iterator",
     "IteratorAggregate",
+    "IteratorIterator",
     "JsonSerializable",
     "LengthException",
+    "LimitIterator",
     "LogicException",
+    "MultipleIterator",
+    "NoRewindIterator",
     "OuterIterator",
     "OutOfBoundsException",
     "OutOfRangeException",
     "OverflowException",
+    "ParentIterator",
     "RangeException",
+    "RecursiveArrayIterator",
+    "RecursiveCallbackFilterIterator",
+    "RecursiveFilterIterator",
     "RecursiveIterator",
+    "RecursiveIteratorIterator",
     "RuntimeException",
     "SeekableIterator",
     "SplDoublyLinkedList",

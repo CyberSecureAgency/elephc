@@ -12,11 +12,21 @@
 mod autoload;
 #[path = "spl/classes.rs"]
 mod classes;
+#[path = "spl/decorators.rs"]
+mod decorators;
 #[path = "spl/interfaces.rs"]
 mod interfaces;
+#[path = "spl/introspection.rs"]
+mod introspection;
+#[path = "spl/iterator_helpers.rs"]
+mod iterator_helpers;
 #[path = "spl/intrinsics.rs"]
 mod intrinsics;
 #[path = "spl/redirects.rs"]
 mod redirects;
 #[path = "spl/exceptions.rs"]
 mod exceptions;
+#[path = "spl/recursive.rs"]
+mod recursive;
+#[path = "spl/storage.rs"]
+mod storage;

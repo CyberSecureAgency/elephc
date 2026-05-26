@@ -53,6 +53,12 @@ impl Checker {
         if class_name == "Fiber" {
             self.validate_fiber_constructor_args(args, expr, env)?;
         }
+        if matches!(
+            class_name.as_str(),
+            "CallbackFilterIterator" | "RecursiveCallbackFilterIterator"
+        ) {
+            self.specialize_callback_filter_iterator_callback(args)?;
+        }
         if is_reflection_owner_class(&class_name) {
             self.validate_reflection_owner_constructor(&class_name, args, expr, env)?;
             return Ok(PhpType::Object(class_name));
@@ -71,7 +77,9 @@ impl Checker {
                         .get("__construct")
                         .map(String::as_str)
                         .unwrap_or(class_name.as_str());
-                    if !self.can_access_member(declaring_class, visibility) {
+                    if !self.can_access_member(declaring_class, visibility)
+                        && !self.can_construct_internal_iterator_from_builtin_get_iterator(&class_name)
+                    {
                         return Err(CompileError::new(
                             expr.span,
                             &format!(
@@ -103,7 +111,14 @@ impl Checker {
                 for (i, arg) in normalized_args.iter().enumerate() {
                     let arg_ty = self.infer_type(arg, env)?;
                     if param_to_prop.get(i).is_some_and(|mapped| mapped.is_some()) {
-                        self.propagate_constructor_arg_type(class_name.as_str(), i, &arg_ty);
+                        let param_has_declared_type =
+                            declared_flags.get(i).copied().unwrap_or(false);
+                        self.propagate_constructor_arg_type(
+                            class_name.as_str(),
+                            i,
+                            &arg_ty,
+                            param_has_declared_type,
+                        );
                     }
                 }
                 return Ok(PhpType::Object(class_name));
@@ -126,10 +141,18 @@ impl Checker {
         for (i, arg) in args.iter().enumerate() {
             let arg_ty = self.infer_type(arg, env)?;
             if param_to_prop.get(i).is_some_and(|mapped| mapped.is_some()) {
-                self.propagate_constructor_arg_type(class_name.as_str(), i, &arg_ty);
+                self.propagate_constructor_arg_type(class_name.as_str(), i, &arg_ty, false);
             }
         }
         Ok(PhpType::Object(class_name))
+    }
+
+    /// Returns true when construct internal iterator from builtin get iterator.
+    fn can_construct_internal_iterator_from_builtin_get_iterator(&self, class_name: &str) -> bool {
+        let get_iterator_key = php_symbol_key("getIterator");
+        class_name == "InternalIterator"
+            && self.current_class.as_deref() == Some("SplFixedArray")
+            && self.current_method.as_deref() == Some(get_iterator_key.as_str())
     }
 
     /// Validates constructor arguments for reflection owner classes
@@ -516,6 +539,77 @@ impl Checker {
         };
 
         fibers::validate_callback_signature(&sig, visible_param_count, expr.span)
+    }
+
+    /// Provides the Specialize callback filter iterator callback helper used by the constructors module.
+    fn specialize_callback_filter_iterator_callback(
+        &mut self,
+        args: &[Expr],
+    ) -> Result<(), CompileError> {
+        let Some(callback) = args.get(1) else {
+            return Ok(());
+        };
+
+        match &callback.kind {
+            ExprKind::FirstClassCallable(crate::parser::ast::CallableTarget::Function(name)) => {
+                self.specialize_callback_filter_function(name.as_str(), callback.span)?;
+            }
+            ExprKind::Variable(var_name) => {
+                if let Some(crate::parser::ast::CallableTarget::Function(name)) =
+                    self.first_class_callable_targets.get(var_name).cloned()
+                {
+                    self.specialize_callback_filter_function(name.as_str(), callback.span)?;
+                }
+            }
+            _ => {}
+        }
+
+        Ok(())
+    }
+
+    /// Provides the Specialize callback filter function helper used by the constructors module.
+    fn specialize_callback_filter_function(
+        &mut self,
+        name: &str,
+        span: crate::span::Span,
+    ) -> Result<(), CompileError> {
+        if crate::name_resolver::is_builtin_function(name) {
+            return Ok(());
+        }
+
+        let name = self
+            .canonical_function_name_folded(name)
+            .unwrap_or_else(|| name.to_string());
+        if !self.functions.contains_key(name.as_str()) {
+            if let Some(decl) = self.fn_decls.get(name.as_str()).cloned() {
+                let param_types = self.initial_function_param_types(&name, &decl)?;
+                self.resolve_function_signature(&name, &decl, param_types)?;
+            }
+        }
+
+        let Some(sig) = self.functions.get_mut(name.as_str()) else {
+            return Err(CompileError::new(
+                span,
+                &format!("Undefined function for CallbackFilterIterator callback: {}", name),
+            ));
+        };
+        let callback_arg_types = [
+            PhpType::Mixed,
+            PhpType::Mixed,
+            PhpType::Object("Iterator".to_string()),
+        ];
+        for (idx, callback_arg_ty) in callback_arg_types.into_iter().enumerate() {
+            if idx >= sig.params.len() {
+                break;
+            }
+            if !sig.declared_params.get(idx).copied().unwrap_or(false)
+                && !sig.ref_params.get(idx).copied().unwrap_or(false)
+                && sig.params[idx].1 == PhpType::Int
+            {
+                sig.params[idx].1 = callback_arg_ty;
+            }
+        }
+        Ok(())
     }
 
     /// Infers the type of an enum case access (`EnumName::Case`).

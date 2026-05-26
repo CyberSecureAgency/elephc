@@ -57,75 +57,65 @@ pub(crate) fn emit_iterator_foreach(
     ctx: &mut Context,
     data: &mut DataSection,
 ) {
-    let mut dispatch_target = iterator_dispatch_target(class_name, ctx);
-    if !dispatch_target.implements_iterator(ctx) {
-        move_result_to_receiver_arg(emitter);
-        let ret_ty = dispatch_target.dispatch("getiterator", emitter, ctx);
-        dispatch_target = iterator_return_dispatch_target(&ret_ty, ctx);
-    }
+    emit_iterator_loop(
+        class_name,
+        loop_start,
+        loop_end,
+        loop_cont,
+        emitter,
+        ctx,
+        data,
+        |_, emitter, ctx, _| {
+            let mut deferred_receiver_release = None;
+            if let Some(kv) = key_var {
+                deferred_receiver_release =
+                    normalize_iterator_mixed_slot(kv, receiver_var, emitter, ctx);
+            }
+            if key_var.as_deref() != Some(value_var) {
+                let release = normalize_iterator_mixed_slot(value_var, receiver_var, emitter, ctx);
+                if deferred_receiver_release.is_none() {
+                    deferred_receiver_release = release;
+                }
+            }
+            deferred_receiver_release
+        },
+        |dispatch_target, emitter, ctx, data| {
+            if let Some(kv) = key_var {
+                reload_iterator_receiver(emitter);
+                let key_ty = dispatch_target.dispatch("key", emitter, ctx);
+                if let Some(kvar) = ctx.variables.get(kv) {
+                    let k_offset = kvar.stack_offset;
+                    store_iterator_mixed_result(kv, k_offset, &key_ty, emitter, ctx);
+                } else {
+                    emitter.comment(&format!("WARNING: undefined foreach key variable ${}", kv));
+                }
+            }
 
-    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // park iterator receiver pointer in a 16-byte stack slot
-    let mut deferred_receiver_release = None;
-    if let Some(kv) = key_var {
-        deferred_receiver_release =
-            normalize_iterator_mixed_slot(kv, receiver_var, emitter, ctx);
-    }
-    if key_var.as_deref() != Some(value_var) {
-        let release = normalize_iterator_mixed_slot(value_var, receiver_var, emitter, ctx);
-        if deferred_receiver_release.is_none() {
-            deferred_receiver_release = release;
-        }
-    }
+            reload_iterator_receiver(emitter);
+            let current_ty = dispatch_target.dispatch("current", emitter, ctx);
+            if let Some(vvar) = ctx.variables.get(value_var) {
+                let v_offset = vvar.stack_offset;
+                store_iterator_mixed_result(value_var, v_offset, &current_ty, emitter, ctx);
+            } else {
+                emitter.comment(&format!("WARNING: undefined foreach value variable ${}", value_var));
+            }
 
-    reload_iterator_receiver(emitter);
-    dispatch_target.dispatch("rewind", emitter, ctx);
-
-    emitter.label(loop_start);
-
-    reload_iterator_receiver(emitter);
-    dispatch_target.dispatch("valid", emitter, ctx);
-    emit_branch_if_invalid_iterator(emitter, loop_end);
-
-    if let Some(kv) = key_var {
-        reload_iterator_receiver(emitter);
-        let key_ty = dispatch_target.dispatch("key", emitter, ctx);
-        if let Some(kvar) = ctx.variables.get(kv) {
-            let k_offset = kvar.stack_offset;
-            store_iterator_mixed_result(kv, k_offset, &key_ty, emitter, ctx);
-        } else {
-            emitter.comment(&format!("WARNING: undefined foreach key variable ${}", kv));
-        }
-    }
-
-    reload_iterator_receiver(emitter);
-    let current_ty = dispatch_target.dispatch("current", emitter, ctx);
-    if let Some(vvar) = ctx.variables.get(value_var) {
-        let v_offset = vvar.stack_offset;
-        store_iterator_mixed_result(value_var, v_offset, &current_ty, emitter, ctx);
-    } else {
-        emitter.comment(&format!("WARNING: undefined foreach value variable ${}", value_var));
-    }
-
-    ctx.loop_stack.push(LoopLabels {
-        continue_label: loop_cont.to_string(),
-        break_label: loop_end.to_string(),
-        sp_adjust: 16,
-    });
-    for s in body {
-        emit_stmt(s, emitter, ctx, data);
-    }
-    ctx.loop_stack.pop();
-
-    emitter.label(loop_cont);
-    reload_iterator_receiver(emitter);
-    dispatch_target.dispatch("next", emitter, ctx);
-    abi::emit_jump(emitter, loop_start);                                        // continue the iteration
-
-    emitter.label(loop_end);
-    if let Some(release_ty) = deferred_receiver_release.as_ref() {
-        release_saved_iterator_receiver(release_ty, emitter);
-    }
-    abi::emit_release_temporary_stack(emitter, 16);                             // discard the parked receiver slot
+            ctx.loop_stack.push(LoopLabels {
+                continue_label: loop_cont.to_string(),
+                break_label: loop_end.to_string(),
+                sp_adjust: 16,
+            });
+            for s in body {
+                emit_stmt(s, emitter, ctx, data);
+            }
+            ctx.loop_stack.pop();
+        },
+        |deferred_receiver_release, emitter, _, _| {
+            if let Some(release_ty) = deferred_receiver_release.as_ref() {
+                release_saved_iterator_receiver(release_ty, emitter);
+            }
+        },
+    );
 }
 
 /// Emits foreach for objects that may implement Iterator or IteratorAggregate.
@@ -215,8 +205,136 @@ pub(crate) fn emit_iterable_object_foreach(
     emitter.label(&done);
 }
 
+/// Emits assembly for iterable object loop.
+pub(crate) fn emit_iterable_object_loop<S, P, B, A>(
+    label_prefix: &str,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+    mut before_rewind: P,
+    mut loop_body: B,
+    mut after_loop: A,
+) where
+    P: FnMut(&IteratorDispatchTarget, &mut Emitter, &mut Context, &mut DataSection) -> S,
+    B: FnMut(&IteratorDispatchTarget, &str, &mut Emitter, &mut Context, &mut DataSection),
+    A: FnMut(S, &mut Emitter, &mut Context, &mut DataSection),
+{
+    let iterator_id = ctx
+        .interfaces
+        .get("Iterator")
+        .expect("codegen bug: missing builtin Iterator interface")
+        .interface_id;
+    let aggregate_id = ctx
+        .interfaces
+        .get("IteratorAggregate")
+        .expect("codegen bug: missing builtin IteratorAggregate interface")
+        .interface_id;
+    let direct_case = ctx.next_label(&format!("{}_iterator", label_prefix));
+    let aggregate_case = ctx.next_label(&format!("{}_aggregate", label_prefix));
+    let done = ctx.next_label(&format!("{}_done", label_prefix));
+
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the object-backed iterable while probing its Traversable shape
+    emit_branch_if_saved_receiver_implements(iterator_id, &direct_case, emitter);
+    emit_branch_if_saved_receiver_implements(aggregate_id, &aggregate_case, emitter);
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // discard the unsupported object before raising the iterable diagnostic
+    abi::emit_call_label(emitter, "__rt_iterable_unsupported_kind");            // unsupported object-backed iterables abort with a fatal diagnostic
+
+    emitter.label(&direct_case);
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // restore the Iterator object pointer for the shared loop lowering
+    let direct_start = ctx.next_label(&format!("{}_iterator_start", label_prefix));
+    let direct_end = ctx.next_label(&format!("{}_iterator_end", label_prefix));
+    let direct_cont = ctx.next_label(&format!("{}_iterator_cont", label_prefix));
+    emit_iterator_loop(
+        "Iterator",
+        &direct_start,
+        &direct_end,
+        &direct_cont,
+        emitter,
+        ctx,
+        data,
+        |dispatch_target, emitter, ctx, data| before_rewind(dispatch_target, emitter, ctx, data),
+        |dispatch_target, emitter, ctx, data| {
+            loop_body(dispatch_target, &direct_end, emitter, ctx, data)
+        },
+        |state, emitter, ctx, data| after_loop(state, emitter, ctx, data),
+    );
+    abi::emit_jump(emitter, &done);                                             // skip the IteratorAggregate branch after direct Iterator iteration
+
+    emitter.label(&aggregate_case);
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // restore the IteratorAggregate object pointer before getIterator()
+    move_result_to_receiver_arg(emitter);
+    emit_dispatch_interface_method("IteratorAggregate", "getiterator", emitter, ctx);
+    let aggregate_start = ctx.next_label(&format!("{}_aggregate_start", label_prefix));
+    let aggregate_end = ctx.next_label(&format!("{}_aggregate_end", label_prefix));
+    let aggregate_cont = ctx.next_label(&format!("{}_aggregate_cont", label_prefix));
+    emit_iterator_loop(
+        "Iterator",
+        &aggregate_start,
+        &aggregate_end,
+        &aggregate_cont,
+        emitter,
+        ctx,
+        data,
+        |dispatch_target, emitter, ctx, data| before_rewind(dispatch_target, emitter, ctx, data),
+        |dispatch_target, emitter, ctx, data| {
+            loop_body(dispatch_target, &aggregate_end, emitter, ctx, data)
+        },
+        |state, emitter, ctx, data| after_loop(state, emitter, ctx, data),
+    );
+
+    emitter.label(&done);
+}
+
+/// Emits assembly for iterator loop.
+pub(crate) fn emit_iterator_loop<S, P, B, A>(
+    class_name: &str,
+    loop_start: &str,
+    loop_end: &str,
+    loop_cont: &str,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+    before_rewind: P,
+    mut loop_body: B,
+    after_loop: A,
+) where
+    P: FnOnce(&IteratorDispatchTarget, &mut Emitter, &mut Context, &mut DataSection) -> S,
+    B: FnMut(&IteratorDispatchTarget, &mut Emitter, &mut Context, &mut DataSection),
+    A: FnOnce(S, &mut Emitter, &mut Context, &mut DataSection),
+{
+    let mut dispatch_target = iterator_dispatch_target(class_name, ctx);
+    if !dispatch_target.implements_iterator(ctx) {
+        move_result_to_receiver_arg(emitter);
+        let ret_ty = dispatch_target.dispatch("getiterator", emitter, ctx);
+        dispatch_target = iterator_return_dispatch_target(&ret_ty, ctx);
+    }
+
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // park iterator receiver pointer in a 16-byte stack slot
+    let state = before_rewind(&dispatch_target, emitter, ctx, data);
+
+    reload_iterator_receiver(emitter);
+    dispatch_target.dispatch("rewind", emitter, ctx);
+
+    emitter.label(loop_start);
+
+    reload_iterator_receiver(emitter);
+    dispatch_target.dispatch("valid", emitter, ctx);
+    emit_branch_if_invalid_iterator(emitter, loop_end);
+
+    loop_body(&dispatch_target, emitter, ctx, data);
+
+    emitter.label(loop_cont);
+    reload_iterator_receiver(emitter);
+    dispatch_target.dispatch("next", emitter, ctx);
+    abi::emit_jump(emitter, loop_start);                                        // continue the iteration
+
+    emitter.label(loop_end);
+    after_loop(state, emitter, ctx, data);
+    abi::emit_release_temporary_stack(emitter, 16);                             // discard the parked receiver slot
+}
+
 #[derive(Clone)]
-enum IteratorDispatchTarget {
+pub(crate) enum IteratorDispatchTarget {
     Class(String),
     Interface(String),
 }
@@ -225,7 +343,13 @@ enum IteratorDispatchTarget {
 /// appropriate class vtable or interface dispatch path. Returns the PHP return
 /// type of the dispatched method.
 impl IteratorDispatchTarget {
-    fn dispatch(&self, method: &str, emitter: &mut Emitter, ctx: &mut Context) -> PhpType {
+    /// Provides the Dispatch helper used by the iterator module.
+    pub(crate) fn dispatch(
+        &self,
+        method: &str,
+        emitter: &mut Emitter,
+        ctx: &mut Context,
+    ) -> PhpType {
         match self {
             IteratorDispatchTarget::Class(class_name) => {
                 emit_dispatch_instance_method(class_name, method, emitter, ctx)
@@ -266,6 +390,9 @@ fn iterator_dispatch_target(name: &str, ctx: &Context) -> IteratorDispatchTarget
 /// otherwise dispatches via the Iterator interface directly.
 fn iterator_return_dispatch_target(ret_ty: &PhpType, ctx: &Context) -> IteratorDispatchTarget {
     match ret_ty {
+        PhpType::Object(name) if name == "Traversable" => {
+            IteratorDispatchTarget::Interface("Iterator".to_string())
+        }
         PhpType::Object(name) if ctx.interfaces.contains_key(name) => {
             IteratorDispatchTarget::Interface(name.clone())
         }
@@ -492,7 +619,7 @@ fn move_result_to_receiver_arg(emitter: &mut Emitter) {
 /// Reloads the parked iterator receiver from the 16-byte stack slot into
 /// the receiver argument register (x0 on ARM64, rdi on x86_64) before each
 /// Iterator method dispatch (rewind/valid/key/current/next).
-fn reload_iterator_receiver(emitter: &mut Emitter) {
+pub(crate) fn reload_iterator_receiver(emitter: &mut Emitter) {
     match emitter.target.arch {
         Arch::AArch64 => {
             emitter.instruction("ldr x0, [sp]");                                // reload receiver into x0 for the next Iterator method dispatch

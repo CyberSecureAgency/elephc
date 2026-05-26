@@ -19,7 +19,7 @@
 //! | 24     | 8    | stack_top         | high address (initial SP, 16-aligned) |
 //! | 32     | 8    | stack_size        | total bytes of the stack region       |
 //! | 40     | 8    | saved_sp          | SP saved when fiber is not running    |
-//! | 48     | 8    | callable          | closure/function pointer              |
+//! | 48     | 8    | callable          | callable descriptor pointer           |
 //! | 56     | 8    | callable_wrapper  | generated Fiber entry ABI adapter     |
 //! | 64     | 8    | caller            | Fiber* of resumer (NULL = main)       |
 //! | 72     | 16   | transfer_value    | mixed cell — value in transit         |

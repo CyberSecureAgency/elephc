@@ -8,7 +8,7 @@
 //! Key details:
 //! - Builtin names arrive after type/catalog resolution, including PHP case-insensitive and namespace fallback behavior.
 
-mod arrays;
+pub(crate) mod arrays;
 /// Resolves string-literal function names used by callable/introspection builtins.
 /// Shares PHP case-insensitive lookup between string-callback and introspection builtins.
 /// Include variants, externs, builtins, and user functions stay distinguishable so callers

@@ -55,7 +55,44 @@ $formatted = array_map($format, ["a", "b"]);
 echo "method callable array_map: ";
 foreach ($formatted as $v) { echo $v . " "; }
 echo "\n";
-echo "method callable call_user_func_array: " . call_user_func_array($format, ["cb"]) . "\n";
+$format_args = ["value" => "cb"];
+echo "method callable call_user_func_array: " . call_user_func_array($format, $format_args) . "\n";
+
+$named_callbacks = [
+    function($left, $right) { return ($left * 10) + $right; },
+    function($right, $left) { return ($right * 100) + $left; }
+];
+$named_choice = 0;
+$named_callback = $named_callbacks[$named_choice];
+$named_args = ["right" => 2, "left" => 1];
+echo "dynamic named call_user_func_array: " . call_user_func_array($named_callback, $named_args) . "\n";
+
+function dynamic_string_sum(int $left, int $right): int {
+    return $left + $right;
+}
+$string_callback = "DYNAMIC_STRING_SUM";
+echo "dynamic string call_user_func: " . call_user_func($string_callback, 4, 5) . "\n";
+
+$builtin_callback = "STRLEN";
+echo "dynamic builtin call_user_func: " . call_user_func($builtin_callback, "hello") . "\n";
+
+class DynamicFormatter {
+    public static function tag(string $prefix, int $value): string {
+        return $prefix . ":" . $value;
+    }
+
+    public function wrap(string $value): string {
+        return "<" . $value . ">";
+    }
+}
+
+$static_string_callback = "DynamicFormatter::tag";
+$static_string_args = ["value" => 7, "prefix" => "id"];
+echo "dynamic static string call_user_func_array: " . call_user_func_array($static_string_callback, $static_string_args) . "\n";
+
+$dynamic_formatter = new DynamicFormatter();
+$method_array_callback = [$dynamic_formatter, "wrap"];
+echo "method array call_user_func: " . call_user_func($method_array_callback, "ok") . "\n";
 
 function bump(&$value) {
     $value = $value + 1;

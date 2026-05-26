@@ -71,7 +71,7 @@ pub(super) fn emit_construct_x86_64(emitter: &mut Emitter) {
     emitter.instruction("push r13");                                            // preserve class_id across heap allocation
     emitter.instruction("push r14");                                            // preserve the allocated Fiber object pointer
     emitter.instruction("push r15");                                            // preserve the generated Fiber wrapper pointer
-    emitter.instruction("mov r12, rdi");                                        // r12 = callable pointer
+    emitter.instruction("mov r12, rdi");                                        // r12 = callable descriptor pointer
     emitter.instruction("mov r13, rsi");                                        // r13 = Fiber class_id
     emitter.instruction("mov r15, rdx");                                        // r15 = generated Fiber wrapper pointer
 
@@ -94,7 +94,7 @@ pub(super) fn emit_construct_x86_64(emitter: &mut Emitter) {
 
     emitter.instruction(&format!("mov r10, {}", FIBER_START_ARGS_MAX));         // default user_arg_max = full slot count
     emitter.instruction(&format!("mov QWORD PTR [r14 + {}], r10", FIBER_USER_ARG_MAX_OFFSET)); // user_arg_max stored on the freshly built fiber
-    emitter.instruction(&format!("mov QWORD PTR [r14 + {}], r12", FIBER_CALLABLE_OFFSET)); // callable.lo = closure pointer
+    emitter.instruction(&format!("mov QWORD PTR [r14 + {}], r12", FIBER_CALLABLE_OFFSET)); // callable.lo = descriptor pointer
     emitter.instruction(&format!("mov QWORD PTR [r14 + {}], r15", FIBER_CALLABLE_WRAPPER_OFFSET)); // callable wrapper = Fiber entry ABI adapter
 
     // -- allocate the per-fiber stack via mmap; alloc returns base/top/total --

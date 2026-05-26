@@ -76,6 +76,8 @@ pub enum IntrinsicCallKind {
     SplFixedOffsetUnset,
     SplFixedJsonSerialize,
     SplFixedUnserialize,
+    CallbackFilterAccept,
+    SplRecursiveAssumeIterator,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -329,6 +331,62 @@ const INTRINSICS: &[IntrinsicSpec] = &[
     spl_instance_spec("splfixedarray", "SplFixedArray", "offsetunset", IntrinsicCallKind::SplFixedOffsetUnset, "__rt_spl_fixed_offset_unset"),
     spl_instance_spec("splfixedarray", "SplFixedArray", "jsonserialize", IntrinsicCallKind::SplFixedJsonSerialize, "__rt_spl_fixed_to_array"),
     spl_instance_spec("splfixedarray", "SplFixedArray", "__unserialize", IntrinsicCallKind::SplFixedUnserialize, "__rt_spl_fixed_unserialize"),
+    IntrinsicSpec {
+        kind: IntrinsicCallKind::CallbackFilterAccept,
+        form: IntrinsicCallForm::Instance,
+        class_key: "callbackfilteriterator",
+        class_name: "CallbackFilterIterator",
+        method_key: "__elephcacceptcallback",
+        runtime_helper: None,
+    },
+    IntrinsicSpec {
+        kind: IntrinsicCallKind::CallbackFilterAccept,
+        form: IntrinsicCallForm::Instance,
+        class_key: "recursivecallbackfilteriterator",
+        class_name: "RecursiveCallbackFilterIterator",
+        method_key: "__elephcacceptcallback",
+        runtime_helper: None,
+    },
+    IntrinsicSpec {
+        kind: IntrinsicCallKind::SplRecursiveAssumeIterator,
+        form: IntrinsicCallForm::Instance,
+        class_key: "recursivearrayiterator",
+        class_name: "RecursiveArrayIterator",
+        method_key: "__elephcassumerecursiveiterator",
+        runtime_helper: None,
+    },
+    IntrinsicSpec {
+        kind: IntrinsicCallKind::SplRecursiveAssumeIterator,
+        form: IntrinsicCallForm::Instance,
+        class_key: "recursivefilteriterator",
+        class_name: "RecursiveFilterIterator",
+        method_key: "__elephcassumerecursiveiterator",
+        runtime_helper: None,
+    },
+    IntrinsicSpec {
+        kind: IntrinsicCallKind::SplRecursiveAssumeIterator,
+        form: IntrinsicCallForm::Instance,
+        class_key: "recursivecallbackfilteriterator",
+        class_name: "RecursiveCallbackFilterIterator",
+        method_key: "__elephcassumerecursiveiterator",
+        runtime_helper: None,
+    },
+    IntrinsicSpec {
+        kind: IntrinsicCallKind::SplRecursiveAssumeIterator,
+        form: IntrinsicCallForm::Instance,
+        class_key: "recursiveiteratoriterator",
+        class_name: "RecursiveIteratorIterator",
+        method_key: "__elephcassumerecursiveiterator",
+        runtime_helper: None,
+    },
+    IntrinsicSpec {
+        kind: IntrinsicCallKind::SplRecursiveAssumeIterator,
+        form: IntrinsicCallForm::Instance,
+        class_key: "parentiterator",
+        class_name: "ParentIterator",
+        method_key: "__elephcassumerecursiveiterator",
+        runtime_helper: None,
+    },
 ];
 
 /// Constructs an instance-method intrinsic spec for a Spl class.
@@ -428,6 +486,7 @@ fn resolve(form: IntrinsicCallForm, class_name: &str, method: &str) -> Option<In
 mod tests {
     use super::{IntrinsicCall, IntrinsicCallForm, IntrinsicCallKind};
 
+    /// Provides the Resolves generator methods case insensitively helper used by the intrinsics module.
     #[test]
     fn resolves_generator_methods_case_insensitively() {
         let call = IntrinsicCall::instance_method("Generator", "getReturn")
@@ -438,6 +497,7 @@ mod tests {
         assert_eq!(call.runtime_helper(), Some("__rt_gen_get_return"));
     }
 
+    /// Builds the method list for separates static and instance fiber.
     #[test]
     fn separates_static_and_instance_fiber_methods() {
         assert!(IntrinsicCall::instance_method("Fiber", "suspend").is_none());
@@ -446,6 +506,7 @@ mod tests {
         assert!(IntrinsicCall::static_method("Fiber", "start").is_none());
     }
 
+    /// Provides the Ignores user classes with matching method names helper used by the intrinsics module.
     #[test]
     fn ignores_user_classes_with_matching_method_names() {
         assert!(IntrinsicCall::instance_method("UserFiber", "start").is_none());

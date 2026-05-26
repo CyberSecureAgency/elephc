@@ -222,6 +222,36 @@ pub(super) fn infer_function_call_type(
         "class_get_attributes" => PhpType::Array(Box::new(PhpType::Object(
             "ReflectionAttribute".to_string(),
         ))),
+        "class_implements" | "class_parents" | "class_uses" => {
+            merge_union_members(vec![
+                PhpType::AssocArray {
+                    key: Box::new(PhpType::Str),
+                    value: Box::new(PhpType::Str),
+                },
+                PhpType::Bool,
+            ])
+        }
+        "iterator_count" | "iterator_apply" => PhpType::Int,
+        "iterator_to_array" => {
+            let source_ty = args
+                .first()
+                .map(|arg| infer_local_type(arg, sig, ctx))
+                .unwrap_or(PhpType::Iterable);
+            if let Some(preserve_keys) = args
+                .get(1)
+                .and_then(iterator_to_array_static_preserve_keys)
+                .or_else(|| args.get(1).is_none().then_some(true))
+            {
+                iterator_to_array_static_result_type(source_ty, preserve_keys)
+            } else if matches!(source_ty, PhpType::Array(_)) {
+                iterator_to_array_static_result_type(source_ty, true)
+            } else {
+                merge_union_members(vec![
+                    iterator_to_array_static_result_type(source_ty.clone(), true),
+                    iterator_to_array_static_result_type(source_ty, false),
+                ])
+            }
+        }
         _ => {
             if let Some(c) = ctx {
                 if let Some(fn_sig) = c.functions.get(name) {
@@ -230,6 +260,37 @@ pub(super) fn infer_function_call_type(
             }
             PhpType::Int
         }
+    }
+}
+
+/// Provides the Iterator to array static preserve keys helper used by the builtins module.
+fn iterator_to_array_static_preserve_keys(expr: &Expr) -> Option<bool> {
+    match &expr.kind {
+        ExprKind::BoolLiteral(value) => Some(*value),
+        ExprKind::IntLiteral(value) => Some(*value != 0),
+        ExprKind::FloatLiteral(value) => Some(*value != 0.0),
+        ExprKind::StringLiteral(value) => Some(!value.is_empty() && value != "0"),
+        ExprKind::Null => Some(false),
+        ExprKind::Negate(inner) => match &inner.kind {
+            ExprKind::IntLiteral(value) => Some(*value != 0),
+            ExprKind::FloatLiteral(value) => Some(*value != 0.0),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// Computes the type metadata for iterator to array static result.
+fn iterator_to_array_static_result_type(source_ty: PhpType, preserve_keys: bool) -> PhpType {
+    match source_ty {
+        PhpType::Array(elem_ty) => PhpType::Array(elem_ty),
+        PhpType::AssocArray { key, value } if preserve_keys => PhpType::AssocArray { key, value },
+        PhpType::AssocArray { value, .. } => PhpType::Array(value),
+        _ if preserve_keys => PhpType::AssocArray {
+            key: Box::new(PhpType::Mixed),
+            value: Box::new(PhpType::Mixed),
+        },
+        _ => PhpType::Array(Box::new(PhpType::Mixed)),
     }
 }
 

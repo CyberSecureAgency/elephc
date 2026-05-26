@@ -31,9 +31,14 @@ pub(crate) fn emit_fiber_wrapper(emitter: &mut Emitter, wrapper: &DeferredFiberW
     emitter.raw(".align 2");
     emitter.label_global(&wrapper.label);
     abi::emit_frame_prologue(emitter, frame_size);
-    emitter.instruction(&format!("stp x19, x20, [sp, #{}]", saved_callee_offset)); // preserve the fiber pointer and callable pointer across helper calls
+    emitter.instruction(&format!("stp x19, x20, [sp, #{}]", saved_callee_offset)); // preserve the fiber pointer and callable entry across helper calls
     emitter.instruction("mov x19, x0");                                         // x19 = Fiber object passed by __rt_fiber_entry
-    emitter.instruction(&format!("ldr x20, [x19, #{}]", runtime::FIBER_CALLABLE_OFFSET)); // x20 = original closure function pointer stored on the Fiber
+    emitter.instruction(&format!("ldr x20, [x19, #{}]", runtime::FIBER_CALLABLE_OFFSET)); // x20 = callable descriptor stored on the Fiber
+    crate::codegen::callable_descriptor::emit_load_entry_from_descriptor(
+        emitter,
+        "x20",
+        "x20",
+    );
 
     spill_wrapper_args(emitter, wrapper, &arg_types);
     let overflow_bytes = materialize_spilled_args_for_closure_call(emitter, &arg_types, frame_size);
@@ -259,9 +264,14 @@ fn emit_x86_64_wrapper(emitter: &mut Emitter, wrapper: &DeferredFiberWrapper) {
     emitter.label_global(&wrapper.label);
     abi::emit_frame_prologue(emitter, frame_size);
     abi::store_at_offset(emitter, "r12", saved_fiber_offset);                  // preserve the caller's r12 before caching the Fiber pointer
-    abi::store_at_offset(emitter, "r13", saved_callable_offset);               // preserve the caller's r13 before caching the callable pointer
+    abi::store_at_offset(emitter, "r13", saved_callable_offset);               // preserve the caller's r13 before caching the callable entry
     emitter.instruction("mov r12, rdi");                                        // r12 = Fiber object passed by __rt_fiber_entry
-    emitter.instruction(&format!("mov r13, QWORD PTR [r12 + {}]", runtime::FIBER_CALLABLE_OFFSET)); // r13 = original closure function pointer
+    emitter.instruction(&format!("mov r13, QWORD PTR [r12 + {}]", runtime::FIBER_CALLABLE_OFFSET)); // r13 = callable descriptor stored on the Fiber
+    crate::codegen::callable_descriptor::emit_load_entry_from_descriptor(
+        emitter,
+        "r13",
+        "r13",
+    );
 
     spill_wrapper_args_x86_64(emitter, wrapper, &arg_types);
     let overflow_bytes = materialize_spilled_args_for_closure_call_x86_64(emitter, &arg_types);

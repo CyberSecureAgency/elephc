@@ -543,7 +543,7 @@ impl Checker {
     /// object union; otherwise returns `None`.
     ///
     /// Used to detect `__invoke` on class-type values during callable inference.
-    fn invokable_class_for_type(&self, ty: &PhpType) -> Option<String> {
+    pub(crate) fn invokable_class_for_type(&self, ty: &PhpType) -> Option<String> {
         match ty {
             PhpType::Object(class_name) => Some(class_name.clone()),
             PhpType::Union(members) => {

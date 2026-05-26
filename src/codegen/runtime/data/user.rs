@@ -146,6 +146,7 @@ pub(crate) fn emit_runtime_data_user(
         ("_spl_stack_class_id", "SplStack"),
         ("_spl_queue_class_id", "SplQueue"),
         ("_spl_fixed_array_class_id", "SplFixedArray"),
+        ("_spl_logic_exception_class_id", "LogicException"),
         ("_spl_runtime_exception_class_id", "RuntimeException"),
         ("_spl_out_of_range_exception_class_id", "OutOfRangeException"),
         ("_spl_out_of_bounds_exception_class_id", "OutOfBoundsException"),
@@ -818,6 +819,7 @@ mod tests {
 
     use super::emit_runtime_data_user;
 
+    /// Provides the Empty class info helper used by the user module.
     fn empty_class_info(class_id: u64, method_name: &str) -> ClassInfo {
         let mut method_impl_classes = HashMap::new();
         method_impl_classes.insert(method_name.to_string(), "Exception".to_string());
@@ -839,6 +841,7 @@ mod tests {
             method_attribute_args: HashMap::new(),
             property_attribute_names: HashMap::new(),
             property_attribute_args: HashMap::new(),
+            used_traits: Vec::new(),
             properties: Vec::new(),
             property_offsets: HashMap::new(),
             property_declaring_classes: HashMap::new(),
@@ -876,6 +879,7 @@ mod tests {
         }
     }
 
+    /// Verifies that emit runtime data user can filter built in classes.
     #[test]
     fn test_emit_runtime_data_user_can_filter_built_in_classes() {
         let mut classes = HashMap::new();
@@ -908,6 +912,7 @@ mod tests {
         assert!(!asm.contains("_method_Exception__construct"));
     }
 
+    /// Verifies that emit runtime data user keeps dense class tables when ids start at one.
     #[test]
     fn test_emit_runtime_data_user_keeps_dense_class_tables_when_ids_start_at_one() {
         let mut classes = HashMap::new();

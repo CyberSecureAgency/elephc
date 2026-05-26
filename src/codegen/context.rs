@@ -125,6 +125,7 @@ pub struct DeferredFiberWrapper {
 pub struct DeferredCallbackWrapper {
     pub label: String,
     pub visible_arg_types: Vec<PhpType>,
+    pub target_visible_arg_types: Option<Vec<PhpType>>,
     pub capture_types: Vec<PhpType>,
 }
 
@@ -164,10 +165,24 @@ pub struct Context {
     pub all_static_vars: HashMap<(String, String), PhpType>,
     /// Closure signatures keyed by variable name, for resolving defaults at call sites.
     pub closure_sigs: HashMap<String, FunctionSig>,
+    /// Temporary expected wrapper signature for first-class callables evaluated
+    /// as arguments to APIs that store and invoke the callable later.
+    pub expected_first_class_callable_sig: Option<FunctionSig>,
     /// Callable signatures inferred for user-function callable parameters.
     pub callable_param_sigs: HashMap<(String, String), FunctionSig>,
+    /// Callable signatures inferred for user-function callable returns.
+    pub callable_return_sigs: HashMap<String, FunctionSig>,
     /// Captured variables per closure variable name: maps $fn -> [(capture_name, type, by_ref)].
     pub closure_captures: HashMap<String, Vec<(String, PhpType, bool)>>,
+    /// Runtime-dispatch wrappers synthesized for PHP builtin callbacks selected
+    /// by a dynamic string name. The key is the canonical builtin name.
+    pub runtime_callable_builtin_wrappers: HashMap<String, String>,
+    /// Runtime-dispatch wrappers synthesized for `Class::method` string
+    /// callbacks. The key is the PHP-visible `Class::method` name.
+    pub runtime_callable_static_method_wrappers: HashMap<String, String>,
+    /// Callable array targets assigned to variables, for PHP forms such as
+    /// `$cb = [$object, "method"]` and `$cb = [ClassName::class, "method"]`.
+    pub callable_array_targets: HashMap<String, CallableTarget>,
     /// First-class callable target stored in a variable, mirroring the Checker's
     /// `first_class_callable_targets` so call sites can short-circuit to a direct
     /// function/method/static-method call instead of going through the closure
@@ -259,6 +274,7 @@ pub struct FinallyContext {
 }
 
 impl Default for Context {
+    /// Builds the default value for the surrounding type.
     fn default() -> Self {
         Self::new()
     }
@@ -291,8 +307,13 @@ impl Context {
             all_global_var_names: HashSet::new(),
             all_static_vars: HashMap::new(),
             closure_sigs: HashMap::new(),
+            expected_first_class_callable_sig: None,
             callable_param_sigs: HashMap::new(),
+            callable_return_sigs: HashMap::new(),
             closure_captures: HashMap::new(),
+            runtime_callable_builtin_wrappers: HashMap::new(),
+            runtime_callable_static_method_wrappers: HashMap::new(),
+            callable_array_targets: HashMap::new(),
             first_class_callable_targets: HashMap::new(),
             variable_fcc_label: HashMap::new(),
             classes: HashMap::new(),
@@ -486,6 +507,7 @@ impl Context {
         None
     }
 
+    /// Returns true when subclass of.
     fn is_subclass_of(&self, class_name: &str, ancestor_name: &str) -> bool {
         let mut current = self
             .classes
@@ -519,6 +541,7 @@ impl Context {
         false
     }
 
+    /// Computes implements interface for the PHP class-introspection builtin.
     fn class_implements_interface(&self, class_name: &str, interface_name: &str) -> bool {
         self.classes.get(class_name).is_some_and(|class_info| {
             class_info.interfaces.iter().any(|implemented| {
@@ -528,6 +551,7 @@ impl Context {
         })
     }
 
+    /// Provides the Interface extends interface helper used by the context module.
     fn interface_extends_interface(&self, child_name: &str, ancestor_name: &str) -> bool {
         if child_name == ancestor_name {
             return true;
@@ -561,6 +585,7 @@ mod tests {
     use super::HeapOwnership;
     use crate::types::PhpType;
 
+    /// Verifies that heap ownership type classification.
     #[test]
     fn test_heap_ownership_type_classification() {
         assert_eq!(HeapOwnership::for_type(&PhpType::Int), HeapOwnership::NonHeap);
@@ -578,6 +603,7 @@ mod tests {
         );
     }
 
+    /// Verifies that heap ownership merge.
     #[test]
     fn test_heap_ownership_merge() {
         assert_eq!(

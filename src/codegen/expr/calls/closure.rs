@@ -150,7 +150,7 @@ pub(super) fn emit_closure(
     capture_refs: &[String],
     emitter: &mut Emitter,
     ctx: &mut Context,
-    _data: &mut DataSection,
+    data: &mut DataSection,
 ) -> PhpType {
     let closure_label = ctx.next_label("closure");
 
@@ -180,6 +180,21 @@ pub(super) fn emit_closure(
             variadic_name.clone(),
             PhpType::Array(Box::new(PhpType::Int)),
         ));
+    }
+    if let Some(expected_sig) = ctx.expected_first_class_callable_sig.as_ref() {
+        for (idx, (_, expected_ty)) in expected_sig.params.iter().enumerate() {
+            let Some((_, actual_ty)) = param_types.get_mut(idx) else {
+                break;
+            };
+            let has_declared_type = params
+                .get(idx)
+                .and_then(|(_, type_ann, _, _)| type_ann.as_ref())
+                .is_some();
+            let is_by_ref = params.get(idx).map(|(_, _, _, is_ref)| *is_ref).unwrap_or(false);
+            if !has_declared_type && !is_by_ref && *actual_ty == PhpType::Int {
+                *actual_ty = expected_ty.clone();
+            }
+        }
     }
     let mut defaults: Vec<Option<Expr>> = params
         .iter()
@@ -234,8 +249,15 @@ pub(super) fn emit_closure(
         needed: true,
     });
 
-    emitter.comment("closure: load function address");
-    abi::emit_symbol_address(emitter, abi::int_result_reg(emitter), &closure_label);
+    emitter.comment("closure: load callable descriptor");
+    crate::codegen::callable_descriptor::emit_load_descriptor_address(
+        emitter,
+        data,
+        abi::int_result_reg(emitter),
+        &closure_label,
+        None,
+        crate::codegen::callable_descriptor::CALLABLE_DESC_KIND_CLOSURE,
+    );
     PhpType::Callable
 }
 
@@ -436,8 +458,13 @@ pub(super) fn emit_closure_call(
         crate::codegen::abi::load_at_offset(emitter, call_reg, var_offset);     // load the by-reference callable slot address into the nested-call scratch register
         crate::codegen::abi::emit_load_from_address(emitter, call_reg, call_reg, 0);
     } else {
-        crate::codegen::abi::load_at_offset(emitter, call_reg, var_offset);     // load the closure function address into the nested-call scratch register
+        crate::codegen::abi::load_at_offset(emitter, call_reg, var_offset);     // load the callable descriptor into the nested-call scratch register
     }
+    crate::codegen::callable_descriptor::emit_load_entry_from_descriptor(
+        emitter,
+        call_reg,
+        call_reg,
+    );
     crate::codegen::abi::emit_push_reg(emitter, call_reg);
 
     let assignments =

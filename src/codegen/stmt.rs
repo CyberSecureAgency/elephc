@@ -44,6 +44,9 @@ pub(crate) use assignments::{
     emit_static_property_assign_stmt,
 };
 pub(crate) use io::emit_expr_to_stdout;
+pub(crate) use control_flow::{
+    emit_iterable_object_loop, emit_iterator_loop, reload_iterator_receiver, IteratorDispatchTarget,
+};
 
 /// Extracts the user-facing function name from the context's return label by stripping
 /// the internal `_fn_` prefix and `_epilogue` suffix. Returns "main" if no label is set.

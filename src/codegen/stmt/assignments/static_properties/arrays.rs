@@ -248,9 +248,9 @@ fn emit_array_push_runtime_call(array_reg: &str, val_ty: &PhpType, emitter: &mut
                 emitter.instruction("bl __rt_array_push_str");                  // persist and append the string payload into the static array
             }
             PhpType::Callable => {
-                emitter.instruction("mov x1, x0");                              // move the callable pointer bits into the runtime value register
+                emitter.instruction("mov x1, x0");                              // move the callable descriptor pointer bits into the runtime value register
                 emitter.instruction(&format!("mov x0, {}", array_reg));         // move the static array pointer into the runtime receiver register
-                emitter.instruction("bl __rt_array_push_int");                  // append the callable pointer bits as a scalar slot
+                emitter.instruction("bl __rt_array_push_int");                  // append the callable descriptor pointer bits as a scalar slot
             }
             PhpType::Mixed | PhpType::Array(_) | PhpType::AssocArray { .. } | PhpType::Object(_) => {
                 abi::emit_push_reg(emitter, "x0");                              // save the codegen-owned payload pointer across the refcounted append helper
@@ -278,7 +278,7 @@ fn emit_array_push_runtime_call(array_reg: &str, val_ty: &PhpType, emitter: &mut
                 abi::emit_call_label(emitter, "__rt_array_push_str");
             }
             PhpType::Callable => {
-                emitter.instruction("mov rsi, rax");                            // move the callable pointer bits into the SysV value register
+                emitter.instruction("mov rsi, rax");                            // move the callable descriptor pointer bits into the SysV value register
                 emitter.instruction(&format!("mov rdi, {}", array_reg));        // move the static array pointer into the SysV receiver register
                 abi::emit_call_label(emitter, "__rt_array_push_int");
             }

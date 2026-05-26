@@ -154,11 +154,24 @@ fn materialize_callback_address(
         ExprKind::Variable(name) => {
             let var = ctx.variables.get(name).expect("undefined callback variable");
             abi::load_at_offset(emitter, call_reg, var.stack_offset);
+            if ctx.ref_params.contains(name) {
+                abi::emit_load_from_address(emitter, call_reg, call_reg, 0);
+            }
+            crate::codegen::callable_descriptor::emit_load_entry_from_descriptor(
+                emitter,
+                call_reg,
+                call_reg,
+            );
             crate::codegen::callables::callable_captures(callback, ctx)
         }
         _ => {
             emit_expr(callback, emitter, ctx, data);
-            emitter.instruction(&format!("mov {}, {}", call_reg, abi::int_result_reg(emitter))); // keep the evaluated callback address in the nested-call scratch register
+            emitter.instruction(&format!("mov {}, {}", call_reg, abi::int_result_reg(emitter))); // keep the evaluated callback descriptor in the nested-call scratch register
+            crate::codegen::callable_descriptor::emit_load_entry_from_descriptor(
+                emitter,
+                call_reg,
+                call_reg,
+            );
             crate::codegen::callables::callable_captures(callback, ctx)
         }
     }
@@ -193,6 +206,7 @@ fn materialize_capture_env(
     ctx.deferred_callback_wrappers.push(DeferredCallbackWrapper {
         label: wrapper_label.clone(),
         visible_arg_types: vec![preg_matches_type()],
+        target_visible_arg_types: None,
         capture_types: captures
             .iter()
             .map(|(_, ty, by_ref)| if *by_ref { PhpType::Int } else { ty.clone() })

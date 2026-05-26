@@ -11,7 +11,7 @@
 //! - Branch-shaped callable signatures are reused only when every branch has the same call contract.
 
 use crate::codegen::context::Context;
-use crate::parser::ast::{Expr, ExprKind};
+use crate::parser::ast::{CallableTarget, Expr, ExprKind};
 use crate::types::FunctionSig;
 
 use super::builtins::callable_lookup::{lookup_function, FunctionLookup};
@@ -61,6 +61,14 @@ pub(crate) fn callable_sig(callback: &Expr, ctx: &Context) -> Option<FunctionSig
         ExprKind::FirstClassCallable(target) => {
             crate::codegen::expr::calls::first_class_callable_sig(target, ctx)
         }
+        ExprKind::FunctionCall { name, .. } => {
+            let resolved_name = match lookup_function(ctx, name.as_str()) {
+                Some(FunctionLookup::UserFunction(name))
+                | Some(FunctionLookup::IncludeVariant(name)) => name,
+                _ => name.as_str().to_string(),
+            };
+            ctx.callable_return_sigs.get(&resolved_name).cloned()
+        }
         ExprKind::ArrayAccess { array, .. } => {
             if let ExprKind::Variable(name) = &array.kind {
                 ctx.closure_sigs.get(name).cloned()
@@ -78,6 +86,27 @@ pub(crate) fn callable_sig(callback: &Expr, ctx: &Context) -> Option<FunctionSig
         | ExprKind::NullCoalesce { value, default } => matching_branch_sig(value, default, ctx),
         _ => None,
     }
+}
+
+/// Computes the callable signature metadata for direct first class function.
+pub(crate) fn direct_first_class_function_sig(
+    callback: &Expr,
+    ctx: &Context,
+) -> Option<(String, FunctionSig)> {
+    let target = match &callback.kind {
+        ExprKind::FirstClassCallable(target) => Some(target),
+        ExprKind::Variable(name) => ctx.first_class_callable_targets.get(name),
+        _ => None,
+    }?;
+    let CallableTarget::Function(name) = target else {
+        return None;
+    };
+    let resolved_name = match lookup_function(ctx, name.as_str())? {
+        FunctionLookup::UserFunction(name) | FunctionLookup::IncludeVariant(name) => name,
+        FunctionLookup::Builtin(_) | FunctionLookup::Extern(_) => return None,
+    };
+    let sig = ctx.functions.get(&resolved_name)?.clone();
+    Some((resolved_name, sig))
 }
 
 /// Returns the common signature when both branches of a ternary or null-coalesce resolve to the same signature.

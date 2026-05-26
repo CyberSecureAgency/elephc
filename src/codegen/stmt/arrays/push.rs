@@ -154,9 +154,9 @@ pub(super) fn emit_array_push_stmt(
             }
         }
         PhpType::Callable => {
-            emitter.instruction("mov x1, x0");                                  // move callable pointer to x1
+            emitter.instruction("mov x1, x0");                                  // move callable descriptor pointer to x1
             emitter.instruction("mov x0, x9");                                  // move outer array pointer to x0
-            emitter.instruction("bl __rt_array_push_int");                      // append pointer bits without refcount ownership
+            emitter.instruction("bl __rt_array_push_int");                      // append descriptor pointer without refcount ownership
         }
         _ => {}
     }
@@ -264,9 +264,9 @@ fn emit_array_push_stmt_linux_x86_64(
             abi::emit_call_label(emitter, "__rt_array_push_str");                 // persist and append the string payload, returning the possibly-grown indexed-array pointer
         }
         PhpType::Callable => {
-            emitter.instruction("mov rsi, rax");                                // place the callable pointer bits in the x86_64 scalar append register
+            emitter.instruction("mov rsi, rax");                                // place the callable descriptor pointer bits in the x86_64 scalar append register
             emitter.instruction("mov rdi, r11");                                // place the indexed-array pointer in the x86_64 runtime receiver register
-            abi::emit_call_label(emitter, "__rt_array_push_int");                 // append the callable pointer bits as a plain scalar slot
+            abi::emit_call_label(emitter, "__rt_array_push_int");                 // append the callable descriptor pointer bits as a plain scalar slot
         }
         PhpType::Mixed | PhpType::Union(_) | PhpType::Array(_) | PhpType::AssocArray { .. } | PhpType::Object(_) => {
             if release_after_refcounted_push {

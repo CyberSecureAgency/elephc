@@ -10,6 +10,8 @@
 
 mod abi;
 mod builtins;
+pub(crate) mod callable_descriptor;
+pub(crate) mod callable_dispatch;
 mod callables;
 mod class_methods;
 /// Codegen context module.
@@ -44,6 +46,7 @@ thread_local! {
     static DECLARED_CLASS_NAMES: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
     static DECLARED_INTERFACE_NAMES: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
     static DECLARED_TRAIT_NAMES: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    static DECLARED_TRAIT_USES: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
 }
 
 /// Sets the number of autoload rules registered.
@@ -83,6 +86,20 @@ pub(crate) fn declared_trait_names() -> Vec<String> {
     DECLARED_TRAIT_NAMES.with(|names| names.borrow().clone())
 }
 
+/// Provides the Declared trait uses helper used by the codegen module.
+pub(crate) fn declared_trait_uses(name: &str) -> Vec<String> {
+    let key = crate::names::php_symbol_key(name.trim_start_matches('\\'));
+    DECLARED_TRAIT_USES.with(|uses| {
+        uses.borrow()
+            .iter()
+            .find(|(candidate, _)| {
+                crate::names::php_symbol_key(candidate.trim_start_matches('\\')) == key
+            })
+            .map(|(_, traits)| traits.clone())
+            .unwrap_or_default()
+    })
+}
+
 use crate::parser::ast::{Program, StmtKind};
 use crate::types::{
     ClassInfo, EnumInfo, ExternClassInfo, ExternFunctionSig, FunctionSig, InterfaceInfo,
@@ -103,7 +120,10 @@ pub(crate) use driver_support::{
 pub use driver_support::generate_runtime;
 use platform::Target;
 use prescan::{collect_constants, collect_global_var_names, collect_static_vars};
-use program_usage::{collect_required_class_names, program_has_dynamic_instanceof};
+use program_usage::{
+    collect_required_class_names, collect_required_class_names_in_stmts,
+    program_has_dynamic_instanceof,
+};
 
 /// Generates user-code assembly for the target.
 /// Returns the raw assembly string.
@@ -112,6 +132,7 @@ pub fn generate_user_asm(
     global_env: &TypeEnv,
     functions: &HashMap<String, FunctionSig>,
     callable_param_sigs: &HashMap<(String, String), FunctionSig>,
+    callable_return_sigs: &HashMap<String, FunctionSig>,
     interfaces: &HashMap<String, InterfaceInfo>,
     classes: &HashMap<String, ClassInfo>,
     enums: &HashMap<String, EnumInfo>,
@@ -140,6 +161,7 @@ pub fn generate_user_asm(
     let all_static_vars = collect_static_vars(program, global_env);
     let declared_trait_order = collect_declared_trait_names(program);
     let declared_traits: HashSet<String> = declared_trait_order.iter().cloned().collect();
+    DECLARED_TRAIT_USES.with(|uses| *uses.borrow_mut() = collect_declared_trait_uses(program));
     set_declared_name_order(
         collect_declared_class_names(program, classes),
         collect_declared_interface_names(program, interfaces),
@@ -169,6 +191,7 @@ pub fn generate_user_asm(
         functions::emit_function(
             &mut emitter, &mut data, name, sig, body, functions,
             callable_param_sigs,
+            callable_return_sigs,
             &function_variant_group_names,
             &global_constants, &all_global_var_names, &all_static_vars,
             interfaces,
@@ -219,6 +242,7 @@ pub fn generate_user_asm(
             class_info,
             functions,
             callable_param_sigs,
+            callable_return_sigs,
             &function_variant_group_names,
             &global_constants,
             interfaces,
@@ -246,6 +270,7 @@ pub fn generate_user_asm(
         global_env,
         functions,
         callable_param_sigs,
+        callable_return_sigs,
         &function_variant_group_names,
         interfaces,
         &declared_traits,
@@ -326,6 +351,36 @@ fn collect_declared_trait_names(program: &Program) -> Vec<String> {
     names
 }
 
+/// Collects declared trait uses for the surrounding analysis or metadata result.
+fn collect_declared_trait_uses(program: &Program) -> HashMap<String, Vec<String>> {
+    let mut uses = HashMap::new();
+    for stmt in program {
+        match &stmt.kind {
+            StmtKind::TraitDecl {
+                name, trait_uses, ..
+            } => {
+                uses.insert(
+                    name.clone(),
+                    trait_uses
+                        .iter()
+                        .flat_map(|use_decl| {
+                            use_decl
+                                .trait_names
+                                .iter()
+                                .map(|trait_name| trait_name.as_str().to_string())
+                        })
+                        .collect(),
+                );
+            }
+            StmtKind::NamespaceBlock { body, .. } => {
+                uses.extend(collect_declared_trait_uses(body));
+            }
+            _ => {}
+        }
+    }
+    uses
+}
+
 /// Helper for collecting declared names of a specific AST statement kind.
 /// Walks the program (recursing into namespace blocks), asks the `pick` callback
 /// to extract a name from each statement, and outputs it only if it exists in
@@ -367,12 +422,18 @@ fn prepend_internal_names<'a>(
         .map(|name| crate::names::php_symbol_key(name))
         .collect();
     let mut names: Vec<String> = known_names
+        .filter(|name| !is_internal_synthetic_class_name(name))
         .filter(|name| !user_keys.contains(&crate::names::php_symbol_key(name)))
         .cloned()
         .collect();
     names.sort();
     names.extend(user_names.iter().cloned());
     names
+}
+
+/// Returns true when internal synthetic class name.
+fn is_internal_synthetic_class_name(name: &str) -> bool {
+    crate::names::php_symbol_key(name).starts_with("__elephc")
 }
 
 /// Returns the set of class names that should be emitted in the x86_64
@@ -401,6 +462,7 @@ fn collect_x86_emitted_class_names(
         "TypeError",
         "ValueError",
         "Exception",
+        "LogicException",
         "RuntimeException",
         "JsonException",
         "InvalidArgumentException",
@@ -449,6 +511,11 @@ fn expand_emitted_class_dependencies(
             {
                 changed |= names.insert(impl_class.clone());
             }
+            let previous_len = names.len();
+            for method in &class_info.method_decls {
+                collect_required_class_names_in_stmts(&method.body, names);
+            }
+            changed |= names.len() != previous_len;
         }
         if !changed {
             break;
@@ -464,6 +531,7 @@ pub fn generate(
     global_env: &TypeEnv,
     functions: &HashMap<String, FunctionSig>,
     callable_param_sigs: &HashMap<(String, String), FunctionSig>,
+    callable_return_sigs: &HashMap<String, FunctionSig>,
     interfaces: &HashMap<String, InterfaceInfo>,
     classes: &HashMap<String, ClassInfo>,
     enums: &HashMap<String, EnumInfo>,
@@ -481,6 +549,7 @@ pub fn generate(
         global_env,
         functions,
         callable_param_sigs,
+        callable_return_sigs,
         interfaces,
         classes,
         enums,

@@ -93,11 +93,71 @@ function print_any(iterable $items): void {
     echo "\n";
 }
 
+function print_reindexed(iterable $items, bool $preserve): void {
+    $values = iterator_to_array($items, $preserve);
+    foreach ($values as $key => $value) {
+        echo $key;
+        echo "=";
+        echo $value;
+        echo " ";
+    }
+    echo "\n";
+}
+
 echo "iterable parameter from Iterator:\n";
 print_any(new Range(2, 5, 1));
 
 echo "iterable parameter from IteratorAggregate:\n";
 print_any(new RangeFactory(4, 7));
 
+echo "iterator_to_array from iterable parameter:\n";
+$preserveKeys = false;
+print_reindexed(["a" => 10, "b" => 20], $preserveKeys);
+
 echo is_iterable(new Range(0, 1, 1)) ? "iterator is iterable\n" : "not iterable\n";
 echo is_iterable(new RangeFactory(0, 1)) ? "aggregate is iterable\n" : "not iterable\n";
+
+echo "iterator_to_array without keys:\n";
+$values = iterator_to_array(new Range(0, 3, 1), false);
+foreach ($values as $key => $value) {
+    echo $key;
+    echo "=";
+    echo $value;
+    echo " ";
+}
+echo "\n";
+
+echo "iterator_count from aggregate:\n";
+echo iterator_count(new RangeFactory(0, 4));
+echo "\n";
+
+function iterator_tick(string $label): bool {
+    echo $label;
+    return true;
+}
+
+echo "iterator_apply callback count:\n";
+$labels = ["label" => "*"];
+echo iterator_apply(new Range(0, 3, 1), "iterator_tick", $labels);
+echo "\n";
+
+function iterator_label_once(): string {
+    echo "!";
+    return "+";
+}
+
+echo "iterator_apply expression args:\n";
+echo iterator_apply(new Range(0, 2, 1), "iterator_tick", [iterator_label_once()]);
+echo "\n";
+
+function make_iterator_labeler(): callable {
+    return function(string $label): bool {
+        echo $label;
+        return true;
+    };
+}
+
+echo "iterator_apply returned callable:\n";
+$dynamic_labels = ["?"];
+echo iterator_apply(new Range(0, 2, 1), make_iterator_labeler(), $dynamic_labels);
+echo "\n";

@@ -114,9 +114,9 @@ pub(crate) fn emit_property_array_push_stmt(
                     emitter.instruction("bl __rt_array_push_str");              // persist and append the string payload, returning the possibly-grown array pointer
                 }
                 PhpType::Callable => {
-                    emitter.instruction("mov x1, x0");                          // move the callable pointer bits into the runtime helper value register
+                    emitter.instruction("mov x1, x0");                          // move the callable descriptor pointer bits into the runtime helper value register
                     emitter.instruction("mov x0, x9");                          // move the current array pointer into the runtime helper receiver register
-                    emitter.instruction("bl __rt_array_push_int");              // append the callable pointer bits as a plain scalar slot
+                    emitter.instruction("bl __rt_array_push_int");              // append the callable descriptor pointer bits as a plain scalar slot
                 }
                 PhpType::Mixed
                 | PhpType::Array(_)
@@ -160,7 +160,7 @@ pub(crate) fn emit_property_array_push_stmt(
                     abi::emit_call_label(emitter, "__rt_array_push_str");
                 }
                 PhpType::Callable => {
-                    emitter.instruction("mov rsi, rax");                        // move the callable pointer bits into the SysV runtime helper value register
+                    emitter.instruction("mov rsi, rax");                        // move the callable descriptor pointer bits into the SysV runtime helper value register
                     emitter.instruction("mov rdi, r11");                        // move the current array pointer into the SysV runtime helper receiver register
                     abi::emit_call_label(emitter, "__rt_array_push_int");
                 }

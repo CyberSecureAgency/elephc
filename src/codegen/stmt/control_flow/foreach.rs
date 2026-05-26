@@ -21,6 +21,10 @@ use crate::parser::ast::{Expr, ExprKind, Stmt};
 use crate::span::Span;
 use crate::types::PhpType;
 
+pub(crate) use iterator::{
+    emit_iterable_object_loop, emit_iterator_loop, reload_iterator_receiver, IteratorDispatchTarget,
+};
+
 /// Holds the original type of a value variable before it was converted to a by-reference
 /// binding in a foreach loop. Used to restore the correct type after the loop completes.
 pub(super) struct ForeachRefFallback {

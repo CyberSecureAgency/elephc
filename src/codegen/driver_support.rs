@@ -235,6 +235,7 @@ pub(super) fn emit_deferred_closures(
                     &closure.body,
                     closure.current_class.as_deref(),
                     &ctx.functions,
+                    &ctx.callable_return_sigs,
                     &ctx.function_variant_groups,
                     &ctx.constants,
                     &ctx.interfaces,
@@ -640,6 +641,49 @@ pub(crate) fn emit_normalized_hash_key(
         },
         PhpType::Str => {
             abi::emit_call_label(emitter, "__rt_hash_normalize_key");           // normalize numeric-string array keys to their integer PHP form
+        }
+        PhpType::Mixed | PhpType::Union(_) => {
+            let string_key = ctx.next_label("mixed_hash_key_string");
+            let scalar_key = ctx.next_label("mixed_hash_key_scalar");
+            let done = ctx.next_label("mixed_hash_key_done");
+            match emitter.target.arch {
+                Arch::AArch64 => {
+                    emitter.instruction("bl __rt_mixed_unbox");                 // decode the boxed key before normalizing it for hash storage
+                    emitter.instruction("cmp x0, #1");                          // string mixed keys need PHP numeric-string normalization
+                    emitter.instruction(&format!("b.eq {}", string_key));       // route string keys through the normal hash-key helper
+                    emitter.instruction("cmp x0, #0");                          // integer mixed keys are already scalar hash keys
+                    emitter.instruction(&format!("b.eq {}", scalar_key));       // keep integer keys as integer hash keys
+                    emitter.instruction("cmp x0, #3");                          // boolean mixed keys normalize like integer keys
+                    emitter.instruction(&format!("b.eq {}", scalar_key));       // keep boolean keys as integer hash keys
+                    emitter.instruction("mov x1, #0");                          // unsupported mixed key tags fall back to integer key zero
+                    emitter.label(&scalar_key);
+                    emitter.instruction("mov x2, #-1");                         // key_hi sentinel marks scalar mixed keys as integers
+                    emitter.instruction(&format!("b {}", done));                // skip the string-key normalization path
+                    emitter.label(&string_key);
+                    emitter.instruction("bl __rt_hash_normalize_key");          // normalize string mixed keys to PHP int/string hash keys
+                    emitter.label(&done);
+                }
+                Arch::X86_64 => {
+                    emitter.instruction("call __rt_mixed_unbox");               // decode the boxed key before normalizing it for hash storage
+                    emitter.instruction("cmp rax, 1");                          // string mixed keys need PHP numeric-string normalization
+                    emitter.instruction(&format!("je {}", string_key));         // route string keys through the normal hash-key helper
+                    emitter.instruction("cmp rax, 0");                          // integer mixed keys are already scalar hash keys
+                    emitter.instruction(&format!("je {}", scalar_key));         // keep integer keys as integer hash keys
+                    emitter.instruction("cmp rax, 3");                          // boolean mixed keys normalize like integer keys
+                    emitter.instruction(&format!("je {}", scalar_key));         // keep boolean keys as integer hash keys
+                    emitter.instruction("xor eax, eax");                        // unsupported mixed key tags fall back to integer key zero
+                    emitter.instruction("mov rdx, -1");                         // key_hi sentinel marks fallback mixed keys as integers
+                    emitter.instruction(&format!("jmp {}", done));              // skip the string-key normalization path
+                    emitter.label(&scalar_key);
+                    emitter.instruction("mov rax, rdi");                        // publish the unboxed scalar payload as key_lo
+                    emitter.instruction("mov rdx, -1");                         // key_hi sentinel marks scalar mixed keys as integers
+                    emitter.instruction(&format!("jmp {}", done));              // skip the string-key normalization path
+                    emitter.label(&string_key);
+                    emitter.instruction("mov rax, rdi");                        // move the unboxed string pointer into the hash normalizer input
+                    emitter.instruction("call __rt_hash_normalize_key");        // normalize string mixed keys to PHP int/string hash keys
+                    emitter.label(&done);
+                }
+            }
         }
         _ => match emitter.target.arch {
             Arch::AArch64 => {

@@ -197,6 +197,8 @@ src/
 │       ├── builtin_interfaces.rs Built-in SPL/core interface injection
 │       ├── builtin_iterators.rs Built-in Iterator / IteratorAggregate metadata
 │       ├── builtin_json.rs    JsonException / JsonSerializable metadata
+│       ├── builtin_spl_classes.rs SPL class metadata orchestration
+│       ├── builtin_spl_classes/ Focused SPL container and iterator metadata builders
 │       ├── builtin_spl_exceptions.rs SPL exception hierarchy metadata
 │       ├── builtin_stdclass.rs stdClass dynamic-property metadata
 │       ├── builtin_types/     Shared builtin class/type helper predicates
@@ -335,7 +337,7 @@ src/
 | Array result | `x0` (heap ptr) | After emit_expr for Array/AssocArray/Iterable |
 | Mixed result | `x0` (heap ptr) | Pointer to boxed mixed cell |
 | Object result | `x0` (heap ptr) | After emit_expr for Object |
-| Pointer / Buffer / Packed / Callable result | `x0` | Raw address, contiguous buffer pointer, packed-record pointer, or function pointer |
+| Pointer / Buffer / Packed / Callable result | `x0` | Raw address, contiguous buffer pointer, packed-record pointer, or callable descriptor pointer |
 | Function args (int) | `x0`-`x7` | Int/Bool/Resource/Array/AssocArray/Iterable/Mixed/Object/Pointer/Buffer/Packed/Callable/Union = 1 reg, Str = 2 regs |
 | Function args (float) | `d0`-`d7` | Separate index from int regs |
 | Frame pointer | `x29` | Saved in prologue |
@@ -384,7 +386,7 @@ Namespace syntax is preserved through parsing and include resolution, then norma
 
 Because codegen receives canonical names, namespaces do not require special cases in most later passes: mangled labels are derived centrally from the final fully-qualified name.
 
-First-class callable syntax rides on the same canonical naming pipeline. The parser emits a dedicated callable-target node, the checker validates the target statically, and codegen lowers it to a synthesized wrapper function so runtime callable values remain ordinary function pointers. Instance-method targets and `static::` targets use the same hidden-capture channel as closures to forward the receiver or called-class context into that wrapper.
+First-class callable syntax rides on the same canonical naming pipeline. The parser emits a dedicated callable-target node, the checker validates the target statically, and codegen lowers it to a synthesized wrapper function plus a static callable descriptor. Instance-method targets and `static::` targets use the same hidden-capture channel as closures to forward the receiver or called-class context into that wrapper; indirect call sites load the descriptor's entry slot before invoking the wrapper.
 
 ## Runtime memory layout
 

@@ -17,7 +17,7 @@ use super::super::super::expr::{
 };
 use super::super::super::functions;
 use super::super::PhpType;
-use crate::names::Name;
+use crate::names::{php_symbol_key, Name};
 use crate::parser::ast::{CallableTarget, Expr, ExprKind, StaticReceiver};
 
 /// Emits code for a local variable assignment (`$name = <expr>`).
@@ -231,6 +231,8 @@ pub(crate) fn emit_assign_stmt(
         }
     }
 
+    update_callable_array_target_metadata(name, value, ctx);
+
     match &value.kind {
         ExprKind::Closure { .. } | ExprKind::FirstClassCallable(_) => {
             let last_wrapper_label = ctx.deferred_closures.last().map(|d| d.label.clone());
@@ -411,6 +413,83 @@ fn closure_captures_name_by_ref(value: &Expr, name: &str) -> bool {
         } if captures.iter().any(|capture| capture == name)
             && capture_refs.iter().any(|capture| capture == name)
     )
+}
+
+/// Provides the Update callable array target metadata helper used by the locals module.
+fn update_callable_array_target_metadata(name: &str, value: &Expr, ctx: &mut Context) {
+    if let Some(target) = resolve_callable_array_target(value, ctx) {
+        ctx.callable_array_targets.insert(name.to_string(), target);
+    } else if let ExprKind::Variable(src_name) = &value.kind {
+        if let Some(target) = ctx.callable_array_targets.get(src_name).cloned() {
+            ctx.callable_array_targets.insert(name.to_string(), target);
+        } else {
+            ctx.callable_array_targets.remove(name);
+        }
+    } else {
+        ctx.callable_array_targets.remove(name);
+    }
+}
+
+/// Resolves callable array target using the available compile-time metadata.
+fn resolve_callable_array_target(expr: &Expr, ctx: &Context) -> Option<CallableTarget> {
+    let elems = match &expr.kind {
+        ExprKind::ArrayLiteral(elems) => elems,
+        _ => return None,
+    };
+    if elems.len() != 2 {
+        return None;
+    }
+    let ExprKind::StringLiteral(method) = &elems[1].kind else {
+        return None;
+    };
+    if let Some(receiver) = static_callable_receiver(&elems[0], ctx) {
+        return Some(CallableTarget::StaticMethod {
+            receiver,
+            method: method.clone(),
+        });
+    }
+    let receiver_ty = functions::infer_contextual_type(&elems[0], ctx);
+    if functions::singular_object_class(&receiver_ty).is_some() {
+        return Some(CallableTarget::Method {
+            object: Box::new(elems[0].clone()),
+            method: method.clone(),
+        });
+    }
+    None
+}
+
+/// Provides the Static callable receiver helper used by the locals module.
+fn static_callable_receiver(receiver: &Expr, ctx: &Context) -> Option<StaticReceiver> {
+    let class_name = match &receiver.kind {
+        ExprKind::StringLiteral(class_name) => {
+            resolve_class_name(ctx, class_name).map(str::to_string)
+        }
+        ExprKind::ClassConstant { receiver } => resolve_static_receiver_class(receiver, ctx),
+        _ => None,
+    }?;
+    Some(StaticReceiver::Named(Name::from(class_name)))
+}
+
+/// Resolves static receiver class using the available compile-time metadata.
+fn resolve_static_receiver_class(receiver: &StaticReceiver, ctx: &Context) -> Option<String> {
+    match receiver {
+        StaticReceiver::Named(name) => resolve_class_name(ctx, name.as_str()).map(str::to_string),
+        StaticReceiver::Self_ | StaticReceiver::Static => ctx.current_class.clone(),
+        StaticReceiver::Parent => ctx
+            .current_class
+            .as_ref()
+            .and_then(|class_name| ctx.classes.get(class_name))
+            .and_then(|class_info| class_info.parent.clone()),
+    }
+}
+
+/// Resolves class name using the available compile-time metadata.
+fn resolve_class_name<'a>(ctx: &'a Context, class_name: &str) -> Option<&'a str> {
+    let class_key = php_symbol_key(class_name.trim_start_matches('\\'));
+    ctx.classes
+        .keys()
+        .find(|existing| php_symbol_key(existing) == class_key)
+        .map(String::as_str)
 }
 
 /// Returns the target `PhpType` when assigning an `ArrayLiteral` to a local whose

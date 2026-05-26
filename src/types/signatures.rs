@@ -120,6 +120,22 @@ pub(crate) fn builtin_call_sig(name: &str) -> Option<FunctionSig> {
         )),
         "trait_exists" => Some(optional(&["trait", "autoload"], 1, vec![bool_lit(true)])),
         "enum_exists" => Some(optional(&["enum", "autoload"], 1, vec![bool_lit(true)])),
+        "class_implements" | "class_parents" | "class_uses" => Some(optional(
+            &["object_or_class", "autoload"],
+            1,
+            vec![bool_lit(true)],
+        )),
+        "iterator_to_array" => Some(optional(
+            &["iterator", "preserve_keys"],
+            1,
+            vec![bool_lit(true)],
+        )),
+        "iterator_count" => Some(fixed(&["iterator"])),
+        "iterator_apply" => Some(optional(
+            &["iterator", "callback", "args"],
+            2,
+            vec![null_lit()],
+        )),
         "get_class" => Some(optional(&["object"], 0, vec![null_lit()])),
         "get_parent_class" => Some(optional(&["object_or_class"], 0, vec![null_lit()])),
         "get_declared_classes" | "get_declared_interfaces" | "get_declared_traits" => {
@@ -539,6 +555,21 @@ fn general_first_class_callable_builtin_sig(name: &str) -> Option<FunctionSig> {
             &[PhpType::Array(Box::new(PhpType::Mixed))],
             PhpType::Mixed,
         )),
+        "iterator_to_array" => Some(typed_first_class_builtin_sig(
+            name,
+            &[PhpType::Iterable, PhpType::Bool],
+            PhpType::Array(Box::new(PhpType::Mixed)),
+        )),
+        "iterator_count" => Some(typed_first_class_builtin_sig(
+            name,
+            &[PhpType::Iterable],
+            PhpType::Int,
+        )),
+        "iterator_apply" => Some(typed_first_class_builtin_sig(
+            name,
+            &[PhpType::Object("Traversable".to_string())],
+            PhpType::Int,
+        )),
         "array_push" | "array_unshift" => Some(typed_first_class_builtin_sig(
             name,
             &[PhpType::Array(Box::new(PhpType::Mixed)), PhpType::Mixed],
@@ -749,6 +780,7 @@ fn null_lit() -> Expr {
 mod tests {
     use super::*;
 
+    /// Computes the callable signature metadata for variadic.
     fn variadic_sig(params: Vec<(String, PhpType)>) -> FunctionSig {
         FunctionSig {
             defaults: vec![None; params.len()],
@@ -762,6 +794,7 @@ mod tests {
         }
     }
 
+    /// Builds the parameter metadata for callable wrapper sig retypes existing non array variadic.
     #[test]
     fn callable_wrapper_sig_retypes_existing_non_array_variadic_param() {
         let sig = variadic_sig(vec![
@@ -784,6 +817,7 @@ mod tests {
         assert_eq!(wrapper_sig.declared_params.len(), 2);
     }
 
+    /// Builds the parameter metadata for callable wrapper sig appends missing variadic.
     #[test]
     fn callable_wrapper_sig_appends_missing_variadic_param() {
         let sig = variadic_sig(vec![("format".to_string(), PhpType::Str)]);

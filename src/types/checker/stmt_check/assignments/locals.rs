@@ -9,7 +9,8 @@
 //! - Assignment checking must distinguish value writes, by-reference mutation, nullable access, and declared property contracts.
 
 use crate::errors::CompileError;
-use crate::parser::ast::{Expr, ExprKind, TypeExpr};
+use crate::names::{php_symbol_key, Name};
+use crate::parser::ast::{CallableTarget, Expr, ExprKind, StaticReceiver, TypeExpr};
 use crate::span::Span;
 use crate::types::{PhpType, TypeEnv};
 
@@ -199,6 +200,8 @@ pub(super) fn update_callable_assignment_metadata(
     ty: &PhpType,
     env: &mut TypeEnv,
 ) -> Result<(), CompileError> {
+    update_callable_array_assignment_metadata(checker, name, callable_source, env)?;
+
     if *ty == PhpType::Callable {
         if let Some(sig) = checker.resolve_expr_callable_sig(callable_source, env)? {
             checker
@@ -285,6 +288,141 @@ pub(super) fn update_callable_assignment_metadata(
         checker.first_class_callable_targets.remove(name);
     }
     Ok(())
+}
+
+/// Provides the Update callable array assignment metadata helper used by the locals module.
+fn update_callable_array_assignment_metadata(
+    checker: &mut Checker,
+    name: &str,
+    callable_source: &Expr,
+    env: &TypeEnv,
+) -> Result<(), CompileError> {
+    if let Some(target) = resolve_callable_array_target(checker, callable_source, env)? {
+        checker
+            .callable_array_targets
+            .insert(name.to_string(), target);
+    } else if let ExprKind::Variable(src_name) = &callable_source.kind {
+        if let Some(target) = checker.callable_array_targets.get(src_name).cloned() {
+            checker
+                .callable_array_targets
+                .insert(name.to_string(), target);
+        } else {
+            checker.callable_array_targets.remove(name);
+        }
+    } else {
+        checker.callable_array_targets.remove(name);
+    }
+    Ok(())
+}
+
+/// Resolves callable array target using the available compile-time metadata.
+fn resolve_callable_array_target(
+    checker: &Checker,
+    expr: &Expr,
+    env: &TypeEnv,
+) -> Result<Option<CallableTarget>, CompileError> {
+    let Some((receiver, method)) = callable_array_parts(expr) else {
+        return Ok(None);
+    };
+    if let Some(receiver) = static_callable_receiver(checker, receiver, expr.span)? {
+        return Ok(Some(CallableTarget::StaticMethod {
+            receiver,
+            method: method.to_string(),
+        }));
+    }
+    let receiver_ty = env
+        .get(variable_name(receiver).unwrap_or_default())
+        .cloned()
+        .unwrap_or_else(|| crate::types::checker::infer_expr_type_syntactic(receiver));
+    if checker.invokable_class_for_type(&receiver_ty).is_some() {
+        return Ok(Some(CallableTarget::Method {
+            object: Box::new(receiver.clone()),
+            method: method.to_string(),
+        }));
+    }
+    Ok(None)
+}
+
+/// Provides the Callable array parts helper used by the locals module.
+fn callable_array_parts(expr: &Expr) -> Option<(&Expr, &str)> {
+    let elems = match &expr.kind {
+        ExprKind::ArrayLiteral(elems) => elems,
+        _ => return None,
+    };
+    if elems.len() != 2 {
+        return None;
+    }
+    let ExprKind::StringLiteral(method) = &elems[1].kind else {
+        return None;
+    };
+    Some((&elems[0], method.as_str()))
+}
+
+/// Provides the Variable name helper used by the locals module.
+fn variable_name(expr: &Expr) -> Option<&str> {
+    match &expr.kind {
+        ExprKind::Variable(name) => Some(name),
+        _ => None,
+    }
+}
+
+/// Provides the Static callable receiver helper used by the locals module.
+fn static_callable_receiver(
+    checker: &Checker,
+    receiver: &Expr,
+    span: Span,
+) -> Result<Option<StaticReceiver>, CompileError> {
+    let class_name = match &receiver.kind {
+        ExprKind::StringLiteral(class_name) => resolve_class_name(checker, class_name)
+            .map(str::to_string),
+        ExprKind::ClassConstant { receiver } => {
+            Some(resolve_static_receiver_class(checker, receiver, span)?)
+        }
+        _ => None,
+    };
+    Ok(class_name.map(|class_name| StaticReceiver::Named(Name::from(class_name))))
+}
+
+/// Resolves static receiver class using the available compile-time metadata.
+fn resolve_static_receiver_class(
+    checker: &Checker,
+    receiver: &StaticReceiver,
+    span: Span,
+) -> Result<String, CompileError> {
+    match receiver {
+        StaticReceiver::Named(name) => resolve_class_name(checker, name.as_str())
+            .map(str::to_string)
+            .ok_or_else(|| CompileError::new(span, &format!("Undefined class: {}", name))),
+        StaticReceiver::Self_ | StaticReceiver::Static => checker
+            .current_class
+            .clone()
+            .ok_or_else(|| CompileError::new(span, "Cannot use self::class outside a class context")),
+        StaticReceiver::Parent => {
+            let current_class = checker.current_class.as_ref().ok_or_else(|| {
+                CompileError::new(span, "Cannot use parent::class outside a class context")
+            })?;
+            checker
+                .classes
+                .get(current_class)
+                .and_then(|class_info| class_info.parent.clone())
+                .ok_or_else(|| {
+                    CompileError::new(
+                        span,
+                        &format!("Class '{}' has no parent class", current_class),
+                    )
+                })
+        }
+    }
+}
+
+/// Resolves class name using the available compile-time metadata.
+fn resolve_class_name<'a>(checker: &'a Checker, class_name: &str) -> Option<&'a str> {
+    let class_key = php_symbol_key(class_name.trim_start_matches('\\'));
+    checker
+        .classes
+        .keys()
+        .find(|existing| php_symbol_key(existing) == class_key)
+        .map(String::as_str)
 }
 
 /// Merges the assigned type into the type environment for the given variable.

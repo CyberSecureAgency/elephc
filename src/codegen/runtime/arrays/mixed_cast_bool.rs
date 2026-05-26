@@ -58,7 +58,7 @@ pub fn emit_mixed_cast_bool(emitter: &mut Emitter) {
     emitter.instruction("b __rt_mixed_cast_bool_done");                         // return the integer truthiness result
 
     emitter.label("__rt_mixed_cast_bool_from_string");
-    emitter.instruction("cbz x2, __rt_mixed_cast_bool_done");                   // empty strings are falsy
+    emitter.instruction("cbz x2, __rt_mixed_cast_bool_false");                  // empty strings are falsy
     emitter.instruction("cmp x2, #1");                                          // check whether the string length is exactly one byte
     emitter.instruction("b.ne __rt_mixed_cast_bool_string_truthy");             // strings longer than one byte are truthy
     emitter.instruction("ldrb w9, [x1]");                                       // load the first byte of the string payload
@@ -80,7 +80,7 @@ pub fn emit_mixed_cast_bool(emitter: &mut Emitter) {
     emitter.instruction("b __rt_mixed_cast_bool_done");                         // return the bool payload directly
 
     emitter.label("__rt_mixed_cast_bool_from_array");
-    emitter.instruction("cbz x1, __rt_mixed_cast_bool_done");                   // null containers stay falsy
+    emitter.instruction("cbz x1, __rt_mixed_cast_bool_false");                  // null containers stay falsy
     emitter.instruction("ldr x0, [x1]");                                        // load the current container element count from the header
     emitter.instruction("cmp x0, #0");                                          // compare the element count against zero
     emitter.instruction("cset x0, ne");                                         // containers are truthy when non-empty
@@ -88,6 +88,10 @@ pub fn emit_mixed_cast_bool(emitter: &mut Emitter) {
 
     emitter.label("__rt_mixed_cast_bool_from_resource");
     emitter.instruction("mov x0, #1");                                          // resources are always truthy
+    emitter.instruction("b __rt_mixed_cast_bool_done");                         // return the resource truthiness result
+
+    emitter.label("__rt_mixed_cast_bool_false");
+    emitter.instruction("mov x0, #0");                                          // normalize falsey mixed payloads to boolean false
 
     emitter.label("__rt_mixed_cast_bool_done");
     emitter.instruction("ldp x29, x30, [sp, #16]");                             // restore frame pointer and return address
@@ -133,7 +137,7 @@ fn emit_mixed_cast_bool_linux_x86_64(emitter: &mut Emitter) {
 
     emitter.label("__rt_mixed_cast_bool_from_string_linux_x86_64");
     emitter.instruction("test rdx, rdx");                                       // empty strings are falsy
-    emitter.instruction("je __rt_mixed_cast_bool_done_linux_x86_64");           // return the default false result when the string length is zero
+    emitter.instruction("je __rt_mixed_cast_bool_false_linux_x86_64");          // return false when the string length is zero
     emitter.instruction("cmp rdx, 1");                                          // check whether the string length is exactly one byte
     emitter.instruction("jne __rt_mixed_cast_bool_string_truthy_linux_x86_64"); // strings longer than one byte are always truthy
     emitter.instruction("movzx r8d, BYTE PTR [rdi]");                           // load the first byte of the string payload
@@ -160,7 +164,7 @@ fn emit_mixed_cast_bool_linux_x86_64(emitter: &mut Emitter) {
 
     emitter.label("__rt_mixed_cast_bool_from_array_linux_x86_64");
     emitter.instruction("test rdi, rdi");                                       // null container pointers stay falsy
-    emitter.instruction("je __rt_mixed_cast_bool_done_linux_x86_64");           // return the default false result when the container pointer is null
+    emitter.instruction("je __rt_mixed_cast_bool_false_linux_x86_64");          // return false when the container pointer is null
     emitter.instruction("mov rax, QWORD PTR [rdi]");                            // load the current container element count from the header
     emitter.instruction("test rax, rax");                                       // compare the container element count against zero
     emitter.instruction("setne al");                                            // containers are truthy when non-empty
@@ -169,6 +173,10 @@ fn emit_mixed_cast_bool_linux_x86_64(emitter: &mut Emitter) {
 
     emitter.label("__rt_mixed_cast_bool_from_resource_linux_x86_64");
     emitter.instruction("mov rax, 1");                                          // resources are always truthy
+    emitter.instruction("jmp __rt_mixed_cast_bool_done_linux_x86_64");          // return the resource truthiness result
+
+    emitter.label("__rt_mixed_cast_bool_false_linux_x86_64");
+    emitter.instruction("mov rax, 0");                                          // normalize falsey mixed payloads to boolean false
 
     emitter.label("__rt_mixed_cast_bool_done_linux_x86_64");
     emitter.instruction("add rsp, 16");                                         // release the aligned temporary slot reserved for nested helper calls

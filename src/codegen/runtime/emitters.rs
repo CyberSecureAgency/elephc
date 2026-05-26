@@ -143,6 +143,7 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter) {
 
     // Exception runtime functions
     exceptions::emit_exception_cleanup_frames(emitter);
+    exceptions::emit_class_implements_interface(emitter);
     exceptions::emit_dynamic_instanceof(emitter);
     exceptions::emit_exception_matches(emitter);
     exceptions::emit_throw_current(emitter);
@@ -361,6 +362,7 @@ mod tests {
     use super::*;
     use crate::codegen::platform::Target;
 
+    /// Verifies that linux runtime marks crypto symbols weak.
     #[test]
     fn test_linux_runtime_marks_crypto_symbols_weak() {
         let mut emitter = Emitter::new(Target::new(Platform::Linux, Arch::AArch64));
@@ -373,6 +375,7 @@ mod tests {
         assert!(!asm.contains("arc4random_uniform"));
     }
 
+    /// Verifies that AArch64 runtime emits fiber routines.
     #[test]
     fn test_aarch64_runtime_emits_fiber_routines() {
         let mut emitter = Emitter::new(Target::new(Platform::MacOS, Arch::AArch64));

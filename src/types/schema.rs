@@ -41,6 +41,7 @@ pub struct PropertyHookContract {
 /// Does not compare span — two contracts at different source positions
 /// are considered equivalent if their types and declaring class match.
 impl PartialEq for PropertyHookContract {
+    /// Provides the Eq helper used by the schema module.
     fn eq(&self, other: &Self) -> bool {
         self.get_type == other.get_type
             && self.set_type == other.set_type
@@ -104,6 +105,8 @@ pub struct ClassInfo {
     pub property_attribute_names: HashMap<String, Vec<String>>,
     /// Literal property-attribute args aligned with `property_attribute_names`.
     pub property_attribute_args: HashMap<String, Vec<Option<Vec<AttrArgValue>>>>,
+    /// Trait names used directly by this class declaration, preserving source order.
+    pub used_traits: Vec<String>,
     pub properties: Vec<(String, PhpType)>,
     pub property_offsets: HashMap<String, usize>,
     pub property_declaring_classes: HashMap<String, String>,

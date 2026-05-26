@@ -41,6 +41,12 @@ Argument registers follow the selected target's C ABI: AArch64 uses
 x86_64 uses the System V registers (`rdi`, `rsi`, `rdx`, `rcx`, `r8`, `r9`
 for integers/pointers and `xmm0`-`xmm7` for doubles).
 
+`callable` in an `extern function` signature is a special FFI-only path: the
+call site must provide a string-literal elephc function name, and codegen passes
+that function's native symbol address to C. General PHP callable values use
+runtime descriptor pointers internally and are not passed directly to C as
+closures or first-class callable descriptors.
+
 ## String conversion
 - **Calling C**: elephc creates temporary null-terminated copy, frees after call
 - **C returns string**: elephc scans for `\0`, copies to owned storage

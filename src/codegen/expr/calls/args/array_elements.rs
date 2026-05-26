@@ -13,7 +13,8 @@ use crate::codegen::{abi, context::Context, data_section::DataSection};
 use crate::types::PhpType;
 
 use super::common::{
-    coerce_current_value_to_target, push_arg_value, release_preserved_mixed_after_arg_coercion,
+    coerce_current_value_to_target, push_arg_value, push_current_result_ref_arg_address,
+    release_preserved_mixed_after_arg_coercion,
 };
 
 /// Loads a spread/callback array element into the appropriate result register based on `source_elem_ty`.
@@ -160,6 +161,18 @@ pub(crate) fn push_loaded_hash_value_arg(
     }
     push_arg_value(emitter, &pushed_ty);
     pushed_ty
+}
+
+/// Pushes loaded hash value ref arg onto the temporary call stack or synthetic metadata list.
+pub(crate) fn push_loaded_hash_value_ref_arg(
+    source_elem_ty: &PhpType,
+    target_ty: Option<&PhpType>,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> PhpType {
+    materialize_hash_value_to_result(emitter, source_elem_ty);
+    push_current_result_ref_arg_address(source_elem_ty, target_ty, emitter, ctx, data)
 }
 
 /// Moves the hash lookup result (delivered in architecture-specific register pairs: x1/x2 on ARM64, rdi/rsi on x86_64)

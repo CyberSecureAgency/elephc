@@ -33,10 +33,14 @@ pub(super) fn return_type_for(intrinsic: IntrinsicCall) -> PhpType {
         | IntrinsicCallKind::FiberIsSuspended
         | IntrinsicCallKind::FiberIsTerminated
         | IntrinsicCallKind::GeneratorValid
+        | IntrinsicCallKind::CallbackFilterAccept
         | IntrinsicCallKind::SplDllIsEmpty
         | IntrinsicCallKind::SplDllOffsetExists
         | IntrinsicCallKind::SplDllValid
         | IntrinsicCallKind::SplFixedOffsetExists => PhpType::Bool,
+        IntrinsicCallKind::SplRecursiveAssumeIterator => {
+            PhpType::Object("RecursiveIterator".to_string())
+        }
         IntrinsicCallKind::SplDllCount
         | IntrinsicCallKind::SplDllGetIteratorMode
         | IntrinsicCallKind::SplFixedCount
@@ -198,6 +202,12 @@ pub(super) fn emit_instance_intrinsic_with_loaded_args(
         | IntrinsicCallKind::GeneratorSend
         | IntrinsicCallKind::GeneratorThrow
         | IntrinsicCallKind::GeneratorGetReturn => emit_generator_intrinsic(intrinsic, emitter, ctx),
+        IntrinsicCallKind::CallbackFilterAccept => {
+            emit_callback_filter_accept_intrinsic(intrinsic, emitter, ctx)
+        }
+        IntrinsicCallKind::SplRecursiveAssumeIterator => {
+            emit_recursive_assume_iterator_intrinsic(emitter, ctx)
+        }
         IntrinsicCallKind::SplDllAdd
         | IntrinsicCallKind::SplDllPop
         | IntrinsicCallKind::SplDllShift
@@ -376,5 +386,93 @@ fn emit_generator_intrinsic(
     } else {
         restore_concat_offset_after_nested_call(emitter, ctx, &ret_ty);
     }
+    ret_ty
+}
+
+/// Emits assembly for callback filter accept intrinsic.
+fn emit_callback_filter_accept_intrinsic(
+    intrinsic: IntrinsicCall,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+) -> PhpType {
+    let Some(class_info) = ctx.classes.get(intrinsic.class_name()) else {
+        emitter.comment("WARNING: missing CallbackFilterIterator metadata for callback accept");
+        return PhpType::Bool;
+    };
+    let callback_offset = class_info.property_offsets.get("callback").copied().unwrap_or(24);
+    let callback_env_offset = class_info
+        .property_offsets
+        .get("callbackEnv")
+        .copied()
+        .unwrap_or(40);
+    let direct_call = ctx.next_label("callback_filter_direct_call");
+    let done = ctx.next_label("callback_filter_call_done");
+
+    save_concat_offset_before_nested_call(emitter, ctx);
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction(&format!("ldr x9, [x0, #{}]", callback_offset)); // load the stored callback descriptor pointer
+            emitter.instruction(&format!("ldr x10, [x0, #{}]", callback_env_offset)); // load the optional persistent callback environment
+            crate::codegen::callable_descriptor::emit_load_entry_from_descriptor(
+                emitter,
+                "x9",
+                "x9",
+            );
+            emitter.instruction("mov x0, x1");                                  // shift current value into callback argument 1
+            emitter.instruction("mov x1, x2");                                  // shift current key into callback argument 2
+            emitter.instruction("mov x2, x3");                                  // shift inner iterator into callback argument 3
+            emitter.instruction(&format!("cbz x10, {}", direct_call));          // call the original callback directly when no env is stored
+            emitter.instruction("mov x3, x10");                                 // pass persistent capture env as the wrapper's hidden argument
+            emitter.instruction("blr x9");                                      // invoke the stored callback wrapper with captures
+            emitter.instruction(&format!("b {}", done));                        // skip the direct-call path after wrapper dispatch
+            emitter.label(&direct_call);
+            emitter.instruction("blr x9");                                      // invoke the stored callback without hidden captures
+            emitter.label(&done);
+        }
+        Arch::X86_64 => {
+            emitter.instruction(&format!("mov r10, QWORD PTR [rdi + {}]", callback_offset)); // load the stored callback descriptor pointer
+            emitter.instruction(&format!("mov r11, QWORD PTR [rdi + {}]", callback_env_offset)); // load the optional persistent callback environment
+            crate::codegen::callable_descriptor::emit_load_entry_from_descriptor(
+                emitter,
+                "r10",
+                "r10",
+            );
+            emitter.instruction("mov rdi, rsi");                                // shift current value into callback argument 1
+            emitter.instruction("mov rsi, rdx");                                // shift current key into callback argument 2
+            emitter.instruction("mov rdx, rcx");                                // shift inner iterator into callback argument 3
+            emitter.instruction("test r11, r11");                               // check whether a persistent callback environment exists
+            emitter.instruction(&format!("je {}", direct_call));                // call the original callback directly when no env is stored
+            emitter.instruction("mov rcx, r11");                                // pass persistent capture env as the wrapper's hidden argument
+            emitter.instruction("call r10");                                    // invoke the stored callback wrapper with captures
+            emitter.instruction(&format!("jmp {}", done));                      // skip the direct-call path after wrapper dispatch
+            emitter.label(&direct_call);
+            emitter.instruction("call r10");                                    // invoke the stored callback without hidden captures
+            emitter.label(&done);
+        }
+    }
+    restore_concat_offset_after_nested_call(emitter, ctx, &PhpType::Bool);
+    PhpType::Bool
+}
+
+/// Emits assembly for recursive assume iterator intrinsic.
+fn emit_recursive_assume_iterator_intrinsic(
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+) -> PhpType {
+    save_concat_offset_before_nested_call(emitter, ctx);
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction("mov x0, x1");                                  // move the boxed candidate iterator into the mixed-unbox helper input
+            emitter.instruction("bl __rt_mixed_unbox");                         // unwrap the candidate so the raw object pointer can be returned
+            emitter.instruction("mov x0, x1");                                  // return the unboxed object payload as RecursiveIterator
+        }
+        Arch::X86_64 => {
+            emitter.instruction("mov rax, rsi");                                // move the boxed candidate iterator into the mixed-unbox helper input
+            emitter.instruction("call __rt_mixed_unbox");                       // unwrap the candidate so the raw object pointer can be returned
+            emitter.instruction("mov rax, rdi");                                // return the unboxed object payload as RecursiveIterator
+        }
+    }
+    let ret_ty = PhpType::Object("RecursiveIterator".to_string());
+    restore_concat_offset_after_nested_call(emitter, ctx, &ret_ty);
     ret_ty
 }

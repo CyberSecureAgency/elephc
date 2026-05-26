@@ -45,7 +45,12 @@ pub fn emit(
     };
     if names.is_empty() {
         names = match name {
-            "get_declared_classes" => ctx.classes.keys().cloned().collect(),
+            "get_declared_classes" => ctx
+                .classes
+                .keys()
+                .filter(|name| !is_internal_synthetic_class_name(name))
+                .cloned()
+                .collect(),
             "get_declared_interfaces" => ctx.interfaces.keys().cloned().collect(),
             "get_declared_traits" => ctx.traits.iter().cloned().collect(),
             _ => unreachable!(),
@@ -76,6 +81,14 @@ pub fn emit(
     Some(PhpType::Array(Box::new(PhpType::Str)))
 }
 
+/// Returns true when internal synthetic class name.
+fn is_internal_synthetic_class_name(name: &str) -> bool {
+    crate::names::php_symbol_key(name).starts_with("__elephc")
+}
+
+/// Push each name onto the array via `__rt_array_push_str`. The array
+/// pointer is parked on the stack between iterations because
+/// `__rt_array_push_str` may grow the storage and return a new pointer.
 /// Emits the per-name push sequence for the declared-names array. Parks the array pointer on the stack
 /// while iterating `names` so that `__rt_array_push_str` can grow the vector and return a new pointer.
 /// Each iteration: (1) reloads the current array pointer, (2) adds the name string to `data`, (3) calls

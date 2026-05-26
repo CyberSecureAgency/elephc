@@ -26,7 +26,9 @@ use super::builtin_interfaces::{
 };
 use super::builtin_iterators::{inject_builtin_iterators, patch_builtin_generator_signatures};
 use super::builtin_json::{inject_builtin_json_interfaces, patch_builtin_json_signatures};
-use super::builtin_spl_classes::inject_builtin_spl_classes;
+use super::builtin_spl_classes::{
+    inject_builtin_spl_classes, patch_builtin_spl_storage_signatures,
+};
 use super::builtin_spl_exceptions::inject_builtin_spl_exceptions;
 use super::builtin_stdclass::inject_builtin_stdclass;
 use super::schema::{
@@ -213,6 +215,7 @@ pub(super) fn check_types_impl(
     patch_builtin_json_signatures(&mut checker);
     patch_builtin_reflection_signatures(&mut checker);
     patch_builtin_generator_signatures(&mut checker);
+    patch_builtin_spl_storage_signatures(&mut checker);
     patch_magic_method_signatures(&mut checker);
 
     checker.prescan_extern_decls(program, &mut errors);

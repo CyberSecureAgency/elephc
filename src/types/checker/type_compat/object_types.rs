@@ -134,6 +134,9 @@ impl Checker {
     /// Returns true if `type_name` (a class or interface) implements `Iterator` or
     /// `IteratorAggregate`, which are the interfaces that make a type usable in `foreach`.
     pub(crate) fn object_type_implements_iterable(&self, type_name: &str) -> bool {
+        if type_name == "Traversable" {
+            return true;
+        }
         if self.classes.contains_key(type_name) {
             return self.class_implements_interface(type_name, "Iterator")
                 || self.class_implements_interface(type_name, "IteratorAggregate");
@@ -319,6 +322,7 @@ impl Checker {
         instantiated_class: &str,
         param_index: usize,
         arg_ty: &PhpType,
+        param_has_declared_type: bool,
     ) {
         let Some((prop_name, declaring_class)) =
             self.classes.get(instantiated_class).and_then(|class_info| {
@@ -360,9 +364,11 @@ impl Checker {
                 }
             }
 
-            if let Some(sig) = class_info.methods.get_mut("__construct") {
-                if let Some((_, param_ty)) = sig.params.get_mut(param_index) {
-                    *param_ty = arg_ty.clone();
+            if !param_has_declared_type {
+                if let Some(sig) = class_info.methods.get_mut("__construct") {
+                    if let Some((_, param_ty)) = sig.params.get_mut(param_index) {
+                        *param_ty = arg_ty.clone();
+                    }
                 }
             }
         }

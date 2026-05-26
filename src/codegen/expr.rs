@@ -84,6 +84,9 @@ pub fn emit_expr(
             scalars::emit_negate(inner, emitter, ctx, data)
         }
         ExprKind::ArrayLiteral(elems) => arrays::emit_array_literal(elems, emitter, ctx, data),
+        ExprKind::ArrayLiteralAssoc(pairs) if pairs.is_empty() => {
+            arrays::emit_empty_assoc_array_literal(PhpType::Mixed, PhpType::Mixed, emitter)
+        }
         ExprKind::ArrayLiteralAssoc(pairs) => {
             arrays::emit_assoc_array_literal(pairs, emitter, ctx, data)
         }

@@ -15,14 +15,32 @@ use super::{canonical_builtin_function_name, namespace_name, Symbols};
 
 const BUILTIN_CLASS_LIKE_SYMBOLS: &[&str] = &[
     "ArrayAccess",
+    "AppendIterator",
+    "ArrayIterator",
+    "ArrayObject",
+    "CachingIterator",
+    "CallbackFilterIterator",
     "Countable",
+    "EmptyIterator",
     "Throwable",
     "Error",
     "Exception",
+    "FilterIterator",
+    "InfiniteIterator",
+    "InternalIterator",
     "Iterator",
     "IteratorAggregate",
+    "IteratorIterator",
+    "LimitIterator",
+    "MultipleIterator",
+    "NoRewindIterator",
     "OuterIterator",
+    "ParentIterator",
+    "RecursiveArrayIterator",
+    "RecursiveCallbackFilterIterator",
+    "RecursiveFilterIterator",
     "RecursiveIterator",
+    "RecursiveIteratorIterator",
     "SeekableIterator",
     "SplDoublyLinkedList",
     "SplFixedArray",
@@ -135,6 +153,7 @@ pub(super) fn collect_symbols(
     }
 }
 
+/// Inserts folded symbol into the supplied builtin metadata registry.
 fn insert_folded_symbol(symbols: &mut std::collections::HashMap<String, String>, name: String) {
     symbols.entry(php_symbol_key(&name)).or_insert(name);
 }
