@@ -125,11 +125,6 @@ fn emit_static_method_descriptor_form(
     if !case.has_invoker {
         return None;
     }
-    let arg_array_ty = functions::infer_contextual_type(arg_array, ctx);
-    if case.sig.variadic.is_some() && !matches!(arg_array_ty, PhpType::Array(_)) {
-        return None;
-    }
-
     let save_concat_before_args =
         emitter.target.arch == crate::codegen::platform::Arch::X86_64;
     if save_concat_before_args {

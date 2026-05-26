@@ -218,12 +218,14 @@ fn materialize_hash_value_to_result(emitter: &mut Emitter, source_elem_ty: &PhpT
 }
 
 /// Returns the element type for a spread source based on the container PHP type.
-/// For `PhpType::Array` and `PhpType::AssocArray`, returns the inner element type;
-/// for all other types, defaults to `PhpType::Int`.
+/// For `PhpType::Array` and `PhpType::AssocArray`, returns the inner element type.
+/// Runtime `Iterable` values are type-erased and therefore expose `Mixed` elements.
+/// For all other types, defaults to `PhpType::Int`.
 pub(super) fn spread_source_elem_ty(spread_ty: &PhpType) -> PhpType {
     match spread_ty {
         PhpType::Array(elem) => (**elem).clone(),
         PhpType::AssocArray { value, .. } => (**value).clone(),
+        PhpType::Iterable => PhpType::Mixed,
         _ => PhpType::Int,
     }
 }

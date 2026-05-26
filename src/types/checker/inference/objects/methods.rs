@@ -11,7 +11,7 @@
 use crate::errors::CompileError;
 use crate::names::php_symbol_key;
 use crate::parser::ast::{Expr, ExprKind, StaticReceiver};
-use crate::types::{PhpType, TypeEnv};
+use crate::types::{FunctionSig, PhpType, TypeEnv};
 
 use super::super::super::Checker;
 use super::super::syntactic::wider_type_syntactic;
@@ -275,7 +275,16 @@ impl Checker {
                         sig.params[i].1 = arg_ty.clone();
                     }
                 }
-                if sig.variadic.is_some() && arg_types.len() > regular_param_count {
+                if method_variadic_tail_needs_iterable(
+                    &normalized_args,
+                    sig,
+                    regular_param_count,
+                    env,
+                ) {
+                    if let Some((_, variadic_ty)) = sig.params.last_mut() {
+                        *variadic_ty = PhpType::Iterable;
+                    }
+                } else if sig.variadic.is_some() && arg_types.len() > regular_param_count {
                     let mut elem_ty = arg_types[regular_param_count].clone();
                     for arg_ty in arg_types.iter().skip(regular_param_count + 1) {
                         elem_ty = wider_type_syntactic(&elem_ty, arg_ty);
@@ -603,7 +612,16 @@ impl Checker {
                         sig.params[i].1 = arg_ty.clone();
                     }
                 }
-                if sig.variadic.is_some() && arg_types.len() > regular_param_count {
+                if method_variadic_tail_needs_iterable(
+                    &normalized_args,
+                    sig,
+                    regular_param_count,
+                    env,
+                ) {
+                    if let Some((_, variadic_ty)) = sig.params.last_mut() {
+                        *variadic_ty = PhpType::Iterable;
+                    }
+                } else if sig.variadic.is_some() && arg_types.len() > regular_param_count {
                     let mut elem_ty = arg_types[regular_param_count].clone();
                     for arg_ty in arg_types.iter().skip(regular_param_count + 1) {
                         elem_ty = wider_type_syntactic(&elem_ty, arg_ty);
@@ -655,5 +673,53 @@ impl Checker {
             }
         }
         Ok(PhpType::Int)
+    }
+}
+
+/// Returns true when a method variadic parameter must keep runtime key information.
+fn method_variadic_tail_needs_iterable(
+    args: &[Expr],
+    sig: &FunctionSig,
+    regular_param_count: usize,
+    env: &TypeEnv,
+) -> bool {
+    if sig.variadic.is_none() {
+        return false;
+    }
+
+    if args.iter().any(|arg| {
+        matches!(
+            &arg.kind,
+            ExprKind::Spread(inner) if spread_source_keeps_runtime_keys(inner, env)
+        )
+    }) {
+        return true;
+    }
+
+    args.iter().any(|arg| {
+        matches!(
+            &arg.kind,
+            ExprKind::NamedArg { name, .. }
+                if !sig
+                    .params
+                    .iter()
+                    .take(regular_param_count)
+                    .any(|(param_name, _)| param_name == name)
+        )
+    })
+}
+
+/// Returns true when a spread source can carry string keys into a variadic method tail.
+fn spread_source_keeps_runtime_keys(expr: &Expr, env: &TypeEnv) -> bool {
+    match &expr.kind {
+        ExprKind::Variable(name) => matches!(
+            env.get(name),
+            Some(PhpType::AssocArray { .. } | PhpType::Iterable)
+        ),
+        ExprKind::ArrayLiteralAssoc(_) => true,
+        _ => matches!(
+            crate::types::checker::infer_expr_type_syntactic(expr),
+            PhpType::AssocArray { .. } | PhpType::Iterable
+        ),
     }
 }

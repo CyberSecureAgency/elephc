@@ -109,7 +109,7 @@ pub(crate) fn runtime_callable_cases(
             });
         }
         for (class_name, method_name, sig) in runtime_static_method_wrappers(ctx) {
-            let case_sig = callable_wrapper_sig(&sig);
+            let case_sig = static_method_runtime_wrapper_sig(&sig);
             let label =
                 ensure_runtime_static_method_wrapper(ctx, &class_name, &method_name, &case_sig);
             let php_name = format!("{}::{}", class_name, method_name);
@@ -341,7 +341,7 @@ pub(crate) fn runtime_static_method_case(
         (resolved_method_name.clone(), sig.clone())
     };
 
-    let case_sig = callable_wrapper_sig(&sig);
+    let case_sig = static_method_runtime_wrapper_sig(&sig);
     let label = ensure_runtime_static_method_wrapper(
         ctx,
         class_name,
@@ -462,6 +462,17 @@ fn ensure_runtime_static_method_wrapper(
     ctx.runtime_callable_static_method_wrappers
         .insert(key, label.clone());
     label
+}
+
+/// Builds a static-method runtime wrapper signature that can receive keyed variadic tails.
+fn static_method_runtime_wrapper_sig(sig: &FunctionSig) -> FunctionSig {
+    let mut wrapper_sig = callable_wrapper_sig(sig);
+    if wrapper_sig.variadic.is_some() {
+        if let Some((_, ty)) = wrapper_sig.params.last_mut() {
+            *ty = PhpType::Iterable;
+        }
+    }
+    wrapper_sig
 }
 
 /// Builds the synthetic method body for static method wrapper.
