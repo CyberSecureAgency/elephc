@@ -412,7 +412,9 @@ fn check_iterator_apply_dynamic_callback(
     span: crate::span::Span,
     env: &TypeEnv,
 ) -> Result<(), CompileError> {
-    if checker.expr_call_complex_callee_needs_runtime_capture(callback) {
+    if checker.expr_call_complex_callee_needs_runtime_capture(callback)
+        && !super::callables::callback_supports_complex_descriptor_env(callback)
+    {
         return Err(CompileError::new(
             callback.span,
             "iterator_apply() callback does not support complex expressions that select captured callables at runtime",

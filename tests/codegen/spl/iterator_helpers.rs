@@ -446,6 +446,67 @@ echo iterator_apply(new Range(), make_label(), $args);
     assert_eq!(out, "BB2");
 }
 
+/// Verifies iterator_apply accepts a runtime-selected captured callable with literal args.
+#[test]
+fn test_iterator_apply_accepts_complex_captured_callable_expression_static_args() {
+    let out = compile_and_run(
+        r#"<?php
+class Range implements Iterator {
+    private int $i;
+    public function __construct() { $this->i = 0; }
+    public function rewind(): void { $this->i = 0; }
+    public function valid(): bool { return $this->i < 2; }
+    public function current(): int { return $this->i; }
+    public function key(): int { return $this->i; }
+    public function next(): void { $this->i = $this->i + 1; }
+}
+class Ticker {
+    public function __construct(private string $prefix) {}
+    public function tick(string $label): bool {
+        echo $this->prefix . $label;
+        return true;
+    }
+}
+$left = new Ticker("L");
+$right = new Ticker("R");
+$use_left = false;
+echo iterator_apply(new Range(), $use_left ? $left->tick(...) : $right->tick(...), ["!"]);
+"#,
+    );
+    assert_eq!(out, "R!R!2");
+}
+
+/// Verifies iterator_apply accepts a runtime-selected captured callable with named dynamic args.
+#[test]
+fn test_iterator_apply_accepts_complex_captured_callable_expression_dynamic_assoc_args() {
+    let out = compile_and_run(
+        r#"<?php
+class Range implements Iterator {
+    private int $i;
+    public function __construct() { $this->i = 0; }
+    public function rewind(): void { $this->i = 0; }
+    public function valid(): bool { return $this->i < 2; }
+    public function current(): int { return $this->i; }
+    public function key(): int { return $this->i; }
+    public function next(): void { $this->i = $this->i + 1; }
+}
+class Ticker {
+    public function __construct(private string $prefix) {}
+    public function tick(string $label): bool {
+        echo $this->prefix . $label;
+        return true;
+    }
+}
+$left = new Ticker("L");
+$right = new Ticker("R");
+$use_left = true;
+$args = ["label" => "?"];
+echo iterator_apply(new Range(), $use_left ? $left->tick(...) : $right->tick(...), $args);
+"#,
+    );
+    assert_eq!(out, "L?L?2");
+}
+
 /// Verifies that iterator apply unknown signature captured callback dynamic args overflow stack.
 #[test]
 fn test_iterator_apply_unknown_signature_captured_callback_dynamic_args_overflow_stack() {

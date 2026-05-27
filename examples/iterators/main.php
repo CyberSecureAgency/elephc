@@ -161,3 +161,28 @@ echo "iterator_apply returned callable:\n";
 $dynamic_labels = ["?"];
 echo iterator_apply(new Range(0, 2, 1), make_iterator_labeler(), $dynamic_labels);
 echo "\n";
+
+class IteratorLabeler {
+    private string $prefix;
+
+    public function __construct(string $prefix) {
+        $this->prefix = $prefix;
+    }
+
+    public function tick(string $label): bool {
+        echo $this->prefix . $label;
+        return true;
+    }
+}
+
+echo "iterator_apply selected callable:\n";
+$leftLabeler = new IteratorLabeler("L");
+$rightLabeler = new IteratorLabeler("R");
+$useLeftLabeler = false;
+$selectedLabels = ["label" => "!"];
+echo iterator_apply(
+    new Range(0, 2, 1),
+    $useLeftLabeler ? $leftLabeler->tick(...) : $rightLabeler->tick(...),
+    $selectedLabels
+);
+echo "\n";

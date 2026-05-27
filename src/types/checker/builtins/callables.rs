@@ -475,11 +475,17 @@ fn callback_builtin_allows_complex_descriptor_env(
             | "array_filter() callback"
             | "array_reduce() callback"
             | "array_walk() callback"
+            | "iterator_apply() callback"
     )
-        && matches!(
-            callback_descriptor_env_ownership(callback),
-            CallbackDescriptorEnvOwnership::Owned | CallbackDescriptorEnvOwnership::Borrowed
-        )
+        && callback_supports_complex_descriptor_env(callback)
+}
+
+/// Returns true when a complex callback expression can be retained in a descriptor environment.
+pub(crate) fn callback_supports_complex_descriptor_env(callback: &Expr) -> bool {
+    matches!(
+        callback_descriptor_env_ownership(callback),
+        CallbackDescriptorEnvOwnership::Owned | CallbackDescriptorEnvOwnership::Borrowed
+    )
 }
 
 /// Classifies descriptor ownership for callback expressions accepted by descriptor wrappers.
