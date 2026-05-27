@@ -88,8 +88,8 @@ class DynamicFormatter {
         return $prefix . ":" . $value;
     }
 
-    public function wrap(string $value): string {
-        return "<" . $value . ">";
+    public function wrap(string $value, string $suffix = ""): string {
+        return "<" . $value . $suffix . ">";
     }
 }
 
@@ -116,6 +116,8 @@ $dynamic_method_named_args = ["value" => "named"];
 echo "method array dynamic assoc call_user_func_array: " . call_user_func_array($method_array_callback, $dynamic_method_named_args) . "\n";
 $method_spread_args = ["spread"];
 echo "method array spread call_user_func: " . call_user_func($method_array_callback, ...$method_spread_args) . "\n";
+$method_spread_tail = [" tail"];
+echo "method array positional spread call_user_func: " . call_user_func($method_array_callback, "lead", ...$method_spread_tail) . "\n";
 
 function passthrough_args(mixed $value): mixed {
     return $value;
@@ -127,14 +129,16 @@ $opaque_method_named_args = passthrough_args(["value" => "opaque named"]);
 echo "method array mixed assoc call_user_func_array: " . call_user_func_array($method_array_callback, $opaque_method_named_args) . "\n";
 
 class InvokeFormatter {
-    public function __invoke(string $value): string {
-        return "{" . $value . "}";
+    public function __invoke(string $value, string $suffix = ""): string {
+        return "{" . $value . $suffix . "}";
     }
 }
 
 echo "invokable call_user_func: " . call_user_func(new InvokeFormatter(), "go") . "\n";
 $invoke_spread_args = ["wide"];
 echo "invokable spread call_user_func: " . call_user_func(new InvokeFormatter(), ...$invoke_spread_args) . "\n";
+$invoke_spread_tail = ["!"];
+echo "invokable positional spread call_user_func: " . call_user_func(new InvokeFormatter(), "wide", ...$invoke_spread_tail) . "\n";
 
 function bump(&$value) {
     $value = $value + 1;

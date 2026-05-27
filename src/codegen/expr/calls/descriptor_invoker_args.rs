@@ -11,6 +11,7 @@
 //!   stay behind the descriptor invoker instead of being normalized at the callsite.
 
 use crate::codegen::builtins::arrays::call_user_func_array;
+use crate::codegen::builtins::arrays::descriptor_arg_builder;
 use crate::codegen::context::{Context, HeapOwnership};
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
@@ -37,6 +38,18 @@ pub(super) fn emit_descriptor_invoker_arg_array(
         return super::super::emit_expr(spread_inner, emitter, ctx, data);
     }
 
+    if has_spread(args_exprs) {
+        if let Some(ty) = descriptor_arg_builder::emit_positional_spread_invoker_arg_array(
+            &[],
+            args_exprs,
+            emitter,
+            ctx,
+            data,
+        ) {
+            return ty;
+        }
+    }
+
     let arg_array = descriptor_invoker_arg_array_expr(args_exprs, span);
     super::super::emit_expr(&arg_array, emitter, ctx, data)
 }
@@ -50,6 +63,13 @@ fn has_explicit_named_and_spread(args_exprs: &[Expr]) -> bool {
         .iter()
         .any(|arg| matches!(arg.kind, ExprKind::Spread(_)));
     has_explicit_named && has_spread
+}
+
+/// Returns true when any direct descriptor-call argument uses spread syntax.
+fn has_spread(args_exprs: &[Expr]) -> bool {
+    args_exprs
+        .iter()
+        .any(|arg| matches!(arg.kind, ExprKind::Spread(_)))
 }
 
 /// Returns the spread source when the entire descriptor call is `(...$args)`.

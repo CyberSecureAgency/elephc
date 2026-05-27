@@ -421,6 +421,40 @@ echo ($use_left ? $left->wrap(...) : $right->wrap(...))(...$args);
     let _ = fs::remove_dir_all(dir);
 }
 
+/// Verifies direct descriptor calls with positional+spread args build invoker containers.
+#[test]
+fn test_direct_complex_captured_callable_expr_positional_spread_uses_descriptor_invoker() {
+    let source = r#"<?php
+class Prefixer {
+    public string $prefix = "";
+
+    public function wrap(string $name, string $suffix): string {
+        return $this->prefix . $name . $suffix;
+    }
+}
+
+$left = new Prefixer();
+$left->prefix = "L:";
+$right = new Prefixer();
+$right->prefix = "R:";
+$use_left = false;
+$args = ["?"];
+echo ($use_left ? $left->wrap(...) : $right->wrap(...))("Ada", ...$args);
+"#;
+    let out = compile_and_run(source);
+    assert_eq!(out, "R:Ada?");
+
+    let dir = make_cli_test_dir("elephc_direct_complex_callable_expr_positional_spread_invoker");
+    let (user_asm, _runtime_asm, _required_libraries) =
+        compile_source_to_asm_with_options(source, &dir, 8_388_608, false, false);
+    assert!(
+        user_asm.contains("callable_invoker"),
+        "direct branch-selected positional+spread callable calls should route through descriptor invokers:\n{}",
+        user_asm
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
 /// Verifies branch-selected descriptor invokers preserve named arguments and defaults.
 #[test]
 fn test_direct_complex_captured_callable_expr_named_args_use_descriptor_invoker() {

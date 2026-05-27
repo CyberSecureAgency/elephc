@@ -50,6 +50,7 @@ pub(crate) mod call_user_func_array;
 mod callable_forms;
 pub(crate) mod callback_env;
 mod count;
+pub(crate) mod descriptor_arg_builder;
 mod ensure_unique_arg;
 mod function_exists;
 mod in_array;

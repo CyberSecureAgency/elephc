@@ -1,0 +1,190 @@
+//! Purpose:
+//! Builds raw descriptor-invoker argument arrays without generic array-literal spread lowering.
+//! Handles positional prefixes followed by indexed spread sources for callable invoker paths.
+//!
+//! Called from:
+//! - `crate::codegen::builtins::arrays::callable_forms`
+//! - `crate::codegen::expr::calls::descriptor_invoker_args`
+//!
+//! Key details:
+//! - The destination array uses boxed Mixed slots so descriptor invokers can apply metadata at runtime.
+//! - Spread sources are cloned to Mixed slots before merging, preserving string lengths and refcounted payloads.
+
+use crate::codegen::abi;
+use crate::codegen::builtins::arrays::call_user_func_array;
+use crate::codegen::context::{Context, HeapOwnership};
+use crate::codegen::data_section::DataSection;
+use crate::codegen::emit::Emitter;
+use crate::codegen::expr::{emit_expr, expr_result_heap_ownership};
+use crate::codegen::expr::arrays::emit_array_value_type_stamp;
+use crate::codegen::functions;
+use crate::parser::ast::{Expr, ExprKind};
+use crate::types::PhpType;
+
+/// Emits a raw indexed argument array for positional args plus indexed spreads.
+pub(crate) fn emit_positional_spread_invoker_arg_array(
+    leading_args: &[Expr],
+    args: &[Expr],
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> Option<PhpType> {
+    let plan = positional_spread_plan(args, ctx)?;
+    emitter.comment("descriptor invoker positional spread argument array");
+    emit_new_mixed_indexed_array((leading_args.len() + plan.prefix_args.len()).max(16), emitter);
+    emit_array_value_type_stamp(emitter, abi::int_result_reg(emitter), &PhpType::Mixed);
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // keep the descriptor argument array alive while positional slots and spreads are appended
+
+    let mut slot = 0usize;
+    for arg in leading_args {
+        emit_store_next_mixed_slot(arg, slot, emitter, ctx, data);
+        slot += 1;
+    }
+    for arg in plan.prefix_args {
+        emit_store_next_mixed_slot(arg, slot, emitter, ctx, data);
+        slot += 1;
+    }
+    for (spread, elem_ty) in plan.spreads {
+        emit_merge_indexed_spread(spread, &elem_ty, emitter, ctx, data);
+    }
+
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // return the completed positional-spread argument array
+    Some(PhpType::Array(Box::new(PhpType::Mixed)))
+}
+
+/// Plans a positional-only argument list with one or more indexed spread tails.
+fn positional_spread_plan<'a>(args: &'a [Expr], ctx: &Context) -> Option<PositionalSpreadPlan<'a>> {
+    let mut prefix_args = Vec::new();
+    let mut spreads = Vec::new();
+    let mut seen_spread = false;
+
+    for arg in args {
+        match &arg.kind {
+            ExprKind::Spread(inner) => {
+                seen_spread = true;
+                let elem_ty = indexed_spread_element_type(inner, ctx)?;
+                spreads.push((inner.as_ref(), elem_ty));
+            }
+            ExprKind::NamedArg { .. } => return None,
+            _ if seen_spread => return None,
+            _ => prefix_args.push(arg),
+        }
+    }
+
+    if spreads.is_empty() {
+        return None;
+    }
+
+    Some(PositionalSpreadPlan {
+        prefix_args,
+        spreads,
+    })
+}
+
+/// Returns the element type for a spread source when it is statically indexed-array-shaped.
+fn indexed_spread_element_type(spread: &Expr, ctx: &Context) -> Option<PhpType> {
+    match functions::infer_contextual_type(spread, ctx).codegen_repr() {
+        PhpType::Array(elem_ty) => Some(*elem_ty),
+        _ => None,
+    }
+}
+
+/// Allocates an indexed array with Mixed slots for descriptor invoker arguments.
+fn emit_new_mixed_indexed_array(capacity: usize, emitter: &mut Emitter) {
+    let capacity_reg = abi::int_arg_reg_name(emitter.target, 0);
+    let elem_size_reg = abi::int_arg_reg_name(emitter.target, 1);
+    abi::emit_load_int_immediate(emitter, capacity_reg, capacity as i64);
+    abi::emit_load_int_immediate(emitter, elem_size_reg, 8);
+    abi::emit_call_label(emitter, "__rt_array_new");
+}
+
+/// Boxes `arg` as Mixed and stores it into the destination slot at `index`.
+fn emit_store_next_mixed_slot(
+    arg: &Expr,
+    index: usize,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) {
+    let mut ty = emit_expr(arg, emitter, ctx, data);
+    let boxed_iterable = crate::codegen::emit_box_iterable_value_for_mixed_container(
+        emitter,
+        &mut ty,
+    );
+    if !matches!(ty, PhpType::Mixed | PhpType::Union(_)) {
+        crate::codegen::emit_box_current_expr_value_as_mixed_for_container(emitter, arg, &ty);
+    } else if !boxed_iterable {
+        retain_borrowed_mixed_arg(emitter, arg, &ty);
+    }
+    emit_store_current_mixed_slot(index, emitter);
+}
+
+/// Retains a borrowed Mixed payload before storing it in the invoker container.
+fn retain_borrowed_mixed_arg(emitter: &mut Emitter, arg: &Expr, ty: &PhpType) {
+    if ty.codegen_repr().is_refcounted() && expr_result_heap_ownership(arg) != HeapOwnership::Owned {
+        abi::emit_incref_if_refcounted(emitter, &ty.codegen_repr());
+    }
+}
+
+/// Stores the current boxed Mixed value into the destination argument array.
+fn emit_store_current_mixed_slot(index: usize, emitter: &mut Emitter) {
+    let array_reg = abi::symbol_scratch_reg(emitter);
+    let len_reg = abi::secondary_scratch_reg(emitter);
+    abi::emit_load_temporary_stack_slot(emitter, array_reg, 0);
+    abi::emit_store_to_address(emitter, abi::int_result_reg(emitter), array_reg, 24 + index * 8);
+    abi::emit_load_int_immediate(emitter, len_reg, (index + 1) as i64);
+    abi::emit_store_to_address(emitter, len_reg, array_reg, 0);
+}
+
+/// Appends an indexed spread source to the destination Mixed argument array.
+fn emit_merge_indexed_spread(
+    spread: &Expr,
+    inferred_elem_ty: &PhpType,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) {
+    let spread_ty = emit_expr(spread, emitter, ctx, data);
+    let elem_ty = match spread_ty {
+        PhpType::Array(elem_ty) => *elem_ty,
+        _ => inferred_elem_ty.clone(),
+    };
+    call_user_func_array::emit_clone_indexed_array_for_invoker(
+        abi::int_result_reg(emitter),
+        &elem_ty,
+        emitter,
+    );
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the cloned Mixed spread source while merging it into the destination array
+
+    let dest_arg_reg = abi::int_arg_reg_name(emitter.target, 0);
+    let source_arg_reg = abi::int_arg_reg_name(emitter.target, 1);
+    abi::emit_load_temporary_stack_slot(emitter, dest_arg_reg, 16);
+    abi::emit_load_temporary_stack_slot(emitter, source_arg_reg, 0);
+    abi::emit_call_label(emitter, "__rt_array_merge_into_refcounted");
+    abi::emit_store_to_address(
+        emitter,
+        abi::int_result_reg(emitter),
+        temporary_stack_reg(emitter),
+        16,
+    );
+
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the merged destination while releasing the cloned spread source
+    abi::emit_load_temporary_stack_slot(emitter, abi::int_result_reg(emitter), 16);
+    abi::emit_decref_if_refcounted(emitter, &PhpType::Array(Box::new(PhpType::Mixed)));
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // restore the merged descriptor argument array after source-clone release
+    abi::emit_release_temporary_stack(emitter, 16);                             // discard the cloned spread-source stack slot
+}
+
+/// Returns the active stack pointer register for direct temporary-slot stores.
+fn temporary_stack_reg(emitter: &Emitter) -> &'static str {
+    match emitter.target.arch {
+        crate::codegen::platform::Arch::AArch64 => "sp",
+        crate::codegen::platform::Arch::X86_64 => "rsp",
+    }
+}
+
+/// Borrowed view of a positional-spread descriptor argument list.
+struct PositionalSpreadPlan<'a> {
+    prefix_args: Vec<&'a Expr>,
+    spreads: Vec<(&'a Expr, PhpType)>,
+}

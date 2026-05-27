@@ -22,6 +22,7 @@ use crate::parser::ast::{CallableTarget, Expr, ExprKind, StaticReceiver};
 use crate::types::PhpType;
 
 use super::call_user_func_array::{self, LoadedArraySource};
+use super::descriptor_arg_builder;
 use super::receiver_call_args;
 
 /// Emits assembly for call user func form.
@@ -247,9 +248,20 @@ fn emit_instance_method_descriptor_spread_form(
     ctx: &mut Context,
     data: &mut DataSection,
 ) -> Option<PhpType> {
-    let arg_array = single_spread_inner(callback_args)?;
-    emit_instance_method_descriptor_dynamic_arg_form(
-        object, method, shape, arg_array, emitter, ctx, data,
+    if let Some(arg_array) = single_spread_inner(callback_args) {
+        return emit_instance_method_descriptor_dynamic_arg_form(
+            object, method, shape, arg_array, emitter, ctx, data,
+        );
+    }
+
+    emit_instance_method_descriptor_positional_spread_form(
+        object,
+        method,
+        shape,
+        callback_args,
+        emitter,
+        ctx,
+        data,
     )
 }
 
@@ -261,6 +273,52 @@ fn single_spread_inner(args: &[Expr]) -> Option<&Expr> {
         }
     }
     None
+}
+
+/// Invokes receiver-bound positional+spread `call_user_func()` args through descriptors.
+#[allow(clippy::too_many_arguments)]
+fn emit_instance_method_descriptor_positional_spread_form(
+    object: &Expr,
+    method: &str,
+    shape: RuntimeInstanceCallableShape,
+    callback_args: &[Expr],
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> Option<PhpType> {
+    let receiver_ty = functions::infer_contextual_type(object, ctx);
+    let class_name = functions::singular_object_class(&receiver_ty)?;
+    let case =
+        callable_dispatch::runtime_instance_method_case(ctx, data, class_name, method, shape)?;
+    if !case.has_invoker {
+        return None;
+    }
+    let save_concat_before_args =
+        emitter.target.arch == crate::codegen::platform::Arch::X86_64;
+    if save_concat_before_args {
+        crate::codegen::expr::save_concat_offset_before_nested_call(emitter, ctx);
+    }
+
+    let leading_args = vec![object.clone()];
+    let arg_array_ty = descriptor_arg_builder::emit_positional_spread_invoker_arg_array(
+        &leading_args,
+        callback_args,
+        emitter,
+        ctx,
+        data,
+    )?;
+    let call_reg = abi::nested_call_reg(emitter);
+    abi::emit_symbol_address(emitter, call_reg, &case.descriptor_label);
+    call_user_func_array::emit_call_descriptor_array_invoker(
+        LoadedArraySource::Result,
+        &arg_array_ty,
+        call_reg,
+        save_concat_before_args,
+        emitter,
+        ctx,
+        data,
+    );
+    Some(PhpType::Mixed)
 }
 
 /// Invokes a public instance-method or `__invoke` callable through its descriptor invoker.

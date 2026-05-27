@@ -830,6 +830,34 @@ echo call_user_func(new Wrap(), ...$args);
     let _ = fs::remove_dir_all(dir);
 }
 
+/// Verifies invokable object positional+spread args stay on descriptor invokers.
+#[test]
+fn test_call_user_func_invokable_object_positional_spread_uses_descriptor_invoker() {
+    let source = r#"<?php
+class Wrap {
+    public function __invoke(string $left, string $middle, string $right): string {
+        return "<" . $left . ":" . $middle . ":" . $right . ">";
+    }
+}
+
+$first = ["Ada"];
+$second = ["!"];
+echo call_user_func(new Wrap(), "hi", ...$first, ...$second);
+"#;
+    let out = compile_and_run(source);
+    assert_eq!(out, "<hi:Ada:!>");
+
+    let dir = make_cli_test_dir("elephc_invokable_object_positional_spread_descriptor");
+    let (user_asm, _runtime_asm, _required_libraries) =
+        compile_source_to_asm_with_options(source, &dir, 8_388_608, false, false);
+    assert!(
+        user_asm.contains("callable_instance_method") && user_asm.contains("callable_invoker"),
+        "invokable object callbacks with positional+spread args should route through descriptor invokers:\n{}",
+        user_asm
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
 /// Verifies instance-method callable arrays use descriptor invokers for direct calls.
 #[test]
 fn test_call_user_func_instance_method_array_uses_descriptor_invoker() {
@@ -880,6 +908,34 @@ echo call_user_func([$formatter, "join"], ...$args);
     assert!(
         user_asm.contains("callable_instance_method") && user_asm.contains("callable_invoker"),
         "instance method array callbacks with spread args should route through descriptor invokers:\n{}",
+        user_asm
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
+/// Verifies instance-method callable arrays keep positional+spread args on descriptor invokers.
+#[test]
+fn test_call_user_func_instance_method_array_positional_spread_uses_descriptor_invoker() {
+    let source = r#"<?php
+class Formatter {
+    public function join(string $left, string $middle, string $right = "c"): string {
+        return $left . ":" . $middle . ":" . $right;
+    }
+}
+
+$formatter = new Formatter();
+$args = ["b"];
+echo call_user_func([$formatter, "join"], "a", ...$args);
+"#;
+    let out = compile_and_run(source);
+    assert_eq!(out, "a:b:c");
+
+    let dir = make_cli_test_dir("elephc_instance_array_callable_positional_spread_descriptor");
+    let (user_asm, _runtime_asm, _required_libraries) =
+        compile_source_to_asm_with_options(source, &dir, 8_388_608, false, false);
+    assert!(
+        user_asm.contains("callable_instance_method") && user_asm.contains("callable_invoker"),
+        "instance method array callbacks with positional+spread args should route through descriptor invokers:\n{}",
         user_asm
     );
     let _ = fs::remove_dir_all(dir);
