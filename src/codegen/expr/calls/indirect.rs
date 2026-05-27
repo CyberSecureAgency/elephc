@@ -59,6 +59,17 @@ pub(super) fn emit_loaded_expr_call(
                     return ret_ty;
                 }
             }
+            if let Some(ret_ty) = emit_loaded_invokable_object_descriptor_call(
+                callee,
+                &class_name,
+                args_exprs,
+                loaded_callee_ty,
+                emitter,
+                ctx,
+                data,
+            ) {
+                return ret_ty;
+            }
             if matches!(loaded_callee_ty.codegen_repr(), PhpType::Mixed) {
                 crate::codegen::expr::objects::emit_unbox_mixed_object_or_fatal(
                     b"Fatal error: Value of type null is not callable\n",
@@ -232,6 +243,86 @@ fn emit_descriptor_invoker_expr_call(
     release_preserved_expr_call_arg_array_after_mixed_result(&arr_ty, emitter);
     release_preserved_expr_call_descriptor_after_mixed_result(emitter);
     Some(PhpType::Mixed)
+}
+
+/// Emits an already-loaded invokable object expression through the descriptor invoker.
+///
+/// The callee object is on the result register when this function starts. It is
+/// saved as descriptor slot zero, visible arguments are evaluated afterward, and
+/// the object-invoke descriptor applies named/default/by-reference metadata.
+fn emit_loaded_invokable_object_descriptor_call(
+    callee: &Expr,
+    class_name: &str,
+    args_exprs: &[Expr],
+    loaded_callee_ty: &PhpType,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> Option<PhpType> {
+    let case = crate::codegen::callable_dispatch::runtime_instance_method_case(
+        ctx,
+        data,
+        class_name,
+        "__invoke",
+        crate::codegen::callable_dispatch::RuntimeInstanceCallableShape::ObjectInvoke,
+    )?;
+    if !case.has_invoker {
+        return None;
+    }
+
+    emitter.comment("call loaded invokable object descriptor");
+    let save_concat_before_args =
+        emitter.target.arch == crate::codegen::platform::Arch::X86_64;
+    if save_concat_before_args {
+        super::super::save_concat_offset_before_nested_call(emitter, ctx);
+    }
+
+    crate::codegen::abi::emit_push_reg(emitter, crate::codegen::abi::int_result_reg(emitter)); // preserve the loaded invokable object below later descriptor arguments
+    let arr_ty = descriptor_invoker_args::emit_descriptor_invoker_arg_array_with_saved_object_prefix(
+        0,
+        args_exprs,
+        Some(&case.sig),
+        callee.span,
+        emitter,
+        ctx,
+        data,
+    );
+    let call_reg = crate::codegen::abi::nested_call_reg(emitter);
+    crate::codegen::abi::emit_symbol_address(emitter, call_reg, &case.descriptor_label);
+    call_user_func_array::emit_call_descriptor_array_invoker(
+        LoadedArraySource::Result,
+        &arr_ty,
+        call_reg,
+        save_concat_before_args,
+        emitter,
+        ctx,
+        data,
+    );
+    release_preserved_loaded_invokable_object_after_mixed_result(
+        callee,
+        loaded_callee_ty,
+        emitter,
+    );
+    Some(PhpType::Mixed)
+}
+
+/// Releases the saved invokable object expression while preserving the boxed call result.
+fn release_preserved_loaded_invokable_object_after_mixed_result(
+    callee: &Expr,
+    loaded_callee_ty: &PhpType,
+    emitter: &mut Emitter,
+) {
+    if crate::codegen::expr::expr_result_heap_ownership(callee) == HeapOwnership::Owned {
+        crate::codegen::abi::emit_push_reg(emitter, crate::codegen::abi::int_result_reg(emitter)); // preserve the boxed call result while releasing the loaded invokable object
+        crate::codegen::abi::emit_load_temporary_stack_slot(
+            emitter,
+            crate::codegen::abi::int_result_reg(emitter),
+            16,
+        );
+        crate::codegen::abi::emit_decref_if_refcounted(emitter, loaded_callee_ty);
+        crate::codegen::abi::emit_pop_reg(emitter, crate::codegen::abi::int_result_reg(emitter)); // restore the boxed call result after object cleanup
+    }
+    crate::codegen::abi::emit_release_temporary_stack(emitter, 16);             // discard the saved loaded invokable object slot
 }
 
 /// Releases the synthetic direct-call argument array while preserving the Mixed result.

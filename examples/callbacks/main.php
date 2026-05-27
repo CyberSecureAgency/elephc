@@ -156,6 +156,7 @@ class InvokeFormatter {
 echo "invokable call_user_func: " . call_user_func(new InvokeFormatter(), "go") . "\n";
 $direct_invokable = new InvokeFormatter();
 echo "invokable direct call: " . $direct_invokable(value: "go", suffix: "?") . "\n";
+echo "invokable expression direct call: " . (new InvokeFormatter())(value: "expr", suffix: "!") . "\n";
 $invoke_spread_args = ["wide"];
 echo "invokable spread call_user_func: " . call_user_func(new InvokeFormatter(), ...$invoke_spread_args) . "\n";
 $invoke_spread_tail = ["!"];

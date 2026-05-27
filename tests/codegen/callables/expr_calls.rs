@@ -605,6 +605,81 @@ echo ($runner)(suffix: "?");
     let _ = fs::remove_dir_all(dir);
 }
 
+/// Verifies loaded invokable object expressions invoke through descriptor metadata.
+#[test]
+fn test_loaded_invokable_object_expr_named_args_use_descriptor_invoker() {
+    let source = r#"<?php
+class LoadedRunner {
+    public function __invoke(string $value = "fallback", string $suffix = "!"): string {
+        return $value . $suffix;
+    }
+}
+echo (new LoadedRunner())(suffix: "?");
+"#;
+    let out = compile_and_run(source);
+    assert_eq!(out, "fallback?");
+
+    let dir = make_cli_test_dir("elephc_loaded_invokable_object_descriptor");
+    let (user_asm, _runtime_asm, _required_libraries) =
+        compile_source_to_asm_with_options(source, &dir, 8_388_608, false, false);
+    assert!(
+        user_asm.contains("call loaded invokable object descriptor")
+            && user_asm.contains("callable_instance_method")
+            && user_asm.contains("callable_invoker"),
+        "loaded invokable object expressions should route through descriptor invokers:\n{}",
+        user_asm
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
+/// Verifies loaded invokable object descriptor calls preserve by-reference arguments.
+#[test]
+fn test_loaded_invokable_object_expr_preserves_by_ref_argument() {
+    let out = compile_and_run(
+        r#"<?php
+class LoadedMutator {
+    public function __invoke(int &$value): int {
+        $value = $value + 2;
+        return $value;
+    }
+}
+$value = 3;
+echo (new LoadedMutator())($value);
+echo ":";
+echo $value;
+"#,
+    );
+    assert_eq!(out, "5:5");
+}
+
+/// Verifies loaded invokable object descriptor calls evaluate receiver before arguments.
+#[test]
+fn test_loaded_invokable_object_expr_preserves_receiver_evaluation_order() {
+    let out = compile_and_run(
+        r#"<?php
+class LoadedOrderRunner {
+    public string $prefix = "";
+
+    public function __invoke(string $value = "Ada", string $suffix = "!"): string {
+        return $this->prefix . $value . $suffix;
+    }
+}
+function make_loaded_order_runner(): LoadedOrderRunner {
+    echo "make|";
+    $runner = new LoadedOrderRunner();
+    $runner->prefix = "old:";
+    return $runner;
+}
+function loaded_order_suffix(): string {
+    echo "arg|";
+    return "?";
+}
+echo (make_loaded_order_runner())(suffix: loaded_order_suffix());
+"#,
+    );
+    assert_eq!(out, "make|arg|old:Ada?");
+}
+
 /// Verifies direct invokable object variables preserve by-reference arguments.
 #[test]
 fn test_direct_invokable_object_variable_preserves_by_ref_argument() {
