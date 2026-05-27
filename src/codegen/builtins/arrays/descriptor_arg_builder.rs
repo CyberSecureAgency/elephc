@@ -59,6 +59,39 @@ pub(crate) fn emit_indexed_invoker_arg_array(
     PhpType::Array(Box::new(PhpType::Mixed))
 }
 
+/// Emits an indexed Mixed argument array with a saved object receiver in slot zero.
+pub(crate) fn emit_indexed_invoker_arg_array_with_saved_object_prefix(
+    object_stack_offset: usize,
+    args: &[Expr],
+    sig: Option<&FunctionSig>,
+    encode_variable_refs: bool,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> PhpType {
+    emitter.comment("descriptor invoker receiver-prefixed indexed argument array");
+    emit_new_mixed_indexed_array((args.len() + 1).max(4), emitter);
+    emit_array_value_type_stamp(emitter, abi::int_result_reg(emitter), &PhpType::Mixed);
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // keep the receiver-prefixed descriptor argument array alive while filling Mixed slots
+    emit_store_saved_object_prefix_slot(object_stack_offset + 16, 0, emitter);
+
+    for (idx, arg) in args.iter().enumerate() {
+        emit_store_invoker_arg_slot(
+            arg,
+            idx + 1,
+            sig,
+            encode_variable_refs,
+            "descriptor invoker receiver-prefixed arg",
+            emitter,
+            ctx,
+            data,
+        );
+    }
+
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // return the filled receiver-prefixed descriptor argument array
+    PhpType::Array(Box::new(PhpType::Mixed))
+}
+
 /// Emits a raw indexed argument array for positional args plus indexed spreads.
 pub(crate) fn emit_positional_spread_invoker_arg_array(
     leading_args: &[Expr],
@@ -107,6 +140,47 @@ pub(crate) fn emit_positional_spread_invoker_arg_array(
     }
 
     abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // return the completed positional-spread argument array
+    Some(PhpType::Array(Box::new(PhpType::Mixed)))
+}
+
+/// Emits a raw indexed argument array with a saved object receiver followed by positional args/spreads.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn emit_positional_spread_invoker_arg_array_with_saved_object_prefix(
+    object_stack_offset: usize,
+    args: &[Expr],
+    sig: Option<&FunctionSig>,
+    encode_variable_refs: bool,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> Option<PhpType> {
+    let plan = positional_spread_plan(args, ctx)?;
+    emitter.comment("descriptor invoker receiver-prefixed positional spread argument array");
+    emit_new_mixed_indexed_array((plan.prefix_args.len() + 1).max(16), emitter);
+    emit_array_value_type_stamp(emitter, abi::int_result_reg(emitter), &PhpType::Mixed);
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // keep the receiver-prefixed descriptor argument array alive while positional slots and spreads are appended
+
+    let mut slot = 0usize;
+    emit_store_saved_object_prefix_slot(object_stack_offset + 16, slot, emitter);
+    slot += 1;
+    for arg in plan.prefix_args {
+        emit_store_invoker_arg_slot(
+            arg,
+            slot,
+            sig,
+            encode_variable_refs,
+            "descriptor invoker receiver-prefixed spread-prefix arg",
+            emitter,
+            ctx,
+            data,
+        );
+        slot += 1;
+    }
+    for (spread, elem_ty) in plan.spreads {
+        emit_merge_indexed_spread(spread, &elem_ty, emitter, ctx, data);
+    }
+
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // return the completed receiver-prefixed positional-spread argument array
     Some(PhpType::Array(Box::new(PhpType::Mixed)))
 }
 
@@ -175,6 +249,26 @@ fn positional_spread_plan<'a>(args: &'a [Expr], ctx: &Context) -> Option<Positio
         prefix_args,
         spreads,
     })
+}
+
+/// Boxes a saved object pointer and stores it into a descriptor argument slot.
+fn emit_store_saved_object_prefix_slot(
+    object_stack_offset: usize,
+    index: usize,
+    emitter: &mut Emitter,
+) {
+    let object_reg = abi::secondary_scratch_reg(emitter);
+    let zero_reg = abi::tertiary_scratch_reg(emitter);
+    let tag_reg = abi::symbol_scratch_reg(emitter);
+    abi::emit_load_temporary_stack_slot(emitter, object_reg, object_stack_offset);
+    abi::emit_load_int_immediate(emitter, zero_reg, 0);
+    abi::emit_load_int_immediate(
+        emitter,
+        tag_reg,
+        crate::codegen::runtime_value_tag(&PhpType::Object(String::new())) as i64,
+    );
+    crate::codegen::emit_box_runtime_payload_as_mixed(emitter, tag_reg, object_reg, zero_reg);
+    emit_store_current_mixed_slot(index, emitter);
 }
 
 /// Returns the element type for a spread source when it is statically indexed-array-shaped.

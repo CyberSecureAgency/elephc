@@ -118,6 +118,7 @@ echo "method array direct call: " . $method_array_callback(value: "direct") . "\
 $dynamic_method_name = callback_name_passthrough("wrap");
 $dynamic_method_array_callback = [$dynamic_formatter, $dynamic_method_name];
 echo "method array runtime direct call: " . $dynamic_method_array_callback(value: "runtime") . "\n";
+echo "method array runtime literal direct call: " . ([$dynamic_formatter, $dynamic_method_name])(value: "literal runtime") . "\n";
 echo "literal method array direct call: " . ([$dynamic_formatter, "wrap"])(value: "literal direct") . "\n";
 echo "method array literal call_user_func_array: " . call_user_func_array([$dynamic_formatter, "wrap"], ["value" => "lit"]) . "\n";
 $dynamic_method_args = ["dyn"];
@@ -134,6 +135,7 @@ $dynamic_static_class = callback_name_passthrough(DynamicFormatter::class);
 $dynamic_static_method = callback_name_passthrough("tag");
 $dynamic_static_array_callback = [$dynamic_static_class, $dynamic_static_method];
 echo "static method array runtime direct call: " . ($dynamic_static_array_callback)(value: 10, prefix: "runtime") . "\n";
+echo "static method array runtime literal direct call: " . ([$dynamic_static_class, $dynamic_static_method])(value: 11, prefix: "literal runtime") . "\n";
 echo "literal static method array direct call: " . ([DynamicFormatter::class, "tag"])(value: 9, prefix: "literal") . "\n";
 
 function passthrough_args(mixed $value): mixed {

@@ -136,18 +136,24 @@ pub(super) fn emit_callable_array_literal_call(
     ctx: &mut Context,
     data: &mut DataSection,
 ) -> Option<PhpType> {
-    let (receiver, method) = callable_array_parts(callee)?;
-    if let Some(receiver) = static_callable_receiver(receiver, ctx) {
-        return emit_static_callable_array_descriptor_call(
-            &receiver,
-            method,
-            args,
-            emitter,
-            ctx,
-            data,
-        );
+    if let Some((receiver, method)) = callable_array_parts(callee) {
+        if let Some(receiver) = static_callable_receiver(receiver, ctx) {
+            return emit_static_callable_array_descriptor_call(
+                &receiver,
+                method,
+                args,
+                emitter,
+                ctx,
+                data,
+            );
+        }
+        if let Some(ret_ty) =
+            emit_instance_callable_array_descriptor_call(receiver, method, args, emitter, ctx, data)
+        {
+            return Some(ret_ty);
+        }
     }
-    emit_instance_callable_array_descriptor_call(receiver, method, args, emitter, ctx, data)
+    callable_array_runtime::emit_literal_call(callee, args, emitter, ctx, data)
 }
 
 /// Emits a direct `$callback(...)` call when `$callback` stores a PHP callable array.

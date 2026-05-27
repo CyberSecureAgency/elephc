@@ -15,8 +15,8 @@ use crate::codegen::callable_dispatch::{
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
-use crate::codegen::platform::Arch;
 use crate::codegen::abi;
+use crate::codegen::platform::Arch;
 use crate::parser::ast::{Expr, ExprKind};
 use crate::span::Span;
 use crate::types::PhpType;
@@ -46,6 +46,31 @@ pub(super) fn emit_variable_call(
         }
         PhpType::Array(elem_ty) if matches!(elem_ty.codegen_repr(), PhpType::Str) => {
             emit_string_variable_call(var, args, emitter, ctx, data);
+            Some(PhpType::Mixed)
+        }
+        _ => None,
+    }
+}
+
+/// Emits a descriptor invocation for callable-array literals whose slots are runtime-selected.
+pub(super) fn emit_literal_call(
+    callee: &Expr,
+    args: &[Expr],
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> Option<PhpType> {
+    if !is_two_slot_callable_array_literal(callee) {
+        return None;
+    }
+    let callee_ty = crate::codegen::functions::infer_contextual_type(callee, ctx).codegen_repr();
+    match callee_ty {
+        PhpType::Array(elem_ty) if matches!(elem_ty.codegen_repr(), PhpType::Mixed) => {
+            emit_mixed_literal_call(callee, args, emitter, ctx, data);
+            Some(PhpType::Mixed)
+        }
+        PhpType::Array(elem_ty) if matches!(elem_ty.codegen_repr(), PhpType::Str) => {
+            emit_string_literal_call(callee, args, emitter, ctx, data);
             Some(PhpType::Mixed)
         }
         _ => None,
@@ -92,6 +117,50 @@ fn emit_string_variable_call(
     abi::emit_release_temporary_stack(emitter, STRING_SELECTOR_BYTES);
 }
 
+/// Emits runtime descriptor selection for heterogeneous callable-array literals.
+fn emit_mixed_literal_call(
+    callee: &Expr,
+    args: &[Expr],
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) {
+    let instance_cases =
+        crate::codegen::callable_dispatch::runtime_public_instance_method_cases(ctx, data);
+    let static_cases =
+        crate::codegen::callable_dispatch::runtime_public_static_method_cases(ctx, data);
+    super::super::emit_expr(callee, emitter, ctx, data);
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the evaluated runtime callable-array literal during descriptor selection
+    emit_mixed_literal_selector_slots(emitter);
+    emit_mixed_literal_dispatch(args, &instance_cases, &static_cases, emitter, ctx, data);
+    abi::emit_release_temporary_stack(emitter, MIXED_SELECTOR_BYTES);           // discard literal callable-array selector slots after invocation
+    release_preserved_literal_array_after_mixed_result(
+        &PhpType::Array(Box::new(PhpType::Mixed)),
+        emitter,
+    );
+}
+
+/// Emits runtime descriptor selection for string callable-array literals.
+fn emit_string_literal_call(
+    callee: &Expr,
+    args: &[Expr],
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) {
+    let static_cases =
+        crate::codegen::callable_dispatch::runtime_public_static_method_cases(ctx, data);
+    super::super::emit_expr(callee, emitter, ctx, data);
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the evaluated runtime string callable-array literal during descriptor selection
+    emit_string_literal_selector_slots(emitter);
+    emit_string_dispatch(args, &static_cases, emitter, ctx, data);
+    abi::emit_release_temporary_stack(emitter, STRING_SELECTOR_BYTES);          // discard literal callable-array selector slots after invocation
+    release_preserved_literal_array_after_mixed_result(
+        &PhpType::Array(Box::new(PhpType::Str)),
+        emitter,
+    );
+}
+
 /// Saves the unboxed receiver and method slots for a runtime heterogeneous callable-array dispatch.
 fn emit_mixed_selector_slots(
     var: &str,
@@ -128,6 +197,45 @@ fn emit_string_selector_slots(
     super::super::emit_expr(&method, emitter, ctx, data);
     let (ptr_reg, len_reg) = abi::string_result_regs(emitter);
     abi::emit_push_reg_pair(emitter, ptr_reg, len_reg);                         // preserve the runtime method string for descriptor-case selection
+}
+
+/// Saves selector slots read from an already-evaluated mixed callable-array literal.
+fn emit_mixed_literal_selector_slots(emitter: &mut Emitter) {
+    emitter.comment("runtime callable-array literal mixed selector");
+    emit_unbox_mixed_literal_slot(0, 0, emitter);
+    emit_push_mixed_unbox_payload(emitter);
+    emit_unbox_mixed_literal_slot(32, 1, emitter);
+    emit_push_mixed_unbox_payload(emitter);
+}
+
+/// Saves selector slots read from an already-evaluated string callable-array literal.
+fn emit_string_literal_selector_slots(emitter: &mut Emitter) {
+    emitter.comment("runtime callable-array literal string selector");
+    emit_push_string_literal_slot(0, 0, emitter);
+    emit_push_string_literal_slot(16, 1, emitter);
+}
+
+/// Loads and unboxes one boxed Mixed slot from a preserved callable-array literal.
+fn emit_unbox_mixed_literal_slot(array_stack_offset: usize, slot: usize, emitter: &mut Emitter) {
+    let array_reg = abi::symbol_scratch_reg(emitter);
+    abi::emit_load_temporary_stack_slot(emitter, array_reg, array_stack_offset);
+    abi::emit_load_from_address(
+        emitter,
+        abi::int_result_reg(emitter),
+        array_reg,
+        24 + slot * 8,
+    );
+    emit_unbox_mixed_result(emitter);
+}
+
+/// Loads and saves one string slot from a preserved callable-array literal.
+fn emit_push_string_literal_slot(array_stack_offset: usize, slot: usize, emitter: &mut Emitter) {
+    let array_reg = abi::symbol_scratch_reg(emitter);
+    let (ptr_reg, len_reg) = abi::string_result_regs(emitter);
+    abi::emit_load_temporary_stack_slot(emitter, array_reg, array_stack_offset);
+    abi::emit_load_from_address(emitter, ptr_reg, array_reg, 24 + slot * 16);
+    abi::emit_load_from_address(emitter, len_reg, array_reg, 24 + slot * 16 + 8);
+    abi::emit_push_reg_pair(emitter, ptr_reg, len_reg);                         // preserve the literal callable-array string slot for descriptor-case selection
 }
 
 /// Unboxes the current Mixed result into the target-specific tag and payload registers.
@@ -179,6 +287,34 @@ fn emit_mixed_dispatch(
     emitter.label(&done_label);
 }
 
+/// Dispatches a heterogeneous callable-array literal to a descriptor selected at runtime.
+fn emit_mixed_literal_dispatch(
+    args: &[Expr],
+    instance_cases: &[RuntimeInstanceMethodCallableCase],
+    static_cases: &[RuntimeStaticMethodCallableCase],
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) {
+    let done_label = ctx.next_label("callable_array_runtime_done");
+    for case in instance_cases {
+        let next_case = ctx.next_label("callable_array_instance_next");
+        emit_branch_if_mixed_instance_case_mismatch(case, &next_case, emitter, ctx, data);
+        emit_instance_literal_case_call(args, &case.case, emitter, ctx, data);
+        abi::emit_jump(emitter, &done_label);
+        emitter.label(&next_case);
+    }
+    for case in static_cases {
+        let next_case = ctx.next_label("callable_array_static_next");
+        emit_branch_if_mixed_static_case_mismatch(case, &next_case, emitter, ctx, data);
+        emit_static_case_call(args, &case.case, emitter, ctx, data);
+        abi::emit_jump(emitter, &done_label);
+        emitter.label(&next_case);
+    }
+    emit_no_match_abort(emitter, data);
+    emitter.label(&done_label);
+}
+
 /// Dispatches a string callable array to a static-method descriptor selected from runtime strings.
 fn emit_string_dispatch(
     args: &[Expr],
@@ -216,6 +352,44 @@ fn emit_instance_case_call(
         &case.descriptor_label,
         &case.sig,
         &descriptor_args,
+        emitter,
+        ctx,
+        data,
+    );
+}
+
+/// Emits the descriptor call for a runtime literal instance-method callable-array case.
+fn emit_instance_literal_case_call(
+    args: &[Expr],
+    case: &RuntimeCallableCase,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) {
+    emitter.comment("call runtime literal callable-array descriptor");
+    let save_concat_before_args =
+        emitter.target.arch == crate::codegen::platform::Arch::X86_64;
+    if save_concat_before_args {
+        super::super::save_concat_offset_before_nested_call(emitter, ctx);
+    }
+    let object_stack_offset =
+        MIXED_RECEIVER_PAYLOAD_OFFSET + if save_concat_before_args { 16 } else { 0 };
+    let arr_ty = super::descriptor_invoker_args::emit_descriptor_invoker_arg_array_with_saved_object_prefix(
+        object_stack_offset,
+        args,
+        Some(&case.sig),
+        Span::dummy(),
+        emitter,
+        ctx,
+        data,
+    );
+    let call_reg = abi::nested_call_reg(emitter);
+    abi::emit_symbol_address(emitter, call_reg, &case.descriptor_label);
+    crate::codegen::builtins::arrays::call_user_func_array::emit_call_descriptor_array_invoker(
+        crate::codegen::builtins::arrays::call_user_func_array::LoadedArraySource::Result,
+        &arr_ty,
+        call_reg,
+        save_concat_before_args,
         emitter,
         ctx,
         data,
@@ -463,6 +637,15 @@ fn emit_stack_string_compare_branch(
     }
 }
 
+/// Releases the preserved callable-array literal while keeping the Mixed call result live.
+fn release_preserved_literal_array_after_mixed_result(arr_ty: &PhpType, emitter: &mut Emitter) {
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the boxed call result while releasing the temporary callable-array literal
+    abi::emit_load_temporary_stack_slot(emitter, abi::int_result_reg(emitter), 16);
+    abi::emit_decref_if_refcounted(emitter, arr_ty);
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // restore the boxed call result after callable-array literal cleanup
+    abi::emit_release_temporary_stack(emitter, 16);                             // discard the preserved callable-array literal slot
+}
+
 /// Emits the fatal diagnostic for callable arrays that cannot be resolved to a descriptor.
 fn emit_no_match_abort(emitter: &mut Emitter, data: &mut DataSection) {
     let (message_label, message_len) = data.add_string(
@@ -497,4 +680,9 @@ fn callable_array_slot_expr(var: &str, index: i64) -> Expr {
         },
         Span::dummy(),
     )
+}
+
+/// Returns true when an expression is a two-element indexed-array literal.
+fn is_two_slot_callable_array_literal(callee: &Expr) -> bool {
+    matches!(&callee.kind, ExprKind::ArrayLiteral(elems) if elems.len() == 2)
 }

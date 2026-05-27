@@ -88,6 +88,71 @@ pub(super) fn emit_descriptor_invoker_arg_array(
     super::super::emit_expr(&arg_array, emitter, ctx, data)
 }
 
+/// Emits a descriptor-invoker argument container with a saved object receiver in descriptor slot zero.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn emit_descriptor_invoker_arg_array_with_saved_object_prefix(
+    object_stack_offset: usize,
+    args_exprs: &[Expr],
+    sig: Option<&FunctionSig>,
+    span: Span,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> PhpType {
+    let encode_ref_markers = should_encode_invoker_ref_args(sig, args_exprs);
+    if has_explicit_named_and_spread(args_exprs) {
+        if let Some(sig) = sig {
+            return emit_named_spread_invoker_arg_hash_with_saved_object_prefix(
+                object_stack_offset,
+                args_exprs,
+                sig,
+                span,
+                encode_ref_markers,
+                emitter,
+                ctx,
+                data,
+            );
+        }
+    }
+
+    if has_explicit_named(args_exprs) {
+        return emit_named_invoker_arg_hash_with_saved_object_prefix(
+            object_stack_offset,
+            args_exprs,
+            encode_ref_markers,
+            emitter,
+            ctx,
+            data,
+        );
+    }
+
+    if has_spread(args_exprs) {
+        if let Some(ty) =
+            descriptor_arg_builder::emit_positional_spread_invoker_arg_array_with_saved_object_prefix(
+                object_stack_offset,
+                args_exprs,
+                sig,
+                encode_ref_markers,
+                emitter,
+                ctx,
+                data,
+            )
+        {
+            return ty;
+        }
+    }
+
+    descriptor_arg_builder::emit_indexed_invoker_arg_array_with_saved_object_prefix(
+        object_stack_offset,
+        args_exprs,
+        sig,
+        encode_ref_markers,
+        emitter,
+        ctx,
+        data,
+    )
+}
+
 /// Returns true when a direct descriptor call mixes explicit named args with spread args.
 fn has_explicit_named_and_spread(args_exprs: &[Expr]) -> bool {
     let has_spread = args_exprs
@@ -219,6 +284,63 @@ fn emit_named_spread_invoker_arg_hash(
     }
 }
 
+/// Emits a Mixed hash for named+spread descriptor calls with a saved object receiver prefix.
+#[allow(clippy::too_many_arguments)]
+fn emit_named_spread_invoker_arg_hash_with_saved_object_prefix(
+    object_stack_offset: usize,
+    args_exprs: &[Expr],
+    sig: &FunctionSig,
+    span: Span,
+    encode_ref_markers: bool,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> PhpType {
+    let mut source_args = Vec::with_capacity(args_exprs.len() + 1);
+    source_args.push(receiver_prefix_placeholder_expr(span));
+    source_args.extend(args_exprs.iter().cloned());
+    let regular_param_count = super::args::regular_param_count(Some(sig), source_args.len());
+    let assoc_spread_sources = vec![false; source_args.len()];
+    let plan = call_args::plan_call_args_with_regular_param_count_and_assoc_spreads(
+        sig,
+        &source_args,
+        span,
+        regular_param_count,
+        false,
+        true,
+        &assoc_spread_sources,
+    )
+    .expect("codegen received invalid receiver-prefixed descriptor named+spread arguments after type checking");
+    let first_named_pos = plan
+        .first_named_pos
+        .expect("receiver-prefixed named+spread descriptor plan must contain a named suffix");
+
+    emitter.comment("descriptor invoker receiver-prefixed named+spread argument hash");
+    emit_receiver_prefixed_descriptor_prefix_as_mixed_hash(
+        object_stack_offset,
+        &plan.source_args[1..first_named_pos],
+        sig,
+        span,
+        encode_ref_markers,
+        emitter,
+        ctx,
+        data,
+    );
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // keep the receiver-prefixed descriptor argument hash alive while named suffix entries are inserted
+
+    for arg in plan.source_args.iter().skip(first_named_pos) {
+        if let ExprKind::NamedArg { name, value } = &arg.kind {
+            emit_named_suffix_entry(name, value, encode_ref_markers, emitter, ctx, data);
+        }
+    }
+
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // return the completed receiver-prefixed descriptor argument hash
+    PhpType::AssocArray {
+        key: Box::new(PhpType::Mixed),
+        value: Box::new(PhpType::Mixed),
+    }
+}
+
 /// Emits the positional prefix of a named+spread descriptor call as a Mixed hash.
 fn emit_descriptor_prefix_as_mixed_hash(
     plan: &call_args::CallArgPlan,
@@ -243,6 +365,54 @@ fn emit_descriptor_prefix_as_mixed_hash(
         ctx,
         data,
     );
+}
+
+/// Emits positional-prefix args as a Mixed hash with a saved object receiver in numeric key zero.
+#[allow(clippy::too_many_arguments)]
+fn emit_receiver_prefixed_descriptor_prefix_as_mixed_hash(
+    object_stack_offset: usize,
+    prefix_args: &[Expr],
+    sig: &FunctionSig,
+    span: Span,
+    encode_ref_markers: bool,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) {
+    let prefix_ty = if prefix_args.iter().any(|arg| matches!(arg.kind, ExprKind::Spread(_))) {
+        descriptor_arg_builder::emit_positional_spread_invoker_arg_array_with_saved_object_prefix(
+            object_stack_offset,
+            prefix_args,
+            Some(sig),
+            encode_ref_markers,
+            emitter,
+            ctx,
+            data,
+        )
+        .unwrap_or_else(|| {
+            descriptor_arg_builder::emit_indexed_invoker_arg_array_with_saved_object_prefix(
+                object_stack_offset,
+                prefix_args,
+                Some(sig),
+                encode_ref_markers,
+                emitter,
+                ctx,
+                data,
+            )
+        })
+    } else {
+        let _ = span;
+        descriptor_arg_builder::emit_indexed_invoker_arg_array_with_saved_object_prefix(
+            object_stack_offset,
+            prefix_args,
+            Some(sig),
+            encode_ref_markers,
+            emitter,
+            ctx,
+            data,
+        )
+    };
+    emit_indexed_prefix_as_mixed_hash(&prefix_ty, emitter);
 }
 
 /// Emits positional-prefix source arguments as a Mixed hash, preserving variable ref markers when needed.
@@ -425,6 +595,48 @@ fn emit_named_invoker_arg_hash(
     }
 }
 
+/// Emits a Mixed hash for descriptor calls with named args and a saved object receiver prefix.
+fn emit_named_invoker_arg_hash_with_saved_object_prefix(
+    object_stack_offset: usize,
+    args_exprs: &[Expr],
+    encode_ref_markers: bool,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> PhpType {
+    emitter.comment("descriptor invoker receiver-prefixed named argument hash");
+    emit_descriptor_prefix_expr_as_mixed_hash(None, emitter, ctx, data);
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // keep the receiver-prefixed descriptor named-argument hash alive while entries are inserted
+    emit_saved_object_prefix_numeric_entry(object_stack_offset + 16, emitter);
+
+    let mut next_positional_key = 1usize;
+    for arg in args_exprs {
+        match &arg.kind {
+            ExprKind::NamedArg { name, value } => {
+                emit_named_suffix_entry(name, value, encode_ref_markers, emitter, ctx, data);
+            }
+            ExprKind::Spread(_) => {}
+            _ => {
+                emit_numeric_suffix_entry(
+                    next_positional_key,
+                    arg,
+                    encode_ref_markers,
+                    emitter,
+                    ctx,
+                    data,
+                );
+                next_positional_key += 1;
+            }
+        }
+    }
+
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // return the completed receiver-prefixed descriptor named-argument hash
+    PhpType::AssocArray {
+        key: Box::new(PhpType::Mixed),
+        value: Box::new(PhpType::Mixed),
+    }
+}
+
 /// Converts the current indexed-array prefix result into a Mixed associative hash.
 fn emit_indexed_prefix_as_mixed_hash(prefix_ty: &PhpType, emitter: &mut Emitter) {
     abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the evaluated positional prefix while allocating the destination hash
@@ -456,6 +668,27 @@ fn emit_hash_array_union_with_saved_right_operand(emitter: &mut Emitter) {
             abi::emit_call_label(emitter, "__rt_hash_array_union");
         }
     }
+}
+
+/// Boxes a saved object pointer and inserts it as numeric key zero in the current hash.
+fn emit_saved_object_prefix_numeric_entry(object_stack_offset: usize, emitter: &mut Emitter) {
+    let object_reg = abi::secondary_scratch_reg(emitter);
+    let zero_reg = abi::tertiary_scratch_reg(emitter);
+    let tag_reg = abi::symbol_scratch_reg(emitter);
+    abi::emit_load_temporary_stack_slot(emitter, object_reg, object_stack_offset);
+    abi::emit_load_int_immediate(emitter, zero_reg, 0);
+    abi::emit_load_int_immediate(
+        emitter,
+        tag_reg,
+        crate::codegen::runtime_value_tag(&PhpType::Object(String::new())) as i64,
+    );
+    crate::codegen::emit_box_runtime_payload_as_mixed(emitter, tag_reg, object_reg, zero_reg);
+    emit_hash_set_current_mixed_numeric_suffix(0, emitter);
+}
+
+/// Builds a placeholder source argument that occupies descriptor slot zero during planning.
+fn receiver_prefix_placeholder_expr(span: Span) -> Expr {
+    Expr::new(ExprKind::IntLiteral(0), span)
 }
 
 /// Converts a runtime Mixed prefix container into a Mixed hash or aborts on invalid shape.

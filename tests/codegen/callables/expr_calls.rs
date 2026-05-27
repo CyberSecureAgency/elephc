@@ -360,6 +360,111 @@ echo $value;
     assert_eq!(out, "5");
 }
 
+/// Verifies runtime-selected literal instance callable arrays use descriptor metadata.
+#[test]
+fn test_runtime_literal_callable_array_instance_method_named_args_use_descriptor_invoker() {
+    let source = r#"<?php
+class RuntimeLiteralFormatter {
+    public function wrap(string $value = "fallback", string $suffix = "!"): string {
+        return "<" . $value . $suffix . ">";
+    }
+}
+function choose_runtime_literal_method(string $name): string {
+    return $name;
+}
+$formatter = new RuntimeLiteralFormatter();
+echo ([$formatter, choose_runtime_literal_method("WRAP")])(suffix: "?");
+"#;
+    let out = compile_and_run(source);
+    assert_eq!(out, "<fallback?>");
+
+    let dir = make_cli_test_dir("elephc_runtime_literal_instance_callable_array_descriptor");
+    let (user_asm, _runtime_asm, _required_libraries) =
+        compile_source_to_asm_with_options(source, &dir, 8_388_608, false, false);
+    assert!(
+        user_asm.contains("runtime callable-array literal mixed selector")
+            && user_asm.contains("callable_invoker"),
+        "runtime-selected literal instance callable arrays should route through descriptor invokers:\n{}",
+        user_asm
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
+/// Verifies runtime-selected literal static callable arrays accept class and method strings.
+#[test]
+fn test_runtime_literal_callable_array_static_method_parenthesized_call() {
+    let out = compile_and_run(
+        r#"<?php
+class RuntimeLiteralLabeler {
+    public static function stamp(string $prefix = "id", int $value = 1): string {
+        return $prefix . ":" . $value;
+    }
+}
+function choose_runtime_literal_string(string $value): string {
+    return $value;
+}
+echo ([choose_runtime_literal_string(RuntimeLiteralLabeler::class), choose_runtime_literal_string("STAMP")])(value: 9);
+"#,
+    );
+    assert_eq!(out, "id:9");
+}
+
+/// Verifies runtime-selected literal instance callable arrays preserve by-reference arguments.
+#[test]
+fn test_runtime_literal_callable_array_instance_method_preserves_by_ref_argument() {
+    let out = compile_and_run(
+        r#"<?php
+class RuntimeLiteralMutator {
+    public function bump(&$value): int {
+        $value = $value + 1;
+        return $value;
+    }
+}
+function choose_runtime_literal_method(string $name): string {
+    return $name;
+}
+$mutator = new RuntimeLiteralMutator();
+$value = 4;
+echo ([$mutator, choose_runtime_literal_method("bump")])($value);
+echo ":";
+echo $value;
+"#,
+    );
+    assert_eq!(out, "5:5");
+}
+
+/// Verifies runtime-selected literal callable arrays evaluate receiver slots once before call args.
+#[test]
+fn test_runtime_literal_callable_array_instance_method_preserves_receiver_evaluation_order() {
+    let out = compile_and_run(
+        r#"<?php
+class RuntimeLiteralPrefixer {
+    public string $prefix = "";
+
+    public function wrap(string $value = "Ada", string $suffix = "!"): string {
+        return $this->prefix . $value . $suffix;
+    }
+}
+function make_runtime_literal_prefixer(): RuntimeLiteralPrefixer {
+    echo "make|";
+    $prefixer = new RuntimeLiteralPrefixer();
+    $prefixer->prefix = "old:";
+    return $prefixer;
+}
+function choose_runtime_literal_method_order(string $name): string {
+    echo "method|";
+    return $name;
+}
+function runtime_literal_suffix(): string {
+    echo "arg|";
+    return "?";
+}
+echo ([make_runtime_literal_prefixer(), choose_runtime_literal_method_order("wrap")])(suffix: runtime_literal_suffix());
+"#,
+    );
+    assert_eq!(out, "make|method|arg|old:Ada?");
+}
+
 /// Verifies parenthesized callable-array variables use the same descriptor invoker path.
 #[test]
 fn test_parenthesized_callable_array_static_method_expr_call() {

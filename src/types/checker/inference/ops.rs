@@ -454,6 +454,11 @@ impl Checker {
             }
             return Ok(PhpType::Mixed);
         }
+        if is_two_slot_runtime_callable_array_literal(callee)
+            && Self::is_runtime_callable_array_type(&callee_ty)
+        {
+            return self.infer_runtime_callable_array_call(args, env);
+        }
         if let ExprKind::Variable(var_name) = &callee.kind {
             if let Some(target) = self.callable_array_targets.get(var_name).cloned() {
                 return self.infer_callable_array_target_call(&target, args, expr, env);
@@ -1066,6 +1071,11 @@ fn callable_array_parts(callee: &Expr) -> Option<(&Expr, &str)> {
         return None;
     };
     Some((&elems[0], method.as_str()))
+}
+
+/// Returns true when an expression is a two-element indexed-array literal.
+fn is_two_slot_runtime_callable_array_literal(callee: &Expr) -> bool {
+    matches!(&callee.kind, ExprKind::ArrayLiteral(elems) if elems.len() == 2)
 }
 
 /// Returns `true` if `expr` contains a nullsafe member access anywhere in
