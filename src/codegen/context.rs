@@ -127,6 +127,7 @@ pub struct DeferredCallbackWrapper {
     pub visible_arg_types: Vec<PhpType>,
     pub target_visible_arg_types: Option<Vec<PhpType>>,
     pub capture_types: Vec<PhpType>,
+    pub descriptor_return_type: Option<PhpType>,
 }
 
 /// A generated runtime callable invoker with a descriptor-based ABI.

@@ -491,6 +491,68 @@ foreach ($values as $value) {
     assert_eq!(out, "2:2:4");
 }
 
+/// Verifies that `array_filter` can invoke a runtime-selected captured method descriptor.
+#[test]
+fn test_array_filter_accepts_complex_captured_callable_expression() {
+    let out = compile_and_run(
+        r#"<?php
+class FilterBox {
+    public $limit;
+
+    public function __construct($limit) {
+        $this->limit = $limit;
+    }
+
+    public function keep($n) {
+        return $n > $this->limit;
+    }
+}
+
+$left = new FilterBox(2);
+$right = new FilterBox(3);
+$use_left = false;
+$values = array_filter([1, 3, 4, 5], $use_left ? $left->keep(...) : $right->keep(...));
+echo count($values);
+foreach ($values as $value) {
+    echo ":";
+    echo $value;
+}
+"#,
+    );
+    assert_eq!(out, "2:4:5");
+}
+
+/// Verifies that descriptor-backed `array_filter` preserves string callback ABI arguments.
+#[test]
+fn test_array_filter_complex_captured_callable_expression_with_strings() {
+    let out = compile_and_run(
+        r#"<?php
+class PrefixBox {
+    public $prefix;
+
+    public function __construct($prefix) {
+        $this->prefix = $prefix;
+    }
+
+    public function keep(string $value): bool {
+        return str_starts_with($value, $this->prefix);
+    }
+}
+
+$left = new PrefixBox("a");
+$right = new PrefixBox("b");
+$use_left = false;
+$values = array_filter(["aa", "ba", "bb"], $use_left ? $left->keep(...) : $right->keep(...));
+echo count($values);
+foreach ($values as $value) {
+    echo ":";
+    echo $value;
+}
+"#,
+    );
+    assert_eq!(out, "2:ba:bb");
+}
+
 // Tests an instance method captured as a first-class callable and passed to `array_walk`,
 // verifying the callable receives each item and writes output for each element.
 #[test]

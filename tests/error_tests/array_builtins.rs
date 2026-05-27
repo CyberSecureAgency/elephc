@@ -449,9 +449,9 @@ fn test_error_call_user_func_array_wrong_args() {
     );
 }
 
-/// Verifies that error array filter rejects complex captured callable expression.
+/// Verifies that array_map still rejects complex captured callable expressions.
 #[test]
-fn test_error_array_filter_rejects_complex_captured_callable_expression() {
+fn test_error_array_map_rejects_complex_captured_callable_expression() {
     expect_error(
         r#"<?php
 class FilterBox {
@@ -462,9 +462,9 @@ class FilterBox {
 
 $box = new FilterBox();
 $use_first = true;
-array_filter([1], $use_first ? $box->keep(...) : $box->keep(...));
+array_map($use_first ? $box->keep(...) : $box->keep(...), [1]);
 "#,
-        "array_filter() callback does not support complex expressions",
+        "array_map() callback does not support complex expressions",
     );
 }
 

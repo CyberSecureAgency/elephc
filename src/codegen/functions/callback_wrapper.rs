@@ -8,17 +8,24 @@
 //! Key details:
 //! - Wrapper signatures must satisfy both the external ABI and the internal PHP function lowering contract.
 
+use crate::codegen::abi;
 use crate::codegen::context::DeferredCallbackWrapper;
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
-use crate::codegen::abi;
 use crate::types::PhpType;
+
+mod descriptor;
 
 /// Emits a native callback wrapper that adapts an external ABI caller into a PHP-callable
 /// function body. Dispatches to the x86_64 variant; ARM64 uses the general path below.
 /// The wrapper preserves callee-saved registers, spills incoming arguments and captures
 /// from the environment struct, then calls the original closure entry point before returning.
 pub(crate) fn emit_callback_wrapper(emitter: &mut Emitter, wrapper: &DeferredCallbackWrapper) {
+    if let Some(return_ty) = &wrapper.descriptor_return_type {
+        descriptor::emit_descriptor_callback_wrapper(emitter, wrapper, return_ty);
+        return;
+    }
+
     if emitter.target.arch == Arch::X86_64 {
         emit_x86_64_callback_wrapper(emitter, wrapper);
         return;

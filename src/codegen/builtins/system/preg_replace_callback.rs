@@ -211,6 +211,7 @@ fn materialize_capture_env(
             .iter()
             .map(|(_, ty, by_ref)| if *by_ref { PhpType::Int } else { ty.clone() })
             .collect(),
+        descriptor_return_type: None,
     });
 
     let env_bytes = (captures.len() + 1) * 16;

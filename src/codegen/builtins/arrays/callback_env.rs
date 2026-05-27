@@ -10,13 +10,13 @@
 //! - Capture slots must preserve source-call evaluation order and ABI argument layout for wrapper calls.
 
 use crate::codegen::abi;
-use crate::codegen::context::{Context, DeferredCallbackWrapper};
+use crate::codegen::context::{Context, DeferredCallbackWrapper, HeapOwnership};
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
-use crate::codegen::expr::emit_expr;
+use crate::codegen::expr::{emit_expr, expr_result_heap_ownership};
 use crate::codegen::platform::Arch;
 use crate::names::function_symbol;
-use crate::parser::ast::{Expr, ExprKind};
+use crate::parser::ast::{CallableTarget, Expr, ExprKind, StaticReceiver};
 use crate::types::PhpType;
 
 use super::super::callable_lookup::{lookup_function, FunctionLookup};
@@ -24,6 +24,13 @@ use super::super::callable_lookup::{lookup_function, FunctionLookup};
 /// Metadata for a deferred callback wrapper emitted after the main function body.
 /// Holds the environment layout so the wrapper can reload captures and forward the call.
 pub(crate) struct CallbackEnv {
+    pub(crate) wrapper_label: String,
+    pub(crate) env_bytes: usize,
+    pub(crate) array_slot_offset: usize,
+}
+
+/// Metadata for a descriptor-backed callback wrapper environment.
+pub(crate) struct DescriptorCallbackEnv {
     pub(crate) wrapper_label: String,
     pub(crate) env_bytes: usize,
     pub(crate) array_slot_offset: usize,
@@ -177,6 +184,7 @@ pub(crate) fn emit_captured_callback_env(
             .iter()
             .map(|(_, ty, by_ref)| if *by_ref { PhpType::Int } else { ty.clone() })
             .collect(),
+        descriptor_return_type: None,
     });
 
     let env_slots = captures.len() + 2;
@@ -241,6 +249,7 @@ pub(crate) fn emit_persistent_callback_env_from_result(
             .iter()
             .map(|(_, ty, by_ref)| if *by_ref { PhpType::Int } else { ty.clone() })
             .collect(),
+        descriptor_return_type: None,
     });
 
     let env_bytes = (captures.len() + 1) * 16;
@@ -298,6 +307,154 @@ pub(crate) fn emit_persistent_callback_env_from_result(
     abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                  // return the persistent env pointer as the current result
     abi::emit_release_temporary_stack(emitter, 16);                            // discard the saved original callback entry address
     wrapper_label
+}
+
+/// Returns true when a callback expression must preserve the selected runtime descriptor.
+pub(crate) fn expr_call_needs_descriptor_callback_env(callback: &Expr, ctx: &Context) -> bool {
+    match &callback.kind {
+        ExprKind::Closure { .. } | ExprKind::FirstClassCallable(_) | ExprKind::Variable(_) => {
+            false
+        }
+        ExprKind::Assignment { value, .. } => expr_produces_captured_callable(value, ctx),
+        ExprKind::Ternary {
+            then_expr,
+            else_expr,
+            ..
+        } => {
+            expr_produces_captured_callable(then_expr, ctx)
+                || expr_produces_captured_callable(else_expr, ctx)
+        }
+        ExprKind::ShortTernary { value, default }
+        | ExprKind::NullCoalesce { value, default } => {
+            expr_produces_captured_callable(value, ctx)
+                || expr_produces_captured_callable(default, ctx)
+        }
+        _ => false,
+    }
+}
+
+/// Returns true when the selected descriptor can be owned safely by a callback environment.
+pub(crate) fn descriptor_callback_env_supported(callback: &Expr) -> bool {
+    matches!(
+        callable_descriptor_result_ownership(callback),
+        HeapOwnership::Owned | HeapOwnership::Borrowed
+    )
+}
+
+/// Emits a descriptor-backed callback environment from the current descriptor result.
+pub(crate) fn emit_descriptor_callback_env_from_result(
+    callback: &Expr,
+    array_reg: &str,
+    visible_arg_types: Vec<PhpType>,
+    descriptor_return_type: PhpType,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+) -> Option<DescriptorCallbackEnv> {
+    let ownership = callable_descriptor_result_ownership(callback);
+    if !matches!(ownership, HeapOwnership::Owned | HeapOwnership::Borrowed) {
+        return None;
+    }
+    if matches!(ownership, HeapOwnership::Borrowed) {
+        crate::codegen::callable_descriptor::emit_retain_current_descriptor(emitter);
+    }
+
+    let wrapper_label = ctx.next_label("descriptor_callback_wrapper");
+    ctx.deferred_callback_wrappers.push(DeferredCallbackWrapper {
+        label: wrapper_label.clone(),
+        visible_arg_types,
+        target_visible_arg_types: None,
+        capture_types: Vec::new(),
+        descriptor_return_type: Some(descriptor_return_type),
+    });
+
+    let env_bytes = 32;
+    let array_slot_offset = 16;
+    emitter.comment("descriptor callback environment");
+    abi::emit_reserve_temporary_stack(emitter, env_bytes);
+    store_current_result_to_env_slot(emitter, &PhpType::Callable, 0);
+    store_reg_to_env_slot(emitter, array_reg, array_slot_offset);
+
+    Some(DescriptorCallbackEnv {
+        wrapper_label,
+        env_bytes,
+        array_slot_offset,
+    })
+}
+
+/// Releases a descriptor-backed callback environment after its runtime helper returns.
+pub(crate) fn release_descriptor_callback_env(
+    env: &DescriptorCallbackEnv,
+    emitter: &mut Emitter,
+) {
+    let descriptor_reg = abi::int_result_reg(emitter);
+    abi::emit_push_reg(emitter, descriptor_reg);                                // preserve the callback runtime result while releasing the selected descriptor
+    abi::emit_load_temporary_stack_slot(emitter, descriptor_reg, 16);
+    crate::codegen::callable_descriptor::emit_release_current_descriptor(emitter);
+    abi::emit_pop_reg(emitter, descriptor_reg);                                 // restore the callback runtime result after descriptor release
+    abi::emit_release_temporary_stack(emitter, env.env_bytes);
+}
+
+/// Returns the ownership class for a callable descriptor expression result.
+fn callable_descriptor_result_ownership(callback: &Expr) -> HeapOwnership {
+    match &callback.kind {
+        ExprKind::Assignment { .. } => HeapOwnership::Borrowed,
+        ExprKind::Ternary {
+            then_expr,
+            else_expr,
+            ..
+        } => callable_descriptor_result_ownership(then_expr)
+            .merge(callable_descriptor_result_ownership(else_expr)),
+        ExprKind::ShortTernary { value, default }
+        | ExprKind::NullCoalesce { value, default } => {
+            callable_descriptor_result_ownership(value)
+                .merge(callable_descriptor_result_ownership(default))
+        }
+        _ => expr_result_heap_ownership(callback),
+    }
+}
+
+/// Returns true if an expression produces a callable with descriptor-owned environment.
+fn expr_produces_captured_callable(expr: &Expr, ctx: &Context) -> bool {
+    match &expr.kind {
+        ExprKind::Closure { captures, .. } => !captures.is_empty(),
+        ExprKind::FirstClassCallable(target) => first_class_target_needs_runtime_capture(target),
+        ExprKind::Variable(name) => {
+            ctx.closure_captures
+                .get(name)
+                .is_some_and(|captures| !captures.is_empty())
+                || ctx
+                    .first_class_callable_targets
+                    .get(name)
+                    .is_some_and(first_class_target_needs_runtime_capture)
+        }
+        ExprKind::Assignment { value, .. } => expr_produces_captured_callable(value, ctx),
+        ExprKind::Ternary {
+            then_expr,
+            else_expr,
+            ..
+        } => {
+            expr_produces_captured_callable(then_expr, ctx)
+                || expr_produces_captured_callable(else_expr, ctx)
+        }
+        ExprKind::ShortTernary { value, default }
+        | ExprKind::NullCoalesce { value, default } => {
+            expr_produces_captured_callable(value, ctx)
+                || expr_produces_captured_callable(default, ctx)
+        }
+        _ => false,
+    }
+}
+
+/// Returns true when a first-class callable target carries receiver environment.
+fn first_class_target_needs_runtime_capture(target: &CallableTarget) -> bool {
+    matches!(
+        target,
+        CallableTarget::Method { .. }
+            | CallableTarget::StaticMethod {
+                receiver: StaticReceiver::Static,
+                ..
+            }
+    )
 }
 
 /// Loads a value from an environment slot into `reg` by computing the slot address on the

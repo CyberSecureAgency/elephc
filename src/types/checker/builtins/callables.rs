@@ -440,6 +440,70 @@ fn resolve_class_name<'a>(checker: &'a Checker, class_name: &str) -> Option<&'a 
         .map(String::as_str)
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+/// Ownership class for a callable descriptor selected by a callback expression.
+enum CallbackDescriptorEnvOwnership {
+    NonHeap,
+    Owned,
+    Borrowed,
+    MaybeOwned,
+}
+
+impl CallbackDescriptorEnvOwnership {
+    /// Merges ownership from two expression branches using the same conservative lattice as codegen.
+    fn merge(self, other: Self) -> Self {
+        use CallbackDescriptorEnvOwnership::*;
+        match (self, other) {
+            (NonHeap, NonHeap) => NonHeap,
+            (Owned, Owned) => Owned,
+            (Borrowed, Borrowed) => Borrowed,
+            (MaybeOwned, _) | (_, MaybeOwned) => MaybeOwned,
+            (Owned, Borrowed) | (Borrowed, Owned) => MaybeOwned,
+            (NonHeap, x) | (x, NonHeap) => x,
+        }
+    }
+}
+
+/// Returns true when a callback builtin can use a descriptor-backed callback wrapper.
+fn callback_builtin_allows_complex_descriptor_env(
+    label: &str,
+    callback: &Expr,
+) -> bool {
+    label == "array_filter() callback"
+        && matches!(
+            callback_descriptor_env_ownership(callback),
+            CallbackDescriptorEnvOwnership::Owned | CallbackDescriptorEnvOwnership::Borrowed
+        )
+}
+
+/// Classifies descriptor ownership for callback expressions accepted by descriptor wrappers.
+fn callback_descriptor_env_ownership(callback: &Expr) -> CallbackDescriptorEnvOwnership {
+    match &callback.kind {
+        ExprKind::Variable(_) => CallbackDescriptorEnvOwnership::Borrowed,
+        ExprKind::Assignment { .. } => CallbackDescriptorEnvOwnership::Borrowed,
+        ExprKind::Closure { .. }
+        | ExprKind::FirstClassCallable(_)
+        | ExprKind::FunctionCall { .. }
+        | ExprKind::ClosureCall { .. }
+        | ExprKind::ExprCall { .. }
+        | ExprKind::MethodCall { .. }
+        | ExprKind::NullsafeMethodCall { .. }
+        | ExprKind::StaticMethodCall { .. } => CallbackDescriptorEnvOwnership::Owned,
+        ExprKind::Ternary {
+            then_expr,
+            else_expr,
+            ..
+        } => callback_descriptor_env_ownership(then_expr)
+            .merge(callback_descriptor_env_ownership(else_expr)),
+        ExprKind::ShortTernary { value, default }
+        | ExprKind::NullCoalesce { value, default } => {
+            callback_descriptor_env_ownership(value)
+                .merge(callback_descriptor_env_ownership(default))
+        }
+        _ => CallbackDescriptorEnvOwnership::NonHeap,
+    }
+}
+
 /// Type-checks a callback expression passed to an array-callback builtin (e.g., `array_map()`).
 ///
 /// Resolves the callback to its signature, checks arity, validates parameter types,
@@ -456,7 +520,9 @@ pub(crate) fn check_callback_builtin_call(
     env: &TypeEnv,
     label: &str,
 ) -> Result<PhpType, CompileError> {
-    if checker.expr_call_complex_callee_needs_runtime_capture(callback) {
+    if checker.expr_call_complex_callee_needs_runtime_capture(callback)
+        && !callback_builtin_allows_complex_descriptor_env(label, callback)
+    {
         return Err(CompileError::new(
             callback.span,
             &format!(
