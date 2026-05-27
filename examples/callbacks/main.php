@@ -198,6 +198,24 @@ echo "selected callable array_walk: ";
 array_walk([1, 2], $use_small_offsets ? $small_offsets->show_selected(...) : $large_offsets->show_selected(...));
 echo "\n";
 
+class SelectedCalculator {
+    public $base;
+
+    public function __construct($base) {
+        $this->base = $base;
+    }
+
+    public function scale($value = 1, $factor = 1) {
+        return $this->base + ($value * $factor);
+    }
+}
+
+$small_calc = new SelectedCalculator(10);
+$large_calc = new SelectedCalculator(100);
+$use_small_calc = false;
+$scale_args = [3];
+echo "selected callable named spread: " . ($use_small_calc ? $small_calc->scale(...) : $large_calc->scale(...))(...$scale_args, factor: 7) . "\n";
+
 $method_sorted = [1, 3, 2];
 usort($method_sorted, $offsets->descending(...));
 echo "method callable usort: ";

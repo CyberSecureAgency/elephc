@@ -331,29 +331,6 @@ fn test_error_typed_first_class_callable_rejects_wrong_argument() {
     );
 }
 
-/// Verifies that descriptor-backed expression calls reject the named+spread mix still unsupported by the synthetic invoker argument array.
-#[test]
-fn test_error_complex_captured_callable_named_spread_args_rejected() {
-    expect_error(
-        r#"<?php
-class Counter {
-    public int $base = 0;
-
-    public function add(int $n): int {
-        return $n + $this->base;
-    }
-}
-
-$left = new Counter();
-$right = new Counter();
-$use_left = false;
-$args = [];
-echo ($use_left ? $left->add(...) : $right->add(...))(...$args, n: 5);
-"#,
-        "Callable expression descriptor invoker does not support named arguments combined with spread arguments",
-    );
-}
-
 #[test]
 fn test_error_void_parameter_type_is_rejected() {
     // Verifies that `void` cannot be used as a parameter type in a user-defined function.

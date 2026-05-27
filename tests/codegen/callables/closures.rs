@@ -422,6 +422,43 @@ echo ($use_left ? $left->add(...) : $right->add(...))();
     let _ = fs::remove_dir_all(dir);
 }
 
+/// Verifies branch-selected descriptor invokers accept spread prefixes followed by named args.
+#[test]
+fn test_direct_complex_captured_callable_expr_named_spread_args_use_descriptor_invoker() {
+    let source = r#"<?php
+class Counter {
+    public int $base = 0;
+
+    public function add(int $n = 4, int $scale = 1): int {
+        return ($n * $scale) + $this->base;
+    }
+}
+
+$left = new Counter();
+$left->base = 3;
+$right = new Counter();
+$right->base = 7;
+$use_left = false;
+$args = [2];
+echo ($use_left ? $left->add(...) : $right->add(...))(...$args, scale: 5);
+echo ",";
+$empty = [];
+echo ($use_left ? $left->add(...) : $right->add(...))(...$empty, n: 6);
+"#;
+    let out = compile_and_run(source);
+    assert_eq!(out, "17,13");
+
+    let dir = make_cli_test_dir("elephc_direct_complex_callable_expr_named_spread_invoker");
+    let (user_asm, _runtime_asm, _required_libraries) =
+        compile_source_to_asm_with_options(source, &dir, 8_388_608, false, false);
+    assert!(
+        user_asm.contains("callable_invoker"),
+        "direct branch-selected named+spread callable calls should route through descriptor invokers:\n{}",
+        user_asm
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
 #[test]
 fn test_arrow_function_array_filter() {
     // Verifies `array_filter` with an arrow function predicate filtering values greater than 8.

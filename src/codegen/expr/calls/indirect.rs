@@ -17,7 +17,7 @@ use crate::codegen::emit::Emitter;
 use crate::parser::ast::{CallableTarget, Expr, ExprKind, StaticReceiver};
 use crate::types::PhpType;
 
-use super::args;
+use super::{args, descriptor_invoker_args};
 
 /// Emits a callable-indirect call where the callee expression has already been evaluated
 /// and placed in the result register. Handles `__invoke` on objects, closure captures as
@@ -185,8 +185,15 @@ fn emit_descriptor_invoker_expr_call(
     }
     crate::codegen::abi::emit_push_reg(emitter, crate::codegen::abi::int_result_reg(emitter)); // preserve the callable descriptor while building direct-call arguments
 
-    let arg_array = descriptor_invoker_arg_array_expr(args_exprs, callee.span);
-    let arr_ty = crate::codegen::expr::emit_expr(&arg_array, emitter, ctx, data);
+    let callee_sig = callee_sig_for_expr(callee, ctx);
+    let arr_ty = descriptor_invoker_args::emit_descriptor_invoker_arg_array(
+        args_exprs,
+        callee_sig.as_ref(),
+        callee.span,
+        emitter,
+        ctx,
+        data,
+    );
     crate::codegen::abi::emit_push_reg(emitter, crate::codegen::abi::int_result_reg(emitter)); // preserve the owned descriptor-invoker argument array
 
     let call_reg = crate::codegen::abi::nested_call_reg(emitter);
@@ -203,38 +210,6 @@ fn emit_descriptor_invoker_expr_call(
     release_preserved_expr_call_arg_array_after_mixed_result(&arr_ty, emitter);
     release_preserved_expr_call_descriptor_after_mixed_result(emitter);
     Some(PhpType::Mixed)
-}
-
-/// Builds the synthetic argument container passed to a descriptor invoker.
-fn descriptor_invoker_arg_array_expr(args_exprs: &[Expr], span: crate::span::Span) -> Expr {
-    let has_explicit_named = args_exprs
-        .iter()
-        .any(|arg| matches!(arg.kind, ExprKind::NamedArg { .. }));
-    if !has_explicit_named {
-        return Expr::new(ExprKind::ArrayLiteral(args_exprs.to_vec()), span);
-    }
-
-    let mut next_positional_key = 0i64;
-    let mut entries = Vec::with_capacity(args_exprs.len());
-    for arg in args_exprs {
-        match &arg.kind {
-            ExprKind::NamedArg { name, value } => {
-                entries.push((
-                    Expr::new(ExprKind::StringLiteral(name.clone()), arg.span),
-                    (**value).clone(),
-                ));
-            }
-            _ => {
-                entries.push((
-                    Expr::new(ExprKind::IntLiteral(next_positional_key), arg.span),
-                    arg.clone(),
-                ));
-                next_positional_key += 1;
-            }
-        }
-    }
-
-    Expr::new(ExprKind::ArrayLiteralAssoc(entries), span)
 }
 
 /// Releases the synthetic direct-call argument array while preserving the Mixed result.
