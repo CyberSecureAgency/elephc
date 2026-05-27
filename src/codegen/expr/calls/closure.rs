@@ -332,6 +332,10 @@ pub(super) fn emit_closure_call(
     //   path; reconstituting their captured runtime context is left for a
     //   future refinement.
     if let Some(target) = ctx.first_class_callable_targets.get(var).cloned() {
+        if first_class_callable_variable_needs_descriptor_env(&target) {
+            ctx.mark_fcc_used(var);
+            return emit_descriptor_invoker_variable_call(var, args_exprs, emitter, ctx, data);
+        }
         match &target {
             CallableTarget::Function(name) => {
                 let name_str = name.as_str();
@@ -625,6 +629,19 @@ fn emit_descriptor_invoker_variable_call(
     release_preserved_variable_call_arg_array_after_mixed_result(&arr_ty, emitter);
     release_preserved_variable_call_descriptor_after_mixed_result(emitter);
     PhpType::Mixed
+}
+
+/// Returns true when a tracked first-class callable variable must use its descriptor
+/// environment instead of re-reading source variables at the call site.
+fn first_class_callable_variable_needs_descriptor_env(target: &CallableTarget) -> bool {
+    matches!(
+        target,
+        CallableTarget::Method { .. }
+            | CallableTarget::StaticMethod {
+                receiver: StaticReceiver::Static,
+                ..
+            }
+    )
 }
 
 /// Releases the synthetic variable-call argument array while preserving the Mixed result.

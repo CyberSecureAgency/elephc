@@ -58,6 +58,19 @@ echo "\n";
 $format_args = ["value" => "cb"];
 echo "method callable call_user_func_array: " . call_user_func_array($format, $format_args) . "\n";
 
+class CapturedFormatter {
+    public function __construct(private string $prefix) {}
+
+    public function label(string $value, string $suffix = "!"): string {
+        return $this->prefix . $value . $suffix;
+    }
+}
+
+$captured_formatter = new CapturedFormatter("old:");
+$captured_label = $captured_formatter->label(...);
+$captured_formatter = new CapturedFormatter("new:");
+echo "method callable captured receiver: " . $captured_label(value: "Ada") . "\n";
+
 $named_callbacks = [
     function($left, $right) { return ($left * 10) + $right; },
     function($right, $left) { return ($right * 100) + $left; }

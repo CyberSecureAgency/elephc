@@ -152,6 +152,52 @@ echo $fn("Ada");
     assert_eq!(out, "Hello Ada");
 }
 
+/// Verifies method first-class callable variables invoke the receiver captured in
+/// the descriptor, even after the source receiver variable is reassigned.
+#[test]
+fn test_first_class_callable_instance_method_variable_uses_captured_receiver_after_reassign() {
+    let out = compile_and_run(
+        r#"<?php
+class Label {
+    public function __construct(private string $name) {}
+
+    public function read(): string {
+        return $this->name;
+    }
+}
+
+$box = new Label("old");
+$fn = $box->read(...);
+$box = new Label("new");
+echo $fn();
+"#,
+    );
+    assert_eq!(out, "old");
+}
+
+/// Verifies descriptor invocation for method first-class callable variables applies
+/// named arguments and defaults while keeping the captured receiver environment.
+#[test]
+fn test_first_class_callable_instance_method_variable_named_args_use_descriptor_metadata() {
+    let out = compile_and_run(
+        r#"<?php
+class Formatter {
+    public function __construct(private string $prefix) {}
+
+    public function format(string $value, string $suffix = "!"): string {
+        return $this->prefix . $value . $suffix;
+    }
+}
+
+$formatter = new Formatter("old:");
+$fn = $formatter->format(...);
+$formatter = new Formatter("new:");
+echo $fn(value: "Ada");
+"#,
+    );
+    assert_eq!(out, "old:Ada!");
+}
+
 // Tests an instance method captured as a first-class callable and passed to `array_map`,
 // verifying integer return values are correctly captured and accessed in the result array.
 #[test]
