@@ -286,6 +286,16 @@ pub(super) fn emit_closure_call(
             .get(&class_name)
             .is_some_and(|class_info| class_info.methods.contains_key("__invoke"))
         {
+            if let Some(ret_ty) = super::emit_invokable_object_variable_call(
+                var,
+                &class_name,
+                args_exprs,
+                emitter,
+                ctx,
+                data,
+            ) {
+                return ret_ty;
+            }
             let object = Expr::new(ExprKind::Variable(var.to_string()), Span::dummy());
             return crate::codegen::expr::objects::emit_method_call(
                 &object, "__invoke", args_exprs, emitter, ctx, data,

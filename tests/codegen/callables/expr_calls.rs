@@ -371,6 +371,79 @@ echo $value;
     assert_eq!(out, "5:5");
 }
 
+/// Verifies direct invokable object variables invoke through descriptor metadata.
+#[test]
+fn test_direct_invokable_object_variable_named_args_use_descriptor_invoker() {
+    let source = r#"<?php
+class Runner {
+    public function __invoke(string $value = "fallback", string $suffix = "!"): string {
+        return $value . $suffix;
+    }
+}
+$runner = new Runner();
+echo $runner(suffix: "?");
+"#;
+    let out = compile_and_run(source);
+    assert_eq!(out, "fallback?");
+
+    let dir = make_cli_test_dir("elephc_direct_invokable_object_descriptor");
+    let (user_asm, _runtime_asm, _required_libraries) =
+        compile_source_to_asm_with_options(source, &dir, 8_388_608, false, false);
+    assert!(
+        user_asm.contains("callable_instance_method") && user_asm.contains("callable_invoker"),
+        "direct invokable object variables should route through descriptor invokers:\n{}",
+        user_asm
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
+/// Verifies parenthesized invokable object variables use the descriptor path.
+#[test]
+fn test_parenthesized_invokable_object_variable_named_args_use_descriptor_invoker() {
+    let source = r#"<?php
+class Runner {
+    public function __invoke(string $value = "fallback", string $suffix = "!"): string {
+        return $value . $suffix;
+    }
+}
+$runner = new Runner();
+echo ($runner)(suffix: "?");
+"#;
+    let out = compile_and_run(source);
+    assert_eq!(out, "fallback?");
+
+    let dir = make_cli_test_dir("elephc_parenthesized_invokable_object_descriptor");
+    let (user_asm, _runtime_asm, _required_libraries) =
+        compile_source_to_asm_with_options(source, &dir, 8_388_608, false, false);
+    assert!(
+        user_asm.contains("callable_instance_method") && user_asm.contains("callable_invoker"),
+        "parenthesized invokable object variables should route through descriptor invokers:\n{}",
+        user_asm
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
+/// Verifies direct invokable object variables preserve by-reference arguments.
+#[test]
+fn test_direct_invokable_object_variable_preserves_by_ref_argument() {
+    let out = compile_and_run(
+        r#"<?php
+class Mutator {
+    public function __invoke(int &$value): int {
+        $value = $value + 2;
+        return $value;
+    }
+}
+$mutator = new Mutator();
+$value = 3;
+echo $mutator($value);
+echo ":";
+echo $value;
+"#,
+    );
+    assert_eq!(out, "5:5");
+}
+
 /// Verifies that callable by ref parameter dereferences descriptor before call.
 #[test]
 fn test_callable_by_ref_parameter_dereferences_descriptor_before_call() {

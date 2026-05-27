@@ -169,6 +169,41 @@ pub(super) fn emit_callable_array_variable_call(
     }
 }
 
+/// Emits a descriptor invocation for a local object variable with public `__invoke`.
+pub(super) fn emit_invokable_object_variable_call(
+    var: &str,
+    class_name: &str,
+    args: &[Expr],
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> Option<PhpType> {
+    let case = crate::codegen::callable_dispatch::runtime_instance_method_case(
+        ctx,
+        data,
+        class_name,
+        "__invoke",
+        crate::codegen::callable_dispatch::RuntimeInstanceCallableShape::ObjectInvoke,
+    )?;
+    if !case.has_invoker {
+        return None;
+    }
+    let mut descriptor_args = Vec::with_capacity(args.len() + 1);
+    descriptor_args.push(Expr::new(
+        ExprKind::Variable(var.to_string()),
+        Span::dummy(),
+    ));
+    descriptor_args.extend(args.iter().cloned());
+    emit_callable_array_descriptor_case_call(
+        &case.descriptor_label,
+        &case.sig,
+        &descriptor_args,
+        emitter,
+        ctx,
+        data,
+    )
+}
+
 /// Emits a descriptor invocation for a stored instance-method callable array.
 fn emit_instance_callable_array_variable_call(
     var: &str,
