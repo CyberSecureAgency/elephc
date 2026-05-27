@@ -1292,6 +1292,66 @@ echo call_user_func_array($callback, passthrough(["name" => "Ada", "extra" => "x
     let _ = fs::remove_dir_all(dir);
 }
 
+/// Verifies branch-selected captured callables route through `call_user_func_array()` descriptor invokers.
+#[test]
+fn test_call_user_func_array_complex_captured_callable_expr_uses_descriptor_invoker() {
+    let source = r#"<?php
+class Counter {
+    public int $base = 0;
+
+    public function add(int $n = 4): int {
+        return $n + $this->base;
+    }
+}
+
+$left = new Counter();
+$left->base = 3;
+$right = new Counter();
+$right->base = 7;
+$use_left = false;
+echo call_user_func_array($use_left ? $left->add(...) : $right->add(...), [5]);
+echo ",";
+echo call_user_func_array($use_left ? $left->add(...) : $right->add(...), []);
+"#;
+    let out = compile_and_run(source);
+    assert_eq!(out, "12,11");
+
+    let dir = make_cli_test_dir("elephc_call_user_func_array_complex_callable_expr_invoker");
+    let (user_asm, _runtime_asm, _required_libraries) =
+        compile_source_to_asm_with_options(source, &dir, 8_388_608, false, false);
+    assert!(
+        user_asm.contains("callable_invoker"),
+        "call_user_func_array branch-selected captured callable calls should route through descriptor invokers:\n{}",
+        user_asm
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
+/// Verifies descriptor invokers preserve by-reference literal args for branch-selected callbacks.
+#[test]
+fn test_call_user_func_array_complex_captured_callable_expr_preserves_by_ref_literal_arg() {
+    let source = r#"<?php
+class Counter {
+    public int $step = 0;
+
+    public function bump(int &$n): void {
+        $n = $n + $this->step;
+    }
+}
+
+$left = new Counter();
+$left->step = 3;
+$right = new Counter();
+$right->step = 7;
+$use_left = false;
+$value = 5;
+call_user_func_array($use_left ? $left->bump(...) : $right->bump(...), [$value]);
+echo $value;
+"#;
+    let out = compile_and_run(source);
+    assert_eq!(out, "12");
+}
+
 /// Verifies that capture-free closure descriptors expose the uniform array invoker.
 #[test]
 fn test_call_user_func_array_closure_descriptor_uses_invoker() {

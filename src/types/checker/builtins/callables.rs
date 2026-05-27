@@ -689,12 +689,6 @@ pub(super) fn check_builtin(
             for arg in args {
                 checker.infer_type(arg, env)?;
             }
-            if checker.expr_call_complex_callee_needs_runtime_capture(&args[0]) {
-                return Err(CompileError::new(
-                    args[0].span,
-                    "call_user_func_array() callback does not support complex expressions that select captured callables at runtime",
-                ));
-            }
             if let ExprKind::FirstClassCallable(target) = &args[0].kind {
                 let sig = if let ExprKind::ArrayLiteral(elems) = &args[1].kind {
                     checker.specialize_first_class_callable_target(target, elems, span, env)?
