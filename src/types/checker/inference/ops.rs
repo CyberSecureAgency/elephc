@@ -338,6 +338,12 @@ impl Checker {
             CompileError::new(expr.span, &format!("Undefined variable: ${}", var))
         })?;
         if var_ty != PhpType::Callable {
+            if matches!(var_ty.codegen_repr(), PhpType::Str) {
+                for arg in args {
+                    self.infer_type(arg, env)?;
+                }
+                return Ok(PhpType::Mixed);
+            }
             if let Some(class_name) = self.invokable_class_for_type(&var_ty) {
                 if self
                     .classes
@@ -432,6 +438,12 @@ impl Checker {
         env: &TypeEnv,
     ) -> Result<PhpType, CompileError> {
         let callee_ty = self.infer_type(callee, env)?;
+        if matches!(callee_ty.codegen_repr(), PhpType::Str) {
+            for arg in args {
+                self.infer_type(arg, env)?;
+            }
+            return Ok(PhpType::Mixed);
+        }
         if let Some(class_name) = self.invokable_class_for_type(&callee_ty) {
             if self
                 .classes

@@ -84,6 +84,48 @@ pub(super) fn emit_loaded_expr_call(
     indirect::emit_loaded_expr_call(callee, args, loaded_callee_ty, emitter, ctx, data)
 }
 
+/// Emits a call where the already-loaded callee result is a runtime string callback name.
+pub(super) fn emit_loaded_runtime_string_call(
+    args: &[Expr],
+    span: Span,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> PhpType {
+    emitter.comment("call runtime string callable");
+    let save_concat_before_args =
+        emitter.target.arch == crate::codegen::platform::Arch::X86_64;
+    if save_concat_before_args {
+        super::save_concat_offset_before_nested_call(emitter, ctx);
+    }
+
+    let (ptr_reg, len_reg) = crate::codegen::abi::string_result_regs(emitter);
+    crate::codegen::abi::emit_push_reg_pair(emitter, ptr_reg, len_reg);         // preserve the runtime string callback name while building descriptor arguments
+    let arr_ty = descriptor_invoker_args::emit_descriptor_invoker_arg_array(
+        args,
+        None,
+        span,
+        emitter,
+        ctx,
+        data,
+    );
+    let call_reg = crate::codegen::abi::nested_call_reg(emitter);
+    let ret_ty =
+        crate::codegen::builtins::arrays::call_user_func_array::emit_loaded_array_string_callback_call(
+            crate::codegen::builtins::arrays::call_user_func_array::LoadedArraySource::Result,
+            &arr_ty,
+            0,
+            8,
+            call_reg,
+            save_concat_before_args,
+            emitter,
+            ctx,
+            data,
+        );
+    crate::codegen::abi::emit_release_temporary_stack(emitter, 16);             // discard the preserved runtime string callback name
+    ret_ty
+}
+
 /// Emits a first-class callable expression (e.g., `$fn(...)()`).
 pub(super) fn emit_first_class_callable(
     target: &crate::parser::ast::CallableTarget,

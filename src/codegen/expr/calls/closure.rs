@@ -293,6 +293,13 @@ pub(super) fn emit_closure_call(
         }
     }
 
+    if closure_variable_is_runtime_string(var, ctx) {
+        let callback = Expr::new(ExprKind::Variable(var.to_string()), Span::dummy());
+        let callback_ty = super::super::emit_expr(&callback, emitter, ctx, data);
+        debug_assert!(matches!(callback_ty.codegen_repr(), PhpType::Str));
+        return super::emit_loaded_runtime_string_call(args_exprs, Span::dummy(), emitter, ctx, data);
+    }
+
     // First-class callable short-circuit: when the variable was last bound to a
     // first-class callable, calling it as `$cb(args)` reaches the target directly
     // instead of going through the closure wrapper.
@@ -518,6 +525,13 @@ fn closure_variable_needs_descriptor_invoker(var: &str, ctx: &Context) -> bool {
     ctx.variables
         .get(var)
         .is_some_and(|info| matches!(info.ty.codegen_repr(), PhpType::Callable))
+}
+
+/// Returns true when `$var(...)` should resolve the variable value as a PHP string callback.
+fn closure_variable_is_runtime_string(var: &str, ctx: &Context) -> bool {
+    ctx.variables
+        .get(var)
+        .is_some_and(|info| matches!(info.ty.codegen_repr(), PhpType::Str))
 }
 
 /// Emits `$var(...)` through the callable descriptor's uniform runtime invoker.

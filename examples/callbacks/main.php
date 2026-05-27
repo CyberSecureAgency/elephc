@@ -79,6 +79,8 @@ function dynamic_string_sum(int $left, int $right): int {
 }
 $string_callback = "DYNAMIC_STRING_SUM";
 echo "dynamic string call_user_func: " . call_user_func($string_callback, 4, 5) . "\n";
+$direct_string_callback = "DYNAMIC_STRING_SUM";
+echo "dynamic string direct call: " . $direct_string_callback(6, 7) . "\n";
 
 $builtin_callback = "STRLEN";
 echo "dynamic builtin call_user_func: " . call_user_func($builtin_callback, "hello") . "\n";

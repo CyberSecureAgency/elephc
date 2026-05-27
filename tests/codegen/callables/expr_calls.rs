@@ -126,6 +126,94 @@ echo ($fn)("id");
     assert_eq!(out, "id:old");
 }
 
+/// Verifies a string variable can be invoked directly as a PHP runtime function callback.
+#[test]
+fn test_direct_dynamic_string_user_callback() {
+    let out = compile_and_run(
+        r#"<?php
+function add_pair($left, $right): int {
+    return $left + $right;
+}
+$callback = "ADD_PAIR";
+echo $callback(2, 5);
+"#,
+    );
+    assert_eq!(out, "7");
+}
+
+/// Verifies direct string-variable calls can dispatch to builtin descriptors.
+#[test]
+fn test_direct_dynamic_string_builtin_callback() {
+    let out = compile_and_run(
+        r#"<?php
+$callback = "STRLEN";
+echo $callback("hello");
+"#,
+    );
+    assert_eq!(out, "5");
+}
+
+/// Verifies parenthesized string call expressions use runtime string descriptor dispatch.
+#[test]
+fn test_parenthesized_dynamic_string_callback_expr_call() {
+    let out = compile_and_run(
+        r#"<?php
+$callback = "strtoupper";
+echo ($callback)("ready");
+"#,
+    );
+    assert_eq!(out, "READY");
+}
+
+/// Verifies direct string-variable calls can resolve public static method callback names.
+#[test]
+fn test_direct_dynamic_string_static_method_callback() {
+    let out = compile_and_run(
+        r#"<?php
+class Formatter {
+    public static function wrap(string $value): string {
+        return "[" . $value . "]";
+    }
+}
+$callback = "Formatter::wrap";
+echo $callback("ok");
+"#,
+    );
+    assert_eq!(out, "[ok]");
+}
+
+/// Verifies runtime string direct calls preserve source variables for by-reference parameters.
+#[test]
+fn test_direct_dynamic_string_callback_preserves_by_ref_argument() {
+    let out = compile_and_run(
+        r#"<?php
+function bump(&$value) {
+    $value = $value + 1;
+}
+$callback = "BUMP";
+$value = 10;
+$callback($value);
+echo $value;
+"#,
+    );
+    assert_eq!(out, "11");
+}
+
+/// Verifies direct runtime string calls apply descriptor names and defaults at invocation time.
+#[test]
+fn test_direct_dynamic_string_callback_named_args_use_descriptor_metadata() {
+    let out = compile_and_run(
+        r#"<?php
+function stamp($prefix = "id", $value = 1): string {
+    return $prefix . ":" . $value;
+}
+$callback = "STAMP";
+echo $callback(value: 7);
+"#,
+    );
+    assert_eq!(out, "id:7");
+}
+
 /// Verifies that callable by ref parameter dereferences descriptor before call.
 #[test]
 fn test_callable_by_ref_parameter_dereferences_descriptor_before_call() {
