@@ -283,6 +283,83 @@ echo $value;
     assert_eq!(out, "5");
 }
 
+/// Verifies runtime-selected instance callable arrays use descriptor metadata.
+#[test]
+fn test_runtime_callable_array_instance_method_named_args_use_descriptor_invoker() {
+    let source = r#"<?php
+class RuntimeFormatter {
+    public function wrap(string $value = "fallback", string $suffix = "!"): string {
+        return "<" . $value . $suffix . ">";
+    }
+}
+function choose_runtime_method(string $name): string {
+    return $name;
+}
+$formatter = new RuntimeFormatter();
+$method = choose_runtime_method("WRAP");
+$callback = [$formatter, $method];
+echo $callback(suffix: "?");
+"#;
+    let out = compile_and_run(source);
+    assert_eq!(out, "<fallback?>");
+
+    let dir = make_cli_test_dir("elephc_runtime_instance_callable_array_descriptor");
+    let (user_asm, _runtime_asm, _required_libraries) =
+        compile_source_to_asm_with_options(source, &dir, 8_388_608, false, false);
+    assert!(
+        user_asm.contains("callable_array_runtime_done") && user_asm.contains("callable_invoker"),
+        "runtime-selected instance callable arrays should route through descriptor invokers:\n{}",
+        user_asm
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
+/// Verifies runtime-selected static callable arrays accept class and method strings.
+#[test]
+fn test_runtime_callable_array_static_method_parenthesized_call() {
+    let out = compile_and_run(
+        r#"<?php
+class RuntimeLabeler {
+    public static function stamp(string $prefix = "id", int $value = 1): string {
+        return $prefix . ":" . $value;
+    }
+}
+function choose_runtime_string(string $value): string {
+    return $value;
+}
+$class = choose_runtime_string(RuntimeLabeler::class);
+$method = choose_runtime_string("STAMP");
+$callback = [$class, $method];
+echo ($callback)(value: 9);
+"#,
+    );
+    assert_eq!(out, "id:9");
+}
+
+/// Verifies runtime-selected instance callable arrays preserve by-reference arguments.
+#[test]
+fn test_runtime_callable_array_instance_method_preserves_by_ref_argument() {
+    let out = compile_and_run(
+        r#"<?php
+class RuntimeMutator {
+    public function bump(&$value): void {
+        $value = $value + 1;
+    }
+}
+function choose_runtime_method(string $name): string {
+    return $name;
+}
+$mutator = new RuntimeMutator();
+$method = choose_runtime_method("bump");
+$callback = [$mutator, $method];
+$value = 4;
+$callback($value);
+echo $value;
+"#,
+    );
+    assert_eq!(out, "5");
+}
+
 /// Verifies parenthesized callable-array variables use the same descriptor invoker path.
 #[test]
 fn test_parenthesized_callable_array_static_method_expr_call() {

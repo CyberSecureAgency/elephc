@@ -53,6 +53,20 @@ pub(crate) enum RuntimeInstanceCallableShape {
     InstanceMethod,
 }
 
+#[derive(Clone)]
+pub(crate) struct RuntimeInstanceMethodCallableCase {
+    pub(crate) class_id: u64,
+    pub(crate) method_name: String,
+    pub(crate) case: RuntimeCallableCase,
+}
+
+#[derive(Clone)]
+pub(crate) struct RuntimeStaticMethodCallableCase {
+    pub(crate) class_name: String,
+    pub(crate) method_name: String,
+    pub(crate) case: RuntimeCallableCase,
+}
+
 /// Provides the Runtime callable cases helper used by the callable dispatch module.
 pub(crate) fn runtime_callable_cases(
     ctx: &mut Context,
@@ -337,6 +351,64 @@ fn runtime_static_method_wrappers(ctx: &Context) -> Vec<(String, String, Functio
     }
     wrappers.sort_by(|left, right| (&left.0, &left.1).cmp(&(&right.0, &right.1)));
     wrappers
+}
+
+/// Builds descriptor cases for every public instance method visible to runtime callable arrays.
+pub(crate) fn runtime_public_instance_method_cases(
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> Vec<RuntimeInstanceMethodCallableCase> {
+    let mut methods = Vec::new();
+    for (class_name, class_info) in &ctx.classes {
+        for method_name in class_info.methods.keys() {
+            if !class_info
+                .method_visibilities
+                .get(method_name)
+                .is_some_and(|visibility| matches!(visibility, Visibility::Public))
+            {
+                continue;
+            }
+            methods.push((class_name.clone(), class_info.class_id, method_name.clone()));
+        }
+    }
+    methods.sort_by(|left, right| (&left.0, &left.2).cmp(&(&right.0, &right.2)));
+
+    let mut cases = Vec::new();
+    for (class_name, class_id, method_name) in methods {
+        if let Some(case) = runtime_instance_method_case(
+            ctx,
+            data,
+            &class_name,
+            &method_name,
+            RuntimeInstanceCallableShape::InstanceMethod,
+        ) {
+            cases.push(RuntimeInstanceMethodCallableCase {
+                class_id,
+                method_name,
+                case,
+            });
+        }
+    }
+    cases
+}
+
+/// Builds descriptor cases for every public static method visible to runtime callable arrays.
+pub(crate) fn runtime_public_static_method_cases(
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> Vec<RuntimeStaticMethodCallableCase> {
+    let wrappers = runtime_static_method_wrappers(ctx);
+    let mut cases = Vec::new();
+    for (class_name, method_name, _) in wrappers {
+        if let Some(case) = runtime_static_method_case(ctx, data, &class_name, &method_name) {
+            cases.push(RuntimeStaticMethodCallableCase {
+                class_name,
+                method_name,
+                case,
+            });
+        }
+    }
+    cases
 }
 
 /// Builds the runtime descriptor case for one public static method callable.

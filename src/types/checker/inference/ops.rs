@@ -348,6 +348,9 @@ impl Checker {
             if let Some(target) = self.callable_array_targets.get(var).cloned() {
                 return self.infer_callable_array_target_call(&target, args, expr, env);
             }
+            if Self::is_runtime_callable_array_type(&var_ty) {
+                return self.infer_runtime_callable_array_call(args, env);
+            }
             if let Some(class_name) = self.invokable_class_for_type(&var_ty) {
                 if self
                     .classes
@@ -454,6 +457,9 @@ impl Checker {
         if let ExprKind::Variable(var_name) = &callee.kind {
             if let Some(target) = self.callable_array_targets.get(var_name).cloned() {
                 return self.infer_callable_array_target_call(&target, args, expr, env);
+            }
+            if Self::is_runtime_callable_array_type(&callee_ty) {
+                return self.infer_runtime_callable_array_call(args, env);
             }
         }
         if let Some(class_name) = self.invokable_class_for_type(&callee_ty) {
@@ -588,6 +594,26 @@ impl Checker {
             _ => {}
         }
         Ok(self.nullable_callable_result(PhpType::Mixed, nullable_callable)) // fallback for unknown callables
+    }
+
+    /// Infers a runtime-selected callable-array call by checking argument expressions only.
+    fn infer_runtime_callable_array_call(
+        &mut self,
+        args: &[Expr],
+        env: &TypeEnv,
+    ) -> Result<PhpType, CompileError> {
+        for arg in args {
+            self.infer_type(arg, env)?;
+        }
+        Ok(PhpType::Mixed)
+    }
+
+    /// Returns true when an array type can represent a callable array selected at runtime.
+    fn is_runtime_callable_array_type(ty: &PhpType) -> bool {
+        match ty.codegen_repr() {
+            PhpType::Array(elem_ty) => matches!(elem_ty.codegen_repr(), PhpType::Mixed | PhpType::Str),
+            _ => false,
+        }
     }
 
     /// Infers a direct call through a PHP callable-array literal.

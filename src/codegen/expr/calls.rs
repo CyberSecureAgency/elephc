@@ -9,6 +9,7 @@
 //! - Argument evaluation must preserve PHP source order before ABI materialization happens in call-argument helpers.
 
 pub(crate) mod args;
+mod callable_array_runtime;
 mod closure;
 mod descriptor_invoker_args;
 mod descriptor_value;
@@ -157,7 +158,9 @@ pub(super) fn emit_callable_array_variable_call(
     ctx: &mut Context,
     data: &mut DataSection,
 ) -> Option<PhpType> {
-    let target = ctx.callable_array_targets.get(var).cloned()?;
+    let Some(target) = ctx.callable_array_targets.get(var).cloned() else {
+        return callable_array_runtime::emit_variable_call(var, args, emitter, ctx, data);
+    };
     match target {
         CallableTarget::Method { object, method } => emit_instance_callable_array_variable_call(
             var, &object, &method, args, emitter, ctx, data,
@@ -356,10 +359,15 @@ fn emit_callable_array_descriptor_case_call(
 
 /// Builds `$callback[0]`, the receiver slot stored inside a callable-array value.
 fn callable_array_receiver_slot_expr(var: &str) -> Expr {
+    callable_array_slot_expr(var, 0)
+}
+
+/// Builds `$callback[$index]`, a positional slot stored inside a callable-array value.
+fn callable_array_slot_expr(var: &str, index: i64) -> Expr {
     Expr::new(
         ExprKind::ArrayAccess {
             array: Box::new(Expr::new(ExprKind::Variable(var.to_string()), Span::dummy())),
-            index: Box::new(Expr::new(ExprKind::IntLiteral(0), Span::dummy())),
+            index: Box::new(Expr::new(ExprKind::IntLiteral(index), Span::dummy())),
         },
         Span::dummy(),
     )

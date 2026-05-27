@@ -77,6 +77,9 @@ echo "captured closure call_user_func_array: " . call_user_func_array($captured_
 function dynamic_string_sum(int $left, int $right): int {
     return $left + $right;
 }
+function callback_name_passthrough(string $name): string {
+    return $name;
+}
 $string_callback = "DYNAMIC_STRING_SUM";
 echo "dynamic string call_user_func: " . call_user_func($string_callback, 4, 5) . "\n";
 $direct_string_callback = "DYNAMIC_STRING_SUM";
@@ -112,6 +115,9 @@ $dynamic_formatter = new DynamicFormatter();
 $method_array_callback = [$dynamic_formatter, "wrap"];
 echo "method array call_user_func: " . call_user_func($method_array_callback, "ok") . "\n";
 echo "method array direct call: " . $method_array_callback(value: "direct") . "\n";
+$dynamic_method_name = callback_name_passthrough("wrap");
+$dynamic_method_array_callback = [$dynamic_formatter, $dynamic_method_name];
+echo "method array runtime direct call: " . $dynamic_method_array_callback(value: "runtime") . "\n";
 echo "literal method array direct call: " . ([$dynamic_formatter, "wrap"])(value: "literal direct") . "\n";
 echo "method array literal call_user_func_array: " . call_user_func_array([$dynamic_formatter, "wrap"], ["value" => "lit"]) . "\n";
 $dynamic_method_args = ["dyn"];
@@ -124,6 +130,10 @@ $method_spread_tail = [" tail"];
 echo "method array positional spread call_user_func: " . call_user_func($method_array_callback, "lead", ...$method_spread_tail) . "\n";
 $static_array_callback = [DynamicFormatter::class, "tag"];
 echo "static method array direct call: " . $static_array_callback(value: 8, prefix: "direct") . "\n";
+$dynamic_static_class = callback_name_passthrough(DynamicFormatter::class);
+$dynamic_static_method = callback_name_passthrough("tag");
+$dynamic_static_array_callback = [$dynamic_static_class, $dynamic_static_method];
+echo "static method array runtime direct call: " . ($dynamic_static_array_callback)(value: 10, prefix: "runtime") . "\n";
 echo "literal static method array direct call: " . ([DynamicFormatter::class, "tag"])(value: 9, prefix: "literal") . "\n";
 
 function passthrough_args(mixed $value): mixed {
