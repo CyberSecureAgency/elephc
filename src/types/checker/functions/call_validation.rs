@@ -105,11 +105,6 @@ fn is_assoc_spread_source(expr: &Expr, env: &TypeEnv) -> bool {
 }
 
 impl Checker {
-    /// Returns true if any argument in the slice is a named argument or a spread of an assoc-array.
-    pub(crate) fn has_named_args(args: &[Expr]) -> bool {
-        call_args::has_named_args(args)
-    }
-
     /// Normalizes arguments for a user-defined function call, allowing unknown named arguments
     /// to be collected into the variadic parameter.
     pub(crate) fn normalize_named_call_args(

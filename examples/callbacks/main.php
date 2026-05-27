@@ -247,6 +247,14 @@ $stored_value = 5;
 $stored_bump($stored_value);
 echo "stored selected callable by-ref: " . $stored_value . "\n";
 
+function run_named_bump(callable $cb) {
+    $named_value = 5;
+    $cb(value: $named_value);
+    echo "callable param named by-ref: " . $named_value . "\n";
+}
+
+run_named_bump($stored_bump);
+
 $method_sorted = [1, 3, 2];
 usort($method_sorted, $offsets->descending(...));
 echo "method callable usort: ";

@@ -175,7 +175,7 @@ fn emit_store_current_mixed_slot(index: usize, emitter: &mut Emitter) {
 }
 
 /// Boxes the current variable storage address as an invoker-only Mixed marker.
-fn emit_box_current_ref_arg_address_for_invoker(
+pub(crate) fn emit_box_current_ref_arg_address_for_invoker(
     var_name: &str,
     emitter: &mut Emitter,
     ctx: &Context,

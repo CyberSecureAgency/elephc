@@ -326,7 +326,7 @@ impl Checker {
     /// Looks up the variable's type in `env`, validates it is `PhpType::Callable`
     /// or an invokable object, then dispatches to signature specialization and
     /// `check_known_callable_call`. Falls back to the closure return type or
-    /// `PhpType::Int` if the callable signature is unknown.
+    /// `PhpType::Mixed` if the callable signature is unknown.
     pub(crate) fn infer_closure_call_type(
         &mut self,
         var: &str,
@@ -390,15 +390,6 @@ impl Checker {
                 &format!("callable ${}", var),
             );
         }
-        if Self::has_named_args(args) {
-            return Err(CompileError::new(
-                expr.span,
-                &format!(
-                    "callable ${} does not support named arguments without a known signature",
-                    var
-                ),
-            ));
-        }
         for arg in args {
             self.infer_type(arg, env)?;
         }
@@ -406,7 +397,7 @@ impl Checker {
             .closure_return_types
             .get(var)
             .cloned()
-            .unwrap_or(PhpType::Int))
+            .unwrap_or(PhpType::Mixed))
     }
 
     /// Infers the return type of an arbitrary expression callable call: `expr(...)`.
@@ -511,12 +502,6 @@ impl Checker {
             )?;
             return Ok(self.nullable_callable_result(ret_ty, nullable_callable));
         }
-        if Self::has_named_args(args) {
-            return Err(CompileError::new(
-                expr.span,
-                "Callable expression does not support named arguments without a known signature",
-            ));
-        }
         for arg in args {
             self.infer_type(arg, env)?;
         }
@@ -540,7 +525,7 @@ impl Checker {
             }
             _ => {}
         }
-        Ok(self.nullable_callable_result(PhpType::Int, nullable_callable)) // fallback for unknown callables
+        Ok(self.nullable_callable_result(PhpType::Mixed, nullable_callable)) // fallback for unknown callables
     }
 
     /// Returns the class name if `ty` is an invokable object or a single-member

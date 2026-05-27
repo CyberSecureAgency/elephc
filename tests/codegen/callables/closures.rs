@@ -638,6 +638,120 @@ echo $cb(...$args, factor: 4);
     let _ = fs::remove_dir_all(dir);
 }
 
+/// Verifies callable params with unknown signatures dereference named variable markers for by-value params.
+#[test]
+fn test_callable_param_unknown_signature_named_variable_arg_uses_descriptor_invoker() {
+    let source = r#"<?php
+function run(callable $cb): void {
+    $name = "Ada";
+    echo $cb(name: $name);
+    echo ":";
+    echo $name;
+}
+
+$cb = function(string $name): string {
+    return "hi " . $name;
+};
+
+run($cb);
+"#;
+    let out = compile_and_run(source);
+    assert_eq!(out, "hi Ada:Ada");
+
+    let dir = make_cli_test_dir("elephc_callable_param_unknown_named_value_invoker");
+    let (user_asm, _runtime_asm, _required_libraries) =
+        compile_source_to_asm_with_options(source, &dir, 8_388_608, false, false);
+    assert!(
+        user_asm.contains("callable_invoker"),
+        "callable params with unknown named variable args should route through descriptor invokers:\n{}",
+        user_asm
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
+/// Verifies callable params with unknown signatures preserve named by-reference variables.
+#[test]
+fn test_callable_param_unknown_signature_named_by_ref_arg_uses_descriptor_invoker() {
+    let source = r#"<?php
+function run(callable $cb): void {
+    $value = 5;
+    $cb(value: $value);
+    echo $value;
+}
+
+$cb = function(int &$value): void {
+    $value = $value + 7;
+};
+
+run($cb);
+"#;
+    let out = compile_and_run(source);
+    assert_eq!(out, "12");
+
+    let dir = make_cli_test_dir("elephc_callable_param_unknown_named_ref_invoker");
+    let (user_asm, _runtime_asm, _required_libraries) =
+        compile_source_to_asm_with_options(source, &dir, 8_388_608, false, false);
+    assert!(
+        user_asm.contains("callable_invoker"),
+        "callable params with unknown named by-ref args should route through descriptor invokers:\n{}",
+        user_asm
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
+/// Verifies unknown callable params preserve named by-reference variables after a spread prefix.
+#[test]
+fn test_callable_param_unknown_signature_named_spread_by_ref_arg_uses_descriptor_invoker() {
+    let source = r#"<?php
+function run(callable $cb): void {
+    $value = 5;
+    $args = [];
+    $cb(...$args, value: $value);
+    echo $value;
+}
+
+$cb = function(int &$value): void {
+    $value = $value + 11;
+};
+
+run($cb);
+"#;
+    let out = compile_and_run(source);
+    assert_eq!(out, "16");
+}
+
+/// Verifies receiver-bound callable params preserve named by-reference variables.
+#[test]
+fn test_callable_param_unknown_signature_method_named_by_ref_arg_uses_descriptor_invoker() {
+    let source = r#"<?php
+class Bumper {
+    public $step;
+
+    public function __construct($step) {
+        $this->step = $step;
+    }
+
+    public function bump(&$value) {
+        $value = $value + $this->step;
+    }
+}
+
+function run(callable $cb): void {
+    $value = 5;
+    $cb(value: $value);
+    echo $value;
+}
+
+$left = new Bumper(3);
+$right = new Bumper(7);
+$use_left = false;
+$cb = $use_left ? $left->bump(...) : $right->bump(...);
+run($cb);
+"#;
+    let out = compile_and_run(source);
+    assert_eq!(out, "12");
+}
+
 /// Verifies callable descriptors loaded from array elements invoke through runtime metadata.
 #[test]
 fn test_array_loaded_branch_selected_captured_callable_uses_descriptor_invoker() {

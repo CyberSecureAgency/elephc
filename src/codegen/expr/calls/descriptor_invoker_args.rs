@@ -29,18 +29,38 @@ pub(super) fn emit_descriptor_invoker_arg_array(
     ctx: &mut Context,
     data: &mut DataSection,
 ) -> PhpType {
+    let encode_ref_markers = should_encode_invoker_ref_args(sig, args_exprs);
     if has_explicit_named_and_spread(args_exprs) {
         if let Some(sig) = sig {
-            return emit_named_spread_invoker_arg_hash(args_exprs, sig, span, emitter, ctx, data);
+            return emit_named_spread_invoker_arg_hash(
+                args_exprs,
+                sig,
+                span,
+                encode_ref_markers,
+                emitter,
+                ctx,
+                data,
+            );
         }
-        return emit_untyped_named_spread_invoker_arg_hash(args_exprs, span, emitter, ctx, data);
+        return emit_untyped_named_spread_invoker_arg_hash(
+            args_exprs,
+            span,
+            encode_ref_markers,
+            emitter,
+            ctx,
+            data,
+        );
     }
 
     if let Some(spread_inner) = single_spread_inner(args_exprs) {
         return super::super::emit_expr(spread_inner, emitter, ctx, data);
     }
 
-    if plain_positional_args(args_exprs) && should_encode_invoker_ref_args(sig, args_exprs) {
+    if has_explicit_named(args_exprs) && encode_ref_markers {
+        return emit_named_invoker_arg_hash(args_exprs, true, emitter, ctx, data);
+    }
+
+    if plain_positional_args(args_exprs) && encode_ref_markers {
         return descriptor_arg_builder::emit_indexed_invoker_arg_array(
             args_exprs,
             true,
@@ -68,13 +88,17 @@ pub(super) fn emit_descriptor_invoker_arg_array(
 
 /// Returns true when a direct descriptor call mixes explicit named args with spread args.
 fn has_explicit_named_and_spread(args_exprs: &[Expr]) -> bool {
-    let has_explicit_named = args_exprs
-        .iter()
-        .any(|arg| matches!(arg.kind, ExprKind::NamedArg { .. }));
     let has_spread = args_exprs
         .iter()
         .any(|arg| matches!(arg.kind, ExprKind::Spread(_)));
-    has_explicit_named && has_spread
+    has_explicit_named(args_exprs) && has_spread
+}
+
+/// Returns true when any descriptor-call argument uses named-argument syntax.
+fn has_explicit_named(args_exprs: &[Expr]) -> bool {
+    args_exprs
+        .iter()
+        .any(|arg| matches!(arg.kind, ExprKind::NamedArg { .. }))
 }
 
 /// Returns true when any direct descriptor-call argument uses spread syntax.
@@ -93,13 +117,19 @@ fn plain_positional_args(args_exprs: &[Expr]) -> bool {
 
 /// Returns whether variable arguments should be encoded for runtime by-ref decisions.
 fn should_encode_invoker_ref_args(sig: Option<&FunctionSig>, args_exprs: &[Expr]) -> bool {
-    if !args_exprs
-        .iter()
-        .any(|arg| matches!(arg.kind, ExprKind::Variable(_)))
-    {
+    if !args_exprs.iter().any(arg_value_is_variable) {
         return false;
     }
     sig.is_none_or(|sig| sig.ref_params.iter().any(|is_ref| *is_ref))
+}
+
+/// Returns true when an argument's runtime value is sourced from a variable.
+fn arg_value_is_variable(arg: &Expr) -> bool {
+    match &arg.kind {
+        ExprKind::Variable(_) => true,
+        ExprKind::NamedArg { value, .. } => matches!(value.kind, ExprKind::Variable(_)),
+        _ => false,
+    }
 }
 
 /// Returns the spread source when the entire descriptor call is `(...$args)`.
@@ -149,6 +179,7 @@ fn emit_named_spread_invoker_arg_hash(
     args_exprs: &[Expr],
     sig: &FunctionSig,
     span: Span,
+    encode_ref_markers: bool,
     emitter: &mut Emitter,
     ctx: &mut Context,
     data: &mut DataSection,
@@ -175,7 +206,7 @@ fn emit_named_spread_invoker_arg_hash(
 
     for arg in plan.source_args.iter().skip(first_named_pos) {
         if let ExprKind::NamedArg { name, value } = &arg.kind {
-            emit_named_suffix_entry(name, value, emitter, ctx, data);
+            emit_named_suffix_entry(name, value, encode_ref_markers, emitter, ctx, data);
         }
     }
 
@@ -242,6 +273,7 @@ fn emit_descriptor_prefix_expr_as_mixed_hash(
 fn emit_untyped_named_spread_invoker_arg_hash(
     args_exprs: &[Expr],
     span: Span,
+    encode_ref_markers: bool,
     emitter: &mut Emitter,
     ctx: &mut Context,
     data: &mut DataSection,
@@ -265,11 +297,51 @@ fn emit_untyped_named_spread_invoker_arg_hash(
 
     for arg in args_exprs.iter().skip(first_named_pos) {
         if let ExprKind::NamedArg { name, value } = &arg.kind {
-            emit_named_suffix_entry(name, value, emitter, ctx, data);
+            emit_named_suffix_entry(name, value, encode_ref_markers, emitter, ctx, data);
         }
     }
 
     abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // return the completed untyped named+spread argument hash
+    PhpType::AssocArray {
+        key: Box::new(PhpType::Mixed),
+        value: Box::new(PhpType::Mixed),
+    }
+}
+
+/// Emits a Mixed associative hash for descriptor calls that use named arguments.
+fn emit_named_invoker_arg_hash(
+    args_exprs: &[Expr],
+    encode_ref_markers: bool,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> PhpType {
+    emitter.comment("descriptor invoker named argument hash");
+    emit_descriptor_prefix_expr_as_mixed_hash(None, emitter, ctx, data);
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // keep the descriptor named-argument hash alive while entries are inserted
+
+    let mut next_positional_key = 0usize;
+    for arg in args_exprs {
+        match &arg.kind {
+            ExprKind::NamedArg { name, value } => {
+                emit_named_suffix_entry(name, value, encode_ref_markers, emitter, ctx, data);
+            }
+            ExprKind::Spread(_) => {}
+            _ => {
+                emit_numeric_suffix_entry(
+                    next_positional_key,
+                    arg,
+                    encode_ref_markers,
+                    emitter,
+                    ctx,
+                    data,
+                );
+                next_positional_key += 1;
+            }
+        }
+    }
+
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // return the completed descriptor named-argument hash
     PhpType::AssocArray {
         key: Box::new(PhpType::Mixed),
         value: Box::new(PhpType::Mixed),
@@ -403,10 +475,55 @@ fn emit_invalid_descriptor_prefix_abort(emitter: &mut Emitter, data: &mut DataSe
 fn emit_named_suffix_entry(
     name: &str,
     value: &Expr,
+    encode_ref_markers: bool,
     emitter: &mut Emitter,
     ctx: &mut Context,
     data: &mut DataSection,
 ) {
+    emit_mixed_invoker_hash_value(value, encode_ref_markers, emitter, ctx, data);
+    emit_hash_set_current_mixed_named_suffix(name, emitter, data);
+}
+
+/// Inserts one numeric positional-prefix value into the descriptor invoker argument hash.
+fn emit_numeric_suffix_entry(
+    index: usize,
+    value: &Expr,
+    encode_ref_markers: bool,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) {
+    emit_mixed_invoker_hash_value(value, encode_ref_markers, emitter, ctx, data);
+    emit_hash_set_current_mixed_numeric_suffix(index, emitter);
+}
+
+/// Emits one descriptor-invoker hash value as boxed Mixed or a variable ref-cell marker.
+fn emit_mixed_invoker_hash_value(
+    value: &Expr,
+    encode_ref_markers: bool,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) {
+    if encode_ref_markers {
+        if let ExprKind::Variable(var_name) = &value.kind {
+            if !super::args::emit_ref_arg_variable_address(
+                var_name,
+                "descriptor invoker named arg",
+                emitter,
+                ctx,
+            ) {
+                panic!("descriptor invoker named argument variable not found");
+            }
+            descriptor_arg_builder::emit_box_current_ref_arg_address_for_invoker(
+                var_name,
+                emitter,
+                ctx,
+            );
+            return;
+        }
+    }
+
     let mut value_ty = super::super::emit_expr(value, emitter, ctx, data);
     let boxed_iterable =
         crate::codegen::emit_box_iterable_value_for_mixed_container(emitter, &mut value_ty);
@@ -419,7 +536,6 @@ fn emit_named_suffix_entry(
     } else if !boxed_iterable {
         retain_borrowed_mixed_named_suffix(emitter, value, &value_ty);
     }
-    emit_hash_set_current_mixed_named_suffix(name, emitter, data);
 }
 
 /// Retains a borrowed Mixed suffix value before storing it in the descriptor argument hash.
@@ -458,6 +574,33 @@ fn emit_hash_set_current_mixed_named_suffix(
             abi::emit_load_temporary_stack_slot(emitter, "rdi", 0);
             abi::emit_symbol_address(emitter, "rsi", &key_label);
             abi::emit_load_int_immediate(emitter, "rdx", key_len as i64);
+            abi::emit_call_label(emitter, "__rt_hash_set");
+            abi::emit_store_to_address(emitter, result_reg, "rsp", 0);
+        }
+    }
+}
+
+/// Calls `__rt_hash_set` to store the current boxed Mixed value under an integer key.
+fn emit_hash_set_current_mixed_numeric_suffix(index: usize, emitter: &mut Emitter) {
+    let result_reg = abi::int_result_reg(emitter);
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction("mov x3, x0");                                  // pass the boxed positional argument as the hash value payload
+            emitter.instruction("mov x4, xzr");                                 // boxed Mixed hash entries do not use a high payload word
+            abi::emit_load_int_immediate(emitter, "x5", crate::codegen::runtime_value_tag(&PhpType::Mixed) as i64);
+            abi::emit_load_temporary_stack_slot(emitter, "x0", 0);
+            abi::emit_load_int_immediate(emitter, "x1", index as i64);
+            abi::emit_load_int_immediate(emitter, "x2", -1);
+            abi::emit_call_label(emitter, "__rt_hash_set");
+            abi::emit_store_to_address(emitter, result_reg, "sp", 0);
+        }
+        Arch::X86_64 => {
+            emitter.instruction("mov rcx, rax");                                // pass the boxed positional argument as the hash value payload
+            abi::emit_load_int_immediate(emitter, "r8", 0);
+            abi::emit_load_int_immediate(emitter, "r9", crate::codegen::runtime_value_tag(&PhpType::Mixed) as i64);
+            abi::emit_load_temporary_stack_slot(emitter, "rdi", 0);
+            abi::emit_load_int_immediate(emitter, "rsi", index as i64);
+            abi::emit_load_int_immediate(emitter, "rdx", -1);
             abi::emit_call_label(emitter, "__rt_hash_set");
             abi::emit_store_to_address(emitter, result_reg, "rsp", 0);
         }

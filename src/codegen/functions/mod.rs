@@ -312,23 +312,27 @@ fn allocate_incoming_param(ctx: &mut Context, pname: &str, pty: &PhpType, is_ref
     }
 }
 
+/// Records declared callable parameters and seeds known callable parameter signatures.
+///
 /// Looks up callable-typed parameters in `ctx.callable_param_sigs` by scope and
-/// populates `ctx.closure_sigs` so that closure captures can resolve their signatures.
-/// No-ops if `scope` is `None`.
+/// populates `ctx.closure_sigs` so captures can resolve signatures while callsites
+/// route through descriptor metadata only for source-declared `callable` params.
 fn seed_callable_param_sigs(ctx: &mut Context, scope: Option<&str>, sig: &FunctionSig) {
-    let Some(scope) = scope else {
-        return;
-    };
-    for (pname, pty) in &sig.params {
+    for (idx, (pname, pty)) in sig.params.iter().enumerate() {
         if pty != &PhpType::Callable {
             continue;
         }
-        if let Some(callable_sig) = ctx
-            .callable_param_sigs
-            .get(&(scope.to_string(), pname.clone()))
-            .cloned()
-        {
-            ctx.closure_sigs.insert(pname.clone(), callable_sig);
+        if sig.declared_params.get(idx).copied().unwrap_or(false) {
+            ctx.callable_param_names.insert(pname.clone());
+        }
+        if let Some(scope) = scope {
+            if let Some(callable_sig) = ctx
+                .callable_param_sigs
+                .get(&(scope.to_string(), pname.clone()))
+                .cloned()
+            {
+                ctx.closure_sigs.insert(pname.clone(), callable_sig);
+            }
         }
     }
 }

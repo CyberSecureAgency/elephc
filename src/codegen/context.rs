@@ -183,6 +183,8 @@ pub struct Context {
     pub expected_first_class_callable_sig: Option<FunctionSig>,
     /// Callable signatures inferred for user-function callable parameters.
     pub callable_param_sigs: HashMap<(String, String), FunctionSig>,
+    /// Callable-typed parameters in the current emitted function or method.
+    pub callable_param_names: HashSet<String>,
     /// Callable signatures inferred for user-function callable returns.
     pub callable_return_sigs: HashMap<String, FunctionSig>,
     /// Captured variables per closure variable name: maps $fn -> [(capture_name, type, by_ref)].
@@ -334,6 +336,7 @@ impl Context {
             closure_sigs: HashMap::new(),
             expected_first_class_callable_sig: None,
             callable_param_sigs: HashMap::new(),
+            callable_param_names: HashSet::new(),
             callable_return_sigs: HashMap::new(),
             closure_captures: HashMap::new(),
             runtime_callable_builtin_wrappers: HashMap::new(),
