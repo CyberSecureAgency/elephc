@@ -449,25 +449,6 @@ fn test_error_call_user_func_array_wrong_args() {
     );
 }
 
-/// Verifies that array_map still rejects complex captured callable expressions.
-#[test]
-fn test_error_array_map_rejects_complex_captured_callable_expression() {
-    expect_error(
-        r#"<?php
-class FilterBox {
-    public function keep($n) {
-        return true;
-    }
-}
-
-$box = new FilterBox();
-$use_first = true;
-array_map($use_first ? $box->keep(...) : $box->keep(...), [1]);
-"#,
-        "array_map() callback does not support complex expressions",
-    );
-}
-
 // --- v0.8 system function errors ---
 
 /// Verifies that error spread non array.

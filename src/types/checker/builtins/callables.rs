@@ -471,7 +471,10 @@ fn callback_builtin_allows_complex_descriptor_env(
 ) -> bool {
     matches!(
         label,
-        "array_filter() callback" | "array_reduce() callback" | "array_walk() callback"
+        "array_map() callback"
+            | "array_filter() callback"
+            | "array_reduce() callback"
+            | "array_walk() callback"
     )
         && matches!(
             callback_descriptor_env_ownership(callback),

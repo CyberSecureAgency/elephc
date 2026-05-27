@@ -220,6 +220,64 @@ echo $values[1];
     assert_eq!(out, "[a]:[b]");
 }
 
+/// Verifies that descriptor-backed `array_map` can invoke a runtime-selected receiver method.
+#[test]
+fn test_array_map_accepts_complex_captured_callable_expression() {
+    let out = compile_and_run(
+        r#"<?php
+class RuntimeMapper {
+    public $offset;
+
+    public function __construct($offset) {
+        $this->offset = $offset;
+    }
+
+    public function add($value) {
+        return $value + $this->offset;
+    }
+}
+
+$left = new RuntimeMapper(10);
+$right = new RuntimeMapper(20);
+$use_left = false;
+$values = array_map($use_left ? $left->add(...) : $right->add(...), [1, 2]);
+echo $values[0];
+echo ",";
+echo $values[1];
+"#,
+    );
+    assert_eq!(out, "21,22");
+}
+
+/// Verifies that descriptor-backed `array_map` transfers string results without dangling Mixed storage.
+#[test]
+fn test_array_map_accepts_complex_captured_callable_expression_string_return() {
+    let out = compile_and_run(
+        r#"<?php
+class RuntimeFormatter {
+    public $prefix;
+
+    public function __construct($prefix) {
+        $this->prefix = $prefix;
+    }
+
+    public function tag(string $value): string {
+        return $this->prefix . $value;
+    }
+}
+
+$left = new RuntimeFormatter("L:");
+$right = new RuntimeFormatter("R:");
+$use_left = false;
+$values = array_map($use_left ? $left->tag(...) : $right->tag(...), ["a", "b"]);
+echo $values[0];
+echo ",";
+echo $values[1];
+"#,
+    );
+    assert_eq!(out, "R:a,R:b");
+}
+
 // Tests `array_filter` with an instance method first-class callable, verifying the filtered
 // array contains only elements for which the predicate returns true.
 #[test]

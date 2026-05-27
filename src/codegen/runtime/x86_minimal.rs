@@ -161,6 +161,7 @@ pub(super) fn emit_runtime_linux_x86_64_minimal(emitter: &mut Emitter) {
     arrays::emit_array_unique_refcounted(emitter);
     arrays::emit_array_map(emitter);
     arrays::emit_array_map_str(emitter);
+    arrays::emit_array_map_str_owned(emitter);
     arrays::emit_array_filter(emitter);
     arrays::emit_array_filter_refcounted(emitter);
     arrays::emit_array_reduce(emitter);
@@ -394,6 +395,7 @@ mod tests {
         assert!(asm.contains("__rt_array_push_int:\n"));
         assert!(asm.contains("__rt_array_push_refcounted:\n"));
         assert!(asm.contains("__rt_array_push_str:\n"));
+        assert!(asm.contains("__rt_array_map_str_owned:\n"));
         assert!(asm.contains("__rt_array_union:\n"));
         assert!(asm.contains("__rt_array_hash_union:\n"));
         assert!(asm.contains("__rt_hash_array_union:\n"));

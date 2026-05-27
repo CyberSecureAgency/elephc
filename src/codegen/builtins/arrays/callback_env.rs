@@ -341,6 +341,21 @@ pub(crate) fn descriptor_callback_env_supported(callback: &Expr) -> bool {
     )
 }
 
+/// Retains a borrowed descriptor result before later source-order argument evaluation.
+pub(crate) fn retain_borrowed_descriptor_callback_result(
+    callback: &Expr,
+    emitter: &mut Emitter,
+) -> bool {
+    if !matches!(
+        callable_descriptor_result_ownership(callback),
+        HeapOwnership::Borrowed
+    ) {
+        return false;
+    }
+    crate::codegen::callable_descriptor::emit_retain_current_descriptor(emitter);
+    true
+}
+
 /// Emits a descriptor-backed callback environment from the current descriptor result.
 pub(crate) fn emit_descriptor_callback_env_from_result(
     callback: &Expr,
@@ -350,11 +365,52 @@ pub(crate) fn emit_descriptor_callback_env_from_result(
     emitter: &mut Emitter,
     ctx: &mut Context,
 ) -> Option<DescriptorCallbackEnv> {
+    emit_descriptor_callback_env_from_result_inner(
+        callback,
+        array_reg,
+        visible_arg_types,
+        descriptor_return_type,
+        true,
+        emitter,
+        ctx,
+    )
+}
+
+/// Emits a descriptor-backed callback environment from a descriptor already retained if borrowed.
+pub(crate) fn emit_descriptor_callback_env_from_retained_result(
+    callback: &Expr,
+    array_reg: &str,
+    visible_arg_types: Vec<PhpType>,
+    descriptor_return_type: PhpType,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+) -> Option<DescriptorCallbackEnv> {
+    emit_descriptor_callback_env_from_result_inner(
+        callback,
+        array_reg,
+        visible_arg_types,
+        descriptor_return_type,
+        false,
+        emitter,
+        ctx,
+    )
+}
+
+/// Emits descriptor callback environment storage, optionally retaining borrowed descriptors.
+fn emit_descriptor_callback_env_from_result_inner(
+    callback: &Expr,
+    array_reg: &str,
+    visible_arg_types: Vec<PhpType>,
+    descriptor_return_type: PhpType,
+    retain_borrowed: bool,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+) -> Option<DescriptorCallbackEnv> {
     let ownership = callable_descriptor_result_ownership(callback);
     if !matches!(ownership, HeapOwnership::Owned | HeapOwnership::Borrowed) {
         return None;
     }
-    if matches!(ownership, HeapOwnership::Borrowed) {
+    if retain_borrowed && matches!(ownership, HeapOwnership::Borrowed) {
         crate::codegen::callable_descriptor::emit_retain_current_descriptor(emitter);
     }
 

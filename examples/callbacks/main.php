@@ -165,12 +165,18 @@ array_walk([1, 2], $offsets->show_shifted(...));
 echo "\n";
 
 class SelectedOffsetCallbacks {
+    public $map_bonus;
     public $reduce_bonus;
     public $walk_bonus;
 
-    public function __construct($reduce_bonus, $walk_bonus) {
+    public function __construct($map_bonus, $reduce_bonus, $walk_bonus) {
+        $this->map_bonus = $map_bonus;
         $this->reduce_bonus = $reduce_bonus;
         $this->walk_bonus = $walk_bonus;
+    }
+
+    public function map_selected($item) {
+        return $item + $this->map_bonus;
     }
 
     public function add_selected($carry, $item) {
@@ -182,9 +188,11 @@ class SelectedOffsetCallbacks {
     }
 }
 
-$small_offsets = new SelectedOffsetCallbacks(1, 10);
-$large_offsets = new SelectedOffsetCallbacks(10, 20);
+$small_offsets = new SelectedOffsetCallbacks(5, 1, 10);
+$large_offsets = new SelectedOffsetCallbacks(20, 10, 20);
 $use_small_offsets = false;
+$selected_map = array_map($use_small_offsets ? $small_offsets->map_selected(...) : $large_offsets->map_selected(...), [1, 2]);
+echo "selected callable array_map: " . $selected_map[0] . " " . $selected_map[1] . "\n";
 echo "selected callable array_reduce: " . array_reduce([1, 2], $use_small_offsets ? $small_offsets->add_selected(...) : $large_offsets->add_selected(...), 0) . "\n";
 echo "selected callable array_walk: ";
 array_walk([1, 2], $use_small_offsets ? $small_offsets->show_selected(...) : $large_offsets->show_selected(...));

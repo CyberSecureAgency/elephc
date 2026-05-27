@@ -239,6 +239,7 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter) {
     arrays::emit_natsort(emitter);
     arrays::emit_array_map(emitter);
     arrays::emit_array_map_str(emitter);
+    arrays::emit_array_map_str_owned(emitter);
     arrays::emit_array_filter(emitter);
     arrays::emit_array_filter_refcounted(emitter);
     arrays::emit_array_reduce(emitter);

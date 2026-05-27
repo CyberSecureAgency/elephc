@@ -7,7 +7,7 @@
 //!
 //! Key details:
 //! - Runtime array helpers expect callee-saved loop registers to survive callback invocation.
-//! - Descriptor invokers return boxed `Mixed`; callback runtimes consume scalar truthiness.
+//! - Descriptor invokers return boxed `Mixed`; wrappers cast or detach results before returning.
 
 use crate::codegen::abi;
 use crate::codegen::callable_descriptor;
@@ -267,6 +267,11 @@ fn emit_cast_descriptor_mixed_result_for_callback(emitter: &mut Emitter, return_
             abi::emit_call_label(emitter, "__rt_mixed_cast_float");            // convert the boxed callback result to a floating-point value
             emit_release_preserved_mixed_result_after_cast(emitter, &PhpType::Float);
         }
+        PhpType::Str => {
+            abi::emit_push_reg(emitter, abi::int_result_reg(emitter));          // preserve the owned Mixed callback result while casting to string
+            abi::emit_call_label(emitter, "__rt_mixed_cast_string");           // convert the boxed callback result to a string payload
+            emit_release_preserved_mixed_result_after_cast(emitter, &PhpType::Str);
+        }
         PhpType::Void | PhpType::Never => {
             abi::emit_decref_if_refcounted(emitter, &PhpType::Mixed);
         }
@@ -276,6 +281,17 @@ fn emit_cast_descriptor_mixed_result_for_callback(emitter: &mut Emitter, return_
 
 /// Releases the preserved boxed-Mixed result after a scalar cast and restores the cast value.
 fn emit_release_preserved_mixed_result_after_cast(emitter: &mut Emitter, cast_ty: &PhpType) {
+    if matches!(cast_ty.codegen_repr(), PhpType::Str) {
+        let (ptr_reg, len_reg) = abi::string_result_regs(emitter);
+        abi::emit_call_label(emitter, "__rt_str_persist");                     // detach the string result from the boxed Mixed owner before release
+        abi::emit_push_reg_pair(emitter, ptr_reg, len_reg);                    // preserve the detached string while releasing the boxed Mixed result
+        abi::emit_load_temporary_stack_slot(emitter, abi::int_result_reg(emitter), 16);
+        abi::emit_decref_if_refcounted(emitter, &PhpType::Mixed);
+        abi::emit_pop_reg_pair(emitter, ptr_reg, len_reg);
+        abi::emit_release_temporary_stack(emitter, 16);
+        return;
+    }
+
     abi::emit_push_result_value(emitter, cast_ty);
     abi::emit_load_temporary_stack_slot(emitter, abi::int_result_reg(emitter), 16);
     abi::emit_decref_if_refcounted(emitter, &PhpType::Mixed);

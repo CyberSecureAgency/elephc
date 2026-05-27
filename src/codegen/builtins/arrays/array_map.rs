@@ -35,10 +35,13 @@ use super::callback_env;
 /// slot 0, the array pointer in the last slot, and capture values in between.
 /// The wrapper label address is passed as the first argument, the array pointer
 /// as the second, and the environment pointer as the third.
+/// Branch-shaped captured callable expressions store the selected descriptor
+/// itself in the environment and invoke it through the uniform descriptor invoker.
 ///
 /// ## Runtime helpers
 /// - `__rt_array_map`: result array element type is `PhpType::Int`
 /// - `__rt_array_map_str`: result array element type is `PhpType::Str`
+/// - `__rt_array_map_str_owned`: descriptor-backed string results that are already owned
 ///
 /// Returns `Some(PhpType::Array(Box::new(element_type)))` where element type is
 /// `Str` if `callback_returns_str` is true, otherwise `Int`.
@@ -62,6 +65,59 @@ pub fn emit(
         PhpType::Array(elem_ty) => elem_ty.codegen_repr(),
         _ => PhpType::Int,
     };
+
+    if callback_env::expr_call_needs_descriptor_callback_env(&args[0], ctx)
+        && callback_env::descriptor_callback_env_supported(&args[0])
+    {
+        // -- evaluate the selected descriptor before the mapped array, matching PHP source order --
+        emit_expr(&args[0], emitter, ctx, data);
+        let retained_borrowed =
+            callback_env::retain_borrowed_descriptor_callback_result(&args[0], emitter);
+        abi::emit_push_reg(emitter, result_reg);                                // preserve the selected callable descriptor across mapped-array evaluation
+
+        // -- evaluate the array argument after the callback expression --
+        let _arr_ty = emit_expr(&args[1], emitter, ctx, data);
+        emitter.instruction(&format!("mov {}, {}", array_arg_reg, result_reg)); // preserve the mapped array pointer before restoring the descriptor
+        abi::emit_pop_reg(emitter, result_reg);                                 // restore the selected callable descriptor as the current result
+
+        let descriptor_return_type = if returns_str {
+            PhpType::Str
+        } else {
+            PhpType::Int
+        };
+        let wrapper = if retained_borrowed {
+            callback_env::emit_descriptor_callback_env_from_retained_result(
+                &args[0],
+                array_arg_reg,
+                vec![source_elem_ty.clone()],
+                descriptor_return_type.clone(),
+                emitter,
+                ctx,
+            )
+        } else {
+            callback_env::emit_descriptor_callback_env_from_result(
+                &args[0],
+                array_arg_reg,
+                vec![source_elem_ty.clone()],
+                descriptor_return_type.clone(),
+                emitter,
+                ctx,
+            )
+        }
+        .expect("descriptor callback env support checked before emitting callback");
+
+        callback_env::load_env_slot_to_reg(emitter, array_arg_reg, wrapper.array_slot_offset);
+        abi::emit_symbol_address(emitter, callback_arg_reg, &wrapper.wrapper_label);
+        callback_env::load_env_pointer_to_reg(emitter, env_arg_reg);
+        if returns_str {
+            abi::emit_call_label(emitter, "__rt_array_map_str_owned");          // call the string map helper that consumes descriptor-owned string results
+            callback_env::release_descriptor_callback_env(&wrapper, emitter);
+            return Some(PhpType::Array(Box::new(PhpType::Str)));
+        }
+        abi::emit_call_label(emitter, "__rt_array_map");                        // call the scalar array_map runtime helper with a descriptor environment
+        callback_env::release_descriptor_callback_env(&wrapper, emitter);
+        return Some(PhpType::Array(Box::new(PhpType::Int)));
+    }
 
     // -- evaluate the callback argument first, matching PHP source order --
     let captures =
