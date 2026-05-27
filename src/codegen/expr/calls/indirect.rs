@@ -185,7 +185,7 @@ fn emit_descriptor_invoker_expr_call(
     }
     crate::codegen::abi::emit_push_reg(emitter, crate::codegen::abi::int_result_reg(emitter)); // preserve the callable descriptor while building direct-call arguments
 
-    let arg_array = Expr::new(ExprKind::ArrayLiteral(args_exprs.to_vec()), callee.span);
+    let arg_array = descriptor_invoker_arg_array_expr(args_exprs, callee.span);
     let arr_ty = crate::codegen::expr::emit_expr(&arg_array, emitter, ctx, data);
     crate::codegen::abi::emit_push_reg(emitter, crate::codegen::abi::int_result_reg(emitter)); // preserve the owned descriptor-invoker argument array
 
@@ -203,6 +203,38 @@ fn emit_descriptor_invoker_expr_call(
     release_preserved_expr_call_arg_array_after_mixed_result(&arr_ty, emitter);
     release_preserved_expr_call_descriptor_after_mixed_result(emitter);
     Some(PhpType::Mixed)
+}
+
+/// Builds the synthetic argument container passed to a descriptor invoker.
+fn descriptor_invoker_arg_array_expr(args_exprs: &[Expr], span: crate::span::Span) -> Expr {
+    let has_explicit_named = args_exprs
+        .iter()
+        .any(|arg| matches!(arg.kind, ExprKind::NamedArg { .. }));
+    if !has_explicit_named {
+        return Expr::new(ExprKind::ArrayLiteral(args_exprs.to_vec()), span);
+    }
+
+    let mut next_positional_key = 0i64;
+    let mut entries = Vec::with_capacity(args_exprs.len());
+    for arg in args_exprs {
+        match &arg.kind {
+            ExprKind::NamedArg { name, value } => {
+                entries.push((
+                    Expr::new(ExprKind::StringLiteral(name.clone()), arg.span),
+                    (**value).clone(),
+                ));
+            }
+            _ => {
+                entries.push((
+                    Expr::new(ExprKind::IntLiteral(next_positional_key), arg.span),
+                    arg.clone(),
+                ));
+                next_positional_key += 1;
+            }
+        }
+    }
+
+    Expr::new(ExprKind::ArrayLiteralAssoc(entries), span)
 }
 
 /// Releases the synthetic direct-call argument array while preserving the Mixed result.
@@ -244,21 +276,37 @@ fn callee_sig_for_expr(
     callee: &Expr,
     ctx: &Context,
 ) -> Option<crate::types::FunctionSig> {
+    if let Some(sig) = crate::codegen::callables::callable_sig(callee, ctx) {
+        return Some(sig);
+    }
     match &callee.kind {
-        ExprKind::Variable(var_name) => ctx.closure_sigs.get(var_name).cloned(),
-        ExprKind::ArrayAccess { array, .. } => {
-            if let ExprKind::Variable(arr_name) = &array.kind {
-                ctx.closure_sigs.get(arr_name).cloned()
-            } else {
-                None
-            }
+        ExprKind::Closure { .. } => ctx.deferred_closures.last().map(|closure| closure.sig.clone()),
+        ExprKind::Assignment { value, .. } => callee_sig_for_expr(value, ctx),
+        ExprKind::Ternary {
+            then_expr,
+            else_expr,
+            ..
+        } => matching_expr_call_branch_sig(then_expr, else_expr, ctx),
+        ExprKind::ShortTernary { value, default }
+        | ExprKind::NullCoalesce { value, default } => {
+            matching_expr_call_branch_sig(value, default, ctx)
         }
-        ExprKind::FirstClassCallable(target) => super::first_class_callable_sig(target, ctx),
-        ExprKind::FunctionCall { name, .. } => ctx
-            .callable_return_sigs
-            .get(name.as_str())
-            .cloned(),
         _ => None,
+    }
+}
+
+/// Returns a branch callable signature only when both branches have the same contract.
+fn matching_expr_call_branch_sig(
+    left: &Expr,
+    right: &Expr,
+    ctx: &Context,
+) -> Option<crate::types::FunctionSig> {
+    let left_sig = callee_sig_for_expr(left, ctx)?;
+    let right_sig = callee_sig_for_expr(right, ctx)?;
+    if left_sig == right_sig {
+        Some(left_sig)
+    } else {
+        None
     }
 }
 

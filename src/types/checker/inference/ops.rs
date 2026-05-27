@@ -501,6 +501,31 @@ impl Checker {
             }
             _ => {}
         }
+        if let Some(sig) = self.resolve_expr_callable_sig(callee, env)? {
+            let has_explicit_named = args
+                .iter()
+                .any(|arg| matches!(arg.kind, ExprKind::NamedArg { .. }));
+            let has_spread = args
+                .iter()
+                .any(|arg| matches!(arg.kind, ExprKind::Spread(_)));
+            if has_explicit_named
+                && has_spread
+                && self.expr_call_complex_callee_needs_runtime_capture(callee)
+            {
+                return Err(CompileError::new(
+                    expr.span,
+                    "Callable expression descriptor invoker does not support named arguments combined with spread arguments",
+                ));
+            }
+            let ret_ty = self.check_known_callable_call(
+                &sig,
+                args,
+                expr.span,
+                env,
+                "callable expression",
+            )?;
+            return Ok(self.nullable_callable_result(ret_ty, nullable_callable));
+        }
         if Self::has_named_args(args) {
             return Err(CompileError::new(
                 expr.span,
