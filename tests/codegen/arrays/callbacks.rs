@@ -441,6 +441,82 @@ foreach ($uasorted as $value) {
     assert_eq!(out, "34:23:11,12,:321:321:321");
 }
 
+/// Verifies runtime-selected instance callable arrays route array_map through Mixed descriptors.
+#[test]
+fn test_dynamic_instance_callable_array_variable_array_map_mixed_result() {
+    let out = compile_and_run(
+        r#"<?php
+class DynamicInstanceMapRuntime {
+    public string $prefix = "";
+
+    public function wrap(string $name): string {
+        return $this->prefix . $name;
+    }
+
+    public function length(string $name): int {
+        return strlen($name);
+    }
+}
+
+$box = new DynamicInstanceMapRuntime();
+$box->prefix = "first:";
+$method = "wrap";
+$wrap = [$box, $method];
+$method = "length";
+$length = [$box, $method];
+
+$box = new DynamicInstanceMapRuntime();
+$box->prefix = "second:";
+
+$names = array_map($wrap, ["Ada", "Lin"]);
+echo $names[0];
+echo "|";
+echo $names[1];
+echo ":";
+$lengths = array_map($length, ["Ada", "Linus"]);
+echo $lengths[0];
+echo "|";
+echo $lengths[1];
+"#,
+    );
+    assert_eq!(out, "first:Ada|first:Lin:3|5");
+}
+
+/// Verifies runtime-selected static callable arrays route array_map through Mixed descriptors.
+#[test]
+fn test_dynamic_static_callable_array_variable_array_map_mixed_result() {
+    let out = compile_and_run(
+        r#"<?php
+class DynamicStaticMapRuntime {
+    public static function wrap(string $name): string {
+        return "static:" . $name;
+    }
+
+    public static function length(string $name): int {
+        return strlen($name);
+    }
+}
+
+$class = "DynamicStaticMapRuntime";
+$method = "wrap";
+$wrap = [$class, $method];
+$method = "length";
+$length = [$class, $method];
+
+$names = array_map($wrap, ["Ada", "Lin"]);
+echo $names[0];
+echo "|";
+echo $names[1];
+echo ":";
+$lengths = array_map($length, ["Ada", "Linus"]);
+echo $lengths[0];
+echo "|";
+echo $lengths[1];
+"#,
+    );
+    assert_eq!(out, "static:Ada|static:Lin:3|5");
+}
+
 /// Verifies runtime-selected instance callable arrays route fixed-return callbacks through descriptors.
 #[test]
 fn test_dynamic_instance_callable_array_variable_fixed_callback_runtimes() {

@@ -17,6 +17,7 @@ use crate::parser::ast::Expr;
 use crate::types::PhpType;
 use super::array_map_callback_returns_str::callback_returns_str;
 use super::callback_env;
+use super::runtime_callable_array_callback;
 
 /// Emits the `array_map` builtin call.
 ///
@@ -114,6 +115,25 @@ pub fn emit(
         abi::emit_call_label(emitter, "__rt_array_map");                        // call the scalar map helper with a callable-array descriptor environment
         callback_env::release_descriptor_callback_env(&wrapper, emitter);
         return Some(PhpType::Array(Box::new(PhpType::Int)));
+    }
+
+    if runtime_callable_array_callback::emit_before_array(
+        &args[0],
+        &args[1],
+        array_arg_reg,
+        vec![source_elem_ty.clone()],
+        PhpType::Mixed,
+        emitter,
+        ctx,
+        data,
+        |wrapper, emitter, _ctx, _data| {
+            callback_env::load_env_slot_to_reg(emitter, array_arg_reg, wrapper.array_slot_offset);
+            abi::emit_symbol_address(emitter, callback_arg_reg, &wrapper.wrapper_label);
+            callback_env::load_env_pointer_to_reg(emitter, env_arg_reg);
+            abi::emit_call_label(emitter, "__rt_array_map_mixed");             // call the mixed-result map helper with a runtime callable-array descriptor environment
+        },
+    ) {
+        return Some(PhpType::Array(Box::new(PhpType::Mixed)));
     }
 
     if callback_env::expr_call_needs_descriptor_callback_env(&args[0], ctx)

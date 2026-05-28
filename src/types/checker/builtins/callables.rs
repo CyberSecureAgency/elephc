@@ -710,7 +710,8 @@ pub(crate) fn check_callback_builtin_call(
 fn callback_builtin_allows_runtime_callable_array(label: &str) -> bool {
     matches!(
         label,
-        "array_filter() callback"
+        "array_map() callback"
+            | "array_filter() callback"
             | "array_walk() callback"
             | "usort() callback"
             | "uksort() callback"

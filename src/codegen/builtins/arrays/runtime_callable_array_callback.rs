@@ -9,6 +9,8 @@
 //! Key details:
 //! - The caller must have already pushed the source array pointer before callback
 //!   selection, preserving PHP argument evaluation order for second-argument callbacks.
+//! - For first-argument callbacks such as `array_map()`, this module can reserve
+//!   the saved-array slot before selector evaluation and fill it after the array is evaluated.
 //! - Each matched descriptor gets a shape-specific wrapper so instance methods can
 //!   receive their saved receiver prefix while static methods receive only visible args.
 
@@ -96,6 +98,70 @@ where
     }
 }
 
+/// Emits runtime callable-array descriptor selection before evaluating the source array.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn emit_before_array<F>(
+    callback: &Expr,
+    array: &Expr,
+    array_reg: &str,
+    visible_arg_types: Vec<PhpType>,
+    descriptor_return_type: PhpType,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+    mut emit_runtime_call: F,
+) -> bool
+where
+    F: FnMut(
+        &callback_env::DescriptorCallbackEnv,
+        &mut Emitter,
+        &mut Context,
+        &mut DataSection,
+    ),
+{
+    let ExprKind::Variable(var_name) = &callback.kind else {
+        return false;
+    };
+    if ctx.callable_array_targets.contains_key(var_name) {
+        return false;
+    }
+    let Some(var_info) = ctx.variables.get(var_name) else {
+        return false;
+    };
+
+    match var_info.ty.codegen_repr() {
+        PhpType::Array(elem_ty) if matches!(elem_ty.codegen_repr(), PhpType::Mixed) => {
+            emit_mixed_before_array(
+                var_name,
+                array,
+                array_reg,
+                visible_arg_types,
+                descriptor_return_type,
+                emitter,
+                ctx,
+                data,
+                &mut emit_runtime_call,
+            );
+            true
+        }
+        PhpType::Array(elem_ty) if matches!(elem_ty.codegen_repr(), PhpType::Str) => {
+            emit_string_before_array(
+                var_name,
+                array,
+                array_reg,
+                visible_arg_types,
+                descriptor_return_type,
+                emitter,
+                ctx,
+                data,
+                &mut emit_runtime_call,
+            );
+            true
+        }
+        _ => false,
+    }
+}
+
 /// Emits descriptor selection for heterogeneous callable arrays above a saved source array.
 #[allow(clippy::too_many_arguments)]
 fn emit_mixed_after_saved_array<F>(
@@ -135,6 +201,50 @@ where
     abi::emit_release_temporary_stack(emitter, MIXED_SELECTOR_BYTES + SAVED_ARRAY_BYTES);
 }
 
+/// Emits descriptor selection for heterogeneous callable arrays before the source array.
+#[allow(clippy::too_many_arguments)]
+fn emit_mixed_before_array<F>(
+    var_name: &str,
+    array: &Expr,
+    array_reg: &str,
+    visible_arg_types: Vec<PhpType>,
+    descriptor_return_type: PhpType,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+    emit_runtime_call: &mut F,
+)
+where
+    F: FnMut(
+        &callback_env::DescriptorCallbackEnv,
+        &mut Emitter,
+        &mut Context,
+        &mut DataSection,
+    ),
+{
+    let instance_cases =
+        crate::codegen::callable_dispatch::runtime_public_instance_method_cases(ctx, data);
+    let static_cases =
+        crate::codegen::callable_dispatch::runtime_public_static_method_cases(ctx, data);
+    abi::emit_reserve_temporary_stack(emitter, SAVED_ARRAY_BYTES);
+    emit_mixed_selector_slots(var_name, emitter, ctx, data);
+    crate::codegen::expr::emit_expr(array, emitter, ctx, data);
+    emitter.instruction(&format!("mov {}, {}", array_reg, abi::int_result_reg(emitter))); // preserve the mapped array pointer before descriptor-case selection
+    emit_store_saved_array_reg(array_reg, MIXED_SELECTOR_BYTES, emitter);
+    emit_mixed_dispatch(
+        &instance_cases,
+        &static_cases,
+        array_reg,
+        &visible_arg_types,
+        &descriptor_return_type,
+        emitter,
+        ctx,
+        data,
+        emit_runtime_call,
+    );
+    abi::emit_release_temporary_stack(emitter, MIXED_SELECTOR_BYTES + SAVED_ARRAY_BYTES);
+}
+
 /// Emits descriptor selection for string callable arrays above a saved source array.
 #[allow(clippy::too_many_arguments)]
 fn emit_string_after_saved_array<F>(
@@ -158,6 +268,47 @@ where
     let static_cases =
         crate::codegen::callable_dispatch::runtime_public_static_method_cases(ctx, data);
     emit_string_selector_slots(var_name, emitter, ctx, data);
+    emit_string_dispatch(
+        &static_cases,
+        array_reg,
+        &visible_arg_types,
+        &descriptor_return_type,
+        emitter,
+        ctx,
+        data,
+        emit_runtime_call,
+    );
+    abi::emit_release_temporary_stack(emitter, STRING_SELECTOR_BYTES + SAVED_ARRAY_BYTES);
+}
+
+/// Emits descriptor selection for string callable arrays before the source array.
+#[allow(clippy::too_many_arguments)]
+fn emit_string_before_array<F>(
+    var_name: &str,
+    array: &Expr,
+    array_reg: &str,
+    visible_arg_types: Vec<PhpType>,
+    descriptor_return_type: PhpType,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+    emit_runtime_call: &mut F,
+)
+where
+    F: FnMut(
+        &callback_env::DescriptorCallbackEnv,
+        &mut Emitter,
+        &mut Context,
+        &mut DataSection,
+    ),
+{
+    let static_cases =
+        crate::codegen::callable_dispatch::runtime_public_static_method_cases(ctx, data);
+    abi::emit_reserve_temporary_stack(emitter, SAVED_ARRAY_BYTES);
+    emit_string_selector_slots(var_name, emitter, ctx, data);
+    crate::codegen::expr::emit_expr(array, emitter, ctx, data);
+    emitter.instruction(&format!("mov {}, {}", array_reg, abi::int_result_reg(emitter))); // preserve the mapped array pointer before descriptor-case selection
+    emit_store_saved_array_reg(array_reg, STRING_SELECTOR_BYTES, emitter);
     emit_string_dispatch(
         &static_cases,
         array_reg,
@@ -226,6 +377,13 @@ fn emit_push_mixed_unbox_payload(emitter: &mut Emitter) {
             abi::emit_push_reg(emitter, "rax");                                 // preserve the unboxed callable-array tag beside its payload
         }
     }
+}
+
+/// Stores the mapped source array into the reserved saved-array stack slot.
+fn emit_store_saved_array_reg(array_reg: &str, offset: usize, emitter: &mut Emitter) {
+    let scratch = abi::symbol_scratch_reg(emitter);
+    abi::emit_temporary_stack_address(emitter, scratch, offset);
+    abi::emit_store_to_address(emitter, array_reg, scratch, 0);
 }
 
 /// Dispatches a heterogeneous callable array to a descriptor-backed callback runtime call.

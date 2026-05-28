@@ -368,25 +368,6 @@ fn test_error_array_map_wrong_args() {
     );
 }
 
-/// Verifies dynamic callable-array callbacks are rejected instead of miscompiled.
-#[test]
-fn test_error_array_map_dynamic_callable_array_callback() {
-    expect_error(
-        r#"<?php
-class Prefixer {
-    public function wrap(string $name): string {
-        return $name;
-    }
-}
-$prefixer = new Prefixer();
-$method = "wrap";
-$callback = [$prefixer, $method];
-array_map($callback, ["Ada"]);
-"#,
-        "callback runtime does not yet support dynamically selected callable arrays",
-    );
-}
-
 /// Verifies that error array filter wrong args.
 #[test]
 fn test_error_array_filter_wrong_args() {
