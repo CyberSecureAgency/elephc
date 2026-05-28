@@ -61,7 +61,7 @@ mod natcasesort;
 mod natsort;
 mod range;
 pub(crate) mod receiver_call_args;
-mod runtime_callable_array_callback;
+pub(crate) mod runtime_callable_array_callback;
 mod hash_value_type_tag;
 mod rsort;
 mod shuffle_fn;

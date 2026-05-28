@@ -556,10 +556,10 @@ fn callback_builtin_allows_complex_descriptor_env(
             | "array_filter() callback"
             | "array_reduce() callback"
             | "array_walk() callback"
+            | "preg_replace_callback() callback"
             | "usort() callback"
             | "uksort() callback"
             | "uasort() callback"
-            | "preg_replace_callback() callback"
             | "iterator_apply() callback"
     )
         && callback_supports_complex_descriptor_env(callback)
@@ -714,6 +714,7 @@ fn callback_builtin_allows_runtime_callable_array(label: &str) -> bool {
             | "array_filter() callback"
             | "array_reduce() callback"
             | "array_walk() callback"
+            | "preg_replace_callback() callback"
             | "usort() callback"
             | "uksort() callback"
             | "uasort() callback"

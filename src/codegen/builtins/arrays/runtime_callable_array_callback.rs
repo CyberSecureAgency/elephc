@@ -1,16 +1,19 @@
 //! Purpose:
-//! Selects dynamic callable-array descriptors for callback-style array runtimes.
+//! Selects dynamic callable-array descriptors for callback-style runtimes.
 //! Builds descriptor callback environments for `[$object, $method]` and
 //! `[$class, $method]` values whose slots are only known at runtime.
 //!
 //! Called from:
 //! - Fixed-return array callback builtins such as `array_filter()` and sort helpers.
+//! - Caller-managed callback runtimes such as `preg_replace_callback()`.
 //!
 //! Key details:
 //! - The caller must have already pushed the source array pointer before callback
 //!   selection, preserving PHP argument evaluation order for second-argument callbacks.
 //! - For first-argument callbacks such as `array_map()`, this module can reserve
 //!   the saved-array slot before selector evaluation and fill it after the array is evaluated.
+//! - Caller-managed runtimes can consume the selected descriptor after this module
+//!   has matched the runtime callable-array slots and discarded selector scratch storage.
 //! - Each matched descriptor gets a shape-specific wrapper so instance methods can
 //!   receive their saved receiver prefix while static methods receive only visible args.
 
@@ -156,6 +159,46 @@ where
                 data,
                 &mut emit_runtime_call,
             );
+            true
+        }
+        _ => false,
+    }
+}
+
+/// Emits runtime callable-array descriptor selection for caller-managed callback payloads.
+///
+/// This mode matches a runtime `[$object, $method]` or `[$class, $method]`
+/// variable, releases the selector scratch slots inside the matched case, and
+/// then lets the caller build the descriptor environment and runtime call. For
+/// instance-method cases, the selected receiver is pushed on top of the temporary
+/// stack before `emit_selected_case` runs and must be consumed by the caller.
+pub(crate) fn emit_without_saved_array<F>(
+    callback: &Expr,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+    mut emit_selected_case: F,
+) -> bool
+where
+    F: FnMut(&RuntimeCallableCase, Option<&PhpType>, &mut Emitter, &mut Context, &mut DataSection),
+{
+    let ExprKind::Variable(var_name) = &callback.kind else {
+        return false;
+    };
+    if ctx.callable_array_targets.contains_key(var_name) {
+        return false;
+    }
+    let Some(var_info) = ctx.variables.get(var_name) else {
+        return false;
+    };
+
+    match var_info.ty.codegen_repr() {
+        PhpType::Array(elem_ty) if matches!(elem_ty.codegen_repr(), PhpType::Mixed) => {
+            emit_mixed_without_saved_array(var_name, emitter, ctx, data, &mut emit_selected_case);
+            true
+        }
+        PhpType::Array(elem_ty) if matches!(elem_ty.codegen_repr(), PhpType::Str) => {
+            emit_string_without_saved_array(var_name, emitter, ctx, data, &mut emit_selected_case);
             true
         }
         _ => false,
@@ -320,6 +363,49 @@ where
         emit_runtime_call,
     );
     abi::emit_release_temporary_stack(emitter, STRING_SELECTOR_BYTES + SAVED_ARRAY_BYTES);
+}
+
+/// Emits heterogeneous callable-array descriptor selection without a saved source array.
+fn emit_mixed_without_saved_array<F>(
+    var_name: &str,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+    emit_selected_case: &mut F,
+)
+where
+    F: FnMut(&RuntimeCallableCase, Option<&PhpType>, &mut Emitter, &mut Context, &mut DataSection),
+{
+    let instance_cases =
+        crate::codegen::callable_dispatch::runtime_public_instance_method_cases(ctx, data);
+    let static_cases =
+        crate::codegen::callable_dispatch::runtime_public_static_method_cases(ctx, data);
+    emit_mixed_selector_slots(var_name, emitter, ctx, data);
+    emit_mixed_dispatch_without_saved_array(
+        &instance_cases,
+        &static_cases,
+        emitter,
+        ctx,
+        data,
+        emit_selected_case,
+    );
+}
+
+/// Emits static-method string callable-array descriptor selection without a saved source array.
+fn emit_string_without_saved_array<F>(
+    var_name: &str,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+    emit_selected_case: &mut F,
+)
+where
+    F: FnMut(&RuntimeCallableCase, Option<&PhpType>, &mut Emitter, &mut Context, &mut DataSection),
+{
+    let static_cases =
+        crate::codegen::callable_dispatch::runtime_public_static_method_cases(ctx, data);
+    emit_string_selector_slots(var_name, emitter, ctx, data);
+    emit_string_dispatch_without_saved_array(&static_cases, emitter, ctx, data, emit_selected_case);
 }
 
 /// Saves the unboxed receiver and method slots for a runtime heterogeneous callable array.
@@ -487,6 +573,80 @@ where
     emitter.label(&done_label);
 }
 
+/// Dispatches a heterogeneous callable array for caller-managed callback runtime emission.
+fn emit_mixed_dispatch_without_saved_array<F>(
+    instance_cases: &[RuntimeInstanceMethodCallableCase],
+    static_cases: &[RuntimeStaticMethodCallableCase],
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+    emit_selected_case: &mut F,
+)
+where
+    F: FnMut(&RuntimeCallableCase, Option<&PhpType>, &mut Emitter, &mut Context, &mut DataSection),
+{
+    let done_label = ctx.next_label("runtime_callback_array_done");
+    for case in instance_cases {
+        let next_case = ctx.next_label("runtime_callback_array_instance_next");
+        emit_branch_if_mixed_instance_case_mismatch(case, &next_case, emitter, ctx, data);
+        emit_instance_case_without_saved_array(
+            &case.case,
+            emitter,
+            ctx,
+            data,
+            emit_selected_case,
+        );
+        abi::emit_jump(emitter, &done_label);
+        emitter.label(&next_case);
+    }
+    for case in static_cases {
+        let next_case = ctx.next_label("runtime_callback_array_static_next");
+        emit_branch_if_mixed_static_case_mismatch(case, &next_case, emitter, ctx, data);
+        emit_static_case_without_saved_array(
+            &case.case,
+            MIXED_SELECTOR_BYTES,
+            emitter,
+            ctx,
+            data,
+            emit_selected_case,
+        );
+        abi::emit_jump(emitter, &done_label);
+        emitter.label(&next_case);
+    }
+    emit_no_match_abort(emitter, data);
+    emitter.label(&done_label);
+}
+
+/// Dispatches a string callable array for caller-managed callback runtime emission.
+fn emit_string_dispatch_without_saved_array<F>(
+    static_cases: &[RuntimeStaticMethodCallableCase],
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+    emit_selected_case: &mut F,
+)
+where
+    F: FnMut(&RuntimeCallableCase, Option<&PhpType>, &mut Emitter, &mut Context, &mut DataSection),
+{
+    let done_label = ctx.next_label("runtime_callback_array_done");
+    for case in static_cases {
+        let next_case = ctx.next_label("runtime_callback_array_static_next");
+        emit_branch_if_string_static_case_mismatch(case, &next_case, emitter, ctx, data);
+        emit_static_case_without_saved_array(
+            &case.case,
+            STRING_SELECTOR_BYTES,
+            emitter,
+            ctx,
+            data,
+            emit_selected_case,
+        );
+        abi::emit_jump(emitter, &done_label);
+        emitter.label(&next_case);
+    }
+    emit_no_match_abort(emitter, data);
+    emitter.label(&done_label);
+}
+
 /// Emits the runtime call for one selected instance-method descriptor case.
 #[allow(clippy::too_many_arguments)]
 fn emit_instance_case_callback<F>(
@@ -564,6 +724,50 @@ where
     callback_env::store_descriptor_callback_array_reg(&wrapper, array_reg, emitter);
     emit_runtime_call(&wrapper, emitter, ctx, data);
     callback_env::release_descriptor_callback_env(&wrapper, emitter);
+}
+
+/// Emits one selected instance-method case for a caller-managed callback runtime.
+///
+/// The receiver is copied out of the selector scratch slots before they are
+/// released, then pushed back onto the temporary stack so the caller can prepend
+/// it to the descriptor environment after evaluating any remaining PHP arguments.
+fn emit_instance_case_without_saved_array<F>(
+    case: &RuntimeCallableCase,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+    emit_selected_case: &mut F,
+)
+where
+    F: FnMut(&RuntimeCallableCase, Option<&PhpType>, &mut Emitter, &mut Context, &mut DataSection),
+{
+    let receiver_ty = case
+        .sig
+        .params
+        .first()
+        .map(|(_, ty)| ty.clone())
+        .unwrap_or(PhpType::Mixed);
+    let call_reg = abi::nested_call_reg(emitter);
+    abi::emit_load_temporary_stack_slot(emitter, call_reg, MIXED_RECEIVER_PAYLOAD_OFFSET);
+    abi::emit_release_temporary_stack(emitter, MIXED_SELECTOR_BYTES);
+    abi::emit_push_reg(emitter, call_reg);                                      // preserve the selected runtime callable-array receiver for caller-managed emission
+    emit_selected_case(case, Some(&receiver_ty), emitter, ctx, data);
+}
+
+/// Emits one selected static-method case for a caller-managed callback runtime.
+fn emit_static_case_without_saved_array<F>(
+    case: &RuntimeCallableCase,
+    selector_bytes: usize,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+    emit_selected_case: &mut F,
+)
+where
+    F: FnMut(&RuntimeCallableCase, Option<&PhpType>, &mut Emitter, &mut Context, &mut DataSection),
+{
+    abi::emit_release_temporary_stack(emitter, selector_bytes);
+    emit_selected_case(case, None, emitter, ctx, data);
 }
 
 /// Branches when the saved heterogeneous callable-array slots do not match an instance-method case.

@@ -149,5 +149,6 @@ Read-only. Negative indices count from end. Out-of-bounds returns empty string.
 - `preg_replace()` expands `$0`..`$9` and `\0`..`\9` to captured groups; unmatched optional groups expand to an empty string
 - `preg_replace_callback()` passes `$matches[0]` as the full match and `$matches[1]`..`$matches[9]` as supported capture groups
 - `preg_replace_callback()` preserves descriptor-backed closure captures and first-class-callable receivers when callbacks are stored in variables or passed through `callable` parameters
+- `preg_replace_callback()` can also resolve callable-array variables such as `[$object, $method]` and `[$class, $method]` when the public method is selected by runtime strings
 - Lookahead, lookbehind, non-greedy quantifiers are not supported
 - `preg_match()` does not support `$matches` capture parameter
