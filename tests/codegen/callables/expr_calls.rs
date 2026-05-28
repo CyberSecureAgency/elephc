@@ -214,6 +214,23 @@ echo $callback(value: 7);
     assert_eq!(out, "id:7");
 }
 
+/// Verifies call_user_func() keeps unknown callable-parameter results boxed as Mixed.
+#[test]
+fn test_call_user_func_callable_param_string_result_remains_mixed() {
+    let out = compile_and_run(
+        r#"<?php
+function run(callable $cb): void {
+    $value = call_user_func($cb, "Ada");
+    echo $value;
+}
+run(function(string $name): string {
+    return "Hi " . $name;
+});
+"#,
+    );
+    assert_eq!(out, "Hi Ada");
+}
+
 /// Verifies direct static-method callable arrays invoke through descriptor metadata.
 #[test]
 fn test_direct_callable_array_static_method_named_args_use_descriptor_invoker() {

@@ -1189,7 +1189,7 @@ pub(super) fn check_builtin(
                 for arg in &args[1..] {
                     checker.infer_type(arg, env)?;
                 }
-                return Ok(Some(PhpType::Int));
+                return Ok(Some(PhpType::Mixed));
             }
             Err(CompileError::new(
                 args[0].span,
