@@ -164,7 +164,13 @@ pub(crate) fn emit_call_user_func_form(
                 ))
             })
         }
-        None => None,
+        None => crate::codegen::expr::calls::emit_runtime_callable_array_call(
+            callback,
+            callback_args,
+            emitter,
+            ctx,
+            data,
+        ),
     }
 }
 

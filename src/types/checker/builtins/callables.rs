@@ -72,6 +72,14 @@ fn call_user_func_array_arg_container_is_runtime_opaque(arg_array_ty: &PhpType) 
     matches!(arg_array_ty.codegen_repr(), PhpType::Mixed)
 }
 
+/// Returns true when an array type can be a PHP callable array selected at runtime.
+fn runtime_callable_array_type(ty: &PhpType) -> bool {
+    match ty.codegen_repr() {
+        PhpType::Array(elem_ty) => matches!(elem_ty.codegen_repr(), PhpType::Mixed | PhpType::Str),
+        _ => false,
+    }
+}
+
 /// Provides the Specialize dynamic assoc variadic first class callback helper used by the callables module.
 fn specialize_dynamic_assoc_variadic_first_class_callback(
     checker: &mut Checker,
@@ -130,6 +138,12 @@ fn check_object_or_array_callable_call(
     }
 
     let callback_ty = checker.infer_type(callback, env)?;
+    if runtime_callable_array_type(&callback_ty) {
+        for arg in callback_args {
+            checker.infer_type(arg, env)?;
+        }
+        return Ok(Some(PhpType::Mixed));
+    }
     if let Some(class_name) = checker.invokable_class_for_type(&callback_ty) {
         if checker
             .classes

@@ -3,12 +3,15 @@
 //! Keeps dynamic `[$object, $method]` and `[$class, $method]` direct-call logic out of the call dispatcher.
 //!
 //! Called from:
+//! - `crate::codegen::expr::calls::emit_runtime_callable_array_call()`
+//! - `crate::codegen::expr::calls::emit_callable_array_literal_call()`
 //! - `crate::codegen::expr::calls::emit_callable_array_variable_call()`
 //!
 //! Key details:
 //! - Selector slots are read before user arguments so runtime method resolution observes the callable value first.
 //! - Matched cases invoke the same descriptor invoker path as static callable-array calls.
 
+use crate::codegen::builtins::arrays::receiver_call_args;
 use crate::codegen::callable_dispatch::{
     RuntimeCallableCase, RuntimeInstanceMethodCallableCase, RuntimeStaticMethodCallableCase,
 };
@@ -374,15 +377,40 @@ fn emit_instance_literal_case_call(
     }
     let object_stack_offset =
         MIXED_RECEIVER_PAYLOAD_OFFSET + if save_concat_before_args { 16 } else { 0 };
-    let arr_ty = super::descriptor_invoker_args::emit_descriptor_invoker_arg_array_with_saved_object_prefix(
-        object_stack_offset,
-        args,
-        Some(&case.sig),
-        Span::dummy(),
-        emitter,
-        ctx,
-        data,
-    );
+    let arr_ty = if let Some(arg_array) = single_spread_inner(args) {
+        let arg_array_ty = crate::codegen::functions::infer_contextual_type(arg_array, ctx);
+        let emitted_saved_args = receiver_call_args::emit_saved_receiver_prefixed_dynamic_arg_mixed(
+            object_stack_offset,
+            arg_array,
+            &arg_array_ty,
+            emitter,
+            ctx,
+            data,
+        );
+        if emitted_saved_args {
+            PhpType::Mixed
+        } else {
+            super::descriptor_invoker_args::emit_descriptor_invoker_arg_array_with_saved_object_prefix(
+                object_stack_offset,
+                args,
+                Some(&case.sig),
+                Span::dummy(),
+                emitter,
+                ctx,
+                data,
+            )
+        }
+    } else {
+        super::descriptor_invoker_args::emit_descriptor_invoker_arg_array_with_saved_object_prefix(
+            object_stack_offset,
+            args,
+            Some(&case.sig),
+            Span::dummy(),
+            emitter,
+            ctx,
+            data,
+        )
+    };
     let call_reg = abi::nested_call_reg(emitter);
     abi::emit_symbol_address(emitter, call_reg, &case.descriptor_label);
     crate::codegen::builtins::arrays::call_user_func_array::emit_call_descriptor_array_invoker(
@@ -394,6 +422,16 @@ fn emit_instance_literal_case_call(
         ctx,
         data,
     );
+}
+
+/// Returns the inner argument array when descriptor invocation forwards one spread segment.
+fn single_spread_inner(args: &[Expr]) -> Option<&Expr> {
+    if let [arg] = args {
+        if let ExprKind::Spread(inner) = &arg.kind {
+            return Some(inner);
+        }
+    }
+    None
 }
 
 /// Emits the descriptor call for one selected runtime static-method callable-array case.

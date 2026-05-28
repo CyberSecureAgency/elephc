@@ -4,6 +4,7 @@
 //!
 //! Called from:
 //! - `crate::codegen::builtins::arrays::callable_forms`
+//! - `crate::codegen::expr::calls::callable_array_runtime`
 //!
 //! Key details:
 //! - The synthetic receiver occupies descriptor argument slot zero; numeric source keys shift by one.
@@ -67,6 +68,51 @@ pub(crate) fn emit_receiver_prefixed_dynamic_arg_mixed(
     }
 }
 
+/// Emits a boxed Mixed argument container using a receiver pointer already saved on the temp stack.
+pub(crate) fn emit_saved_receiver_prefixed_dynamic_arg_mixed(
+    object_stack_offset: usize,
+    arg_array: &Expr,
+    arg_array_ty: &PhpType,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> bool {
+    match arg_array_ty.codegen_repr() {
+        PhpType::Array(arg_elem_ty) => {
+            emit_saved_receiver_prefixed_indexed_arg_mixed(
+                object_stack_offset,
+                arg_array,
+                arg_elem_ty.as_ref(),
+                emitter,
+                ctx,
+                data,
+            );
+            true
+        }
+        PhpType::AssocArray { .. } => {
+            emit_saved_receiver_prefixed_assoc_arg_mixed(
+                object_stack_offset,
+                arg_array,
+                emitter,
+                ctx,
+                data,
+            );
+            true
+        }
+        PhpType::Mixed | PhpType::Union(_) => {
+            emit_saved_receiver_prefixed_opaque_arg_mixed(
+                object_stack_offset,
+                arg_array,
+                emitter,
+                ctx,
+                data,
+            );
+            true
+        }
+        _ => false,
+    }
+}
+
 /// Builds a boxed Mixed argument container `[receiver, ...$args]` for indexed arrays.
 fn emit_receiver_prefixed_indexed_arg_mixed(
     receiver: &Expr,
@@ -84,6 +130,26 @@ fn emit_receiver_prefixed_indexed_arg_mixed(
         &receiver_ty,
     );
     abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the boxed receiver Mixed cell before evaluating the source indexed array
+
+    let arr_ty = emit_expr(arg_array, emitter, ctx, data);
+    let source_elem_ty = match &arr_ty {
+        PhpType::Array(elem_ty) => elem_ty.as_ref(),
+        _ => inferred_arg_elem_ty,
+    };
+    emit_receiver_prefixed_indexed_payload_arg_mixed(source_elem_ty, emitter);
+}
+
+/// Builds `[saved receiver, ...$args]` for indexed arrays.
+fn emit_saved_receiver_prefixed_indexed_arg_mixed(
+    object_stack_offset: usize,
+    arg_array: &Expr,
+    inferred_arg_elem_ty: &PhpType,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) {
+    emitter.comment("saved receiver-prefixed indexed call_user_func_array descriptor args");
+    emit_push_saved_object_receiver_mixed(object_stack_offset, emitter);
 
     let arr_ty = emit_expr(arg_array, emitter, ctx, data);
     let source_elem_ty = match &arr_ty {
@@ -172,6 +238,21 @@ fn emit_receiver_prefixed_assoc_arg_mixed(
     emit_receiver_prefixed_assoc_payload_arg_mixed(emitter, ctx);
 }
 
+/// Builds a boxed Mixed hash with a saved receiver in numeric slot zero.
+fn emit_saved_receiver_prefixed_assoc_arg_mixed(
+    object_stack_offset: usize,
+    arg_array: &Expr,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) {
+    emitter.comment("saved receiver-prefixed assoc call_user_func_array descriptor args");
+    emit_push_saved_object_receiver_mixed(object_stack_offset, emitter);
+
+    let _ = emit_expr(arg_array, emitter, ctx, data);
+    emit_receiver_prefixed_assoc_payload_arg_mixed(emitter, ctx);
+}
+
 /// Builds a receiver-prefixed hash from a loaded raw associative-array payload.
 fn emit_receiver_prefixed_assoc_payload_arg_mixed(emitter: &mut Emitter, ctx: &mut Context) {
     let result_reg = abi::int_result_reg(emitter);
@@ -211,6 +292,16 @@ fn emit_receiver_prefixed_opaque_arg_mixed(
     );
     abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the boxed receiver Mixed cell before evaluating the opaque source container
 
+    emit_receiver_prefixed_opaque_arg_mixed_after_receiver_push(arg_array, emitter, ctx, data);
+}
+
+/// Builds a receiver-prefixed argument container after the boxed receiver was pushed.
+fn emit_receiver_prefixed_opaque_arg_mixed_after_receiver_push(
+    arg_array: &Expr,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) {
     let _ = emit_expr(arg_array, emitter, ctx, data);
     let mixed_reg = abi::int_result_reg(emitter);
     let tag_reg = abi::secondary_scratch_reg(emitter);
@@ -253,6 +344,35 @@ fn emit_receiver_prefixed_opaque_arg_mixed(
     emit_receiver_prefixed_assoc_payload_arg_mixed(emitter, ctx);
 
     emitter.label(&done_label);
+}
+
+/// Builds a receiver-prefixed argument container from a runtime Mixed array/hash and saved receiver.
+fn emit_saved_receiver_prefixed_opaque_arg_mixed(
+    object_stack_offset: usize,
+    arg_array: &Expr,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) {
+    emitter.comment("saved receiver-prefixed mixed call_user_func_array descriptor args");
+    emit_push_saved_object_receiver_mixed(object_stack_offset, emitter);
+    emit_receiver_prefixed_opaque_arg_mixed_after_receiver_push(arg_array, emitter, ctx, data);
+}
+
+/// Boxes a saved object pointer and preserves it as the synthetic receiver Mixed cell.
+fn emit_push_saved_object_receiver_mixed(object_stack_offset: usize, emitter: &mut Emitter) {
+    let object_reg = abi::secondary_scratch_reg(emitter);
+    let zero_reg = abi::tertiary_scratch_reg(emitter);
+    let tag_reg = abi::symbol_scratch_reg(emitter);
+    abi::emit_load_temporary_stack_slot(emitter, object_reg, object_stack_offset);
+    abi::emit_load_int_immediate(emitter, zero_reg, 0);
+    abi::emit_load_int_immediate(
+        emitter,
+        tag_reg,
+        crate::codegen::runtime_value_tag(&PhpType::Object(String::new())) as i64,
+    );
+    crate::codegen::emit_box_runtime_payload_as_mixed(emitter, tag_reg, object_reg, zero_reg);
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the boxed saved receiver before evaluating the source argument container
 }
 
 /// Allocates a Mixed-valued hash sized for receiver plus the cloned source hash.

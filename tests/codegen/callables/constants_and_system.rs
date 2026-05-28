@@ -777,6 +777,73 @@ echo call_user_func($callback, "a");
     let _ = fs::remove_dir_all(dir);
 }
 
+/// Verifies runtime-selected static method callable arrays use descriptor invokers.
+#[test]
+fn test_call_user_func_array_runtime_static_method_array_uses_descriptor_invoker() {
+    let source = r#"<?php
+class RuntimeStaticFormatter {
+    public static function join(string $left, string $right = "b"): string {
+        return $left . ":" . $right;
+    }
+}
+
+function choose_runtime_string(string $value): string {
+    return $value;
+}
+
+$class = choose_runtime_string(RuntimeStaticFormatter::class);
+$method = choose_runtime_string("JOIN");
+$callback = [$class, $method];
+$args = [0 => "a", "right" => "r"];
+echo call_user_func_array($callback, $args);
+echo "|" . count($args) . ":" . $args[0] . ":" . $args["right"];
+"#;
+    let out = compile_and_run(source);
+    assert_eq!(out, "a:r|2:a:r");
+
+    let dir = make_cli_test_dir("elephc_runtime_static_array_callable_cufa_descriptor");
+    let (user_asm, _runtime_asm, _required_libraries) =
+        compile_source_to_asm_with_options(source, &dir, 8_388_608, false, false);
+    assert!(
+        user_asm.contains("callable_array_runtime_done") && user_asm.contains("callable_invoker"),
+        "runtime-selected static method array callbacks should route through descriptor invokers:\n{}",
+        user_asm
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
+/// Verifies inline runtime-selected static method callable arrays use descriptor invokers.
+#[test]
+fn test_call_user_func_literal_runtime_static_method_array_uses_descriptor_invoker() {
+    let source = r#"<?php
+class RuntimeLiteralStaticFormatter {
+    public static function join(string $left, string $right = "b"): string {
+        return $left . ":" . $right;
+    }
+}
+
+function choose_runtime_literal_string(string $value): string {
+    return $value;
+}
+
+$class = choose_runtime_literal_string(RuntimeLiteralStaticFormatter::class);
+$method = choose_runtime_literal_string("JOIN");
+echo call_user_func([$class, $method], "a");
+"#;
+    let out = compile_and_run(source);
+    assert_eq!(out, "a:b");
+
+    let dir = make_cli_test_dir("elephc_literal_runtime_static_array_callable_cuf_descriptor");
+    let (user_asm, _runtime_asm, _required_libraries) =
+        compile_source_to_asm_with_options(source, &dir, 8_388_608, false, false);
+    assert!(
+        user_asm.contains("callable_array_runtime_done") && user_asm.contains("callable_invoker"),
+        "inline runtime-selected static method array callbacks should route through descriptor invokers:\n{}",
+        user_asm
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
 /// Verifies static-method positional+spread descriptor calls preserve by-reference variables.
 #[test]
 fn test_call_user_func_static_method_array_positional_spread_preserves_by_ref_arg() {
@@ -910,6 +977,71 @@ echo call_user_func([$formatter, "join"], "a");
     assert!(
         user_asm.contains("callable_instance_method") && user_asm.contains("callable_invoker"),
         "instance method array callbacks should route through descriptor invokers:\n{}",
+        user_asm
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
+/// Verifies runtime-selected instance method callable arrays use descriptor invokers.
+#[test]
+fn test_call_user_func_runtime_instance_method_array_uses_descriptor_invoker() {
+    let source = r#"<?php
+class RuntimeInstanceFormatter {
+    public function join(string $left, string $right = "b"): string {
+        return $left . ":" . $right;
+    }
+}
+
+function choose_runtime_method(string $name): string {
+    return $name;
+}
+
+$formatter = new RuntimeInstanceFormatter();
+$method = choose_runtime_method("JOIN");
+$callback = [$formatter, $method];
+echo call_user_func($callback, "a");
+"#;
+    let out = compile_and_run(source);
+    assert_eq!(out, "a:b");
+
+    let dir = make_cli_test_dir("elephc_runtime_instance_array_callable_cuf_descriptor");
+    let (user_asm, _runtime_asm, _required_libraries) =
+        compile_source_to_asm_with_options(source, &dir, 8_388_608, false, false);
+    assert!(
+        user_asm.contains("callable_array_runtime_done") && user_asm.contains("callable_invoker"),
+        "runtime-selected instance method array callbacks should route through descriptor invokers:\n{}",
+        user_asm
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
+/// Verifies inline runtime-selected instance method callable arrays use descriptor invokers.
+#[test]
+fn test_call_user_func_array_literal_runtime_instance_method_array_uses_descriptor_invoker() {
+    let source = r#"<?php
+class RuntimeLiteralInstanceFormatter {
+    public function join(string $left, string $right = "b"): string {
+        return $left . ":" . $right;
+    }
+}
+
+function choose_runtime_literal_method(string $name): string {
+    return $name;
+}
+
+$formatter = new RuntimeLiteralInstanceFormatter();
+$method = choose_runtime_literal_method("JOIN");
+echo call_user_func_array([$formatter, $method], ["left" => "a", "right" => "r"]);
+"#;
+    let out = compile_and_run(source);
+    assert_eq!(out, "a:r");
+
+    let dir = make_cli_test_dir("elephc_literal_runtime_instance_array_callable_cufa_descriptor");
+    let (user_asm, _runtime_asm, _required_libraries) =
+        compile_source_to_asm_with_options(source, &dir, 8_388_608, false, false);
+    assert!(
+        user_asm.contains("callable_array_runtime_done") && user_asm.contains("callable_invoker"),
+        "inline runtime-selected instance method array callbacks should route through descriptor invokers:\n{}",
         user_asm
     );
     let _ = fs::remove_dir_all(dir);

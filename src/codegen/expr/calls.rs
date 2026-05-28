@@ -156,6 +156,24 @@ pub(super) fn emit_callable_array_literal_call(
     callable_array_runtime::emit_literal_call(callee, args, emitter, ctx, data)
 }
 
+/// Emits a runtime-selected callable-array invocation for builtin callback paths.
+pub(crate) fn emit_runtime_callable_array_call(
+    callee: &Expr,
+    args: &[Expr],
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> Option<PhpType> {
+    if let ExprKind::Variable(var) = &callee.kind {
+        if let Some(ret_ty) =
+            callable_array_runtime::emit_variable_call(var, args, emitter, ctx, data)
+        {
+            return Some(ret_ty);
+        }
+    }
+    callable_array_runtime::emit_literal_call(callee, args, emitter, ctx, data)
+}
+
 /// Emits a direct `$callback(...)` call when `$callback` stores a PHP callable array.
 pub(super) fn emit_callable_array_variable_call(
     var: &str,
