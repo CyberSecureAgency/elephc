@@ -581,9 +581,6 @@ impl Checker {
         span: crate::span::Span,
         env: &TypeEnv,
     ) -> Result<Option<FunctionSig>, CompileError> {
-        if !fiber_callable_array_variable_target_supported(target) {
-            return Ok(None);
-        }
         self.resolve_first_class_callable_sig(target, span, env).map(Some)
     }
 
@@ -874,14 +871,6 @@ fn simple_fiber_receiver_expr(expr: &Expr) -> bool {
     matches!(&expr.kind, ExprKind::Variable(_) | ExprKind::This)
 }
 
-/// Returns true when a tracked callable-array variable has a Fiber-supported target.
-fn fiber_callable_array_variable_target_supported(target: &CallableTarget) -> bool {
-    match target {
-        CallableTarget::StaticMethod { .. } => true,
-        CallableTarget::Method { .. } => false,
-        CallableTarget::Function(_) => false,
-    }
-}
 
 /// Returns `true` if `class_name` is a reflection owner class
 /// (`ReflectionClass`, `ReflectionMethod`, `ReflectionProperty`).

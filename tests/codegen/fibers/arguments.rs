@@ -316,6 +316,34 @@ echo $f->getReturn();
     assert_eq!(out, "array:go/null/array:done");
 }
 
+/// Verifies that a stored instance-method callable array captures the receiver from slot zero.
+#[test]
+fn test_fiber_stored_instance_callable_array_uses_stored_receiver() {
+    let out = compile_and_run(
+        r#"<?php
+class FiberStoredArrayJob {
+    public function __construct(private string $prefix) {}
+
+    public function run(string $value): string {
+        echo $this->prefix . $value;
+        return $this->prefix . "done";
+    }
+}
+
+$first = new FiberStoredArrayJob("first:");
+$cb = [$first, "run"];
+$fiber = new Fiber($cb);
+$cb = [new FiberStoredArrayJob("second:"), "run"];
+$v = $fiber->start("go");
+echo "/";
+echo is_null($v) ? "null" : $v;
+echo "/";
+echo $fiber->getReturn();
+"#,
+    );
+    assert_eq!(out, "first:go/null/first:done");
+}
+
 /// Verifies that an invokable object variable is converted into a Fiber descriptor.
 #[test]
 fn test_fiber_invokable_object_callable_uses_descriptor_receiver() {

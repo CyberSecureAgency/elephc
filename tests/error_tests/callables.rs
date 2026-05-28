@@ -348,22 +348,6 @@ fn test_error_fiber_callback_rejects_by_ref_start_arg() {
     );
 }
 
-/// Verifies that Fiber rejects stored instance callable arrays until their receiver slot can be bound.
-#[test]
-fn test_error_fiber_rejects_stored_instance_callable_array() {
-    expect_error(
-        r#"<?php
-class FiberStoredArrayJob {
-    public function run(): void {}
-}
-$job = new FiberStoredArrayJob();
-$cb = [$job, "run"];
-$fiber = new Fiber($cb);
-"#,
-        "Fiber callback must be callable",
-    );
-}
-
 // --- PHP 8.5 pipe operator ---
 
 /// Verifies that error pipe rhs integer not callable.

@@ -147,6 +147,12 @@ $array_fiber = new Fiber([$array_job, "run"]);
 $array_fiber->start("run");
 echo $array_fiber->getReturn() . "\n";
 
+$stored_cb = [$array_job, "run"];
+$stored_fiber = new Fiber($stored_cb);
+$stored_cb = [new FiberCallableJob("later:"), "run"];
+$stored_fiber->start("stored");
+echo $stored_fiber->getReturn() . "\n";
+
 $invoke_fiber = new Fiber($array_job);
 $invoke_fiber->start("run");
 echo $invoke_fiber->getReturn() . "\n";
