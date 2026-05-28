@@ -396,6 +396,82 @@ echo iterator_apply(new Range(), $callback, $args);
     assert_eq!(out, "first!first!2:first?first?2");
 }
 
+/// Verifies runtime-selected instance callable arrays work with iterator_apply().
+#[test]
+fn test_iterator_apply_runtime_selected_instance_callable_array() {
+    let out = compile_and_run(
+        r#"<?php
+class Range implements Iterator {
+    private int $i;
+    public function __construct() { $this->i = 0; }
+    public function rewind(): void { $this->i = 0; }
+    public function valid(): bool { return $this->i < 2; }
+    public function current(): int { return $this->i; }
+    public function key(): int { return $this->i; }
+    public function next(): void { $this->i = $this->i + 1; }
+}
+
+class RuntimeIteratorTicker {
+    public string $prefix = "";
+
+    public function tick(string $suffix): bool {
+        echo $this->prefix . $suffix;
+        return true;
+    }
+}
+
+$first = new RuntimeIteratorTicker();
+$first->prefix = "I";
+$second = new RuntimeIteratorTicker();
+$second->prefix = "ignored";
+$method = "tick";
+$callback = [$first, $method];
+$first = $second;
+
+echo iterator_apply(new Range(), $callback, ["!"]);
+echo ":";
+$args = ["?"];
+echo iterator_apply(new Range(), $callback, $args);
+"#,
+    );
+    assert_eq!(out, "I!I!2:I?I?2");
+}
+
+/// Verifies runtime-selected static callable arrays work with iterator_apply().
+#[test]
+fn test_iterator_apply_runtime_selected_static_callable_array() {
+    let out = compile_and_run(
+        r#"<?php
+class Range implements Iterator {
+    private int $i;
+    public function __construct() { $this->i = 0; }
+    public function rewind(): void { $this->i = 0; }
+    public function valid(): bool { return $this->i < 2; }
+    public function current(): int { return $this->i; }
+    public function key(): int { return $this->i; }
+    public function next(): void { $this->i = $this->i + 1; }
+}
+
+class RuntimeIteratorStaticTicker {
+    public static function tick(string $suffix): bool {
+        echo "S" . $suffix;
+        return true;
+    }
+}
+
+$class = "RuntimeIteratorStaticTicker";
+$method = "tick";
+$callback = [$class, $method];
+
+echo iterator_apply(new Range(), $callback, ["!"]);
+echo ":";
+$args = ["?"];
+echo iterator_apply(new Range(), $callback, $args);
+"#,
+    );
+    assert_eq!(out, "S!S!2:S?S?2");
+}
+
 /// Verifies that iterator apply evaluates literal arg array once before loop.
 #[test]
 fn test_iterator_apply_evaluates_literal_arg_array_once_before_loop() {

@@ -421,9 +421,12 @@ supported builtin wrappers by case-insensitive name matching and then use the
 same metadata path. Branch-shaped callbacks that select captured closure or
 first-class-callable descriptors at runtime are invoked through the descriptor's
 uniform invoker, so receiver/capture environments and associative callback args
-are preserved. For variadic callbacks, named keys consumed by fixed parameters
-are not copied into `...$rest`; remaining string keys keep their names, and
-remaining numeric keys are reindexed from zero. Literal arrays with expressions
-are evaluated once before iteration starts. Dynamic arrays passed to
-by-reference callback parameters use temporary reference cells, so callback
-writes do not mutate the source argument array.
+are preserved. Runtime-selected callable-array variables such as
+`[$object, $method]` and `[$class, $method]` are matched to public method
+descriptors before the loop and reused for each callback invocation. For
+variadic callbacks, named keys consumed by fixed parameters are not copied into
+`...$rest`; remaining string keys keep their names, and remaining numeric keys
+are reindexed from zero. Literal arrays with expressions are evaluated once
+before iteration starts. Dynamic arrays passed to by-reference callback
+parameters use temporary reference cells, so callback writes do not mutate the
+source argument array.

@@ -506,6 +506,9 @@ fn check_iterator_apply_dynamic_callback(
     if callback_ty == PhpType::Callable {
         return Ok(());
     }
+    if super::callables::runtime_callable_array_type(&callback_ty) {
+        return Ok(());
+    }
 
     Err(CompileError::new(
         callback.span,

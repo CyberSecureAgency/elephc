@@ -73,7 +73,7 @@ fn call_user_func_array_arg_container_is_runtime_opaque(arg_array_ty: &PhpType) 
 }
 
 /// Returns true when an array type can be a PHP callable array selected at runtime.
-fn runtime_callable_array_type(ty: &PhpType) -> bool {
+pub(crate) fn runtime_callable_array_type(ty: &PhpType) -> bool {
     match ty.codegen_repr() {
         PhpType::Array(elem_ty) => matches!(elem_ty.codegen_repr(), PhpType::Mixed | PhpType::Str),
         _ => false,
@@ -718,6 +718,7 @@ fn callback_builtin_allows_runtime_callable_array(label: &str) -> bool {
             | "usort() callback"
             | "uksort() callback"
             | "uasort() callback"
+            | "iterator_apply() callback"
     )
 }
 
