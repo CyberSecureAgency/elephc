@@ -1170,6 +1170,70 @@ echo $result . "|" . $count;
     assert_eq!(out, "a[1:1] b[2:22]|2");
 }
 
+/// Verifies a captured closure variable used by `preg_replace_callback()` reads captures
+/// from the stored descriptor rather than from the reassigned source local.
+#[test]
+fn test_preg_replace_callback_closure_variable_uses_descriptor_capture_after_reassign() {
+    let out = compile_and_run(
+        r#"<?php
+$prefix = "old:";
+$cb = function(array $matches) use ($prefix): string {
+    return $prefix;
+};
+$prefix = "new:";
+echo preg_replace_callback("/[0-9]+/", $cb, "a1 b22");
+"#,
+    );
+    assert_eq!(out, "aold: bold:");
+}
+
+/// Verifies a method first-class callable passed as a `callable` parameter to
+/// `preg_replace_callback()` keeps the receiver captured in the descriptor.
+#[test]
+fn test_preg_replace_callback_method_parameter_uses_descriptor_receiver() {
+    let out = compile_and_run(
+        r#"<?php
+class RegexFormatter {
+    public function __construct(private string $prefix) {}
+
+    public function replace(array $matches): string {
+        return $this->prefix;
+    }
+}
+
+function run_regex(callable $cb): void {
+    echo preg_replace_callback("/[A-Z]/", $cb, "AB");
+}
+
+run_regex((new RegexFormatter("descriptor:"))->replace(...));
+"#,
+    );
+    assert_eq!(out, "descriptor:descriptor:");
+}
+
+/// Verifies a branch-selected first-class callable keeps the selected descriptor
+/// environment when passed directly to `preg_replace_callback()`.
+#[test]
+fn test_preg_replace_callback_branch_selected_method_descriptor() {
+    let out = compile_and_run(
+        r#"<?php
+class RegexFormatter {
+    public function __construct(private string $prefix) {}
+
+    public function replace(array $matches): string {
+        return $this->prefix;
+    }
+}
+
+$left = new RegexFormatter("left:");
+$right = new RegexFormatter("right:");
+$useRight = true;
+echo preg_replace_callback("/[A-Z]/", $useRight ? $right->replace(...) : $left->replace(...), "AB");
+"#,
+    );
+    assert_eq!(out, "right:right:");
+}
+
 // Verifies `preg_split` splits a string on a comma delimiter and returns an indexed array
 // with all 3 parts.
 #[test]

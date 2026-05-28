@@ -8,8 +8,10 @@
 //! Key details:
 //! - The callback receives `array<string>` matches so untyped closure params
 //!   must be specialized before deferred closure emission.
+//! - Descriptor-valued callbacks keep receiver and capture environments in descriptor storage.
 
 use crate::codegen::abi;
+use crate::codegen::builtins::arrays::callback_env;
 use crate::codegen::context::{Context, DeferredCallbackWrapper};
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
@@ -17,7 +19,7 @@ use crate::codegen::expr::emit_expr;
 use crate::codegen::platform::Arch;
 use crate::names::function_symbol;
 use crate::parser::ast::{Expr, ExprKind};
-use crate::types::PhpType;
+use crate::types::{FunctionSig, PhpType};
 
 use super::super::callable_lookup::{lookup_function, FunctionLookup};
 
@@ -50,9 +52,76 @@ pub fn emit(
     let (string_ptr_reg, string_len_reg) = abi::string_result_regs(emitter);
     abi::emit_push_reg_pair(emitter, string_ptr_reg, string_len_reg);
 
-    // -- evaluate callback second and remember its address --
     let call_reg = abi::nested_call_reg(emitter);
+    let result_reg = abi::int_result_reg(emitter);
+
+    if callback_env::expr_call_needs_descriptor_callback_env(&args[1], ctx)
+        && callback_env::descriptor_callback_env_supported(&args[1])
+    {
+        // -- evaluate the selected descriptor before the subject, matching PHP source order --
+        let (expected_installed, previous_expected) =
+            install_preg_callback_expected_sig(&args[1], ctx);
+        emit_expr(&args[1], emitter, ctx, data);
+        restore_preg_callback_expected_sig(expected_installed, previous_expected, ctx);
+        specialize_recent_inline_callback(&args[1], ctx);
+        let retained_borrowed =
+            callback_env::retain_borrowed_descriptor_callback_result(&args[1], emitter);
+        abi::emit_push_reg(emitter, result_reg);                                // preserve the selected callable descriptor across subject evaluation
+
+        // -- evaluate subject last --
+        emit_expr(&args[2], emitter, ctx, data);
+
+        match emitter.target.arch {
+            Arch::AArch64 => {
+                emitter.instruction("mov x5, x1");                              // pass subject pointer to the regex callback runtime
+                emitter.instruction("mov x6, x2");                              // pass subject length to the regex callback runtime
+                abi::emit_pop_reg(emitter, result_reg);
+                abi::emit_pop_reg_pair(emitter, "x7", "x8");
+
+                let wrapper = descriptor_preg_callback_env(
+                    &args[1],
+                    "x5",
+                    retained_borrowed,
+                    emitter,
+                    ctx,
+                );
+                abi::emit_symbol_address(emitter, "x3", &wrapper.wrapper_label);
+                callback_env::load_env_pointer_to_reg(emitter, "x4");
+                emitter.instruction("mov x1, x7");                              // pass pattern pointer to the regex callback runtime
+                emitter.instruction("mov x2, x8");                              // pass pattern length to the regex callback runtime
+                emitter.instruction("bl __rt_preg_replace_callback");           // run regex replacement through the descriptor callback → x1=ptr, x2=len
+                release_descriptor_preg_callback_env(wrapper.env_bytes, emitter);
+            }
+            Arch::X86_64 => {
+                emitter.instruction("mov r8, rax");                             // pass subject pointer to the regex callback runtime
+                emitter.instruction("mov r9, rdx");                             // pass subject length to the regex callback runtime
+                abi::emit_pop_reg(emitter, result_reg);
+                abi::emit_pop_reg_pair(emitter, "r13", "r14");
+
+                let wrapper = descriptor_preg_callback_env(
+                    &args[1],
+                    "r8",
+                    retained_borrowed,
+                    emitter,
+                    ctx,
+                );
+                abi::emit_symbol_address(emitter, "rdx", &wrapper.wrapper_label);
+                callback_env::load_env_pointer_to_reg(emitter, "rcx");
+                emitter.instruction("mov rdi, r13");                            // pass pattern pointer to the regex callback runtime
+                emitter.instruction("mov rsi, r14");                            // pass pattern length to the regex callback runtime
+                abi::emit_call_label(emitter, "__rt_preg_replace_callback");    // run regex replacement through the descriptor callback → rax=ptr, rdx=len
+                release_descriptor_preg_callback_env(wrapper.env_bytes, emitter);
+            }
+        }
+
+        return Some(PhpType::Str);
+    }
+
+    // -- evaluate callback second and remember its address --
+    let (expected_installed, previous_expected) =
+        install_preg_callback_expected_sig(&args[1], ctx);
     let captures = materialize_callback_address(&args[1], call_reg, emitter, ctx, data);
+    restore_preg_callback_expected_sig(expected_installed, previous_expected, ctx);
     specialize_recent_inline_callback(&args[1], ctx);
     abi::emit_push_reg(emitter, call_reg);
 
@@ -94,6 +163,86 @@ pub fn emit(
     }
 
     Some(PhpType::Str)
+}
+
+/// Builds the descriptor-backed wrapper environment for `preg_replace_callback()`.
+///
+/// The regex runtime passes one visible `array<string>` argument and expects a
+/// string result. The dummy register fills the shared callback-env helper's
+/// unused array slot; only env slot zero (the descriptor) is read by the wrapper.
+fn descriptor_preg_callback_env(
+    callback: &Expr,
+    dummy_array_reg: &str,
+    retained_borrowed: bool,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+) -> callback_env::DescriptorCallbackEnv {
+    let wrapper = if retained_borrowed {
+        callback_env::emit_descriptor_callback_env_from_retained_result(
+            callback,
+            dummy_array_reg,
+            vec![preg_matches_type()],
+            PhpType::Str,
+            emitter,
+            ctx,
+        )
+    } else {
+        callback_env::emit_descriptor_callback_env_from_result(
+            callback,
+            dummy_array_reg,
+            vec![preg_matches_type()],
+            PhpType::Str,
+            emitter,
+            ctx,
+        )
+    };
+    wrapper.expect("descriptor callback env support checked before emitting preg_replace_callback")
+}
+
+/// Releases a descriptor-backed regex callback environment while preserving the string result.
+fn release_descriptor_preg_callback_env(env_bytes: usize, emitter: &mut Emitter) {
+    let (ptr_reg, len_reg) = abi::string_result_regs(emitter);
+    abi::emit_push_reg_pair(emitter, ptr_reg, len_reg);
+    abi::emit_load_temporary_stack_slot(emitter, abi::int_result_reg(emitter), 16);
+    crate::codegen::callable_descriptor::emit_release_current_descriptor(emitter);
+    abi::emit_pop_reg_pair(emitter, ptr_reg, len_reg);
+    abi::emit_release_temporary_stack(emitter, env_bytes);
+}
+
+/// Installs the contextual regex-callback signature before emitting inline closures.
+///
+/// `emit_closure()` reads `expected_first_class_callable_sig` while building the
+/// descriptor metadata. Setting it before emission keeps descriptor invokers and
+/// deferred closure bodies aligned on the `array<string>` `$matches` parameter.
+fn install_preg_callback_expected_sig(
+    callback: &Expr,
+    ctx: &mut Context,
+) -> (bool, Option<FunctionSig>) {
+    if !matches!(callback.kind, ExprKind::Closure { .. }) {
+        return (false, None);
+    }
+    let previous = ctx.expected_first_class_callable_sig.replace(FunctionSig {
+        params: vec![("matches".to_string(), preg_matches_type())],
+        defaults: vec![None],
+        return_type: PhpType::Str,
+        declared_return: false,
+        ref_params: vec![false],
+        declared_params: vec![false],
+        variadic: None,
+        deprecation: None,
+    });
+    (true, previous)
+}
+
+/// Restores the previous contextual callable signature after callback emission.
+fn restore_preg_callback_expected_sig(
+    installed: bool,
+    previous: Option<FunctionSig>,
+    ctx: &mut Context,
+) {
+    if installed {
+        ctx.expected_first_class_callable_sig = previous;
+    }
 }
 
 /// Returns the PHP type for preg_replace_callback closure parameters.

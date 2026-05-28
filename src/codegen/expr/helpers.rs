@@ -82,14 +82,14 @@ pub(crate) fn coerce_result_to_type(
             PhpType::Str => {
                 super::coerce_to_string(emitter, ctx, data, source_ty);
             }
-            PhpType::Object(_) => match emitter.target.arch {
+            PhpType::Array(_) | PhpType::AssocArray { .. } | PhpType::Object(_) => match emitter.target.arch {
                 crate::codegen::platform::Arch::AArch64 => {
                     crate::codegen::abi::emit_call_label(emitter, "__rt_mixed_unbox");
-                    emitter.instruction("mov x0, x1");                          // use the object payload word as the coerced object pointer
+                    emitter.instruction("mov x0, x1");                          // use the unboxed heap payload word as the coerced pointer
                 }
                 crate::codegen::platform::Arch::X86_64 => {
                     crate::codegen::abi::emit_call_label(emitter, "__rt_mixed_unbox");
-                    emitter.instruction("mov rax, rdi");                        // use the object payload word as the coerced object pointer
+                    emitter.instruction("mov rax, rdi");                        // use the unboxed heap payload word as the coerced pointer
                 }
             },
             PhpType::Mixed | PhpType::Union(_) => {}
@@ -123,6 +123,8 @@ pub(crate) fn can_coerce_result_to_type(source_ty: &PhpType, target_ty: &PhpType
                 | PhpType::Bool
                 | PhpType::Float
                 | PhpType::Str
+                | PhpType::Array(_)
+                | PhpType::AssocArray { .. }
                 | PhpType::Object(_)
                 | PhpType::Mixed
                 | PhpType::Union(_)

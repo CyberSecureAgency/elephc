@@ -538,6 +538,7 @@ fn callback_builtin_allows_complex_descriptor_env(
             | "usort() callback"
             | "uksort() callback"
             | "uasort() callback"
+            | "preg_replace_callback() callback"
             | "iterator_apply() callback"
     )
         && callback_supports_complex_descriptor_env(callback)
