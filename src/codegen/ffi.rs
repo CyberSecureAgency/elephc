@@ -10,8 +10,9 @@
 
 use crate::codegen::abi;
 use crate::codegen::builtins::callable_lookup::{lookup_function, FunctionLookup};
-use crate::codegen::context::Context;
-use crate::codegen::context::HeapOwnership;
+use crate::codegen::context::{
+    Context, DeferredExternCallbackTrampoline, HeapOwnership,
+};
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
 use crate::codegen::expr::{can_coerce_result_to_type, coerce_result_to_type, emit_expr};
@@ -250,8 +251,9 @@ fn preevaluate_extern_args(
 /// Materializes an extern `callable` argument as a raw C function pointer.
 ///
 /// String literals still lower to direct user-function symbols. Descriptor-backed
-/// callables are accepted after type checking proves they do not need hidden
-/// environment slots, so codegen can pass the descriptor entry slot directly.
+/// callables lower to a generated C-ABI trampoline that reloads the selected
+/// descriptor from global storage, preserving closure captures and receivers for
+/// C APIs that only accept a plain function pointer.
 fn emit_extern_callable_arg(
     arg: &Expr,
     emitter: &mut Emitter,
@@ -269,16 +271,72 @@ fn emit_extern_callable_arg(
             abi::emit_symbol_address(emitter, abi::int_result_reg(emitter), &label); // materialize the callback target address in the integer result register
         }
         _ => {
+            let precomputed_sig = crate::codegen::callables::callable_sig(arg, ctx);
             let actual_ty = emit_expr(arg, emitter, ctx, data);
             debug_assert_eq!(actual_ty, PhpType::Callable);
-            crate::codegen::callable_descriptor::emit_load_entry_from_descriptor(
-                emitter,
-                abi::int_result_reg(emitter),
-                abi::int_result_reg(emitter),
-            );
+            let Some(callback_sig) = precomputed_sig.or_else(|| inline_callable_sig_after_emit(arg, ctx)) else {
+                crate::codegen::callable_descriptor::emit_load_entry_from_descriptor(
+                    emitter,
+                    abi::int_result_reg(emitter),
+                    abi::int_result_reg(emitter),
+                );
+                return PhpType::Callable;
+            };
+            emit_stateful_extern_callback_trampoline(arg, &callback_sig, emitter, ctx, data);
         }
     }
     PhpType::Callable
+}
+
+/// Returns the signature for an inline callable after its descriptor was emitted.
+fn inline_callable_sig_after_emit(arg: &Expr, ctx: &Context) -> Option<FunctionSig> {
+    match &arg.kind {
+        ExprKind::Closure { .. } => ctx.deferred_closures.last().map(|closure| closure.sig.clone()),
+        ExprKind::Assignment { value, .. } => inline_callable_sig_after_emit(value, ctx),
+        _ => None,
+    }
+}
+
+/// Stores the current descriptor in a global slot and returns a trampoline address.
+fn emit_stateful_extern_callback_trampoline(
+    arg: &Expr,
+    callback_sig: &FunctionSig,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) {
+    let slot_label = data.add_comm(ctx.next_label("extern_callback_descriptor"), 8);
+    let trampoline_label = ctx.next_label("extern_callback_trampoline");
+    ctx.deferred_extern_callback_trampolines
+        .push(DeferredExternCallbackTrampoline {
+            label: trampoline_label.clone(),
+            descriptor_slot_label: slot_label.clone(),
+            visible_arg_types: callback_sig
+                .params
+                .iter()
+                .map(|(_, ty)| ty.codegen_repr())
+                .collect(),
+            return_type: callback_sig.return_type.codegen_repr(),
+        });
+
+    emitter.comment("extern callback: bind descriptor trampoline");
+    if expr_result_needs_retain_for_extern_callback_slot(arg) {
+        crate::codegen::callable_descriptor::emit_retain_current_descriptor(emitter);
+    }
+    abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the new extern callback descriptor while replacing the slot owner
+    abi::emit_load_symbol_to_reg(emitter, abi::int_result_reg(emitter), &slot_label, 0);
+    crate::codegen::callable_descriptor::emit_release_current_descriptor(emitter);
+    abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // restore the descriptor that will back the C callback trampoline
+    abi::emit_store_reg_to_symbol(emitter, abi::int_result_reg(emitter), &slot_label, 0);
+    abi::emit_symbol_address(emitter, abi::int_result_reg(emitter), &trampoline_label);
+}
+
+/// Returns whether the current descriptor result must be retained for global storage.
+fn expr_result_needs_retain_for_extern_callback_slot(arg: &Expr) -> bool {
+    !matches!(
+        crate::codegen::expr::expr_result_heap_ownership(arg),
+        HeapOwnership::Owned
+    )
 }
 
 /// Determines whether an owned `Mixed` or `Union` source value must be preserved on the stack

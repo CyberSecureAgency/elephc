@@ -9,7 +9,7 @@
 //! - Wrapper signatures must satisfy both the external ABI and the internal PHP function lowering contract.
 
 use crate::codegen::abi;
-use crate::codegen::context::DeferredCallbackWrapper;
+use crate::codegen::context::{DeferredCallbackWrapper, DeferredExternCallbackTrampoline};
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 use crate::types::PhpType;
@@ -69,6 +69,18 @@ pub(crate) fn emit_callback_wrapper(emitter: &mut Emitter, wrapper: &DeferredCal
     emitter.instruction(&format!("ldp x19, x20, [sp, #{}]", saved_callee_offset)); // restore wrapper callee-saved registers
     abi::emit_frame_restore(emitter, frame_size);
     abi::emit_return(emitter);
+}
+
+/// Emits a C-ABI trampoline that reloads a descriptor from global storage.
+///
+/// The generated symbol has the callback signature expected by the extern C API,
+/// boxes incoming scalar/pointer arguments for the descriptor invoker, and casts
+/// the boxed result back to the C-compatible callback return type.
+pub(crate) fn emit_extern_callback_trampoline(
+    emitter: &mut Emitter,
+    trampoline: &DeferredExternCallbackTrampoline,
+) {
+    descriptor::emit_extern_callback_trampoline(emitter, trampoline);
 }
 
 /// Emits the x86_64-specific callback wrapper. Follows the same general pattern as the ARM64

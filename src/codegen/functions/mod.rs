@@ -37,7 +37,9 @@ use self::cleanup::{
 use self::control_flow::{collect_try_slots, mark_control_flow_epilogue_unsafe};
 pub use self::locals::collect_local_vars;
 pub(crate) use self::types::{codegen_declared_type, codegen_static_type};
-pub(crate) use self::callback_wrapper::emit_callback_wrapper;
+pub(crate) use self::callback_wrapper::{
+    emit_callback_wrapper, emit_extern_callback_trampoline,
+};
 pub(crate) use self::fiber_wrapper::emit_fiber_wrapper;
 pub use self::types::{infer_contextual_type, infer_local_type_with_ctx};
 pub(crate) use self::types::singular_object_class;
@@ -540,6 +542,7 @@ fn emit_function_with_label_and_class(
     while !ctx.deferred_closures.is_empty()
         || !ctx.deferred_fiber_wrappers.is_empty()
         || !ctx.deferred_callback_wrappers.is_empty()
+        || !ctx.deferred_extern_callback_trampolines.is_empty()
         || !ctx.deferred_runtime_callable_invokers.is_empty()
     {
         let closures: Vec<_> = ctx.deferred_closures.drain(..).collect();
@@ -591,6 +594,11 @@ fn emit_function_with_label_and_class(
         let callback_wrappers: Vec<_> = ctx.deferred_callback_wrappers.drain(..).collect();
         for wrapper in callback_wrappers {
             emit_callback_wrapper(emitter, &wrapper);
+        }
+        let extern_trampolines: Vec<_> =
+            ctx.deferred_extern_callback_trampolines.drain(..).collect();
+        for trampoline in extern_trampolines {
+            emit_extern_callback_trampoline(emitter, &trampoline);
         }
         let invokers: Vec<_> = ctx.deferred_runtime_callable_invokers.drain(..).collect();
         for invoker in invokers {

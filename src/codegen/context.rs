@@ -134,6 +134,18 @@ pub struct DeferredCallbackWrapper {
     pub descriptor_return_type: Option<PhpType>,
 }
 
+/// A C-ABI callback trampoline backed by a callable descriptor slot.
+///
+/// Extern `callable` parameters receive a plain function pointer, so stateful
+/// descriptors need a stable generated symbol that reloads the descriptor from
+/// global storage before invoking the uniform runtime callable invoker.
+pub struct DeferredExternCallbackTrampoline {
+    pub label: String,
+    pub descriptor_slot_label: String,
+    pub visible_arg_types: Vec<PhpType>,
+    pub return_type: PhpType,
+}
+
 /// A generated runtime callable invoker with a descriptor-based ABI.
 ///
 /// Invokers receive a callable descriptor pointer plus a normalized Mixed
@@ -162,6 +174,7 @@ pub struct Context {
     pub deferred_closures: Vec<DeferredClosure>,
     pub deferred_fiber_wrappers: Vec<DeferredFiberWrapper>,
     pub deferred_callback_wrappers: Vec<DeferredCallbackWrapper>,
+    pub deferred_extern_callback_trampolines: Vec<DeferredExternCallbackTrampoline>,
     pub deferred_runtime_callable_invokers: Vec<DeferredRuntimeCallableInvoker>,
     pub constants: HashMap<String, (ExprKind, PhpType)>,
     /// Variables declared with `global $var` in the current function scope.
@@ -333,6 +346,7 @@ impl Context {
             deferred_closures: Vec::new(),
             deferred_fiber_wrappers: Vec::new(),
             deferred_callback_wrappers: Vec::new(),
+            deferred_extern_callback_trampolines: Vec::new(),
             deferred_runtime_callable_invokers: Vec::new(),
             constants: HashMap::new(),
             global_vars: HashSet::new(),

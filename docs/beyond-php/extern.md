@@ -43,16 +43,21 @@ for integers/pointers and `xmm0`-`xmm7` for doubles).
 
 `callable` in an `extern function` signature is a special FFI-only path. The
 call site can provide either a string-literal elephc function name (resolved
-case-insensitively like PHP function names) or a callable
-descriptor whose entry can be used as a plain C function pointer. That includes
-environment-free closures and first-class callables for functions or static
-methods. Callable descriptors that require captures, object receivers, or
-late-static-binding context are rejected for raw C function-pointer slots,
-because the C ABI receives only the function address and has no descriptor
-environment pointer. Descriptor values whose environment-free status cannot be
-proven statically are rejected for the same reason. Stateful trampoline symbols
-for descriptor-backed callbacks are tracked as future shared-library/FFI work in
-the roadmap.
+case-insensitively like PHP function names) or a callable descriptor. Descriptor
+callbacks are bound into generated C-ABI trampoline symbols, including values
+with closure captures, object receivers, late-static-binding context, or
+branch-selected descriptor state. The trampoline receives the C callback arguments, reloads the retained
+descriptor from global storage, invokes the descriptor's runtime invoker, and
+casts the boxed result back to the C-compatible callback return type.
+
+FFI callback descriptors are limited to fixed scalar/pointer signatures:
+`int`, `float`, `bool`, `ptr`, and `void` return values, with parameters drawn
+from `int`, `float`, `bool`, and `ptr`. `string`, arrays, objects, variadics,
+defaults, and by-reference callback parameters are rejected because ownership
+and temporary lifetime across a C callback boundary are not modeled safely yet.
+For C APIs without a userdata/context parameter, each generated trampoline owns
+one mutable descriptor slot for that callsite; registering a new descriptor at
+the same callsite replaces the previous slot owner.
 
 ## String conversion
 - **Calling C**: elephc creates temporary null-terminated copy, frees after call
@@ -87,6 +92,20 @@ function on_signal($sig) {
 }
 
 signal(15, "on_signal");
+```
+
+Descriptor-backed callbacks can carry state:
+
+```php
+<?php
+extern function signal(int $sig, callable $handler): ptr;
+
+$delta = 3;
+$handler = function (int $sig) use ($delta): void {
+    echo $sig + $delta;
+};
+
+signal(15, $handler);
 ```
 Callbacks must use C-compatible types only. No strings, arrays, variadic, defaults, or pass-by-reference.
 

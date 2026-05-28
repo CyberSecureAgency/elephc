@@ -11,7 +11,7 @@
 
 use crate::codegen::abi;
 use crate::codegen::callable_descriptor;
-use crate::codegen::context::DeferredCallbackWrapper;
+use crate::codegen::context::{DeferredCallbackWrapper, DeferredExternCallbackTrampoline};
 use crate::codegen::emit::Emitter;
 use crate::codegen::expr::arrays::emit_array_value_type_stamp;
 use crate::codegen::platform::Arch;
@@ -108,6 +108,114 @@ fn emit_x86_64_descriptor_callback_wrapper(
     abi::load_at_offset(emitter, "r12", saved_descriptor_offset);
     abi::emit_frame_restore(emitter, frame_size);
     abi::emit_return(emitter);
+}
+
+/// Emits a C-ABI extern callback trampoline backed by a global descriptor slot.
+pub(super) fn emit_extern_callback_trampoline(
+    emitter: &mut Emitter,
+    trampoline: &DeferredExternCallbackTrampoline,
+) {
+    if emitter.target.arch == Arch::X86_64 {
+        emit_x86_64_extern_callback_trampoline(emitter, trampoline);
+    } else {
+        emit_aarch64_extern_callback_trampoline(emitter, trampoline);
+    }
+}
+
+/// Emits an ARM64 extern callback trampoline for descriptor-backed FFI callbacks.
+fn emit_aarch64_extern_callback_trampoline(
+    emitter: &mut Emitter,
+    trampoline: &DeferredExternCallbackTrampoline,
+) {
+    let wrapper = extern_trampoline_wrapper_view(trampoline);
+    let visible_count = wrapper.visible_arg_types.len();
+    let slot_count = (visible_count + 1).max(1);
+    let frame_size = align16(slot_count * 16 + 48);
+    let saved_descriptor_offset = frame_size - 48;
+    let saved_runtime_offset = frame_size - 32;
+
+    emitter.blank();
+    emitter.comment(&format!("extern descriptor callback trampoline: {}", trampoline.label));
+    emitter.raw(".align 2");
+    emitter.label_global(&trampoline.label);
+    abi::emit_frame_prologue(emitter, frame_size);
+    emitter.instruction(&format!("stp x19, x20, [sp, #{}]", saved_descriptor_offset)); // preserve descriptor trampoline registers across invoker dispatch
+    emitter.instruction(&format!("stp x21, x22, [sp, #{}]", saved_runtime_offset)); // preserve runtime-loop registers across descriptor invocation
+
+    abi::emit_load_symbol_to_reg(
+        emitter,
+        "x19",
+        &trampoline.descriptor_slot_label,
+        0,
+    );
+    spill_visible_args(emitter, &wrapper.visible_arg_types);
+    emit_build_descriptor_invoker_arg_array(emitter, &wrapper, frame_size, "x20");
+    emit_box_descriptor_arg_array_as_mixed(emitter, frame_size, visible_count);
+    emit_call_descriptor_invoker_from_wrapper(emitter, "x19");
+    emit_cast_descriptor_mixed_result_for_callback(emitter, &trampoline.return_type);
+
+    emitter.instruction(&format!("ldp x21, x22, [sp, #{}]", saved_runtime_offset)); // restore runtime-loop registers after descriptor invocation
+    emitter.instruction(&format!("ldp x19, x20, [sp, #{}]", saved_descriptor_offset)); // restore descriptor trampoline registers
+    abi::emit_frame_restore(emitter, frame_size);
+    abi::emit_return(emitter);
+}
+
+/// Emits an x86_64 extern callback trampoline for descriptor-backed FFI callbacks.
+fn emit_x86_64_extern_callback_trampoline(
+    emitter: &mut Emitter,
+    trampoline: &DeferredExternCallbackTrampoline,
+) {
+    let wrapper = extern_trampoline_wrapper_view(trampoline);
+    let visible_count = wrapper.visible_arg_types.len();
+    let slot_count = (visible_count + 1).max(1);
+    let frame_size = align16(slot_count * 16 + 64);
+    let saved_descriptor_offset = slot_count * 16 + 16;
+    let saved_env_offset = slot_count * 16 + 24;
+    let saved_runtime_index_offset = slot_count * 16 + 32;
+    let saved_runtime_count_offset = slot_count * 16 + 40;
+
+    emitter.blank();
+    emitter.comment(&format!("extern descriptor callback trampoline: {}", trampoline.label));
+    emitter.raw(".align 16");
+    emitter.label_global(&trampoline.label);
+    abi::emit_frame_prologue(emitter, frame_size);
+    abi::store_at_offset(emitter, "r12", saved_descriptor_offset);
+    abi::store_at_offset(emitter, "r13", saved_env_offset);
+    abi::store_at_offset(emitter, "r14", saved_runtime_index_offset);
+    abi::store_at_offset(emitter, "r15", saved_runtime_count_offset);
+
+    abi::emit_load_symbol_to_reg(
+        emitter,
+        "r12",
+        &trampoline.descriptor_slot_label,
+        0,
+    );
+    spill_visible_args(emitter, &wrapper.visible_arg_types);
+    emit_build_descriptor_invoker_arg_array(emitter, &wrapper, frame_size, "r13");
+    emit_box_descriptor_arg_array_as_mixed(emitter, frame_size, visible_count);
+    emit_call_descriptor_invoker_from_wrapper(emitter, "r12");
+    emit_cast_descriptor_mixed_result_for_callback(emitter, &trampoline.return_type);
+
+    abi::load_at_offset(emitter, "r15", saved_runtime_count_offset);
+    abi::load_at_offset(emitter, "r14", saved_runtime_index_offset);
+    abi::load_at_offset(emitter, "r13", saved_env_offset);
+    abi::load_at_offset(emitter, "r12", saved_descriptor_offset);
+    abi::emit_frame_restore(emitter, frame_size);
+    abi::emit_return(emitter);
+}
+
+/// Builds the descriptor-wrapper view reused by extern callback trampolines.
+fn extern_trampoline_wrapper_view(
+    trampoline: &DeferredExternCallbackTrampoline,
+) -> DeferredCallbackWrapper {
+    DeferredCallbackWrapper {
+        label: trampoline.label.clone(),
+        visible_arg_types: trampoline.visible_arg_types.clone(),
+        target_visible_arg_types: None,
+        capture_types: Vec::new(),
+        descriptor_prefix_types: Vec::new(),
+        descriptor_return_type: Some(trampoline.return_type.clone()),
+    }
 }
 
 /// Builds the boxed-Mixed indexed argument array consumed by descriptor invokers.
@@ -295,10 +403,10 @@ fn emit_cast_descriptor_mixed_result_for_callback(emitter: &mut Emitter, return_
             abi::emit_call_label(emitter, "__rt_mixed_cast_bool");             // convert the boxed callback result to PHP truthiness
             emit_release_preserved_mixed_result_after_cast(emitter, &PhpType::Bool);
         }
-        PhpType::Int | PhpType::Resource(_) => {
+        PhpType::Int | PhpType::Resource(_) | PhpType::Pointer(_) => {
             abi::emit_push_reg(emitter, abi::int_result_reg(emitter));          // preserve the owned Mixed callback result while casting to int
             abi::emit_call_label(emitter, "__rt_mixed_cast_int");              // convert the boxed callback result to an integer value
-            emit_release_preserved_mixed_result_after_cast(emitter, &PhpType::Int);
+            emit_release_preserved_mixed_result_after_cast(emitter, return_ty);
         }
         PhpType::Float => {
             abi::emit_push_reg(emitter, abi::int_result_reg(emitter));          // preserve the owned Mixed callback result while casting to float
