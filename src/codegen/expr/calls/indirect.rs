@@ -437,25 +437,22 @@ fn unknown_callable_value_needs_descriptor_invoker(
     if !matches!(loaded_callee_ty.codegen_repr(), PhpType::Callable) {
         return false;
     }
-    if callee_sig_for_expr(callee, ctx).is_some() {
-        return false;
+    match &callee.kind {
+        ExprKind::Variable(_) => callee_sig_for_expr(callee, ctx).is_none(),
+        ExprKind::ArrayAccess { .. }
+        | ExprKind::PropertyAccess { .. }
+        | ExprKind::DynamicPropertyAccess { .. }
+        | ExprKind::StaticPropertyAccess { .. }
+        | ExprKind::Assignment { .. }
+        | ExprKind::Ternary { .. }
+        | ExprKind::ShortTernary { .. }
+        | ExprKind::NullCoalesce { .. }
+        | ExprKind::FunctionCall { .. }
+        | ExprKind::MethodCall { .. }
+        | ExprKind::StaticMethodCall { .. }
+        | ExprKind::ExprCall { .. } => true,
+        _ => false,
     }
-    matches!(
-        &callee.kind,
-        ExprKind::Variable(_)
-            | ExprKind::ArrayAccess { .. }
-            | ExprKind::PropertyAccess { .. }
-            | ExprKind::DynamicPropertyAccess { .. }
-            | ExprKind::StaticPropertyAccess { .. }
-            | ExprKind::Assignment { .. }
-            | ExprKind::Ternary { .. }
-            | ExprKind::ShortTernary { .. }
-            | ExprKind::NullCoalesce { .. }
-            | ExprKind::FunctionCall { .. }
-            | ExprKind::MethodCall { .. }
-            | ExprKind::StaticMethodCall { .. }
-            | ExprKind::ExprCall { .. }
-    )
 }
 
 /// Returns true if an expression produces a callable with descriptor-owned environment.

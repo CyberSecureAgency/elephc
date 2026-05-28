@@ -1007,6 +1007,96 @@ echo $cb(7);
     assert_eq!(out, "21");
 }
 
+/// Verifies method FCC descriptors invoked directly from array elements preserve captured receivers.
+#[test]
+fn test_fcc_method_direct_array_element_preserves_captured_receiver() {
+    let source = r#"<?php
+class FccArrayPrefixer {
+    public string $prefix = "";
+
+    public function wrap(string $name): string {
+        return $this->prefix . $name;
+    }
+}
+
+$first = new FccArrayPrefixer();
+$first->prefix = "first:";
+$second = new FccArrayPrefixer();
+$second->prefix = "second:";
+$callbacks = [$first->wrap(...)];
+$first = $second;
+echo $callbacks[0]("Ada");
+"#;
+    let out = compile_and_run(source);
+    assert_eq!(out, "first:Ada");
+}
+
+/// Verifies static FCC descriptors invoked directly from array elements preserve late-static binding.
+#[test]
+fn test_fcc_static_direct_array_element_preserves_late_static_binding() {
+    let source = r#"<?php
+class FccArrayBase {
+    public static function name(): string {
+        return "base";
+    }
+
+    public static function make(): callable {
+        $callbacks = [static::name(...)];
+        return $callbacks[0];
+    }
+}
+
+class FccArrayChild extends FccArrayBase {
+    public static function name(): string {
+        return "child";
+    }
+}
+
+$callback = FccArrayChild::make();
+echo $callback();
+"#;
+    let out = compile_and_run(source);
+    assert_eq!(out, "child");
+}
+
+/// Verifies returned method FCC descriptors preserve captured receivers on immediate calls.
+#[test]
+fn test_returned_method_fcc_immediate_call_preserves_captured_receiver() {
+    let source = r#"<?php
+class ReturnedFccPrefixer {
+    public string $prefix = "";
+
+    public function wrap(string $name): string {
+        return $this->prefix . $name;
+    }
+}
+
+function make_returned_fcc(): callable {
+    $first = new ReturnedFccPrefixer();
+    $first->prefix = "first:";
+    $second = new ReturnedFccPrefixer();
+    $second->prefix = "second:";
+    $callback = $first->wrap(...);
+    $first = $second;
+    return $callback;
+}
+
+echo make_returned_fcc()("Ada");
+"#;
+    let out = compile_and_run(source);
+    assert_eq!(out, "first:Ada");
+
+    let dir = make_cli_test_dir("elephc_returned_method_fcc_immediate_descriptor");
+    let (user_asm, _runtime_asm, _required_libraries) =
+        compile_source_to_asm_with_options(source, &dir, 8_388_608, false, false);
+    assert!(
+        user_asm.contains("callable_invoker"),
+        "returned callable descriptors should route immediate calls through descriptor invokers:\n{}",
+        user_asm
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
 /// Verifies that fcc method complex receiver via local workaround runs.
 #[test]
 fn test_fcc_method_complex_receiver_via_local_workaround_runs() {

@@ -1661,6 +1661,44 @@ echo $value;
     assert_eq!(out, "12");
 }
 
+/// Verifies returned method FCC descriptors use their runtime receiver in `call_user_func_array()`.
+#[test]
+fn test_call_user_func_array_returned_method_fcc_uses_descriptor_receiver() {
+    let source = r#"<?php
+class ReturnedFccArrayPrefixer {
+    public string $prefix = "";
+
+    public function wrap(string $name): string {
+        return $this->prefix . $name;
+    }
+}
+
+function make_returned_fcc_array_callback(): callable {
+    $first = new ReturnedFccArrayPrefixer();
+    $first->prefix = "first:";
+    $second = new ReturnedFccArrayPrefixer();
+    $second->prefix = "second:";
+    $callback = $first->wrap(...);
+    $first = $second;
+    return $callback;
+}
+
+echo call_user_func_array(make_returned_fcc_array_callback(), ["Ada"]);
+"#;
+    let out = compile_and_run(source);
+    assert_eq!(out, "first:Ada");
+
+    let dir = make_cli_test_dir("elephc_call_user_func_array_returned_fcc_descriptor");
+    let (user_asm, _runtime_asm, _required_libraries) =
+        compile_source_to_asm_with_options(source, &dir, 8_388_608, false, false);
+    assert!(
+        user_asm.contains("callable_invoker"),
+        "returned callable descriptors should route through call_user_func_array() invokers:\n{}",
+        user_asm
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
 /// Verifies that capture-free closure descriptors expose the uniform array invoker.
 #[test]
 fn test_call_user_func_array_closure_descriptor_uses_invoker() {

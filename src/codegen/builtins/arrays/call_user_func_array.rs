@@ -688,6 +688,10 @@ fn release_preserved_descriptor_after_mixed_result(emitter: &mut Emitter) {
 
 /// Returns true when `call_user_func_array()` must invoke a descriptor-owned environment.
 fn expr_call_needs_descriptor_invoker(callback: &Expr, ctx: &Context) -> bool {
+    if runtime_callable_expr_result_needs_descriptor_invoker(callback, ctx) {
+        return true;
+    }
+
     match &callback.kind {
         ExprKind::Closure { .. } | ExprKind::FirstClassCallable(_) | ExprKind::Variable(_) => false,
         ExprKind::Assignment { value, .. } => expr_produces_captured_callable(value, ctx),
@@ -706,6 +710,31 @@ fn expr_call_needs_descriptor_invoker(callback: &Expr, ctx: &Context) -> bool {
         }
         _ => false,
     }
+}
+
+/// Returns true when a runtime callable expression must use descriptor-owned metadata.
+fn runtime_callable_expr_result_needs_descriptor_invoker(callback: &Expr, ctx: &Context) -> bool {
+    if !matches!(
+        crate::codegen::functions::infer_contextual_type(callback, ctx).codegen_repr(),
+        PhpType::Callable
+    ) {
+        return false;
+    }
+    matches!(
+        &callback.kind,
+        ExprKind::ArrayAccess { .. }
+            | ExprKind::PropertyAccess { .. }
+            | ExprKind::DynamicPropertyAccess { .. }
+            | ExprKind::StaticPropertyAccess { .. }
+            | ExprKind::Assignment { .. }
+            | ExprKind::Ternary { .. }
+            | ExprKind::ShortTernary { .. }
+            | ExprKind::NullCoalesce { .. }
+            | ExprKind::FunctionCall { .. }
+            | ExprKind::MethodCall { .. }
+            | ExprKind::StaticMethodCall { .. }
+            | ExprKind::ExprCall { .. }
+    )
 }
 
 /// Returns true if an expression produces a callable with descriptor-owned environment.

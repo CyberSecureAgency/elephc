@@ -315,8 +315,14 @@ fn descriptor_invoker_sig(callback: &Expr, ctx: &Context) -> Option<Option<Funct
     match &callback.kind {
         ExprKind::Variable(_)
         | ExprKind::ArrayAccess { .. }
+        | ExprKind::PropertyAccess { .. }
+        | ExprKind::DynamicPropertyAccess { .. }
+        | ExprKind::StaticPropertyAccess { .. }
         | ExprKind::FirstClassCallable(_)
         | ExprKind::FunctionCall { .. }
+        | ExprKind::MethodCall { .. }
+        | ExprKind::StaticMethodCall { .. }
+        | ExprKind::ExprCall { .. }
         | ExprKind::Assignment { .. }
         | ExprKind::Ternary { .. }
         | ExprKind::ShortTernary { .. }
