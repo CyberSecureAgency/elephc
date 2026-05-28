@@ -16,7 +16,7 @@ use crate::codegen::{abi, platform::Arch};
 /// Dispatches to the x86_64 variant when targeting Linux on x86_64; otherwise emits the
 /// ARM64 variant. The ARM64 path uses `__rt_mixed_unbox` to extract the tag (x0) and
 /// payload words (x1, x2), then switches on the tag to apply PHP's scalar cast rules:
-/// int → direct forward, string → `__rt_atoi`, float → truncate-to-zero, bool → 0/1 payload,
+/// int → direct forward, string → `__rt_str_to_int`, float → truncate-to-zero, bool → 0/1 payload,
 /// array/resource → element count or display id, null/unsupported → 0.
 ///
 /// # Input
@@ -43,7 +43,7 @@ pub fn emit_mixed_cast_int(emitter: &mut Emitter) {
     emitter.instruction("cmp x0, #0");                                          // does the mixed payload already hold an int?
     emitter.instruction("b.eq __rt_mixed_cast_int_from_int");                   // ints reuse their stored payload directly
     emitter.instruction("cmp x0, #1");                                          // does the mixed payload hold a string?
-    emitter.instruction("b.eq __rt_mixed_cast_int_from_string");                // strings cast through the runtime atoi helper
+    emitter.instruction("b.eq __rt_mixed_cast_int_from_string");                // strings cast through the PHP string-to-int helper
     emitter.instruction("cmp x0, #2");                                          // does the mixed payload hold a float?
     emitter.instruction("b.eq __rt_mixed_cast_int_from_float");                 // floats cast by truncating toward zero
     emitter.instruction("cmp x0, #3");                                          // does the mixed payload hold a bool?
@@ -62,7 +62,7 @@ pub fn emit_mixed_cast_int(emitter: &mut Emitter) {
     emitter.instruction("b __rt_mixed_cast_int_done");                          // return the unboxed integer payload
 
     emitter.label("__rt_mixed_cast_int_from_string");
-    emitter.instruction("bl __rt_atoi");                                        // parse the unboxed string payload as an integer
+    emitter.instruction("bl __rt_str_to_int");                                  // parse the unboxed string payload through PHP string-to-int cast rules
     emitter.instruction("b __rt_mixed_cast_int_done");                          // return the parsed integer result
 
     emitter.label("__rt_mixed_cast_int_from_float");
@@ -114,7 +114,7 @@ fn emit_mixed_cast_int_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("cmp rax, 0");                                          // does the mixed payload already hold an int?
     emitter.instruction("je __rt_mixed_cast_int_from_int_linux_x86_64");        // ints reuse their stored payload directly
     emitter.instruction("cmp rax, 1");                                          // does the mixed payload hold a string?
-    emitter.instruction("je __rt_mixed_cast_int_from_string_linux_x86_64");     // strings cast through the runtime atoi helper
+    emitter.instruction("je __rt_mixed_cast_int_from_string_linux_x86_64");     // strings cast through the PHP string-to-int helper
     emitter.instruction("cmp rax, 2");                                          // does the mixed payload hold a float?
     emitter.instruction("je __rt_mixed_cast_int_from_float_linux_x86_64");      // floats cast by truncating toward zero
     emitter.instruction("cmp rax, 3");                                          // does the mixed payload hold a bool?
@@ -134,7 +134,7 @@ fn emit_mixed_cast_int_linux_x86_64(emitter: &mut Emitter) {
 
     emitter.label("__rt_mixed_cast_int_from_string_linux_x86_64");
     emitter.instruction("mov rax, rdi");                                        // move the unboxed string pointer into the standard x86_64 string result register
-    abi::emit_call_label(emitter, "__rt_atoi");                                 // parse the unboxed string payload as an integer
+    abi::emit_call_label(emitter, "__rt_str_to_int");                           // parse the unboxed string payload through PHP string-to-int cast rules
     emitter.instruction("jmp __rt_mixed_cast_int_done_linux_x86_64");           // return the parsed integer result
 
     emitter.label("__rt_mixed_cast_int_from_float_linux_x86_64");

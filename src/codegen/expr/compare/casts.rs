@@ -30,7 +30,7 @@ use super::super::{coerce_to_string, coerce_to_truthiness, emit_expr};
 /// The `PhpType` that results from the cast (e.g., `PhpType::Int` for `(int)`).
 ///
 /// # PHP cast semantics
-/// - `(int)` from string → calls `__rt_atoi`; from resource → native payload + 1; from array → container length
+/// - `(int)` from string → calls `__rt_str_to_int`; from resource → native payload + 1; from array → container length
 /// - `(float)` from string → null-terminates via `__rt_cstr` then calls `atof`; from resource → id + conversion
 /// - `(bool)` → uses shared truthiness coercion (`coerce_to_truthiness`)
 /// - `(string)` → delegates to `coerce_to_string`
@@ -57,7 +57,7 @@ pub(in crate::codegen::expr) fn emit_cast(
                     abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), 0);
                 }
                 PhpType::Str => {
-                    abi::emit_call_label(emitter, "__rt_atoi");                 // parse the current string result into the active integer result register
+                    abi::emit_call_label(emitter, "__rt_str_to_int");           // parse the current string result through PHP string-to-int cast rules
                 }
                 PhpType::Resource(_) => match emitter.target.arch {
                     crate::codegen::platform::Arch::AArch64 => {

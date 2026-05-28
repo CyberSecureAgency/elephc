@@ -14,6 +14,7 @@ mod ftoa;
 mod str_eq;
 mod str_loose_eq;
 mod str_to_number;
+mod str_to_int;
 mod number_format;
 mod atoi;
 mod strcopy;
@@ -78,6 +79,8 @@ pub use str_loose_eq::emit_str_loose_eq;
 /// Emit case-insensitive string equality check.
 pub use str_to_number::emit_str_to_number;
 /// Emit string-to-number conversion helper.
+pub use str_to_int::emit_str_to_int;
+/// Emit PHP string-to-integer cast helper.
 pub use number_format::emit_number_format;
 /// Emit number formatting helper.
 pub use atoi::emit_atoi;

@@ -64,6 +64,7 @@ pub(super) fn emit_runtime_linux_x86_64_minimal(emitter: &mut Emitter) {
     strings::emit_str_persist(emitter);
     strings::emit_str_eq(emitter);
     strings::emit_str_to_number(emitter);
+    strings::emit_str_to_int(emitter);
     strings::emit_str_loose_eq(emitter);
     strings::emit_strtolower(emitter);
     strings::emit_strpos(emitter);
@@ -349,6 +350,7 @@ mod tests {
         assert!(asm.contains("__rt_ftoa:\n"));
         assert!(asm.contains("__rt_concat:\n"));
         assert!(asm.contains("__rt_atoi:\n"));
+        assert!(asm.contains("__rt_str_to_int:\n"));
         assert!(asm.contains("__rt_str_persist:\n"));
         assert!(asm.contains("__rt_str_eq:\n"));
         assert!(asm.contains("__rt_is_callable_string:\n"));

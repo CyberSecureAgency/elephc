@@ -20,7 +20,7 @@ use crate::types::PhpType;
 /// Emits code for the PHP `intval()` builtin.
 ///
 /// Dispatches on the argument type:
-/// - `Str`: calls `__rt_atoi` to parse the string as an integer
+/// - `Str`: calls `__rt_str_to_int` to parse the string with PHP cast rules
 /// - `Mixed`/`Union`: calls `__rt_mixed_cast_int` for runtime type coercion
 /// - Other types: no-op (PHP scalar-to-int coercion is a no-op at codegen level)
 ///
@@ -37,7 +37,7 @@ pub fn emit(
     match ty {
         PhpType::Str => {
             // -- convert string to integer --
-            abi::emit_call_label(emitter, "__rt_atoi");                         // parse the current string result through the target-aware atoi runtime helper
+            abi::emit_call_label(emitter, "__rt_str_to_int");                   // parse the current string result through PHP string-to-int cast rules
         }
         PhpType::Mixed | PhpType::Union(_) => {
             // -- coerce a boxed Mixed cell to int per PHP's casting rules --
