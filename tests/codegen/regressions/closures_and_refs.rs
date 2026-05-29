@@ -191,6 +191,29 @@ $f();
     assert_eq!(out, "2");
 }
 
+/// Regression for #304: by-reference captures stored in arrays must survive the
+/// defining function scope and observe loop updates made after the closure is created.
+#[test]
+fn test_closure_use_by_ref_array_escape_survives_function_scope() {
+    let out = compile_and_run(
+        r#"<?php
+function make() {
+    $fns = [];
+    for ($i = 0; $i < 1; $i++) {
+        $fns[] = function() use (&$i) {
+            echo $i;
+        };
+    }
+    return $fns;
+}
+
+$fns = make();
+$fns[0]();
+"#,
+    );
+    assert_eq!(out, "1");
+}
+
 /// Regression for #318: a by-reference captured array accepts post-increment on an element.
 #[test]
 fn test_closure_use_by_ref_array_element_post_increment() {

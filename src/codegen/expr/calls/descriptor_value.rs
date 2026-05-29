@@ -14,7 +14,7 @@
 use crate::codegen::callable_descriptor::{
     self, CallableDescriptorInvocation,
 };
-use crate::codegen::context::Context;
+use crate::codegen::context::{Context, HeapOwnership};
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
 use crate::codegen::{abi, callable_dispatch};
@@ -89,6 +89,7 @@ fn emit_runtime_descriptor_with_captures(
             ctx.mark_fcc_used(capture_name);
         }
         if *by_ref {
+            promote_by_ref_capture_to_heap_cell(capture_name, capture_ty, emitter, ctx);
             if !args::emit_ref_arg_variable_address(
                 capture_name,
                 "callable descriptor capture ref",
@@ -140,6 +141,171 @@ fn emit_runtime_descriptor_with_captures(
     if descriptor_reg != abi::int_result_reg(emitter) {
         emitter.instruction(&format!("mov {}, {}", abi::int_result_reg(emitter), descriptor_reg)); // return the runtime callable descriptor pointer
     }
+}
+
+/// Promotes a local by-reference capture into a stable heap cell before descriptor storage.
+///
+/// Plain locals normally live in frame slots, but an escaped closure can outlive that
+/// frame. The promotion copies the current local value into a 16-byte heap reference
+/// cell, rewrites the local slot to hold the cell address, and marks the variable as a
+/// reference so later writes update the same storage captured by the closure.
+fn promote_by_ref_capture_to_heap_cell(
+    capture_name: &str,
+    capture_ty: &PhpType,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+) {
+    if ctx.global_vars.contains(capture_name)
+        || ctx.static_vars.contains(capture_name)
+        || ctx.ref_params.contains(capture_name)
+    {
+        return;
+    }
+    let Some((slot_offset, current_ty, current_static_ty, current_ownership)) =
+        ctx.variables.get(capture_name).map(|var| {
+            (
+                var.stack_offset,
+                var.ty.clone(),
+                var.static_ty.clone(),
+                var.ownership,
+            )
+        })
+    else {
+        emitter.comment(&format!(
+            "WARNING: captured callable variable ${} not found",
+            capture_name
+        ));
+        return;
+    };
+
+    emitter.comment(&format!(
+        "callable descriptor: promote by-ref capture ${} to heap cell",
+        capture_name
+    ));
+    abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), 16);
+    abi::emit_call_label(emitter, "__rt_heap_alloc");
+    let cell_reg = abi::symbol_scratch_reg(emitter);
+    emitter.instruction(&format!("mov {}, {}", cell_reg, abi::int_result_reg(emitter))); // keep the promoted capture cell while moving the local value into it
+    copy_local_value_to_ref_cell(&current_ty, slot_offset, cell_reg, emitter);
+    release_owned_local_value_after_ref_cell_copy(
+        &current_ty,
+        current_ownership,
+        slot_offset,
+        cell_reg,
+        emitter,
+    );
+    abi::store_at_offset_scratch(
+        emitter,
+        cell_reg,
+        slot_offset,
+        abi::temp_int_reg(emitter.target),
+    );
+    ctx.ref_params.insert(capture_name.to_string());
+    ctx.update_var_type_static_and_ownership(
+        capture_name,
+        capture_ty.codegen_repr(),
+        current_static_ty,
+        HeapOwnership::borrowed_alias_for_type(capture_ty),
+    );
+}
+
+/// Copies the current local value into a promoted heap reference cell.
+///
+/// Strings are persisted so the cell owns stable storage, callable descriptors are
+/// retained, and refcounted heap payloads are incref'd. The local slot is not mutated
+/// here; the caller stores the cell pointer after any old local owner is released.
+fn copy_local_value_to_ref_cell(
+    value_ty: &PhpType,
+    slot_offset: usize,
+    cell_reg: &str,
+    emitter: &mut Emitter,
+) {
+    let temp_reg = abi::temp_int_reg(emitter.target);
+    match value_ty.codegen_repr() {
+        PhpType::Str => {
+            let (ptr_reg, len_reg) = abi::string_result_regs(emitter);
+            abi::load_at_offset_scratch(emitter, ptr_reg, slot_offset, temp_reg);
+            abi::load_at_offset_scratch(emitter, len_reg, slot_offset - 8, temp_reg);
+            abi::emit_push_reg(emitter, cell_reg);                              // preserve the promoted capture cell across string persistence
+            abi::emit_call_label(emitter, "__rt_str_persist");                 // detach the captured string before storing it in the reference cell
+            abi::emit_pop_reg(emitter, cell_reg);                               // restore the promoted capture cell after string persistence
+            abi::emit_store_to_address(emitter, ptr_reg, cell_reg, 0);
+            abi::emit_store_to_address(emitter, len_reg, cell_reg, 8);
+        }
+        PhpType::Float => {
+            abi::load_at_offset_scratch(
+                emitter,
+                abi::float_result_reg(emitter),
+                slot_offset,
+                temp_reg,
+            );
+            abi::emit_store_to_address(emitter, abi::float_result_reg(emitter), cell_reg, 0);
+            abi::emit_store_zero_to_address(emitter, cell_reg, 8);
+        }
+        PhpType::Callable => {
+            abi::load_at_offset_scratch(emitter, abi::int_result_reg(emitter), slot_offset, temp_reg);
+            abi::emit_push_reg(emitter, cell_reg);                              // preserve the promoted capture cell while retaining the callable descriptor
+            callable_descriptor::emit_retain_current_descriptor(emitter);
+            abi::emit_pop_reg(emitter, cell_reg);                               // restore the promoted capture cell after retaining the callable descriptor
+            abi::emit_store_to_address(emitter, abi::int_result_reg(emitter), cell_reg, 0);
+            abi::emit_store_zero_to_address(emitter, cell_reg, 8);
+        }
+        ty if ty.is_refcounted() => {
+            abi::load_at_offset_scratch(emitter, abi::int_result_reg(emitter), slot_offset, temp_reg);
+            abi::emit_push_reg(emitter, cell_reg);                              // preserve the promoted capture cell across the payload retain
+            abi::emit_incref_if_refcounted(emitter, &ty);
+            abi::emit_pop_reg(emitter, cell_reg);                               // restore the promoted capture cell after retaining the payload
+            abi::emit_store_to_address(emitter, abi::int_result_reg(emitter), cell_reg, 0);
+            abi::emit_store_zero_to_address(emitter, cell_reg, 8);
+        }
+        _ => {
+            abi::load_at_offset_scratch(
+                emitter,
+                temp_reg,
+                slot_offset,
+                abi::secondary_scratch_reg(emitter),
+            );
+            abi::emit_store_to_address(emitter, temp_reg, cell_reg, 0);
+            abi::emit_store_zero_to_address(emitter, cell_reg, 8);
+        }
+    }
+}
+
+/// Releases a replaced owned local value after copying it into a reference cell.
+///
+/// Only owned strings, callable descriptors, and refcounted heap payloads need release.
+/// Borrowed or scalar locals remain untouched because the new cell owns its copy/retain.
+fn release_owned_local_value_after_ref_cell_copy(
+    value_ty: &PhpType,
+    ownership: HeapOwnership,
+    slot_offset: usize,
+    cell_reg: &str,
+    emitter: &mut Emitter,
+) {
+    if ownership != HeapOwnership::Owned {
+        return;
+    }
+    if !matches!(value_ty.codegen_repr(), PhpType::Str | PhpType::Callable)
+        && !value_ty.is_refcounted()
+    {
+        return;
+    }
+
+    abi::emit_push_reg(emitter, cell_reg);                                      // preserve the promoted capture cell while releasing the replaced local owner
+    abi::load_at_offset_scratch(
+        emitter,
+        abi::int_result_reg(emitter),
+        slot_offset,
+        abi::temp_int_reg(emitter.target),
+    );
+    if matches!(value_ty.codegen_repr(), PhpType::Str) {
+        abi::emit_call_label(emitter, "__rt_heap_free_safe");                  // release the old local string now that the capture cell owns a persisted copy
+    } else if matches!(value_ty.codegen_repr(), PhpType::Callable) {
+        callable_descriptor::emit_release_current_descriptor(emitter);
+    } else {
+        abi::emit_decref_if_refcounted(emitter, value_ty);
+    }
+    abi::emit_pop_reg(emitter, cell_reg);                                       // restore the promoted capture cell for storage in the local slot
 }
 
 /// Retains a by-value capture stored in a runtime descriptor.
