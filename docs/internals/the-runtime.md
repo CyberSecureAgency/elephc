@@ -425,15 +425,16 @@ The `json_encode` implementation uses **type-aware dispatch** — the codegen ca
 
 **Files:** `system/preg_strip.rs`, `system/pcre_to_posix.rs`, `system/preg_match.rs`, `system/preg_match_all.rs`, `system/preg_replace.rs`, `system/preg_replace_callback.rs`, `system/preg_split.rs`
 
-All regex routines use **POSIX extended regular expressions** via libc's `regcomp()`, `regexec()`, and `regfree()`. Shared helpers (`__rt_preg_strip` and `__rt_pcre_to_posix`) strip PHP-style delimiters and translate common PCRE shorthands and Unicode property shims before passing the pattern to the POSIX API. Before compilation, regex helpers activate `LC_CTYPE` with `C.UTF-8` and fall back to `setlocale(LC_CTYPE, "")` so POSIX character classes can observe UTF-8 text when the host provides that locale; the broad `\p{L}` shim avoids relying on locale-specific alpha tables.
+All regex routines use PCRE2 through the PCRE2 POSIX-compatible wrapper (`pcre2_regcomp()`, `pcre2_regexec()`, and `pcre2_regfree()`). `__rt_preg_strip` strips PHP-style delimiters and maps supported modifiers (`i`, `m`, `s`, `u`, `U`) to PCRE2 wrapper flags. `__rt_pcre_to_posix` keeps its historic symbol name for compatibility with existing emitters, but now only materializes the stripped PCRE pattern as a null-terminated C string. Regex-enabled programs request `pcre2-posix` and `pcre2-8` during final linking.
 
 | Routine | What it does | Input | Output |
 |---|---|---|---|
 | `__rt_preg_match` | Test if a regex matches the subject string. Compiles the pattern, executes once, frees | pattern + subject strings | `x0` = 1 (match) or 0 (no match) |
+| `__rt_preg_match_capture` | Test once and materialize PHP's optional `$matches` array from the compiled `regex_t.re_nsub` capture count, omitting trailing unmatched captures while keeping interior unmatched captures as empty strings | pattern + subject strings | match flag plus matches array pointer |
 | `__rt_preg_match_all` | Count all non-overlapping matches by repeatedly executing the regex with advancing offsets | pattern + subject strings | `x0` = match count |
-| `__rt_preg_replace` | Replace all regex matches with a replacement string. Builds the result incrementally in the concat buffer and expands `$0`..`$9` / `\0`..`\9` from the `regexec()` capture vector | pattern + replacement + subject | `x1`/`x2` = result string |
-| `__rt_preg_replace_callback` | Replace all regex matches by building an indexed `$matches` string array, invoking the callback, and appending the callback string result while preserving concat-buffer state across callback prologues | pattern + callback + subject | `x1`/`x2` = result string |
-| `__rt_preg_split` | Split the subject string at regex match boundaries. Returns a string array of the non-matching segments | pattern + subject strings | `x0` = array pointer |
+| `__rt_preg_replace` | Replace all regex matches with a replacement string. Builds the result incrementally in the concat buffer and expands `$0`..`$99` / `\0`..`\99` from the PCRE2 capture vector | pattern + replacement + subject | `x1`/`x2` = result string |
+| `__rt_preg_replace_callback` | Replace all regex matches by allocating capture storage from `regex_t.re_nsub`, building an indexed `$matches` string array, invoking the callback, and appending the callback string result while preserving concat-buffer state across callback prologues | pattern + callback + subject | `x1`/`x2` = result string |
+| `__rt_preg_split` | Split the subject string at regex match boundaries using `regex_t.re_nsub`-sized capture storage. Applies limit, no-empty, delimiter-capture, and offset-capture flags; dynamic flags return boxed Mixed slots to preserve layout | pattern + subject strings, limit, flags | `x0` = array pointer |
 
 ## I/O routines
 
@@ -722,7 +723,7 @@ Additionally, the runtime emits static data tables:
 - `_generator_class_id` — per-program class id used to recognize Generator frames during object deep-free
 - `_php_uname_mode_len_msg`, `_php_uname_mode_value_msg` — fatal `php_uname()` argument diagnostics for invalid mode strings
 - `_filetype_*`, `_stat_key_*`, `_dirname_*`, `_pathinfo_key_*`, `_tmpfile_template` — file metadata, path, stat-array, and temporary-file lookup strings used by I/O helpers
-- `_locale_utf8_name`, `_locale_env_name`, `_pcre_*` regex replacement strings — locale selectors plus PCRE shorthand and Unicode-property replacement strings for the POSIX regex bridge
+- `_locale_utf8_name`, `_locale_env_name` — locale selectors used by runtime helpers that need host locale fallback
 - `_json_true`, `_json_false`, `_json_null` — JSON keyword strings used by `__rt_json_encode_bool` and `__rt_json_encode_null`
 - `_json_int_max_str`, `_json_int_min_str` — decimal threshold strings used by `JSON_BIGINT_AS_STRING` overflow detection without wrapping through integer parsing
 - `_json_err_msg_0` ... `_json_err_msg_10`, `_json_err_msg_table`, `_json_err_msg_count` — `json_last_error_msg()` lookup data for the supported `JSON_ERROR_*` code range
