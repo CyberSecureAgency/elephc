@@ -184,7 +184,7 @@ Each routine follows the same pattern — inputs in registers, output in standar
 
 ## Callable routines
 
-**Source:** `src/codegen/runtime/callables/` (2 files)
+**Source:** `src/codegen/runtime/callables/` (3 files including `mod.rs`)
 
 These routines implement the runtime fallback path for `is_callable()` when the argument is not a compile-time literal or statically known callable value. They consult generated metadata for builtins, user functions, public methods, public static methods, and `__invoke` objects.
 
@@ -210,7 +210,7 @@ Extern callback trampolines use the same descriptor invoker from a C-facing entr
 
 ## Array routines
 
-**Source:** `src/codegen/runtime/arrays/` (119 files)
+**Source:** `src/codegen/runtime/arrays/` (121 files)
 
 ### Core allocation
 
@@ -341,7 +341,7 @@ Refcounts are stored as a 32-bit value in the uniform 16-byte heap header, at `[
 
 ## System routines
 
-**Source:** `src/codegen/runtime/system/` (34 files)
+**Source:** `src/codegen/runtime/system/` (35 top-level files plus `date/`, `strtotime/`, `json_validate/`, `json_decode_mixed/`, and `json_encode_str/` subdirectories)
 
 ### `__rt_build_argv` — Build $argv array
 
@@ -365,7 +365,7 @@ At program start, the OS passes `argc` (argument count) in `x0` and `argv` (poin
 
 ## Exception routines
 
-**Source:** `src/codegen/runtime/exceptions.rs` plus `src/codegen/runtime/exceptions/` (5 files)
+**Source:** `src/codegen/runtime/exceptions.rs` plus `src/codegen/runtime/exceptions/` (6 files)
 
 elephc lowers exceptions with a small runtime layer around `_setjmp` / `_longjmp`. Codegen publishes the current exception object into `_exc_value`, pushes a handler record into `_exc_handler_top`, and then uses these helpers to unwind, match catch clauses, and resume control flow through `catch` / `finally`.
 
@@ -486,7 +486,7 @@ These routines handle file and filesystem operations through target-aware libc/s
 
 ## Pointer routines
 
-**Source:** `src/codegen/runtime/pointers/` (5 files)
+**Source:** `src/codegen/runtime/pointers/` (7 files including `mod.rs`)
 
 These helpers support the compiler-specific pointer builtins.
 
@@ -606,7 +606,7 @@ Generator frames are stamped as object heap blocks because `Generator` is a buil
 
 ## Fiber routines
 
-**Source:** `src/codegen/runtime/fibers/` (4 files)
+**Source:** `src/codegen/runtime/fibers/` (4 files plus the `api/` subdirectory)
 
 These helpers implement PHP 8.1-style cooperative coroutines. They are emitted on AArch64 and in the Linux x86_64 runtime slice.
 
