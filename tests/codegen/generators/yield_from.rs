@@ -89,6 +89,33 @@ foreach (outer() as $v) {
     assert_eq!(out, "1\n42\n");
 }
 
+/// Verifies a delegated generator return can be consumed by a normal
+/// generator-body diagnostic statement after `yield from` completes, while
+/// the outer generator still has a null return value when it does not return.
+#[test]
+fn test_generator_yield_from_return_value_survives_var_dump_statement() {
+    let out = compile_and_run(
+        r#"<?php
+function a() {
+    yield 1;
+    return 9;
+}
+
+function b() {
+    $r = yield from a();
+    var_dump($r);
+}
+
+$g = b();
+foreach ($g as $v) {
+    echo $v, "\n";
+}
+var_dump($g->getReturn());
+"#,
+    );
+    assert_eq!(out, "1\nint(9)\nNULL\n");
+}
+
 /// Verifies `return yield from inner()` propagates the inner generator's
 /// return value (42) so that `$g->getReturn()` returns it correctly.
 #[test]

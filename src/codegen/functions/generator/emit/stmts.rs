@@ -24,18 +24,23 @@ use super::yields::{
     emit_yield, emit_yield_assign_store_mixed, emit_yield_assign_unbox_int,
     emit_yield_from_generator,
 };
-use super::{slot_offset, LoopLabels, ResumeCtx};
+use super::{preserved_scratch_reg, slot_offset, LoopLabels, ResumeCtx};
 use super::super::model::*;
 use crate::codegen::abi;
+use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 use crate::codegen::runtime::generators::frame as gen_frame;
 
-/// Emits a single generator body statement: `AssignInt`, `AssignMixed`,
-/// `PostIncrement`, or `PostDecrement`. Each mutation uses the standard
+/// Emits a single generator body statement. Mutations use the standard
 /// refcount-replace pattern for Mixed slots to maintain ownership safety.
 /// The slot index is converted to a stack offset via `slot_offset`.
-pub(super) fn emit_body_stmt(emitter: &mut Emitter, stmt: &BodyStmt) {
+pub(super) fn emit_body_stmt(
+    emitter: &mut Emitter,
+    data: &mut DataSection,
+    stmt: &BodyStmt,
+    ctx: &mut ResumeCtx,
+) {
     match stmt {
         BodyStmt::AssignInt(idx, src) => {
             match emitter.target.arch {
@@ -57,6 +62,7 @@ pub(super) fn emit_body_stmt(emitter: &mut Emitter, stmt: &BodyStmt) {
             emit_replace_mixed_slot(emitter, off, |em| emit_box_mixed_source(em, src));
         }
         BodyStmt::EchoMixed(src) => emit_echo_mixed(emitter, src),
+        BodyStmt::VarDumpMixed(src) => emit_var_dump_mixed(emitter, data, src, ctx),
         BodyStmt::PostIncrement(idx) => {
             match emitter.target.arch {
                 Arch::AArch64 => {
@@ -86,6 +92,161 @@ pub(super) fn emit_body_stmt(emitter: &mut Emitter, stmt: &BodyStmt) {
             }
         }
     }
+}
+
+/// Emits a generator-body `var_dump` for a Mixed-capable source.
+///
+/// The value is first boxed into an owned Mixed cell so runtime type dispatch
+/// is uniform for locals, `yield from` returns, strings, ints, and nulls.
+/// After formatting, the temporary box is released.
+fn emit_var_dump_mixed(
+    emitter: &mut Emitter,
+    data: &mut DataSection,
+    src: &MixedSource,
+    ctx: &mut ResumeCtx,
+) {
+    emit_box_mixed_source(emitter, src);
+    let result_reg = abi::int_result_reg(emitter);
+    let saved_reg = preserved_scratch_reg(emitter);
+    emitter.instruction(&format!("mov {}, {}", saved_reg, result_reg));         // preserve the temporary Mixed box across diagnostic formatting
+    emit_var_dump_boxed_mixed(emitter, data, ctx);
+    emitter.instruction(&format!("mov {}, {}", result_reg, saved_reg));         // restore the temporary Mixed box for release
+    abi::emit_call_label(emitter, "__rt_decref_mixed");                        // release the temporary Mixed box after var_dump prints it
+}
+
+/// Emits type dispatch for a boxed Mixed value in the active integer result register.
+///
+/// Generator IR currently formats int, string, and null Mixed payloads here.
+/// Unknown tags conservatively print `NULL`, matching the narrow generator IR
+/// value surface rather than accepting unsupported runtime shapes.
+fn emit_var_dump_boxed_mixed(
+    emitter: &mut Emitter,
+    data: &mut DataSection,
+    ctx: &mut ResumeCtx,
+) {
+    let int_case = ctx.fresh_label("vd_mixed_int");
+    let string_case = ctx.fresh_label("vd_mixed_string");
+    let null_case = ctx.fresh_label("vd_mixed_null");
+    let done = ctx.fresh_label("vd_mixed_done");
+
+    abi::emit_call_label(emitter, "__rt_mixed_unbox");                         // unwrap the boxed mixed payload before formatting it
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction("cmp x0, #0");                                  // does the mixed payload hold an int?
+            emit_jump_eq(emitter, &int_case);
+            emitter.instruction("cmp x0, #1");                                  // does the mixed payload hold a string?
+            emit_jump_eq(emitter, &string_case);
+        }
+        Arch::X86_64 => {
+            emitter.instruction("cmp rax, 0");                                  // does the mixed payload hold an int?
+            emit_jump_eq(emitter, &int_case);
+            emitter.instruction("cmp rax, 1");                                  // does the mixed payload hold a string?
+            emit_jump_eq(emitter, &string_case);
+        }
+    }
+    emit_jump(emitter, &null_case);
+
+    emitter.label(&int_case);
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction("mov x0, x1");                                  // move the unboxed int payload into the integer result register
+        }
+        Arch::X86_64 => {
+            emitter.instruction("mov rax, rdi");                                // move the unboxed int payload into the integer result register
+        }
+    }
+    emit_var_dump_int(emitter, data, ctx);
+    emit_jump(emitter, &done);
+
+    emitter.label(&string_case);
+    match emitter.target.arch {
+        Arch::AArch64 => {}
+        Arch::X86_64 => {
+            emitter.instruction("mov rax, rdi");                                // move the unboxed string pointer into the string pointer register
+            emitter.instruction("mov rdx, rsi");                                // move the unboxed string length into the string length register
+        }
+    }
+    emit_var_dump_string(emitter, data);
+    emit_jump(emitter, &done);
+
+    emitter.label(&null_case);
+    emit_write_literal(emitter, data, b"NULL\n");
+    emitter.label(&done);
+}
+
+/// Emits `var_dump` output for an integer payload in the active result register.
+fn emit_var_dump_int(emitter: &mut Emitter, data: &mut DataSection, ctx: &mut ResumeCtx) {
+    let not_null = ctx.fresh_label("vd_not_null");
+    let done = ctx.fresh_label("vd_done");
+    let result_reg = abi::int_result_reg(emitter);
+    let scratch_reg = abi::symbol_scratch_reg(emitter);
+    abi::emit_load_int_immediate(emitter, scratch_reg, 0x7fff_ffff_ffff_fffe_u64 as i64); // materialize the shared null sentinel used by int-valued locals
+    emitter.instruction(&format!("cmp {}, {}", result_reg, scratch_reg));       // compare the incoming integer payload against the null sentinel
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction(&format!("b.ne {}", not_null));                 // branch to the ordinary int path when the payload is not null
+        }
+        Arch::X86_64 => {
+            emitter.instruction(&format!("jne {}", not_null));                  // branch to the ordinary int path when the payload is not null
+        }
+    }
+    emit_write_literal(emitter, data, b"NULL\n");
+    emit_jump(emitter, &done);
+    emitter.label(&not_null);
+    abi::emit_push_reg(emitter, result_reg);                                    // preserve the integer payload before prefix writes clobber the result register
+    emit_write_literal(emitter, data, b"int(");
+    abi::emit_pop_reg(emitter, result_reg);                                     // restore the integer payload after the prefix write
+    abi::emit_call_label(emitter, "__rt_itoa");                                 // convert the integer payload to decimal text
+    emit_write_current_string(emitter);
+    emit_write_literal(emitter, data, b")\n");
+    emitter.label(&done);
+}
+
+/// Emits `var_dump` output for a string payload in the active string result registers.
+fn emit_var_dump_string(emitter: &mut Emitter, data: &mut DataSection) {
+    let (ptr_reg, len_reg) = abi::string_result_regs(emitter);
+    abi::emit_push_reg_pair(emitter, ptr_reg, len_reg);                         // preserve the original string payload while printing the type prefix
+    emit_write_literal(emitter, data, b"string(");
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction("ldr x0, [sp, #8]");                            // load the preserved string length without consuming the saved payload pair
+        }
+        Arch::X86_64 => {
+            emitter.instruction("mov rax, QWORD PTR [rsp + 8]");                // load the preserved string length without consuming the saved payload pair
+        }
+    }
+    abi::emit_call_label(emitter, "__rt_itoa");                                 // convert the string length to decimal text
+    emit_write_current_string(emitter);
+    emit_write_literal(emitter, data, b") \"");
+    abi::emit_pop_reg_pair(emitter, ptr_reg, len_reg);                          // restore the original string payload after the prefix writes finish
+    emit_write_current_string(emitter);
+    emit_write_literal(emitter, data, b"\"\n");
+}
+
+/// Emits a compile-time literal string to stdout from generator-body helpers.
+fn emit_write_literal(emitter: &mut Emitter, data: &mut DataSection, bytes: &[u8]) {
+    let (lbl, len) = data.add_string(bytes);
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.adrp("x1", &lbl);                                           // load the page that contains the literal string bytes
+            emitter.add_lo12("x1", "x1", &lbl);                                 // resolve the literal string address within that page
+            emitter.instruction(&format!("mov x2, #{}", len));                  // pass the literal string length to write()
+            emitter.instruction("mov x0, #1");                                  // fd = stdout
+            emitter.syscall(4);
+        }
+        Arch::X86_64 => {
+            emitter.instruction(&format!("lea rsi, [rip + {}]", lbl));          // point the write buffer register at the literal string bytes
+            emitter.instruction(&format!("mov edx, {}", len));                  // pass the literal string length to write()
+            emitter.instruction("mov edi, 1");                                  // fd = stdout
+            emitter.instruction("mov eax, 1");                                  // Linux x86_64 syscall 1 = write
+            emitter.instruction("syscall");                                     // write the literal bytes directly to stdout
+        }
+    }
+}
+
+/// Writes the current string result register pair to stdout.
+fn emit_write_current_string(emitter: &mut Emitter) {
+    abi::emit_write_stdout(emitter, &crate::types::PhpType::Str);
 }
 
 /// Emits a generator-body `echo` by boxing the source as Mixed, writing it with
@@ -136,9 +297,14 @@ fn emit_jump_eq(emitter: &mut Emitter, label: &str) {
 
 /// Walks a slice of `ResumeNode` items in source order, delegating each to
 /// `emit_node`. Used for top-level body walks and nested control-flow bodies.
-pub(super) fn emit_nodes(emitter: &mut Emitter, nodes: &[ResumeNode], ctx: &mut ResumeCtx) {
+pub(super) fn emit_nodes(
+    emitter: &mut Emitter,
+    data: &mut DataSection,
+    nodes: &[ResumeNode],
+    ctx: &mut ResumeCtx,
+) {
     for node in nodes {
-        emit_node(emitter, node, ctx);
+        emit_node(emitter, data, node, ctx);
     }
 }
 
@@ -146,9 +312,14 @@ pub(super) fn emit_nodes(emitter: &mut Emitter, nodes: &[ResumeNode], ctx: &mut 
 /// Handles all statement types, control-flow constructs, and the special
 /// `Yield`/`YieldFromGenerator` nodes that suspend the generator.
 /// `break`/`continue` use `emit_loop_jump` to respect `loop_stack`.
-fn emit_node(emitter: &mut Emitter, node: &ResumeNode, ctx: &mut ResumeCtx) {
+fn emit_node(
+    emitter: &mut Emitter,
+    data: &mut DataSection,
+    node: &ResumeNode,
+    ctx: &mut ResumeCtx,
+) {
     match node {
-        ResumeNode::Stmt(s) => emit_body_stmt(emitter, s),
+        ResumeNode::Stmt(s) => emit_body_stmt(emitter, data, s, ctx),
         ResumeNode::Yield(entry, state_idx) => emit_yield(emitter, entry, *state_idx, ctx, true),
         ResumeNode::YieldAssign { local_idx, local_ty, yield_entry, state_idx } => {
             emit_yield(emitter, yield_entry, *state_idx, ctx, false);
@@ -161,24 +332,24 @@ fn emit_node(emitter: &mut Emitter, node: &ResumeNode, ctx: &mut ResumeCtx) {
             let else_lbl = ctx.fresh_label("if_else");
             let end_lbl = ctx.fresh_label("if_end");
             emit_branch_if_false(emitter, cond, &else_lbl);
-            emit_nodes(emitter, then_body, ctx);
+            emit_nodes(emitter, data, then_body, ctx);
             emit_jump(emitter, &end_lbl);
             emitter.label(&else_lbl);
-            emit_nodes(emitter, else_body, ctx);
+            emit_nodes(emitter, data, else_body, ctx);
             emitter.label(&end_lbl);
         }
         ResumeNode::For { init, cond, update, body } => {
-            emit_nodes(emitter, init, ctx);
+            emit_nodes(emitter, data, init, ctx);
             let test_lbl = ctx.fresh_label("for_test");
             let cont_lbl = ctx.fresh_label("for_cont");
             let end_lbl = ctx.fresh_label("for_end");
             emitter.label(&test_lbl);
             emit_branch_if_false(emitter, cond, &end_lbl);
             ctx.loop_stack.push(LoopLabels { end: end_lbl.clone(), cont: cont_lbl.clone() });
-            emit_nodes(emitter, body, ctx);
+            emit_nodes(emitter, data, body, ctx);
             ctx.loop_stack.pop();
             emitter.label(&cont_lbl);
-            emit_nodes(emitter, update, ctx);
+            emit_nodes(emitter, data, update, ctx);
             emit_jump(emitter, &test_lbl);
             emitter.label(&end_lbl);
         }
@@ -188,7 +359,7 @@ fn emit_node(emitter: &mut Emitter, node: &ResumeNode, ctx: &mut ResumeCtx) {
             emitter.label(&top_lbl);
             emit_branch_if_false(emitter, cond, &end_lbl);
             ctx.loop_stack.push(LoopLabels { end: end_lbl.clone(), cont: top_lbl.clone() });
-            emit_nodes(emitter, body, ctx);
+            emit_nodes(emitter, data, body, ctx);
             ctx.loop_stack.pop();
             emit_jump(emitter, &top_lbl);
             emitter.label(&end_lbl);
@@ -199,7 +370,7 @@ fn emit_node(emitter: &mut Emitter, node: &ResumeNode, ctx: &mut ResumeCtx) {
             let end_lbl = ctx.fresh_label("do_end");
             emitter.label(&top_lbl);
             ctx.loop_stack.push(LoopLabels { end: end_lbl.clone(), cont: cond_lbl.clone() });
-            emit_nodes(emitter, body, ctx);
+            emit_nodes(emitter, data, body, ctx);
             ctx.loop_stack.pop();
             emitter.label(&cond_lbl);
             emit_branch_if_false(emitter, cond, &end_lbl);
@@ -209,11 +380,11 @@ fn emit_node(emitter: &mut Emitter, node: &ResumeNode, ctx: &mut ResumeCtx) {
         ResumeNode::Break => emit_loop_jump(emitter, ctx, /* break_jump */ true),
         ResumeNode::Continue => emit_loop_jump(emitter, ctx, /* break_jump */ false),
         ResumeNode::Switch { subject, cases, default } => {
-            emit_switch(emitter, subject, cases, default, ctx);
+            emit_switch(emitter, data, subject, cases, default, ctx);
         }
         ResumeNode::Try { try_body, finally_body } => {
-            emit_nodes(emitter, try_body, ctx);
-            emit_nodes(emitter, finally_body, ctx);
+            emit_nodes(emitter, data, try_body, ctx);
+            emit_nodes(emitter, data, finally_body, ctx);
         }
         ResumeNode::YieldFromGenerator { source, state_idx, result } => {
             emit_yield_from_generator(emitter, source, *state_idx, *result, ctx);
@@ -234,7 +405,7 @@ fn emit_node(emitter: &mut Emitter, node: &ResumeNode, ctx: &mut ResumeCtx) {
             let term = ctx.term_label.clone();
             emit_jump(emitter, &term);
         }
-        ResumeNode::Block { stmts } => emit_nodes(emitter, stmts, ctx),
+        ResumeNode::Block { stmts } => emit_nodes(emitter, data, stmts, ctx),
         ResumeNode::Bail => {
             let term = ctx.term_label.clone();
             emit_jump(emitter, &term);
@@ -260,6 +431,7 @@ fn emit_loop_jump(emitter: &mut Emitter, ctx: &mut ResumeCtx, break_jump: bool) 
 /// matching PHP fall-through semantics.
 fn emit_switch(
     emitter: &mut Emitter,
+    data: &mut DataSection,
     subject: &IntSource,
     cases: &[(Vec<i64>, Vec<ResumeNode>)],
     default: &[ResumeNode],
@@ -299,10 +471,10 @@ fn emit_switch(
     });
     for (i, (_, body)) in cases.iter().enumerate() {
         emitter.label(&case_labels[i]);
-        emit_nodes(emitter, body, ctx);
+        emit_nodes(emitter, data, body, ctx);
     }
     emitter.label(&default_lbl);
-    emit_nodes(emitter, default, ctx);
+    emit_nodes(emitter, data, default, ctx);
     ctx.loop_stack.pop();
     emitter.label(&end_lbl);
 }

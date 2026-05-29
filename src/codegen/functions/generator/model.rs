@@ -110,6 +110,10 @@ pub(super) enum BodyStmt {
     /// `echo <mixed_expr>` inside a generator body. The expression is boxed as
     /// a Mixed cell, written with PHP echo semantics, then released.
     EchoMixed(MixedSource),
+    /// `var_dump(<mixed_expr>)` inside a generator body. The expression is
+    /// boxed as a Mixed cell, formatted with PHP diagnostic semantics, then
+    /// released.
+    VarDumpMixed(MixedSource),
     PostIncrement(usize),
     PostDecrement(usize),
 }

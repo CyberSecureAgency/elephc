@@ -178,5 +178,5 @@ fn emit_generator_with_label(
         int_param_count,
         local_typed.len(),
     );
-    emit_resume(emitter, &resume_label, &nodes, highest_state, &mixed_slot_indices);
+    emit_resume(emitter, data, &resume_label, &nodes, highest_state, &mixed_slot_indices);
 }

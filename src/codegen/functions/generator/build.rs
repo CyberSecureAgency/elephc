@@ -394,6 +394,14 @@ fn build_node(
                 }
                 Some(ResumeNode::Stmt(BodyStmt::PostDecrement(idx)))
             }
+            ExprKind::FunctionCall { name, args } if is_var_dump_call(name.as_str()) => {
+                let mut stmts = Vec::with_capacity(args.len());
+                for arg in args {
+                    let src = classify_mixed_expr(&arg.kind, slots, types, data)?;
+                    stmts.push(ResumeNode::Stmt(BodyStmt::VarDumpMixed(src)));
+                }
+                Some(ResumeNode::Block { stmts })
+            }
             _ => None,
         },
         StmtKind::Echo(expr) => {
@@ -509,6 +517,13 @@ fn build_node(
         }
         _ => None,
     }
+}
+
+/// Returns true for PHP's global `var_dump` builtin name as it may appear
+/// after name resolution. Generator lowering uses this to keep simple
+/// diagnostic expression statements from bailing the narrow generator IR.
+fn is_var_dump_call(name: &str) -> bool {
+    name.trim_start_matches('\\').eq_ignore_ascii_case("var_dump")
 }
 
 /// Translates a `yield from` expression into a `ResumeNode`. Handles

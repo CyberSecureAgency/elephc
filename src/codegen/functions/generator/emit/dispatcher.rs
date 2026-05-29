@@ -18,6 +18,7 @@
 use super::stmts::emit_nodes;
 use super::{slot_offset, LoopLabels, ResumeCtx};
 use super::super::model::ResumeNode;
+use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 use crate::codegen::runtime::generators::frame as gen_frame;
@@ -34,13 +35,14 @@ use crate::codegen::runtime::generators::frame as gen_frame;
 /// terminator, which sets `FLAG_TERMINATED` then decrefs every Mixed-typed local.
 pub(in crate::codegen::functions::generator) fn emit_resume(
     emitter: &mut Emitter,
+    data: &mut DataSection,
     label: &str,
     nodes: &[ResumeNode],
     highest_state: u32,
     mixed_slot_indices: &[usize],
 ) {
     if emitter.target.arch == Arch::X86_64 {
-        emit_resume_x86_64(emitter, label, nodes, highest_state, mixed_slot_indices);
+        emit_resume_x86_64(emitter, data, label, nodes, highest_state, mixed_slot_indices);
         return;
     }
 
@@ -77,7 +79,7 @@ pub(in crate::codegen::functions::generator) fn emit_resume(
         next_label_id: 0,
         loop_stack: Vec::<LoopLabels>::new(),
     };
-    emit_nodes(emitter, nodes, &mut ctx);
+    emit_nodes(emitter, data, nodes, &mut ctx);
 
     emitter.instruction(&format!("b {}", term_label));                          // body fell off the end → terminate
 
@@ -110,6 +112,7 @@ pub(in crate::codegen::functions::generator) fn emit_resume(
 /// is kept 16-byte aligned across nested calls.
 fn emit_resume_x86_64(
     emitter: &mut Emitter,
+    data: &mut DataSection,
     label: &str,
     nodes: &[ResumeNode],
     highest_state: u32,
@@ -150,7 +153,7 @@ fn emit_resume_x86_64(
         next_label_id: 0,
         loop_stack: Vec::<LoopLabels>::new(),
     };
-    emit_nodes(emitter, nodes, &mut ctx);
+    emit_nodes(emitter, data, nodes, &mut ctx);
 
     emitter.instruction(&format!("jmp {}", term_label));                        // body fell off the end -> terminate
 
