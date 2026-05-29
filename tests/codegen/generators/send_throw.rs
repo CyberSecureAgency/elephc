@@ -60,7 +60,8 @@ echo $g->current();
 }
 
 /// Verifies the `sent_value` slot is cleared after a plain `next()` resume that does
-/// not assign the yield. A subsequent `current()` sees `0` (null/unset sent value).
+/// not assign the yield. A subsequent `current()` sees PHP null, which echoes as an
+/// empty string.
 #[test]
 fn test_generator_send_value_is_cleared_after_plain_resume() {
     let out = compile_and_run(
@@ -79,7 +80,7 @@ $g->next();
 echo $g->current();
 "#,
     );
-    assert_eq!(out, "0");
+    assert_eq!(out, "");
 }
 
 /// Verifies `Generator::throw($exc)` sets TERMINATED, publishes the exception in the
@@ -142,6 +143,26 @@ echo $g->current();
 "#,
     );
     assert_eq!(out, "first alpha second gamma");
+}
+
+/// Verifies `Generator::send(string)` delivers the payload into a fresh
+/// `$x = yield ...` assignment and returns the next yielded value to the caller.
+#[test]
+fn test_generator_send_string_payload_to_fresh_yield_assignment_returns_next_yield() {
+    let out = compile_and_run(
+        r#"<?php
+function g() {
+    $x = yield 1;
+    echo $x, "\n";
+    yield 2;
+}
+
+$g = g();
+var_dump($g->current());
+var_dump($g->send("p"));
+"#,
+    );
+    assert_eq!(out, "int(1)\np\nint(2)\n");
 }
 
 /// Verifies `send()` value participates in Mixed arithmetic when used in expressions

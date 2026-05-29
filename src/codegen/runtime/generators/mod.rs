@@ -126,19 +126,35 @@ fn emit_gen_next(emitter: &mut Emitter) {
 }
 
 /// `send($value): mixed` — stash the caller-owned boxed Mixed payload in the
-/// frame's `sent_value` slot, then resume the body. The yield-assignment
-/// lowering consumes and clears that box on the resume path.
+/// frame's `sent_value` slot, resume the body, then return an owned reference
+/// to the next yielded value. The yield-assignment lowering consumes and clears
+/// the sent box on the resume path.
 fn emit_gen_send(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: __rt_gen_send ---");
     emitter.label_global("__rt_gen_send");
-    emitter.instruction(&format!("ldr w2, [x0, #{}]", f::OFF_FLAGS));           // load flags
-    emitter.instruction(&format!("tbnz w2, #1, __rt_gen_send_done"));           // if TERMINATED bit set, skip resume
-    emitter.instruction(&format!("str x1, [x0, #{}]", f::OFF_SENT_VALUE));      // stash the boxed sent payload in sent_value
-    emitter.instruction(&format!("ldr x9, [x0, #{}]", f::OFF_RESUME_FN));       // load resume function pointer
-    emitter.instruction("br x9");                                               // tail-call resume_fn (returns whatever current() now reflects)
+    emitter.instruction("sub sp, sp, #32");                                     // reserve a helper frame while send() resumes user code
+    emitter.instruction("stp x29, x30, [sp, #16]");                             // save frame pointer and return address across the resume call
+    emitter.instruction("str x19, [sp, #0]");                                   // preserve caller's x19 before caching the generator frame
+    emitter.instruction("add x29, sp, #16");                                    // establish the helper frame pointer
+    emitter.instruction("mov x19, x0");                                         // x19 = generator frame pointer
+    emitter.instruction(&format!("ldr w2, [x19, #{}]", f::OFF_FLAGS));          // load flags before deciding whether resume is possible
+    emitter.instruction(&format!("tbnz w2, #1, __rt_gen_send_done"));           // if TERMINATED bit set, return null without resuming
+    emitter.instruction(&format!("str x1, [x19, #{}]", f::OFF_SENT_VALUE));     // stash the boxed sent payload in sent_value
+    emitter.instruction(&format!("ldr x9, [x19, #{}]", f::OFF_RESUME_FN));      // load resume function pointer
+    emitter.instruction("mov x0, x19");                                         // pass the generator frame to the resume function
+    emitter.instruction("blr x9");                                              // resume until the next yield or termination
+    emitter.instruction(&format!("ldr w2, [x19, #{}]", f::OFF_FLAGS));          // reload flags after user code resumed
+    emitter.instruction(&format!("tbnz w2, #1, __rt_gen_send_done"));           // terminated generators return null from send()
+    emitter.instruction(&format!("ldr x0, [x19, #{}]", f::OFF_LAST_VALUE));     // load the boxed Mixed pointer for the new current value
+    emitter.instruction("bl __rt_incref");                                      // incref so send() returns an owned Mixed cell
+    emitter.instruction("b __rt_gen_send_epilogue");                            // skip the null return path
     emitter.label_global("__rt_gen_send_done");
     emitter.instruction("mov x0, #0");                                          // return null when terminated
+    emitter.label_global("__rt_gen_send_epilogue");
+    emitter.instruction("ldr x19, [sp, #0]");                                   // restore caller's x19
+    emitter.instruction("ldp x29, x30, [sp, #16]");                             // restore frame pointer and return address
+    emitter.instruction("add sp, sp, #32");                                     // release the helper frame
     emitter.instruction("ret");                                                 // return to caller
 }
 
@@ -256,20 +272,36 @@ fn emit_gen_next_x86_64(emitter: &mut Emitter) {
 }
 
 /// `send($value): mixed` — x86_64 port. Stashes the boxed sent value from
-/// `rsi` in the frame's sent_value slot, then resumes the body. Returns null
-/// if the generator is already terminated.
+/// `rsi`, resumes the body, then returns an owned reference to the next
+/// yielded value. Returns null if the generator is already terminated or
+/// terminates during the resume.
 fn emit_gen_send_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: __rt_gen_send ---");
     emitter.label_global("__rt_gen_send");
-    emitter.instruction(&format!("mov r10d, DWORD PTR [rdi + {}]", f::OFF_FLAGS)); // load flags
+    emitter.instruction("push rbp");                                            // preserve caller frame pointer while send() resumes user code
+    emitter.instruction("mov rbp, rsp");                                        // establish a stable helper frame
+    emitter.instruction("push r12");                                            // preserve r12 before caching the generator frame
+    emitter.instruction("sub rsp, 8");                                          // keep the stack 16-byte aligned across nested calls
+    emitter.instruction("mov r12, rdi");                                        // r12 = generator frame pointer
+    emitter.instruction(&format!("mov r10d, DWORD PTR [r12 + {}]", f::OFF_FLAGS)); // load flags before deciding whether resume is possible
     emitter.instruction(&format!("test r10d, {}", f::FLAG_TERMINATED));         // check whether the generator is already terminated
-    emitter.instruction("jnz __rt_gen_send_done");                              // if TERMINATED bit set, skip resume
-    emitter.instruction(&format!("mov QWORD PTR [rdi + {}], rsi", f::OFF_SENT_VALUE)); // stash the boxed sent payload in sent_value
-    emitter.instruction(&format!("mov r10, QWORD PTR [rdi + {}]", f::OFF_RESUME_FN)); // load resume function pointer
-    emitter.instruction("jmp r10");                                             // tail-call resume_fn(rdi=frame)
+    emitter.instruction("jnz __rt_gen_send_done");                              // if TERMINATED bit set, return null without resuming
+    emitter.instruction(&format!("mov QWORD PTR [r12 + {}], rsi", f::OFF_SENT_VALUE)); // stash the boxed sent payload in sent_value
+    emitter.instruction("mov rdi, r12");                                        // pass the generator frame to the resume function
+    emitter.instruction(&format!("call QWORD PTR [r12 + {}]", f::OFF_RESUME_FN)); // resume until the next yield or termination
+    emitter.instruction(&format!("mov r10d, DWORD PTR [r12 + {}]", f::OFF_FLAGS)); // reload flags after user code resumed
+    emitter.instruction(&format!("test r10d, {}", f::FLAG_TERMINATED));         // check whether resume exhausted the generator
+    emitter.instruction("jnz __rt_gen_send_done");                              // exhausted generators return null from send()
+    emitter.instruction(&format!("mov rax, QWORD PTR [r12 + {}]", f::OFF_LAST_VALUE)); // load the boxed Mixed pointer for the new current value
+    emitter.instruction("call __rt_incref");                                    // incref so send() returns an owned Mixed cell
+    emitter.instruction("jmp __rt_gen_send_epilogue");                          // skip the null return path
     emitter.label_global("__rt_gen_send_done");
     emitter.instruction("xor rax, rax");                                        // return null when terminated
+    emitter.label_global("__rt_gen_send_epilogue");
+    emitter.instruction("add rsp, 8");                                          // release the alignment pad
+    emitter.instruction("pop r12");                                             // restore caller's r12
+    emitter.instruction("pop rbp");                                             // restore caller frame pointer
     emitter.instruction("ret");                                                 // return to caller
 }
 

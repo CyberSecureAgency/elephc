@@ -20,6 +20,15 @@
 use super::model::*;
 use crate::codegen::data_section::DataSection;
 use crate::parser::ast::{BinOp, Expr, ExprKind, Stmt, StmtKind};
+use std::collections::HashSet;
+
+/// Records how generator locals are later read so yield-assignment slots
+/// can choose between the integer fast path and the boxed Mixed path.
+#[derive(Default)]
+struct SlotUseHints {
+    int: HashSet<String>,
+    mixed: HashSet<String>,
+}
 
 /// Look up a slot index for `name`, but only if the slot's type matches
 /// `expected`. Returns `None` for missing names or type mismatches —
@@ -146,17 +155,237 @@ pub(super) fn classify_bool_expr(
     None
 }
 
+/// Collects variable-use hints from the generator body before slot
+/// inference. The scan mirrors the narrow generator IR: arithmetic,
+/// comparisons, counters, and helper-call arguments are int contexts,
+/// while echo, var_dump, return, and yielded values are Mixed contexts.
+fn collect_slot_use_hints(body: &[Stmt]) -> SlotUseHints {
+    let mut hints = SlotUseHints::default();
+    record_stmt_use_hints(body, &mut hints);
+    hints
+}
+
+/// Walks statements in source order, adding variable names to the
+/// relevant usage set for slot inference. Unsupported statements are
+/// ignored here because the builder will still turn them into `Bail`.
+fn record_stmt_use_hints(body: &[Stmt], hints: &mut SlotUseHints) {
+    for stmt in body {
+        match &stmt.kind {
+            StmtKind::Echo(expr) => record_mixed_expr_use_hints(&expr.kind, hints),
+            StmtKind::Assign { value, .. } | StmtKind::TypedAssign { value, .. } => {
+                record_assignment_rhs_use_hints(&value.kind, hints);
+            }
+            StmtKind::If {
+                condition,
+                then_body,
+                elseif_clauses,
+                else_body,
+            } => {
+                record_int_expr_use_hints(&condition.kind, hints);
+                record_stmt_use_hints(then_body, hints);
+                for (elseif_cond, elseif_body) in elseif_clauses {
+                    record_int_expr_use_hints(&elseif_cond.kind, hints);
+                    record_stmt_use_hints(elseif_body, hints);
+                }
+                if let Some(body) = else_body {
+                    record_stmt_use_hints(body, hints);
+                }
+            }
+            StmtKind::While { condition, body } => {
+                record_int_expr_use_hints(&condition.kind, hints);
+                record_stmt_use_hints(body, hints);
+            }
+            StmtKind::DoWhile { body, condition } => {
+                record_stmt_use_hints(body, hints);
+                record_int_expr_use_hints(&condition.kind, hints);
+            }
+            StmtKind::For { init, condition, update, body } => {
+                if let Some(init_stmt) = init.as_deref() {
+                    record_stmt_use_hints(std::slice::from_ref(init_stmt), hints);
+                }
+                if let Some(cond) = condition {
+                    record_int_expr_use_hints(&cond.kind, hints);
+                }
+                if let Some(update_stmt) = update.as_deref() {
+                    record_stmt_use_hints(std::slice::from_ref(update_stmt), hints);
+                }
+                record_stmt_use_hints(body, hints);
+            }
+            StmtKind::Switch { subject, cases, default } => {
+                record_int_expr_use_hints(&subject.kind, hints);
+                for (_, case_body) in cases {
+                    record_stmt_use_hints(case_body, hints);
+                }
+                if let Some(body) = default {
+                    record_stmt_use_hints(body, hints);
+                }
+            }
+            StmtKind::Synthetic(stmts) => record_stmt_use_hints(stmts, hints),
+            StmtKind::Try {
+                try_body,
+                catches,
+                finally_body,
+            } => {
+                record_stmt_use_hints(try_body, hints);
+                for catch in catches {
+                    record_stmt_use_hints(&catch.body, hints);
+                }
+                if let Some(body) = finally_body {
+                    record_stmt_use_hints(body, hints);
+                }
+            }
+            StmtKind::ExprStmt(expr) => record_expr_stmt_use_hints(&expr.kind, hints),
+            StmtKind::Return(Some(expr)) => record_mixed_expr_use_hints(&expr.kind, hints),
+            _ => {}
+        }
+    }
+}
+
+/// Records uses inside an assignment RHS. Yield values are observed by
+/// the caller as Mixed values; arithmetic expressions keep their operand
+/// variables on the int path.
+fn record_assignment_rhs_use_hints(expr: &ExprKind, hints: &mut SlotUseHints) {
+    match expr {
+        ExprKind::Yield { key, value } => {
+            if let Some(k) = key {
+                record_mixed_expr_use_hints(&k.kind, hints);
+            }
+            if let Some(v) = value {
+                record_mixed_expr_use_hints(&v.kind, hints);
+            }
+        }
+        ExprKind::YieldFrom(inner) => record_mixed_expr_use_hints(&inner.kind, hints),
+        ExprKind::BinaryOp { .. } | ExprKind::FunctionCall { .. } => {
+            record_int_expr_use_hints(expr, hints);
+        }
+        _ => record_mixed_expr_use_hints(expr, hints),
+    }
+}
+
+/// Records uses inside expression statements that the generator IR knows
+/// how to lower, including var_dump diagnostics and post-increment style
+/// counters.
+fn record_expr_stmt_use_hints(expr: &ExprKind, hints: &mut SlotUseHints) {
+    match expr {
+        ExprKind::Yield { key, value } => {
+            if let Some(k) = key {
+                record_mixed_expr_use_hints(&k.kind, hints);
+            }
+            if let Some(v) = value {
+                record_mixed_expr_use_hints(&v.kind, hints);
+            }
+        }
+        ExprKind::YieldFrom(inner) => record_mixed_expr_use_hints(&inner.kind, hints),
+        ExprKind::PostIncrement(name)
+        | ExprKind::PostDecrement(name)
+        | ExprKind::PreIncrement(name)
+        | ExprKind::PreDecrement(name) => {
+            hints.int.insert(name.clone());
+        }
+        ExprKind::FunctionCall { name, args } if is_var_dump_call(name.as_str()) => {
+            for arg in args {
+                record_mixed_expr_use_hints(&arg.kind, hints);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Records variables that are read through a Mixed-capable generator
+/// path. Supported int expressions nested inside a Mixed context keep
+/// their operands int-typed because `classify_mixed_expr` boxes int
+/// expressions after evaluating them.
+fn record_mixed_expr_use_hints(expr: &ExprKind, hints: &mut SlotUseHints) {
+    match expr {
+        ExprKind::Variable(name) => {
+            hints.mixed.insert(name.clone());
+        }
+        ExprKind::BinaryOp { left, op, right } if is_generator_int_binop(op) => {
+            record_int_expr_use_hints(&left.kind, hints);
+            record_int_expr_use_hints(&right.kind, hints);
+        }
+        ExprKind::FunctionCall { args, .. } => {
+            for arg in args {
+                record_int_expr_use_hints(&arg.kind, hints);
+            }
+        }
+        ExprKind::ArrayLiteral(items) => {
+            for item in items {
+                record_mixed_expr_use_hints(&item.kind, hints);
+            }
+        }
+        ExprKind::Yield { key, value } => {
+            if let Some(k) = key {
+                record_mixed_expr_use_hints(&k.kind, hints);
+            }
+            if let Some(v) = value {
+                record_mixed_expr_use_hints(&v.kind, hints);
+            }
+        }
+        ExprKind::YieldFrom(inner)
+        | ExprKind::Negate(inner)
+        | ExprKind::Not(inner)
+        | ExprKind::BitNot(inner)
+        | ExprKind::Print(inner)
+        | ExprKind::ErrorSuppress(inner)
+        | ExprKind::Throw(inner)
+        | ExprKind::Cast { expr: inner, .. } => {
+            record_mixed_expr_use_hints(&inner.kind, hints);
+        }
+        _ => {}
+    }
+}
+
+/// Records variables that are read through int-only generator paths such
+/// as arithmetic, comparisons, loop counters, and integer helper calls.
+fn record_int_expr_use_hints(expr: &ExprKind, hints: &mut SlotUseHints) {
+    match expr {
+        ExprKind::Variable(name) => {
+            hints.int.insert(name.clone());
+        }
+        ExprKind::BinaryOp { left, right, .. } => {
+            record_int_expr_use_hints(&left.kind, hints);
+            record_int_expr_use_hints(&right.kind, hints);
+        }
+        ExprKind::FunctionCall { args, .. } => {
+            for arg in args {
+                record_int_expr_use_hints(&arg.kind, hints);
+            }
+        }
+        ExprKind::Negate(inner)
+        | ExprKind::Cast { expr: inner, .. }
+        | ExprKind::ErrorSuppress(inner) => {
+            record_int_expr_use_hints(&inner.kind, hints);
+        }
+        _ => {}
+    }
+}
+
+/// Returns true when the operator is one of the arithmetic operators
+/// supported by the current generator integer-expression classifier.
+fn is_generator_int_binop(op: &BinOp) -> bool {
+    matches!(op, BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div)
+}
+
 /// Collected locals with their inferred slot types. Each local is
 /// assigned a single SlotType for the lifetime of the generator: the
 /// type is decided by the *first* assignment seen in source order.
 pub(super) fn collect_locals(body: &[Stmt], param_names: &[String]) -> Vec<(String, SlotType)> {
     let mut locals: Vec<(String, SlotType)> = Vec::new();
+    let hints = collect_slot_use_hints(body);
     // `probe`/`probe_types` mirror the eventual params+locals slot table
     // so that classify_int_expr can resolve previously-introduced int
     // locals while we walk subsequent assignments.
     let mut probe: Vec<String> = param_names.to_vec();
     let mut probe_types: Vec<SlotType> = vec![SlotType::Int; param_names.len()];
-    visit_assignments(body, &mut probe, &mut probe_types, &mut locals, param_names);
+    visit_assignments(
+        body,
+        &mut probe,
+        &mut probe_types,
+        &mut locals,
+        param_names,
+        &hints,
+    );
     locals
 }
 
@@ -171,6 +400,7 @@ fn visit_assignments(
     probe_types: &mut Vec<SlotType>,
     locals: &mut Vec<(String, SlotType)>,
     param_names: &[String],
+    hints: &SlotUseHints,
 ) {
     for stmt in body {
         match &stmt.kind {
@@ -181,7 +411,7 @@ fn visit_assignments(
                 if locals.iter().any(|(l, _)| l == name) {
                     continue;
                 }
-                let inferred = infer_slot_type(&value.kind, probe, probe_types);
+                let inferred = infer_slot_type(name, &value.kind, probe, probe_types, hints);
                 if let Some(ty) = inferred {
                     locals.push((name.clone(), ty));
                     probe.push(name.clone());
@@ -194,16 +424,16 @@ fn visit_assignments(
                 else_body,
                 ..
             } => {
-                visit_assignments(then_body, probe, probe_types, locals, param_names);
+                visit_assignments(then_body, probe, probe_types, locals, param_names, hints);
                 for (_, b) in elseif_clauses {
-                    visit_assignments(b, probe, probe_types, locals, param_names);
+                    visit_assignments(b, probe, probe_types, locals, param_names, hints);
                 }
                 if let Some(eb) = else_body {
-                    visit_assignments(eb, probe, probe_types, locals, param_names);
+                    visit_assignments(eb, probe, probe_types, locals, param_names, hints);
                 }
             }
             StmtKind::While { body, .. } | StmtKind::DoWhile { body, .. } => {
-                visit_assignments(body, probe, probe_types, locals, param_names);
+                visit_assignments(body, probe, probe_types, locals, param_names, hints);
             }
             StmtKind::For { init, body, .. } => {
                 if let Some(init_stmt) = init.as_deref() {
@@ -213,21 +443,25 @@ fn visit_assignments(
                         probe_types,
                         locals,
                         param_names,
+                        hints,
                     );
                 }
-                visit_assignments(body, probe, probe_types, locals, param_names);
+                visit_assignments(body, probe, probe_types, locals, param_names, hints);
+            }
+            StmtKind::Synthetic(stmts) => {
+                visit_assignments(stmts, probe, probe_types, locals, param_names, hints);
             }
             StmtKind::Try {
                 try_body,
                 catches,
                 finally_body,
             } => {
-                visit_assignments(try_body, probe, probe_types, locals, param_names);
+                visit_assignments(try_body, probe, probe_types, locals, param_names, hints);
                 for catch in catches {
-                    visit_assignments(&catch.body, probe, probe_types, locals, param_names);
+                    visit_assignments(&catch.body, probe, probe_types, locals, param_names, hints);
                 }
                 if let Some(body) = finally_body {
-                    visit_assignments(body, probe, probe_types, locals, param_names);
+                    visit_assignments(body, probe, probe_types, locals, param_names, hints);
                 }
             }
             _ => {}
@@ -240,9 +474,11 @@ fn visit_assignments(
 /// which case the local stays unallocated and any later use bails the
 /// generator at that point.
 fn infer_slot_type(
+    name: &str,
     rhs: &ExprKind,
     probe: &[String],
     probe_types: &[SlotType],
+    hints: &SlotUseHints,
 ) -> Option<SlotType> {
     if classify_int_expr(rhs, probe, probe_types).is_some() {
         return Some(SlotType::Int);
@@ -255,10 +491,17 @@ fn infer_slot_type(
             let idx = probe.iter().position(|p| p == name)?;
             probe_types.get(idx).copied()
         }
-        // `$local = yield <expr>;` keeps the historical Int behaviour:
-        // the unbox path stores the sent int into the slot. Mixed-typed
-        // sends are deferred to a later iteration.
-        ExprKind::Yield { .. } => Some(SlotType::Int),
+        // `$local = yield <expr>;` receives the value supplied by
+        // `Generator::send()`, not the yielded expression. Use the boxed
+        // path unless later integer-only operations require the historical
+        // int fast path.
+        ExprKind::Yield { .. } => {
+            if hints.int.contains(name) {
+                Some(SlotType::Int)
+            } else {
+                Some(SlotType::Mixed)
+            }
+        }
         // `yield from` evaluates to the delegated generator's return
         // value. Store that boxed result in a Mixed slot so it remains
         // available after the delegation completes.
@@ -310,9 +553,9 @@ fn build_node(
     match &stmt.kind {
         StmtKind::Assign { name, value } | StmtKind::TypedAssign { name, value, .. } => {
             let idx = slots.iter().position(|p| p == name)?;
-            // `$local = yield <expr>;` — translate as YieldAssign. v1
-            // unboxes the int sent_value into the slot, so the slot must
-            // be Int-typed.
+            // `$local = yield <expr>;` — translate as YieldAssign. The
+            // slot type decides whether the sent value is unboxed to int
+            // or moved as an owned Mixed cell.
             if let ExprKind::Yield { key, value } = &value.kind {
                 let local_ty = types.get(idx).copied()?;
                 let yield_value = match value.as_deref() {
@@ -515,6 +758,9 @@ fn build_node(
                 finally_body: finally_nodes,
             })
         }
+        StmtKind::Synthetic(stmts) => Some(ResumeNode::Block {
+            stmts: build_nodes(stmts, slots, types, num, data),
+        }),
         _ => None,
     }
 }
