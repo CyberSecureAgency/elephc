@@ -218,6 +218,10 @@ pub(super) fn emit_aarch64(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return from the JSON decoder helper
 
     emitter.label("__rt_json_decode_array_real_fail");
+    emitter.instruction("ldr x0, [sp, #0]");                                    // load the array slice pointer for location reporting
+    emitter.instruction("ldr x9, [sp, #16]");                                   // load the parser cursor at the failing array byte
+    emitter.instruction("add x0, x0, x9");                                      // convert the array-local cursor to an absolute source pointer
+    emitter.instruction("bl __rt_json_set_error_location");                     // store one-based line/column metadata for the JSON error
     emitter.instruction("mov x0, #4");                                          // JSON_ERROR_SYNTAX
     emitter.instruction("bl __rt_json_throw_error");                            // record syntax error and throw when requested
     emitter.label("__rt_json_decode_array_real_propagate");
@@ -417,6 +421,9 @@ pub(super) fn emit_x86_64(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return from the JSON decoder helper
 
     emitter.label("__rt_json_decode_array_real_fail_x");
+    emitter.instruction("mov rax, QWORD PTR [rbp - 8]");                        // load the array slice pointer for location reporting
+    emitter.instruction("add rax, QWORD PTR [rbp - 24]");                       // convert the array-local cursor to an absolute source pointer
+    emitter.instruction("call __rt_json_set_error_location");                   // store one-based line/column metadata for the JSON error
     emitter.instruction("mov rax, 4");                                          // JSON_ERROR_SYNTAX
     emitter.instruction("call __rt_json_throw_error");                          // record syntax error and throw when requested
     emitter.label("__rt_json_decode_array_real_propagate_x");

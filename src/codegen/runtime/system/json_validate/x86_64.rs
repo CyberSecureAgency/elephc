@@ -238,9 +238,72 @@ fn emit_string_parser_x(emitter: &mut Emitter) {
     emitter.instruction("cmp r8, 92");                                          // check the current JSON validator condition
     emitter.instruction("je __rt_json_validate_string_escape_x");               // branch on the current JSON validator condition
     emitter.instruction("cmp r8, 32");                                          // check the current JSON validator condition
-    emitter.instruction("jl __rt_json_validate_string_syntax_x");               // branch on the current JSON validator condition
+    emitter.instruction("jl __rt_json_validate_string_ctrl_char_x");            // report JSON_ERROR_CTRL_CHAR for unescaped controls
+    emitter.instruction("cmp r8, 128");                                         // ASCII literals can be consumed one byte at a time
+    emitter.instruction("jl __rt_json_validate_string_literal_byte_x");         // consume a single-byte UTF-8/ASCII literal
+    emitter.instruction("cmp r8, 194");                                         // reject continuation bytes and overlong two-byte leads
+    emitter.instruction("jl __rt_json_validate_string_utf8_x");                 // malformed UTF-8 lead byte
+    emitter.instruction("cmp r8, 223");                                         // is this a two-byte UTF-8 lead?
+    emitter.instruction("jle __rt_json_validate_string_utf8_2_x");              // validate one continuation byte
+    emitter.instruction("cmp r8, 239");                                         // is this a three-byte UTF-8 lead?
+    emitter.instruction("jle __rt_json_validate_string_utf8_3_x");              // validate two continuation bytes
+    emitter.instruction("cmp r8, 244");                                         // is this a four-byte UTF-8 lead within Unicode range?
+    emitter.instruction("jle __rt_json_validate_string_utf8_4_x");              // validate three continuation bytes
+    emitter.instruction("jmp __rt_json_validate_string_utf8_x");                // reject lead bytes above U+10FFFF
+    emitter.label("__rt_json_validate_string_literal_byte_x");
     emitter.instruction("add rcx, 1");                                          // update the JSON validator cursor or counter
     emitter.instruction("jmp __rt_json_validate_string_loop_x");                // continue in the JSON validator control path
+
+    emitter.label("__rt_json_validate_string_utf8_2_x");
+    emitter.instruction("lea r9, [rcx + 1]");                                   // point at the expected continuation byte
+    emitter.instruction("cmp r9, rdx");                                         // ensure the continuation byte is inside the string
+    emitter.instruction("jge __rt_json_validate_string_utf8_x");                // truncated UTF-8 sequence
+    emitter.instruction("movzx r10, BYTE PTR [rax + r9]");                      // load the continuation byte
+    emitter.instruction("cmp r10, 128");                                        // continuation bytes must be >= 0x80
+    emitter.instruction("jl __rt_json_validate_string_utf8_x");                 // malformed UTF-8 continuation byte
+    emitter.instruction("cmp r10, 191");                                        // continuation bytes must be <= 0xBF
+    emitter.instruction("jg __rt_json_validate_string_utf8_x");                 // malformed UTF-8 continuation byte
+    emitter.instruction("add rcx, 2");                                          // consume the two-byte UTF-8 sequence
+    emitter.instruction("jmp __rt_json_validate_string_loop_x");                // continue after the UTF-8 sequence
+
+    emitter.label("__rt_json_validate_string_utf8_3_x");
+    emitter.instruction("lea r9, [rcx + 2]");                                   // point at the final expected continuation byte
+    emitter.instruction("cmp r9, rdx");                                         // ensure both continuation bytes are inside the string
+    emitter.instruction("jge __rt_json_validate_string_utf8_x");                // truncated UTF-8 sequence
+    emitter.instruction("movzx r10, BYTE PTR [rax + rcx + 1]");                 // load the first continuation byte
+    emitter.instruction("cmp r10, 128");                                        // continuation bytes must be >= 0x80
+    emitter.instruction("jl __rt_json_validate_string_utf8_x");                 // malformed UTF-8 continuation byte
+    emitter.instruction("cmp r10, 191");                                        // continuation bytes must be <= 0xBF
+    emitter.instruction("jg __rt_json_validate_string_utf8_x");                 // malformed UTF-8 continuation byte
+    emitter.instruction("movzx r10, BYTE PTR [rax + rcx + 2]");                 // load the second continuation byte
+    emitter.instruction("cmp r10, 128");                                        // continuation bytes must be >= 0x80
+    emitter.instruction("jl __rt_json_validate_string_utf8_x");                 // malformed UTF-8 continuation byte
+    emitter.instruction("cmp r10, 191");                                        // continuation bytes must be <= 0xBF
+    emitter.instruction("jg __rt_json_validate_string_utf8_x");                 // malformed UTF-8 continuation byte
+    emitter.instruction("add rcx, 3");                                          // consume the three-byte UTF-8 sequence
+    emitter.instruction("jmp __rt_json_validate_string_loop_x");                // continue after the UTF-8 sequence
+
+    emitter.label("__rt_json_validate_string_utf8_4_x");
+    emitter.instruction("lea r9, [rcx + 3]");                                   // point at the final expected continuation byte
+    emitter.instruction("cmp r9, rdx");                                         // ensure all continuation bytes are inside the string
+    emitter.instruction("jge __rt_json_validate_string_utf8_x");                // truncated UTF-8 sequence
+    emitter.instruction("movzx r10, BYTE PTR [rax + rcx + 1]");                 // load the first continuation byte
+    emitter.instruction("cmp r10, 128");                                        // continuation bytes must be >= 0x80
+    emitter.instruction("jl __rt_json_validate_string_utf8_x");                 // malformed UTF-8 continuation byte
+    emitter.instruction("cmp r10, 191");                                        // continuation bytes must be <= 0xBF
+    emitter.instruction("jg __rt_json_validate_string_utf8_x");                 // malformed UTF-8 continuation byte
+    emitter.instruction("movzx r10, BYTE PTR [rax + rcx + 2]");                 // load the second continuation byte
+    emitter.instruction("cmp r10, 128");                                        // continuation bytes must be >= 0x80
+    emitter.instruction("jl __rt_json_validate_string_utf8_x");                 // malformed UTF-8 continuation byte
+    emitter.instruction("cmp r10, 191");                                        // continuation bytes must be <= 0xBF
+    emitter.instruction("jg __rt_json_validate_string_utf8_x");                 // malformed UTF-8 continuation byte
+    emitter.instruction("movzx r10, BYTE PTR [rax + rcx + 3]");                 // load the third continuation byte
+    emitter.instruction("cmp r10, 128");                                        // continuation bytes must be >= 0x80
+    emitter.instruction("jl __rt_json_validate_string_utf8_x");                 // malformed UTF-8 continuation byte
+    emitter.instruction("cmp r10, 191");                                        // continuation bytes must be <= 0xBF
+    emitter.instruction("jg __rt_json_validate_string_utf8_x");                 // malformed UTF-8 continuation byte
+    emitter.instruction("add rcx, 4");                                          // consume the four-byte UTF-8 sequence
+    emitter.instruction("jmp __rt_json_validate_string_loop_x");                // continue after the UTF-8 sequence
 
     emitter.label("__rt_json_validate_string_close_x");
     emitter.instruction("add rcx, 1");                                          // update the JSON validator cursor or counter
@@ -321,6 +384,8 @@ fn emit_string_parser_x(emitter: &mut Emitter) {
 
     emitter.label("__rt_json_validate_string_utf16_x");
     emitter.instruction("mov QWORD PTR [rip + _json_validate_idx], rcx");       // commit the failure index for diagnostics
+    emitter.instruction("add rax, rcx");                                        // convert validator index to an absolute source pointer
+    emitter.instruction("call __rt_json_set_error_location");                   // store one-based line/column metadata for the JSON error
     emitter.instruction("mov rax, 10");                                         // JSON_ERROR_UTF16
     emitter.instruction("call __rt_json_throw_error");                          // record the error and throw on JSON_THROW_ON_ERROR
     emitter.instruction("mov rax, 0");                                          // load or prepare JSON validator state
@@ -328,8 +393,32 @@ fn emit_string_parser_x(emitter: &mut Emitter) {
     emitter.instruction("pop rbp");                                             // preserve or restore JSON validator scratch state
     emitter.instruction("ret");                                                 // return from the JSON validator helper
 
+    emitter.label("__rt_json_validate_string_ctrl_char_x");
+    emitter.instruction("mov QWORD PTR [rip + _json_validate_idx], rcx");       // commit the control-character failure index
+    emitter.instruction("add rax, rcx");                                        // convert validator index to an absolute source pointer
+    emitter.instruction("call __rt_json_set_error_location");                   // store one-based line/column metadata for the JSON error
+    emitter.instruction("mov rax, 3");                                          // JSON_ERROR_CTRL_CHAR
+    emitter.instruction("call __rt_json_throw_error");                          // record the control-character error and throw when requested
+    emitter.instruction("mov rax, 0");                                          // report validation failure to the caller
+    emitter.instruction("mov rsp, rbp");                                        // restore stack pointer
+    emitter.instruction("pop rbp");                                             // restore caller frame pointer
+    emitter.instruction("ret");                                                 // return from the JSON validator helper
+
+    emitter.label("__rt_json_validate_string_utf8_x");
+    emitter.instruction("mov QWORD PTR [rip + _json_validate_idx], rcx");       // commit the malformed-UTF-8 failure index
+    emitter.instruction("add rax, rcx");                                        // convert validator index to an absolute source pointer
+    emitter.instruction("call __rt_json_set_error_location");                   // store one-based line/column metadata for the JSON error
+    emitter.instruction("mov rax, 5");                                          // JSON_ERROR_UTF8
+    emitter.instruction("call __rt_json_throw_error");                          // record the malformed-UTF-8 error and throw when requested
+    emitter.instruction("mov rax, 0");                                          // report validation failure to the caller
+    emitter.instruction("mov rsp, rbp");                                        // restore stack pointer
+    emitter.instruction("pop rbp");                                             // restore caller frame pointer
+    emitter.instruction("ret");                                                 // return from the JSON validator helper
+
     emitter.label("__rt_json_validate_string_syntax_x");
     emitter.instruction("mov QWORD PTR [rip + _json_validate_idx], rcx");       // load or prepare JSON validator state
+    emitter.instruction("add rax, rcx");                                        // convert validator index to an absolute source pointer
+    emitter.instruction("call __rt_json_set_error_location");                   // store one-based line/column metadata for the JSON error
     emitter.instruction("mov rax, 4");                                          // load or prepare JSON validator state
     emitter.instruction("call __rt_json_throw_error");                          // call the json throw error helper
     emitter.instruction("mov rax, 0");                                          // load or prepare JSON validator state
@@ -503,6 +592,8 @@ fn emit_number_parser_x(emitter: &mut Emitter) {
 
     emitter.label("__rt_json_validate_number_syntax_x");
     emitter.instruction("mov QWORD PTR [rip + _json_validate_idx], rcx");       // load or prepare JSON validator state
+    emitter.instruction("add rax, rcx");                                        // convert validator index to an absolute source pointer
+    emitter.instruction("call __rt_json_set_error_location");                   // store one-based line/column metadata for the JSON error
     emitter.instruction("mov rax, 4");                                          // load or prepare JSON validator state
     emitter.instruction("call __rt_json_throw_error");                          // call the json throw error helper
     emitter.instruction("mov rax, 0");                                          // load or prepare JSON validator state

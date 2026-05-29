@@ -54,6 +54,10 @@ pub(crate) fn emit_runtime_data_fixed(heap_size: usize) -> String {
     out.push_str(".comm _json_validate_ptr, 8, 3\n");
     out.push_str(".comm _json_validate_len, 8, 3\n");
     out.push_str(".comm _json_decode_assoc, 8, 3\n");
+    out.push_str(".comm _json_error_source_ptr, 8, 3\n");
+    out.push_str(".comm _json_error_location_active, 8, 3\n");
+    out.push_str(".comm _json_error_line, 8, 3\n");
+    out.push_str(".comm _json_error_column, 8, 3\n");
     out.push_str(&format!(".globl _heap_max\n_heap_max:\n    .quad {}\n", heap_size));
     out.push_str(".globl _heap_err_msg\n_heap_err_msg:\n    .ascii \"Fatal error: heap memory exhausted\\n\"\n");
     out.push_str(".globl _heap_dbg_bad_refcount_msg\n_heap_dbg_bad_refcount_msg:\n    .ascii \"Fatal error: heap debug detected bad refcount\\n\"\n");

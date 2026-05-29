@@ -61,20 +61,20 @@ fn test_json_decode_unclosed_array_sets_error() {
     assert_eq!(out, "NULL|err");
 }
 
-/// Verifies JSON_THROW_ON_ERROR causes a JsonException with "Syntax error" on malformed input.
+/// Verifies JSON_THROW_ON_ERROR causes a JsonException with a location-aware syntax message.
 #[test]
 fn test_json_decode_throws_on_invalid_with_throw_flag() {
     let out = compile_and_run(
         r#"<?php
             try {
-                json_decode("not json", null, 512, JSON_THROW_ON_ERROR);
+                json_decode("[{", null, 512, JSON_THROW_ON_ERROR);
                 echo "no-throw";
             } catch (JsonException $e) {
                 echo "caught:" . $e->getMessage();
             }
         "#,
     );
-    assert_eq!(out, "caught:Syntax error");
+    assert_eq!(out, "caught:Syntax error near location 1:3");
 }
 
 /// Verifies exceeding the depth limit returns NULL and sets JSON_ERROR_DEPTH (1).
@@ -90,22 +90,23 @@ fn test_json_decode_depth_limit_returns_null_and_depth_error() {
     assert_eq!(out, "NULL|1");
 }
 
-/// Verifies JSON_THROW_ON_ERROR raises JsonException with "Maximum stack depth exceeded"
-/// when depth limit is exceeded.
+/// Verifies JSON_THROW_ON_ERROR raises JsonException with a location-aware depth message.
 #[test]
 fn test_json_decode_throws_on_depth_overflow() {
     let out = compile_and_run(
         r#"<?php
-            $deep = str_repeat("[", 200) . "1" . str_repeat("]", 200);
             try {
-                json_decode($deep, true, 50, JSON_THROW_ON_ERROR);
+                json_decode("[[[[[[42]]]]]]", true, 6, JSON_THROW_ON_ERROR);
                 echo "no-throw";
             } catch (JsonException $e) {
                 echo "caught:" . $e->getMessage();
             }
         "#,
     );
-    assert_eq!(out, "caught:Maximum stack depth exceeded");
+    assert_eq!(
+        out,
+        "caught:Maximum stack depth exceeded near location 1:6"
+    );
 }
 
 /// Verifies a successful follow-up call resets error state after a prior failure.
@@ -147,16 +148,73 @@ fn test_json_decode_rejects_malformed_values_inside_decoder() {
     assert_eq!(out, "NULL:4\nNULL:4\nNULL:4\nNULL:4\nNULL:4\n");
 }
 
-/// Verifies json_last_error_msg returns "Syntax error" after a decode failure.
+/// Verifies json_last_error_msg returns a location-aware syntax message after decode failure.
 #[test]
 fn test_json_decode_last_error_msg_after_failure() {
     let out = compile_and_run(
         r#"<?php
-            json_decode("");
+            json_decode("[{");
             echo json_last_error_msg();
         "#,
     );
-    assert_eq!(out, "Syntax error");
+    assert_eq!(out, "Syntax error near location 1:3");
+}
+
+/// Verifies multi-line syntax errors report the failing line and column.
+#[test]
+fn test_json_decode_multiline_syntax_error_location() {
+    let out = compile_and_run(
+        r#"<?php
+            json_decode("[1,\n 2,]");
+            echo json_last_error_msg();
+        "#,
+    );
+    assert_eq!(out, "Syntax error near location 2:4");
+}
+
+/// Verifies unescaped control characters preserve JSON_ERROR_CTRL_CHAR and include location.
+#[test]
+fn test_json_decode_control_character_error_location() {
+    let out = compile_and_run(
+        r#"<?php
+            json_decode("\"a" . chr(0x0A) . "b\"");
+            echo json_last_error() . "|" . json_last_error_msg();
+        "#,
+    );
+    assert_eq!(
+        out,
+        "3|Control character error, possibly incorrectly encoded near location 1:3"
+    );
+}
+
+/// Verifies malformed UTF-8 decode errors preserve JSON_ERROR_UTF8 and include location.
+#[test]
+fn test_json_decode_malformed_utf8_error_location() {
+    let out = compile_and_run(
+        r#"<?php
+            json_decode("\"a" . chr(0x80) . "b\"");
+            echo json_last_error() . "|" . json_last_error_msg();
+        "#,
+    );
+    assert_eq!(
+        out,
+        "5|Malformed UTF-8 characters, possibly incorrectly encoded near location 1:3"
+    );
+}
+
+/// Verifies depth overflow preserves JSON_ERROR_DEPTH and reports the overflowing bracket.
+#[test]
+fn test_json_decode_depth_error_location_and_code() {
+    let out = compile_and_run(
+        r#"<?php
+            json_decode("[[[[[[42]]]]]]", false, 6);
+            echo json_last_error() . "|" . json_last_error_msg();
+        "#,
+    );
+    assert_eq!(
+        out,
+        "1|Maximum stack depth exceeded near location 1:6"
+    );
 }
 
 // JSON_ERROR_UTF16 (10) — lone UTF-16 surrogate detection.
@@ -232,8 +290,7 @@ fn test_json_decode_valid_surrogate_pair_no_error() {
     assert_eq!(out, "0:\u{1F600}");
 }
 
-/// Verifies JSON_THROW_ON_ERROR raises JsonException with "Single unpaired UTF-16 surrogate
-/// in unicode escape" when a lone high surrogate is encountered.
+/// Verifies JSON_THROW_ON_ERROR raises a location-aware JsonException for lone UTF-16 surrogates.
 #[test]
 fn test_json_decode_lone_high_with_throw_flag_throws() {
     let out = compile_and_run(
@@ -241,7 +298,7 @@ fn test_json_decode_lone_high_with_throw_flag_throws() {
     );
     assert_eq!(
         out,
-        "thrown:Single unpaired UTF-16 surrogate in unicode escape"
+        "thrown:Single unpaired UTF-16 surrogate in unicode escape near location 1:8"
     );
 }
 

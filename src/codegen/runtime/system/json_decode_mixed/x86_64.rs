@@ -55,6 +55,8 @@ pub(super) fn emit(emitter: &mut Emitter) {
     emitter.instruction("sub rsp, 96");                                         // reserve local slots while keeping runtime calls aligned
     emitter.instruction("mov QWORD PTR [rbp - 8], rax");                        // save the source pointer for downstream classification
     emitter.instruction("mov QWORD PTR [rbp - 16], rdx");                       // save the source length for downstream classification
+    emitter.instruction("mov QWORD PTR [rbp - 80], rax");                       // seed the raw slice pointer for early syntax-error locations
+    emitter.instruction("mov QWORD PTR [rbp - 88], rdx");                       // seed the raw slice length for early syntax-error locations
 
     // Skip leading whitespace and capture the first non-whitespace byte.
     emitter.instruction("xor rcx, rcx");                                        // initialize the source index for the whitespace skip
@@ -122,6 +124,9 @@ pub(super) fn emit(emitter: &mut Emitter) {
 
     // -- malformed input → error signal for the json_decode wrapper --
     emitter.label("__rt_json_decode_mixed_syntax_error");
+    emitter.instruction("mov rax, QWORD PTR [rbp - 80]");                       // load the trimmed raw slice pointer for location reporting
+    emitter.instruction("add rax, QWORD PTR [rbp - 88]");                       // report syntax errors at the end of the offending slice
+    emitter.instruction("call __rt_json_set_error_location");                   // store one-based line/column metadata for the JSON error
     emitter.instruction("mov rax, 4");                                          // JSON_ERROR_SYNTAX
     emitter.instruction("call __rt_json_throw_error");                          // record syntax error and throw when requested
     emitter.instruction("xor rax, rax");                                        // return null-signal to the json_decode wrapper
@@ -152,6 +157,8 @@ pub(super) fn emit(emitter: &mut Emitter) {
 
     // -- array dispatch: depth-check, then decode empty or recursive array --
     emitter.label("__rt_json_decode_mixed_array");
+    emitter.instruction("mov rax, QWORD PTR [rbp - 80]");                       // use this array's opening bracket as a possible depth-error location
+    emitter.instruction("call __rt_json_set_error_location");                   // preseed line/column metadata before depth validation
     emitter.instruction("call __rt_json_depth_enter");                          // enforce json_decode depth before parsing the container
     emitter.instruction("mov r10, QWORD PTR [rip + _json_last_error]");         // load any depth error recorded by depth_enter
     emitter.instruction("test r10, r10");                                       // non-zero means the container exceeded depth
@@ -196,6 +203,8 @@ pub(super) fn emit(emitter: &mut Emitter) {
 
     // -- object dispatch: depth-check, then decode empty or recursive object --
     emitter.label("__rt_json_decode_mixed_object");
+    emitter.instruction("mov rax, QWORD PTR [rbp - 80]");                       // use this object's opening brace as a possible depth-error location
+    emitter.instruction("call __rt_json_set_error_location");                   // preseed line/column metadata before depth validation
     emitter.instruction("call __rt_json_depth_enter");                          // enforce json_decode depth before parsing the container
     emitter.instruction("mov r10, QWORD PTR [rip + _json_last_error]");         // load any depth error recorded by depth_enter
     emitter.instruction("test r10, r10");                                       // non-zero means the container exceeded depth
