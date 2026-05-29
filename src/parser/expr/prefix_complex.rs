@@ -460,6 +460,10 @@ pub(super) fn parse_named_expr(
                 *pos += 1;
                 member
             }
+            Some(Token::Match) => {
+                *pos += 1;
+                "MATCH".to_string()
+            }
             _ => return Err(CompileError::new(span, "Expected member name after '::'")),
         };
         if *pos < tokens.len() && tokens[*pos].0 == Token::LParen {

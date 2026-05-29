@@ -13,6 +13,7 @@ use std::collections::{HashMap, HashSet};
 use crate::codegen::platform::Platform;
 use crate::parser::ast::{ExprKind, Program, Stmt, StmtKind};
 use crate::types::json_constants::JSON_INT_CONSTANTS;
+use crate::types::preg_constants::PREG_INT_CONSTANTS;
 use crate::types::{PhpType, TypeEnv};
 
 use super::context::{Context, TRY_HANDLER_SLOT_SIZE};
@@ -21,8 +22,8 @@ use super::context::{Context, TRY_HANDLER_SLOT_SIZE};
 ///
 /// Built-in constants include platform-specific values (e.g., `FNM_*` flags differ
 /// between macOS and Linux), `PATHINFO_*` bitmask values, stream handles (`STDIN`/`STDOUT`/`STDERR`),
-/// `LOCK_*` values, and `JSON_*` integer constants. User constants come from `const`
-/// declarations and `define()` calls discovered by `collect_constant_decls`.
+/// `LOCK_*` values, `JSON_*` integer constants, and `PREG_*` integer constants. User constants
+/// come from `const` declarations and `define()` calls discovered by `collect_constant_decls`.
 pub(super) fn collect_constants(
     program: &Program,
     target_platform: Platform,
@@ -104,6 +105,12 @@ pub(super) fn collect_constants(
         (ExprKind::IntLiteral(4), PhpType::Int),
     );
     for (name, value) in JSON_INT_CONSTANTS {
+        constants.insert(
+            (*name).to_string(),
+            (ExprKind::IntLiteral(*value), PhpType::Int),
+        );
+    }
+    for (name, value) in PREG_INT_CONSTANTS {
         constants.insert(
             (*name).to_string(),
             (ExprKind::IntLiteral(*value), PhpType::Int),
