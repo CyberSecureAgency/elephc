@@ -445,10 +445,12 @@ fn parse_group_or_cast(
     Ok(inner)
 }
 
-/// Parses a `[...]` array literal. Distinguishes between indexed (`[a, b]`) and associative
-/// (`[key => value, ...]`) forms by scanning for `=>` tokens. Supports spread elements via
-/// `...`. Returns `ArrayLiteral` or `ArrayLiteralAssoc`. Raises an error if associative
-/// and indexed elements are mixed within the same literal.
+/// Parses a `[...]` array literal.
+///
+/// Distinguishes indexed (`[a, b]`) and associative (`[key => value]`) forms while
+/// preserving leading positional elements that appear before the first keyed entry.
+/// Supports spread elements via `...`; spreads in keyed literals are parsed for
+/// source-order progress but remain limited by the associative-array representation.
 fn parse_array_literal(
     tokens: &[(Token, Span)],
     pos: &mut usize,
@@ -459,6 +461,7 @@ fn parse_array_literal(
     let mut assoc_elems = Vec::new();
     let mut is_assoc = false;
     let mut first = true;
+    let mut next_auto_key = 0i64;
     while *pos < tokens.len() && tokens[*pos].0 != Token::RBracket {
         if !first {
             if tokens[*pos].0 != Token::Comma {
@@ -476,23 +479,29 @@ fn parse_array_literal(
             let spread_span = tokens[*pos].1;
             *pos += 1;
             let inner = parse_expr(tokens, pos)?;
-            elems.push(Expr::new(ExprKind::Spread(Box::new(inner)), spread_span));
+            if !is_assoc {
+                elems.push(Expr::new(ExprKind::Spread(Box::new(inner)), spread_span));
+            }
             first = false;
             continue;
         }
         let expr = parse_expr(tokens, pos)?;
         if *pos < tokens.len() && tokens[*pos].0 == Token::DoubleArrow {
+            if !is_assoc {
+                promote_indexed_array_items_to_assoc(&mut elems, &mut assoc_elems);
+            }
             is_assoc = true;
             *pos += 1;
             let value = parse_expr(tokens, pos)?;
+            update_next_auto_key_from_explicit_key(&expr, &mut next_auto_key);
             assoc_elems.push((expr, value));
         } else if is_assoc {
-            return Err(CompileError::new(
-                span,
-                "Cannot mix associative and indexed array elements",
-            ));
+            let key = Expr::new(ExprKind::IntLiteral(next_auto_key), expr.span);
+            assoc_elems.push((key, expr));
+            next_auto_key += 1;
         } else {
             elems.push(expr);
+            next_auto_key += 1;
         }
         first = false;
     }
@@ -504,5 +513,30 @@ fn parse_array_literal(
         Ok(Expr::new(ExprKind::ArrayLiteralAssoc(assoc_elems), span))
     } else {
         Ok(Expr::new(ExprKind::ArrayLiteral(elems), span))
+    }
+}
+
+/// Converts positional items parsed before a keyed array entry into integer-keyed pairs.
+fn promote_indexed_array_items_to_assoc(
+    elems: &mut Vec<Expr>,
+    assoc_elems: &mut Vec<(Expr, Expr)>,
+) {
+    let mut auto_key = 0i64;
+    for elem in std::mem::take(elems) {
+        if matches!(elem.kind, ExprKind::Spread(_)) {
+            continue;
+        }
+        let key = Expr::new(ExprKind::IntLiteral(auto_key), elem.span);
+        assoc_elems.push((key, elem));
+        auto_key += 1;
+    }
+}
+
+/// Advances the automatic integer key cursor after a statically known integer key.
+fn update_next_auto_key_from_explicit_key(key: &Expr, next_auto_key: &mut i64) {
+    if let ExprKind::IntLiteral(value) = &key.kind {
+        if *value >= *next_auto_key {
+            *next_auto_key = *value + 1;
+        }
     }
 }

@@ -39,6 +39,23 @@ fn test_parse_assoc_array() {
     }
 }
 
+/// Verifies that leading positional elements are preserved when a later array
+/// entry uses an explicit key.
+#[test]
+fn test_parse_mixed_array_preserves_leading_positional_element() {
+    let stmts = parse_source("<?php $m = [10, \"a\" => 1];");
+    assert_eq!(stmts.len(), 1);
+    let StmtKind::Assign { value, .. } = &stmts[0].kind else {
+        panic!("expected Assign");
+    };
+    let ExprKind::ArrayLiteralAssoc(items) = &value.kind else {
+        panic!("expected ArrayLiteralAssoc");
+    };
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0].0.kind, ExprKind::IntLiteral(0));
+    assert_eq!(items[0].1.kind, ExprKind::IntLiteral(10));
+}
+
 // --- Switch ---
 
 /// Verifies that `<?php $x = match(1) { 1 => "a" };` parses to an `Assign` with a `Match`

@@ -72,12 +72,15 @@ pub(crate) enum PlannedSourceValue {
 }
 
 /// Records the minimum and optional maximum number of elements a spread argument
-/// must contain to satisfy the parameter slots it feeds.
+/// must contain to satisfy the parameter slots it feeds. When the maximum is
+/// imposed by a later named argument, keeps that parameter name for runtime
+/// overwrite diagnostics.
 #[derive(Clone)]
 pub(crate) struct SpreadBoundsCheck {
     pub(crate) spread_expr: Expr,
     pub(crate) min_len: usize,
     pub(crate) max_len: Option<usize>,
+    pub(crate) max_len_param_name: Option<String>,
 }
 
 /// Errors from `plan_call_args` when call-site arguments cannot be mapped to the signature.

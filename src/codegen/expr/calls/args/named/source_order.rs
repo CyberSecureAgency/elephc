@@ -15,7 +15,9 @@ use crate::span::Span;
 use crate::types::{call_args, FunctionSig, PhpType};
 
 use super::final_args::push_final_call_args_from_sources;
-use super::prefix::emit_prefix_array_length_check;
+use super::prefix::{
+    emit_prefix_array_length_check, emit_prefix_duplicate_named_checks,
+};
 use super::temps::{emit_source_temp_arg, push_source_temp_type};
 use super::{FinalArgSource, PrefixVariadicTail, VariadicArgSource};
 use super::super::{push_expr_arg, EmittedCallArgs};
@@ -239,6 +241,10 @@ fn emit_source_order_named_spread_call_args(
     } else {
         Some(fixed_max_prefix_len)
     };
+    let duplicate_named_params = later_named_regular_params(plan, sig, first_named_pos);
+    let max_prefix_param_name = duplicate_named_params
+        .first()
+        .map(|(_, param_name)| *param_name);
     let min_prefix_len = plan
         .regular_args
         .iter()
@@ -258,6 +264,16 @@ fn emit_source_order_named_spread_call_args(
             &source_temp_types,
             min_prefix_len,
             max_prefix_len,
+            max_prefix_param_name,
+            emitter,
+            ctx,
+            data,
+        );
+    } else {
+        emit_prefix_duplicate_named_checks(
+            prefix_temp_idx,
+            &source_temp_types,
+            &duplicate_named_params,
             emitter,
             ctx,
             data,
@@ -330,6 +346,23 @@ fn assoc_spread_sources(args: &[Expr], ctx: &Context) -> Vec<bool> {
                 PhpType::AssocArray { .. }
             ),
             _ => false,
+        })
+        .collect()
+}
+
+/// Returns later explicit named regular parameters in source order for duplicate checks.
+fn later_named_regular_params<'a>(
+    plan: &'a call_args::CallArgPlan,
+    sig: &'a FunctionSig,
+    first_named_pos: usize,
+) -> Vec<(usize, &'a str)> {
+    plan.source_values
+        .iter()
+        .filter(|source| source.source_index() >= first_named_pos)
+        .filter_map(|source| {
+            let param_idx = source.param_idx()?;
+            let param_name = sig.params.get(param_idx).map(|(name, _)| name.as_str())?;
+            Some((param_idx, param_name))
         })
         .collect()
 }
