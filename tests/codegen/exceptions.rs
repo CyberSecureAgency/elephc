@@ -90,6 +90,27 @@ fn test_builtin_throwable_catch_dispatches_get_message() {
     assert_eq!(out, "caught:core");
 }
 
+/// Verifies a caught exception keeps its concrete runtime class for class-name lookups.
+#[test]
+fn test_caught_exception_get_class_preserves_concrete_runtime_class() {
+    let out = compile_and_run(
+        r#"<?php
+try {
+    throw new RuntimeException("x");
+} catch (Throwable $e) {
+    echo get_class($e), ":", get_parent_class($e), ":", $e->getMessage();
+}
+
+try {
+    throw new RuntimeException("y");
+} catch (LogicException | RuntimeException $e) {
+    echo ":", get_class($e), ":", $e->getMessage();
+}
+"#,
+    );
+    assert_eq!(out, "RuntimeException:Exception:x:RuntimeException:y");
+}
+
 /// Verifies the full Throwable API surface on a caught Exception: getMessage,
 /// getCode, getFile, getLine, getTrace, getTraceAsString, getPrevious, and
 /// __toString all return expected values. File/line reflect the throw site.
