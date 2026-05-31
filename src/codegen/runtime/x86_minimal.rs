@@ -181,6 +181,7 @@ pub(super) fn emit_runtime_linux_x86_64_minimal(emitter: &mut Emitter) {
     arrays::emit_hash_ensure_unique(emitter);
     arrays::emit_hash_may_have_cyclic_values(emitter);
     arrays::emit_hash_set(emitter);
+    arrays::emit_hash_append(emitter);
     arrays::emit_hash_get(emitter);
     arrays::emit_hash_iter(emitter);
     arrays::emit_hash_union(emitter);
@@ -432,6 +433,7 @@ mod tests {
         assert!(asm.contains("__rt_hash_fnv1a:\n"));
         assert!(asm.contains("__rt_hash_new:\n"));
         assert!(asm.contains("__rt_hash_set:\n"));
+        assert!(asm.contains("__rt_hash_append:\n"));
         assert!(asm.contains("__rt_hash_get:\n"));
         assert!(asm.contains("__rt_hash_union:\n"));
         assert!(asm.contains("__rt_hash_to_mixed:\n"));
