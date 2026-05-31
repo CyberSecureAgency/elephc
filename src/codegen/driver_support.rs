@@ -243,6 +243,7 @@ pub(super) fn emit_deferred_closures(
                     &ctx.functions,
                     &ctx.callable_return_sigs,
                     &ctx.callable_array_return_sigs,
+                    &ctx.fiber_return_sigs,
                     &ctx.function_variant_groups,
                     &ctx.constants,
                     &ctx.interfaces,

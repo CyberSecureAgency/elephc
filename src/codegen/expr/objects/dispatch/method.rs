@@ -174,7 +174,8 @@ pub(in crate::codegen::expr::objects) fn emit_method_call(
     };
     let args_to_emit = magic_args.as_deref().unwrap_or(args);
     let fiber_start_sig = if class_name == "Fiber" && dispatch_method == "start" {
-        Some(fiber_start_call_sig(args_to_emit.len()))
+        crate::codegen::fiber_sigs::fiber_start_sig_for_expr(object, ctx)
+            .or_else(|| Some(fiber_start_call_sig(args_to_emit.len())))
     } else {
         None
     };

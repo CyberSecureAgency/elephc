@@ -378,6 +378,8 @@ pub(crate) fn emit_assign_stmt(
         }
     }
 
+    update_fiber_start_metadata(name, value, &ty, ctx);
+
     if let Some(var) = ctx.variables.get(name) {
         if var.ty != ty {
             ctx.update_var_type_static_and_ownership(
@@ -446,6 +448,7 @@ pub(crate) fn emit_ref_assign_stmt(
         HeapOwnership::borrowed_alias_for_type(&source_static_ty),
     );
     copy_ref_assign_callable_metadata(target, source, &source_ty, ctx);
+    copy_ref_assign_fiber_metadata(target, source, &source_ty, ctx);
 }
 
 /// Releases a target local's previous owned heap value before it becomes an alias.
@@ -511,6 +514,19 @@ fn copy_ref_assign_callable_metadata(target: &str, source: &str, ty: &PhpType, c
     }
 }
 
+/// Mirrors or clears Fiber callback metadata when a reference alias targets a Fiber source.
+fn copy_ref_assign_fiber_metadata(target: &str, source: &str, ty: &PhpType, ctx: &mut Context) {
+    if matches!(ty, PhpType::Object(class_name) if php_symbol_key(class_name) == php_symbol_key("Fiber")) {
+        if let Some(sig) = ctx.fiber_start_sigs.get(source).cloned() {
+            ctx.fiber_start_sigs.insert(target.to_string(), sig);
+        } else {
+            ctx.fiber_start_sigs.remove(target);
+        }
+    } else {
+        ctx.fiber_start_sigs.remove(target);
+    }
+}
+
 /// Returns true when an assigned value is an array whose elements are callable descriptors.
 fn is_callable_array_type(ty: &PhpType) -> bool {
     match ty {
@@ -518,6 +534,19 @@ fn is_callable_array_type(ty: &PhpType) -> bool {
         PhpType::AssocArray { value, .. } => value.as_ref() == &PhpType::Callable,
         _ => false,
     }
+}
+
+/// Updates or clears Fiber callback metadata for a local assignment.
+fn update_fiber_start_metadata(name: &str, value: &Expr, ty: &PhpType, ctx: &mut Context) {
+    if let Some(sig) = crate::codegen::fiber_sigs::fiber_start_sig_for_expr(value, ctx) {
+        ctx.fiber_start_sigs.insert(name.to_string(), sig);
+        return;
+    }
+    if matches!(ty, PhpType::Object(class_name) if php_symbol_key(class_name) == php_symbol_key("Fiber")) {
+        ctx.fiber_start_sigs.remove(name);
+        return;
+    }
+    ctx.fiber_start_sigs.remove(name);
 }
 
 /// Specializes generic array assignment types when callable-array metadata is known.
