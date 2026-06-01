@@ -78,6 +78,10 @@ pub enum StmtKind {
         name: String,
         value: Expr,
     },
+    RefAssign {
+        target: String,
+        source: String,
+    },
     If {
         condition: Expr,
         then_body: Vec<Stmt>,
@@ -299,6 +303,17 @@ impl Stmt {
             StmtKind::Assign {
                 name: name.into(),
                 value,
+            },
+            Span::dummy(),
+        )
+    }
+
+    /// Creates a `RefAssign` statement for `$target =& $source`.
+    pub fn ref_assign(target: impl Into<String>, source: impl Into<String>) -> Self {
+        Self::new(
+            StmtKind::RefAssign {
+                target: target.into(),
+                source: source.into(),
             },
             Span::dummy(),
         )

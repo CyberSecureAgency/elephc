@@ -39,6 +39,8 @@ pub(crate) fn emit_json_data() -> String {
     // without trial-parsing through __rt_atoi (which silently wraps).
     out.push_str(".globl _json_int_max_str\n_json_int_max_str:\n    .ascii \"9223372036854775807\"\n");
     out.push_str(".globl _json_int_min_str\n_json_int_min_str:\n    .ascii \"-9223372036854775808\"\n");
+    out.push_str(".globl _json_err_loc_prefix\n_json_err_loc_prefix:\n    .ascii \" near location \"\n");
+    out.push_str(".globl _json_err_loc_colon\n_json_err_loc_colon:\n    .ascii \":\"\n");
 
     // Per-error-code human-readable messages, indexed by JSON_ERROR_*.
     // The strings match PHP's json_last_error_msg() exactly so cross-checking

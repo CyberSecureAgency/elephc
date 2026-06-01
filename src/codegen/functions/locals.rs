@@ -62,6 +62,16 @@ pub fn collect_local_vars(
                     ctx.alloc_var_with_static_type(name, slot_ty, static_ty);
                 }
             }
+            StmtKind::RefAssign { target, source } => {
+                if !ctx.variables.contains_key(target) {
+                    let static_ty = ctx
+                        .variables
+                        .get(source)
+                        .map(|var| var.static_ty.clone())
+                        .unwrap_or(PhpType::Mixed);
+                    ctx.alloc_var_with_static_type(target, PhpType::Int, static_ty);
+                }
+            }
             StmtKind::TypedAssign {
                 type_expr,
                 name,

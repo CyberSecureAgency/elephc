@@ -30,6 +30,11 @@ pub(super) fn mark_control_flow_epilogue_unsafe(
                     ctx.disable_epilogue_cleanup(name);
                 }
             }
+            StmtKind::RefAssign { target, .. } => {
+                if in_control_flow {
+                    ctx.disable_epilogue_cleanup(target);
+                }
+            }
             StmtKind::ListUnpack { vars, .. } => {
                 if in_control_flow {
                     for var in vars {

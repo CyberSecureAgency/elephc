@@ -148,6 +148,11 @@ fn dce_stmt_with_guards(stmt: Stmt, guards: &GuardState) -> Vec<Stmt> {
             span,
             attributes: Vec::new(),
         }],
+        StmtKind::RefAssign { target, source } => vec![Stmt {
+            kind: StmtKind::RefAssign { target, source },
+            span,
+            attributes: Vec::new(),
+        }],
         StmtKind::TypedAssign {
             name,
             type_expr,

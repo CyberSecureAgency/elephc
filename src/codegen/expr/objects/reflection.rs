@@ -7,7 +7,7 @@
 //!
 //! Key details:
 //! - The public constructors are compile-time reflection lookups: they build a
-//!   normal object, then populate the private `__attrs` slot from class/member
+//!   normal object, then populate private metadata slots from class/member
 //!   metadata captured by the type checker.
 
 use crate::codegen::abi;
@@ -18,6 +18,14 @@ use crate::codegen::platform::Arch;
 use crate::names::php_symbol_key;
 use crate::parser::ast::{Expr, ExprKind, StaticReceiver};
 use crate::types::{AttrArgValue, PhpType};
+
+/// Compile-time metadata used to populate a freshly allocated reflection owner
+/// object before it is returned to user code.
+struct ReflectionOwnerMetadata {
+    reflected_name: Option<String>,
+    attr_names: Vec<String>,
+    attr_args: Vec<Option<Vec<AttrArgValue>>>,
+}
 
 /// Returns true if `class_name` is one of the builtin reflection types
 /// (ReflectionClass, ReflectionMethod, ReflectionProperty) that require
@@ -32,7 +40,7 @@ pub(super) fn is_reflection_owner_class(class_name: &str) -> bool {
 /// Emits the allocation sequence for a builtin reflection object.
 ///
 /// Builds a normal object (ignoring constructor args), saves it on the stack,
-/// populates its private `__attrs` slot from compile-time metadata, then restores
+/// populates its private metadata slots from compile-time metadata, then restores
 /// it as the expression result. Returns `PhpType::Object` for the given class name.
 pub(super) fn emit_new_reflection_owner(
     class_name: &str,
@@ -42,11 +50,28 @@ pub(super) fn emit_new_reflection_owner(
     data: &mut DataSection,
 ) -> PhpType {
     let normalized_args = normalized_constructor_args(class_name, args, ctx);
-    let (attr_names, attr_args) = reflection_lookup(class_name, &normalized_args, ctx);
+    let metadata = reflection_lookup(class_name, &normalized_args, ctx);
 
     super::allocation::emit_new_object_core(class_name, &[], false, emitter, ctx, data);
     abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // save the Reflection* object while replacing its private attribute array
-    overwrite_attrs_property(&attr_names, &attr_args, emitter, ctx, data);
+    if let Some(reflected_name) = metadata.reflected_name.as_deref() {
+        crate::codegen::reflection::emit_set_string_property(
+            emitter,
+            data,
+            reflected_name,
+            abi::symbol_scratch_reg(emitter),
+            8,
+            16,
+        );
+    }
+    overwrite_attrs_property(
+        class_name,
+        &metadata.attr_names,
+        &metadata.attr_args,
+        emitter,
+        ctx,
+        data,
+    );
     abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));                   // restore the populated Reflection* object as the expression result
     PhpType::Object(class_name.to_string())
 }
@@ -82,65 +107,72 @@ fn normalized_constructor_args(
 }
 
 /// Performs compile-time reflection lookup for the given class and constructor
-/// arguments, returning a tuple of `(attribute_names, attribute_args)` from the
-/// class/method/property metadata captured by the type checker.
+/// arguments, returning the reflected name and attribute metadata captured by
+/// the type checker.
 ///
 /// - `ReflectionClass(arg)` → class attribute metadata
 /// - `ReflectionMethod(class, method)` → method attribute metadata
 /// - `ReflectionProperty(class, prop)` → property attribute metadata
 ///
-/// Returns empty vectors if any argument is non-static or the target doesn't exist.
+/// Returns empty metadata if any argument is non-static or the target doesn't
+/// exist.
 fn reflection_lookup(
     class_name: &str,
     args: &[Expr],
     ctx: &Context,
-) -> (Vec<String>, Vec<Option<Vec<AttrArgValue>>>) {
+) -> ReflectionOwnerMetadata {
     match class_name {
         "ReflectionClass" => {
             let Some(reflected_class) = args.first().and_then(|arg| class_name_arg(arg, ctx)) else {
-                return empty_attrs();
+                return empty_metadata();
             };
             ctx.classes
                 .get(&reflected_class)
-                .map(|info| (info.attribute_names.clone(), info.attribute_args.clone()))
-                .unwrap_or_else(empty_attrs)
+                .map(|info| ReflectionOwnerMetadata {
+                    reflected_name: Some(reflected_class),
+                    attr_names: info.attribute_names.clone(),
+                    attr_args: info.attribute_args.clone(),
+                })
+                .unwrap_or_else(empty_metadata)
         }
         "ReflectionMethod" => {
             let Some(reflected_class) = args.first().and_then(|arg| class_name_arg(arg, ctx)) else {
-                return empty_attrs();
+                return empty_metadata();
             };
             let Some(method_name) = args.get(1).and_then(string_literal_arg) else {
-                return empty_attrs();
+                return empty_metadata();
             };
             let method_key = php_symbol_key(&method_name);
             ctx.classes
                 .get(&reflected_class)
                 .and_then(|info| {
-                    Some((
-                        info.method_attribute_names.get(&method_key)?.clone(),
-                        info.method_attribute_args.get(&method_key)?.clone(),
-                    ))
+                    Some(ReflectionOwnerMetadata {
+                        reflected_name: None,
+                        attr_names: info.method_attribute_names.get(&method_key)?.clone(),
+                        attr_args: info.method_attribute_args.get(&method_key)?.clone(),
+                    })
                 })
-                .unwrap_or_else(empty_attrs)
+                .unwrap_or_else(empty_metadata)
         }
         "ReflectionProperty" => {
             let Some(reflected_class) = args.first().and_then(|arg| class_name_arg(arg, ctx)) else {
-                return empty_attrs();
+                return empty_metadata();
             };
             let Some(property_name) = args.get(1).and_then(string_literal_arg) else {
-                return empty_attrs();
+                return empty_metadata();
             };
             ctx.classes
                 .get(&reflected_class)
                 .and_then(|info| {
-                    Some((
-                        info.property_attribute_names.get(&property_name)?.clone(),
-                        info.property_attribute_args.get(&property_name)?.clone(),
-                    ))
+                    Some(ReflectionOwnerMetadata {
+                        reflected_name: None,
+                        attr_names: info.property_attribute_names.get(&property_name)?.clone(),
+                        attr_args: info.property_attribute_args.get(&property_name)?.clone(),
+                    })
                 })
-                .unwrap_or_else(empty_attrs)
+                .unwrap_or_else(empty_metadata)
         }
-        _ => empty_attrs(),
+        _ => empty_metadata(),
     }
 }
 
@@ -150,21 +182,23 @@ fn reflection_lookup(
 /// populated from `attr_names` and `attr_args`, then stores the new array pointer
 /// and its kind tag (4 = indexed array) into the object's slots at offset 8 and 16.
 fn overwrite_attrs_property(
+    class_name: &str,
     attr_names: &[String],
     attr_args: &[Option<Vec<AttrArgValue>>],
     emitter: &mut Emitter,
     ctx: &mut Context,
     data: &mut DataSection,
 ) {
+    let (attrs_low_offset, attrs_high_offset) = reflection_attrs_offsets(class_name);
     match emitter.target.arch {
         Arch::AArch64 => {
             emitter.instruction("ldr x9, [sp]");                                // peek the saved Reflection* object pointer
-            emitter.instruction("ldr x0, [x9, #8]");                            // load the default __attrs array pointer
+            emitter.instruction(&format!("ldr x0, [x9, #{}]", attrs_low_offset)); // load the default __attrs array pointer
             emitter.instruction("bl __rt_decref_array");                        // release the default empty attributes array
         }
         Arch::X86_64 => {
             emitter.instruction("mov r10, QWORD PTR [rsp]");                    // peek the saved Reflection* object pointer
-            emitter.instruction("mov rax, QWORD PTR [r10 + 8]");                // load the default __attrs array pointer
+            emitter.instruction(&format!("mov rax, QWORD PTR [r10 + {}]", attrs_low_offset)); // load the default __attrs array pointer
             emitter.instruction("call __rt_decref_array");                      // release the default empty attributes array
         }
     }
@@ -180,15 +214,24 @@ fn overwrite_attrs_property(
     match emitter.target.arch {
         Arch::AArch64 => {
             emitter.instruction("ldr x9, [sp]");                                // reload the saved Reflection* object pointer
-            emitter.instruction("str x0, [x9, #8]");                            // store the populated __attrs array pointer
+            emitter.instruction(&format!("str x0, [x9, #{}]", attrs_low_offset)); // store the populated __attrs array pointer
             emitter.instruction("mov x10, #4");                                 // runtime kind tag 4 = indexed array
-            emitter.instruction("str x10, [x9, #16]");                          // store the __attrs array kind tag
+            emitter.instruction(&format!("str x10, [x9, #{}]", attrs_high_offset)); // store the __attrs array kind tag
         }
         Arch::X86_64 => {
             emitter.instruction("mov r10, QWORD PTR [rsp]");                    // reload the saved Reflection* object pointer
-            emitter.instruction("mov QWORD PTR [r10 + 8], rax");                // store the populated __attrs array pointer
-            emitter.instruction("mov QWORD PTR [r10 + 16], 4");                 // store the __attrs array kind tag
+            emitter.instruction(&format!("mov QWORD PTR [r10 + {}], rax", attrs_low_offset)); // store the populated __attrs array pointer
+            emitter.instruction(&format!("mov QWORD PTR [r10 + {}], 4", attrs_high_offset)); // store the __attrs array kind tag
         }
+    }
+}
+
+/// Returns the low/high object offsets for the private `__attrs` slot.
+fn reflection_attrs_offsets(class_name: &str) -> (usize, usize) {
+    if class_name == "ReflectionClass" {
+        (24, 32)
+    } else {
+        (8, 16)
     }
 }
 
@@ -240,7 +283,11 @@ fn resolve_static_receiver_class(receiver: &StaticReceiver, ctx: &Context) -> Op
     }
 }
 
-/// Returns a pair of empty vectors, used as the fallback when reflection lookup fails.
-fn empty_attrs() -> (Vec<String>, Vec<Option<Vec<AttrArgValue>>>) {
-    (Vec::new(), Vec::new())
+/// Returns empty metadata, used as the fallback when reflection lookup fails.
+fn empty_metadata() -> ReflectionOwnerMetadata {
+    ReflectionOwnerMetadata {
+        reflected_name: None,
+        attr_names: Vec::new(),
+        attr_args: Vec::new(),
+    }
 }

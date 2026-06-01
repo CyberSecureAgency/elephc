@@ -57,6 +57,7 @@ pub fn emit_function(
     callable_param_sigs: &HashMap<(String, String), FunctionSig>,
     callable_return_sigs: &HashMap<String, FunctionSig>,
     callable_array_return_sigs: &HashMap<String, FunctionSig>,
+    fiber_return_sigs: &HashMap<String, FunctionSig>,
     function_variant_groups: &HashSet<String>,
     constants: &HashMap<String, (ExprKind, PhpType)>,
     all_global_var_names: &HashSet<String>,
@@ -93,6 +94,7 @@ pub fn emit_function(
         callable_param_sigs,
         callable_return_sigs,
         callable_array_return_sigs,
+        fiber_return_sigs,
         function_variant_groups,
         constants,
         all_global_var_names,
@@ -121,6 +123,7 @@ pub fn emit_closure(
     all_functions: &HashMap<String, FunctionSig>,
     callable_return_sigs: &HashMap<String, FunctionSig>,
     callable_array_return_sigs: &HashMap<String, FunctionSig>,
+    fiber_return_sigs: &HashMap<String, FunctionSig>,
     function_variant_groups: &HashSet<String>,
     constants: &HashMap<String, (ExprKind, PhpType)>,
     interfaces: &HashMap<String, InterfaceInfo>,
@@ -163,6 +166,7 @@ pub fn emit_closure(
         &empty_callable_param_sigs,
         callable_return_sigs,
         callable_array_return_sigs,
+        fiber_return_sigs,
         function_variant_groups,
         constants,
         &empty_globals,
@@ -192,6 +196,7 @@ pub fn emit_method(
     callable_param_sigs: &HashMap<(String, String), FunctionSig>,
     callable_return_sigs: &HashMap<String, FunctionSig>,
     callable_array_return_sigs: &HashMap<String, FunctionSig>,
+    fiber_return_sigs: &HashMap<String, FunctionSig>,
     function_variant_groups: &HashSet<String>,
     constants: &HashMap<String, (ExprKind, PhpType)>,
     interfaces: &HashMap<String, InterfaceInfo>,
@@ -219,6 +224,7 @@ pub fn emit_method(
         callable_param_sigs,
         callable_return_sigs,
         callable_array_return_sigs,
+        fiber_return_sigs,
         function_variant_groups,
         constants,
         &empty_globals,
@@ -249,6 +255,7 @@ fn emit_function_with_label(
     callable_param_sigs: &HashMap<(String, String), FunctionSig>,
     callable_return_sigs: &HashMap<String, FunctionSig>,
     callable_array_return_sigs: &HashMap<String, FunctionSig>,
+    fiber_return_sigs: &HashMap<String, FunctionSig>,
     function_variant_groups: &HashSet<String>,
     constants: &HashMap<String, (ExprKind, PhpType)>,
     all_global_var_names: &HashSet<String>,
@@ -276,6 +283,7 @@ fn emit_function_with_label(
         callable_param_sigs,
         callable_return_sigs,
         callable_array_return_sigs,
+        fiber_return_sigs,
         function_variant_groups,
         constants,
         all_global_var_names,
@@ -377,6 +385,7 @@ fn emit_function_with_label_and_class(
     callable_param_sigs: &HashMap<(String, String), FunctionSig>,
     callable_return_sigs: &HashMap<String, FunctionSig>,
     callable_array_return_sigs: &HashMap<String, FunctionSig>,
+    fiber_return_sigs: &HashMap<String, FunctionSig>,
     function_variant_groups: &HashSet<String>,
     constants: &HashMap<String, (ExprKind, PhpType)>,
     all_global_var_names: &HashSet<String>,
@@ -397,6 +406,7 @@ fn emit_function_with_label_and_class(
     ctx.callable_param_sigs = callable_param_sigs.clone();
     ctx.callable_return_sigs = callable_return_sigs.clone();
     ctx.callable_array_return_sigs = callable_array_return_sigs.clone();
+    ctx.fiber_return_sigs = fiber_return_sigs.clone();
     ctx.function_variant_groups = function_variant_groups.clone();
     ctx.constants = constants.clone();
     ctx.all_global_var_names = all_global_var_names.clone();
@@ -559,6 +569,7 @@ fn emit_function_with_label_and_class(
                     all_functions,
                     &ctx.callable_return_sigs,
                     &ctx.callable_array_return_sigs,
+                    &ctx.fiber_return_sigs,
                     &ctx.function_variant_groups,
                     constants,
                     interfaces,

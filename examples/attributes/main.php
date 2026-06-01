@@ -97,6 +97,9 @@ foreach (class_get_attributes('Greeter') as $attr) {
 echo "\n";
 
 $ref = new ReflectionClass('Greeter');
+echo "ReflectionClass name: ";
+echo $ref->getName();
+echo "\n";
 $attrs = $ref->getAttributes();
 echo "ReflectionClass first attr: ";
 echo $attrs[0]->getName();

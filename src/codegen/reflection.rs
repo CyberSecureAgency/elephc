@@ -161,7 +161,7 @@ pub(crate) fn emit_reflection_attribute_array(
         abi::emit_push_reg(emitter, result_reg);
 
         // -- overwrite `$__name` (offset 8 = lo, 16 = hi) --
-        emit_set_name_property(emitter, data, attr_name, scratch);
+        emit_set_string_property(emitter, data, attr_name, scratch, 8, 16);
 
         // -- build the mixed args array and overwrite `$__args` --
         emit_set_args_property(emitter, data, attr_arg_list, scratch);
@@ -189,38 +189,43 @@ pub(crate) fn emit_reflection_attribute_array(
     PhpType::Array(Box::new(PhpType::Object("ReflectionAttribute".to_string())))
 }
 
-/// Overwrites the freshly-allocated ReflectionAttribute's `$__name` slot
-/// with a heap-persisted copy of `attr_name`. The object pointer is
-/// expected at the top of the temporary stack; the helper leaves it there.
-fn emit_set_name_property(
+/// Overwrites a string property slot on the object at the top of the temporary
+/// stack with a heap-persisted copy of `value`.
+///
+/// Frees the previous low-word string pointer using the safe heap free helper,
+/// stores the new pointer at `low_offset`, and stores the byte length at
+/// `high_offset`. The object pointer is left on the temporary stack.
+pub(crate) fn emit_set_string_property(
     emitter: &mut Emitter,
     data: &mut DataSection,
-    attr_name: &str,
+    value: &str,
     obj_ptr_scratch: &str,
+    low_offset: usize,
+    high_offset: usize,
 ) {
-    let (sym, len) = data.add_string(attr_name.as_bytes());
+    let (sym, len) = data.add_string(value.as_bytes());
     match emitter.target.arch {
         Arch::AArch64 => {
             emitter.instruction("ldr x9, [sp]");                                // peek the obj pointer from the temporary stack
-            emitter.instruction("ldr x0, [x9, #8]");                            // load the old __name.lo (heap-resident default copy)
-            emitter.instruction("bl __rt_heap_free_safe");                      // release the previous owned name string
+            emitter.instruction(&format!("ldr x0, [x9, #{}]", low_offset));     // load the old string pointer before overwriting it
+            emitter.instruction("bl __rt_heap_free_safe");                      // release the previous owned string
             abi::emit_symbol_address(emitter, "x1", &sym);                      // x1 = source string address
             emitter.instruction(&format!("mov x2, #{}", len));                  // x2 = source string length
             emitter.instruction("bl __rt_str_persist");                         // x1 = heap-resident pointer, x2 = length
             emitter.instruction(&format!("ldr {}, [sp]", obj_ptr_scratch));     // peek the obj pointer back
-            emitter.instruction(&format!("str x1, [{}, #8]", obj_ptr_scratch)); // commit __name.lo (heap pointer)
-            emitter.instruction(&format!("str x2, [{}, #16]", obj_ptr_scratch)); // commit __name.hi (length)
+            emitter.instruction(&format!("str x1, [{}, #{}]", obj_ptr_scratch, low_offset)); // commit the string pointer
+            emitter.instruction(&format!("str x2, [{}, #{}]", obj_ptr_scratch, high_offset)); // commit the string length
         }
         Arch::X86_64 => {
             emitter.instruction("mov r10, QWORD PTR [rsp]");                    // peek the obj pointer
-            emitter.instruction("mov rax, QWORD PTR [r10 + 8]");                // load old __name.lo for the free helper
-            emitter.instruction("call __rt_heap_free_safe");                    // release the previous owned name string
+            emitter.instruction(&format!("mov rax, QWORD PTR [r10 + {}]", low_offset)); // load the old string pointer
+            emitter.instruction("call __rt_heap_free_safe");                    // release the previous owned string
             abi::emit_symbol_address(emitter, "rax", &sym);                     // rax = source string address
             emitter.instruction(&format!("mov rdx, {}", len));                  // rdx = source string length
             emitter.instruction("call __rt_str_persist");                       // rax = heap-resident pointer, rdx = length
             emitter.instruction(&format!("mov {}, QWORD PTR [rsp]", obj_ptr_scratch)); // peek the obj pointer back
-            emitter.instruction(&format!("mov QWORD PTR [{} + 8], rax", obj_ptr_scratch)); // commit __name.lo
-            emitter.instruction(&format!("mov QWORD PTR [{} + 16], rdx", obj_ptr_scratch)); // commit __name.hi (length)
+            emitter.instruction(&format!("mov QWORD PTR [{} + {}], rax", obj_ptr_scratch, low_offset)); // commit the string pointer
+            emitter.instruction(&format!("mov QWORD PTR [{} + {}], rdx", obj_ptr_scratch, high_offset)); // commit the string length
         }
     }
 }

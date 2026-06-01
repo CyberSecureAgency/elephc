@@ -10,7 +10,7 @@
 
 use crate::errors::CompileError;
 use crate::lexer::Token;
-use crate::parser::ast::{Expr, ExprKind, InstanceOfTarget, Stmt, StmtKind};
+use crate::parser::ast::{BinOp, Expr, ExprKind, InstanceOfTarget, Stmt, StmtKind};
 use crate::parser::expr::{parse_assignment_value_expr, parse_expr};
 use crate::span::Span;
 
@@ -63,15 +63,31 @@ pub(in crate::parser::stmt) fn try_parse_postfix_assignment(
     if op != AssignmentOperator::Assign && !can_replay_assignment_target(&lhs_expr) {
         return lower_effectful_postfix_assignment(lhs_expr, op, rhs, span).map(Some);
     }
+    let lhs_span = lhs_expr.span;
+    if is_append {
+        let stmt = match lhs_expr.kind {
+            ExprKind::Variable(array) => StmtKind::ArrayPush { array, value: rhs },
+            ExprKind::PropertyAccess { object, property } => StmtKind::PropertyArrayPush {
+                object,
+                property,
+                value: rhs,
+            },
+            ExprKind::ArrayAccess { array, index } => {
+                return lower_nested_append_assignment(
+                    Expr::new(ExprKind::ArrayAccess { array, index }, lhs_span),
+                    rhs,
+                    span,
+                )
+                .map(Some);
+            }
+            _ => return Err(CompileError::new(span, "Invalid assignment target")),
+        };
+        return Ok(Some(Stmt::new(stmt, span)));
+    }
+
     let value = assignment_value(lhs_expr.clone(), op, rhs, span);
 
     let stmt = match lhs_expr.kind {
-        ExprKind::Variable(array) if is_append => StmtKind::ArrayPush { array, value },
-        ExprKind::PropertyAccess { object, property } if is_append => StmtKind::PropertyArrayPush {
-            object,
-            property,
-            value,
-        },
         ExprKind::ArrayAccess { array, index } => {
             match array.kind {
                 ExprKind::Variable(array) => StmtKind::ArrayAssign {
@@ -100,6 +116,134 @@ pub(in crate::parser::stmt) fn try_parse_postfix_assignment(
     };
 
     Ok(Some(Stmt::new(stmt, span)))
+}
+
+/// Lowers an append through a nested array target (`$a[0][] = $value`) into a
+/// synthetic read/append/write-back sequence. The temporary append triggers the
+/// existing copy-on-write split, and the final assignment stores the detached
+/// nested array back into the original slot.
+fn lower_nested_append_assignment(
+    target: Expr,
+    value: Expr,
+    span: Span,
+) -> Result<Stmt, CompileError> {
+    let mut lowerer = EffectfulTargetLowerer::new(span);
+    let target = lowerer.stabilize_array_target(target);
+    let temp = lowerer.next_temp_name();
+    lowerer.stmts.push(Stmt::new(
+        StmtKind::Assign {
+            name: temp.clone(),
+            value: target.clone(),
+        },
+        span,
+    ));
+    lowerer.stmts.push(Stmt::new(
+        StmtKind::ArrayPush {
+            array: temp.clone(),
+            value,
+        },
+        span,
+    ));
+    let write_back = assignment_target_store_stmt(
+        target,
+        Expr::new(ExprKind::Variable(temp), span),
+        span,
+    )?;
+    Ok(lowerer.finish(write_back))
+}
+
+/// Builds the statement that writes `value` back into an already-stabilized
+/// assignment target. Supports the same local, property, static property, and
+/// array target families as postfix assignment lowering.
+fn assignment_target_store_stmt(
+    target: Expr,
+    value: Expr,
+    span: Span,
+) -> Result<StmtKind, CompileError> {
+    match target.kind {
+        ExprKind::Variable(name) => Ok(StmtKind::Assign { name, value }),
+        ExprKind::PropertyAccess { object, property } => {
+            Ok(StmtKind::PropertyAssign {
+                object,
+                property,
+                value,
+            })
+        }
+        ExprKind::StaticPropertyAccess { receiver, property } => {
+            Ok(StmtKind::StaticPropertyAssign {
+                receiver,
+                property,
+                value,
+            })
+        }
+        ExprKind::ArrayAccess { array, index } => match array.kind {
+            ExprKind::Variable(array) => Ok(StmtKind::ArrayAssign {
+                array,
+                index: *index,
+                value,
+            }),
+            ExprKind::PropertyAccess { object, property } => {
+                Ok(StmtKind::PropertyArrayAssign {
+                    object,
+                    property,
+                    index: *index,
+                    value,
+                })
+            }
+            ExprKind::StaticPropertyAccess { receiver, property } => {
+                Ok(StmtKind::StaticPropertyArrayAssign {
+                    receiver,
+                    property,
+                    index: *index,
+                    value,
+                })
+            }
+            _ => Ok(StmtKind::NestedArrayAssign {
+                target: Expr::new(ExprKind::ArrayAccess { array, index }, span),
+                value,
+            }),
+        },
+        _ => Err(CompileError::new(span, "Invalid assignment target")),
+    }
+}
+
+/// Parses discarded post-increment/decrement on a complex l-value target.
+///
+/// For statement contexts the original expression result is unused, so `$a[0]++`
+/// can be lowered to the same read-modify-write shape as `$a[0] += 1`.
+/// Simple local `$x++` is left to the existing local-variable parser.
+pub(in crate::parser::stmt) fn try_parse_postfix_incdec(
+    tokens: &[(Token, Span)],
+    pos: &mut usize,
+    span: Span,
+) -> Result<Option<Stmt>, CompileError> {
+    let start = *pos;
+    let Some((incdec_pos, is_increment)) = find_top_level_postfix_incdec(tokens, start) else {
+        return Ok(None);
+    };
+    if incdec_pos < start + 3 {
+        return Ok(None);
+    }
+
+    let lhs = &tokens[start..incdec_pos];
+    let contains_complex_target = lhs
+        .iter()
+        .skip(1)
+        .any(|(token, _)| matches!(token, Token::Arrow | Token::QuestionArrow | Token::LBracket));
+    if !contains_complex_target {
+        return Ok(None);
+    }
+
+    let mut lhs_pos = 0;
+    let lhs_expr = parse_expr(lhs, &mut lhs_pos)?;
+    if lhs_pos != lhs.len() {
+        return Err(CompileError::new(span, "Invalid increment target"));
+    }
+
+    *pos = incdec_pos + 1;
+    expect_semicolon(tokens, pos)?;
+
+    lower_postfix_incdec_assignment(lhs_expr, is_increment, span).map(Some)
 }
 
 /// Parses a scoped (static class member) postfix assignment, handling targets like
@@ -201,6 +345,41 @@ fn find_top_level_assignment(
                 if let Some(op) = assignment_operator(&tokens[pos].0) {
                     return Some((pos, op));
                 }
+            }
+            _ => {}
+        }
+        pos += 1;
+    }
+
+    None
+}
+
+/// Finds a top-level `++` or `--` before the statement semicolon.
+///
+/// Nested occurrences inside indexes or call arguments are ignored so expressions
+/// such as `$items[$i++] = 1` remain assignment statements with an effectful index.
+fn find_top_level_postfix_incdec(tokens: &[(Token, Span)], start: usize) -> Option<(usize, bool)> {
+    let mut paren_depth = 0usize;
+    let mut bracket_depth = 0usize;
+    let mut brace_depth = 0usize;
+    let mut pos = start;
+
+    while pos < tokens.len() {
+        match tokens[pos].0 {
+            Token::LParen => paren_depth += 1,
+            Token::RParen => paren_depth = paren_depth.saturating_sub(1),
+            Token::LBracket => bracket_depth += 1,
+            Token::RBracket => bracket_depth = bracket_depth.saturating_sub(1),
+            Token::LBrace => brace_depth += 1,
+            Token::RBrace => brace_depth = brace_depth.saturating_sub(1),
+            Token::Semicolon if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 => {
+                return None;
+            }
+            Token::PlusPlus if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 => {
+                return Some((pos, true));
+            }
+            Token::MinusMinus if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 => {
+                return Some((pos, false));
             }
             _ => {}
         }
@@ -346,6 +525,53 @@ fn lower_effectful_postfix_assignment(
     Ok(lowerer.finish(lowered))
 }
 
+/// Lowers discarded post-increment/decrement to the existing assignment statement forms.
+fn lower_postfix_incdec_assignment(
+    lhs_expr: Expr,
+    is_increment: bool,
+    span: Span,
+) -> Result<Stmt, CompileError> {
+    let op = if is_increment {
+        AssignmentOperator::Compound(BinOp::Add)
+    } else {
+        AssignmentOperator::Compound(BinOp::Sub)
+    };
+    let one = Expr::new(ExprKind::IntLiteral(1), span);
+
+    if !can_replay_assignment_target(&lhs_expr) {
+        return lower_effectful_postfix_assignment(lhs_expr, op, one, span);
+    }
+
+    let value = assignment_value(lhs_expr.clone(), op, one, span);
+    let kind = match lhs_expr.kind {
+        ExprKind::ArrayAccess { array, index } => match array.kind {
+            ExprKind::Variable(array) => StmtKind::ArrayAssign {
+                array,
+                index: *index,
+                value,
+            },
+            ExprKind::PropertyAccess { object, property } => StmtKind::PropertyArrayAssign {
+                object,
+                property,
+                index: *index,
+                value,
+            },
+            _ => StmtKind::NestedArrayAssign {
+                target: Expr::new(ExprKind::ArrayAccess { array, index }, span),
+                value,
+            },
+        },
+        ExprKind::PropertyAccess { object, property } => StmtKind::PropertyAssign {
+            object,
+            property,
+            value,
+        },
+        _ => return Err(CompileError::new(span, "Invalid increment target")),
+    };
+
+    Ok(Stmt::new(kind, span))
+}
+
 /// Lowers a compound static property assignment where the target cannot be replayed safely.
 /// Temporaries are created for any sub-expression that could produce observable side effects
 /// (e.g., method calls on the object or array accesses). Returns a `Synthetic` statement.
@@ -436,11 +662,7 @@ impl EffectfulTargetLowerer {
         if can_replay_assignment_target(&expr) {
             return expr;
         }
-        let name = format!(
-            "__elephc_compound_{}_{}_{}",
-            self.span.line, self.span.col, self.next_temp
-        );
-        self.next_temp += 1;
+        let name = self.next_temp_name();
         self.stmts.push(Stmt::new(
             StmtKind::Assign {
                 name: name.clone(),
@@ -449,6 +671,16 @@ impl EffectfulTargetLowerer {
             self.span,
         ));
         Expr::new(ExprKind::Variable(name), self.span)
+    }
+
+    /// Returns a unique synthetic temporary name for this lowered statement.
+    fn next_temp_name(&mut self) -> String {
+        let name = format!(
+            "__elephc_compound_{}_{}_{}",
+            self.span.line, self.span.col, self.next_temp
+        );
+        self.next_temp += 1;
+        name
     }
 
     /// Stabilizes an array-access target, recursively stabilizing both the array base

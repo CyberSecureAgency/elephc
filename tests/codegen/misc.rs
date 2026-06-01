@@ -34,6 +34,21 @@ echo (function($x) { return $x * 2; })(21);
     assert_eq!(out, "42");
 }
 
+/// Verifies parenthesized expressions can appear as standalone statements, including object and closure calls.
+#[test]
+fn test_parenthesized_expression_statements() {
+    let out = compile_and_run(
+        r#"<?php
+class C { function m() { echo "C"; } }
+(new C())->m();
+(function () { echo "|F"; })();
+(1 + 2);
+echo "|3";
+"#,
+    );
+    assert_eq!(out, "C|F|3");
+}
+
 // --- Empty input / EOF handling ---
 
 /// Compiles a PHP file containing only `<?php\n` and verifies no output is produced.

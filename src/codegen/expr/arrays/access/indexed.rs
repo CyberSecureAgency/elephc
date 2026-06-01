@@ -13,8 +13,8 @@ use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
 use crate::codegen::emit_box_runtime_payload_as_mixed;
+use crate::codegen::expr::{coerce_result_to_type, emit_expr};
 use crate::codegen::platform::Arch;
-use crate::codegen::expr::emit_expr;
 use crate::parser::ast::Expr;
 use crate::types::PhpType;
 
@@ -367,7 +367,8 @@ pub(crate) fn emit_array_access_with_loaded_base(
     }
 
     abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // preserve the array pointer while evaluating the index expression
-    emit_expr(index, emitter, ctx, data);
+    let index_ty = emit_expr(index, emitter, ctx, data);
+    coerce_result_to_type(emitter, ctx, data, &index_ty, &PhpType::Int);
     let array_reg = abi::symbol_scratch_reg(emitter);
     let len_reg = abi::temp_int_reg(emitter.target);
     let result_reg = abi::int_result_reg(emitter);
@@ -487,6 +488,7 @@ pub(crate) fn emit_array_access_with_loaded_base(
     }
 
     emitter.label(&null_label);
+    emit_undefined_index_warning(emitter);
     if boxed_indexed_base || matches!(elem_ty, PhpType::Mixed | PhpType::Union(_)) {
         objects_boxed_null_for_array_access(emitter);
     } else {
@@ -535,4 +537,9 @@ fn objects_boxed_null_for_array_access(emitter: &mut Emitter) {
         0x7fff_ffff_ffff_fffe,
     );
     crate::codegen::emit_box_current_value_as_mixed(emitter, &PhpType::Void);
+}
+
+/// Emits the PHP warning for an undefined indexed-array key.
+fn emit_undefined_index_warning(emitter: &mut Emitter) {
+    abi::emit_call_label(emitter, "__rt_warn_undefined_array_key_int");         // emit or suppress the PHP undefined-array-key warning for the current index
 }

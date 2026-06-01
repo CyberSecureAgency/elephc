@@ -222,6 +222,11 @@ function increment(&$val) {
 $x = 5;
 increment($x);
 echo $x; // 6
+
+$a = 1;
+$b =& $a;
+$b = 2;
+echo $a; // 2
 ```
 
 ## Variadic functions

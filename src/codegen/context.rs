@@ -209,6 +209,10 @@ pub struct Context {
     pub callable_return_sigs: HashMap<String, FunctionSig>,
     /// Callable element signatures inferred for user-function array returns.
     pub callable_array_return_sigs: HashMap<String, FunctionSig>,
+    /// Fiber callback start signatures inferred for variables holding `Fiber` objects.
+    pub fiber_start_sigs: HashMap<String, FunctionSig>,
+    /// Fiber callback start signatures inferred for functions returning `Fiber` objects.
+    pub fiber_return_sigs: HashMap<String, FunctionSig>,
     /// Captured variables per closure variable name: maps $fn -> [(capture_name, type, by_ref)].
     pub closure_captures: HashMap<String, Vec<(String, PhpType, bool)>>,
     /// Runtime-dispatch wrappers synthesized for PHP builtin callbacks selected
@@ -364,6 +368,8 @@ impl Context {
             callable_param_names: HashSet::new(),
             callable_return_sigs: HashMap::new(),
             callable_array_return_sigs: HashMap::new(),
+            fiber_start_sigs: HashMap::new(),
+            fiber_return_sigs: HashMap::new(),
             closure_captures: HashMap::new(),
             runtime_callable_builtin_wrappers: HashMap::new(),
             runtime_callable_extern_wrappers: HashMap::new(),

@@ -216,6 +216,13 @@ pub(super) fn apply_stmt_callable_aliases(stmt: &Stmt, aliases: &mut HashMap<Str
                 aliases.remove(name);
             }
         }
+        StmtKind::RefAssign { target, source } => {
+            if let Some(effect) = aliases.get(source).copied() {
+                aliases.insert(target.clone(), effect);
+            } else {
+                aliases.remove(target);
+            }
+        }
         StmtKind::StaticVar { name, init } => update_callable_alias(aliases, name, init),
         StmtKind::Global { vars } => {
             for var in vars {

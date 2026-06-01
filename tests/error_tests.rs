@@ -297,24 +297,6 @@ fn test_error_yield_outside_function_in_pipe_callable() {
     );
 }
 
-/// Verifies the error diagnostic for yield in try block.
-#[test]
-fn test_error_yield_in_try_block() {
-    expect_error(
-        "<?php function gen() { try { yield 1; } catch (\\Throwable $e) {} }",
-        "yield inside try/catch/finally is not yet supported",
-    );
-}
-
-/// Verifies the error diagnostic for yield in catch block.
-#[test]
-fn test_error_yield_in_catch_block() {
-    expect_error(
-        "<?php function gen() { try {} catch (\\Throwable $e) { yield 1; } }",
-        "yield inside try/catch/finally is not yet supported",
-    );
-}
-
 /// Verifies the error diagnostic for yield from outside function.
 #[test]
 fn test_error_yield_from_outside_function() {

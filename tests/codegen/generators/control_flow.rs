@@ -196,6 +196,61 @@ foreach (gen() as $v) { echo $v; echo " "; }
     assert_eq!(out, "0 1 2 ");
 }
 
+/// Verifies that a yield inside a try body is accepted and resumes normally.
+#[test]
+fn test_generator_yield_inside_try_body() {
+    let out = compile_and_run(
+        r#"<?php
+function gen() {
+    try {
+        yield 1;
+    } catch (Exception $e) {
+        echo "caught";
+    }
+}
+$g = gen();
+echo $g->current();
+"#,
+    );
+    assert_eq!(out, "1");
+}
+
+/// Verifies that a yield in a catch body is accepted by generator validation.
+#[test]
+fn test_generator_yield_inside_catch_body_compiles() {
+    let out = compile_and_run(
+        r#"<?php
+function gen() {
+    try {
+    } catch (Exception $e) {
+        yield 1;
+    }
+}
+echo "ok";
+"#,
+    );
+    assert_eq!(out, "ok");
+}
+
+/// Verifies that a generator runs try-body side effects before yielding from finally.
+#[test]
+fn test_generator_yield_inside_finally_body() {
+    let out = compile_and_run(
+        r#"<?php
+function gen() {
+    try {
+        echo "a";
+    } finally {
+        yield 2;
+    }
+}
+$g = gen();
+echo $g->current();
+"#,
+    );
+    assert_eq!(out, "a2");
+}
+
 /// Tests the Fibonacci generator as a benchmark for stateful generator loop logic.
 /// Produces the first 10 Fibonacci numbers: 0 1 1 2 3 5 8 13 21 34.
 #[test]

@@ -66,6 +66,7 @@ fn rewrite_stmt_kind(kind: StmtKind, defines: &HashSet<String>) -> StmtKind {
             name,
             value: rewrite_expr(value, defines),
         },
+        StmtKind::RefAssign { target, source } => StmtKind::RefAssign { target, source },
         StmtKind::If {
             condition,
             then_body,

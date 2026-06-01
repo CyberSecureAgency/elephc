@@ -14,9 +14,10 @@
 //!    statements, value boxing via `__rt_mixed_from_value`, refcount drops via
 //!    `__rt_decref_mixed`, and `TERMINATED` flag on fall-off).
 //!  - v1 body grammar accepts int locals + arithmetic, `$local = yield <expr>`
-//!    for `send`, post-inc/dec, `if`/`while`/`do-while`/`for`/`switch`/`break`/
-//!    `continue`, mixed int/string yield values, and `yield from` over
-//!    int-array literals or generator-returning function calls.
+//!    for `send`, post-inc/dec, `if`/`while`/`do-while`/`for`/`switch`/`try`
+//!    no-exception paths, `break`/`continue`, `echo`, mixed int/string yield
+//!    values, and `yield from` over int-array literals or generator-returning
+//!    function calls.
 //!  - Unsupported body shapes bail to the terminator silently — the wrapper
 //!    still compiles, the generator just yields nothing past the gap.
 
@@ -177,5 +178,5 @@ fn emit_generator_with_label(
         int_param_count,
         local_typed.len(),
     );
-    emit_resume(emitter, &resume_label, &nodes, highest_state, &mixed_slot_indices);
+    emit_resume(emitter, data, &resume_label, &nodes, highest_state, &mixed_slot_indices);
 }

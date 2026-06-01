@@ -145,7 +145,9 @@ fn parse_stmt_dispatch(
         | Token::Self_
         | Token::Parent
         | Token::Backslash
-        | Token::Question => {
+        | Token::Question
+        | Token::LParen
+        | Token::Match => {
             if matches!(&tokens[*pos].0, Token::Identifier(name) if name.eq_ignore_ascii_case("list"))
                 && matches!(tokens.get(*pos + 1).map(|(token, _)| token), Some(Token::LParen))
             {

@@ -170,6 +170,27 @@ pub(super) fn check_builtin(
                 Ok(Some(PhpType::Int))
             }
         }
+        "clamp" => {
+            if args.len() != 3 {
+                return Err(CompileError::new(span, "clamp() takes exactly 3 arguments"));
+            }
+            let mut arg_types = Vec::with_capacity(args.len());
+            for arg in args {
+                arg_types.push(checker.infer_type(arg, env)?);
+            }
+            if arg_types.iter().all(|ty| *ty == PhpType::Str) {
+                Ok(Some(PhpType::Str))
+            } else if arg_types.iter().all(|ty| *ty == PhpType::Int) {
+                Ok(Some(PhpType::Int))
+            } else if arg_types
+                .iter()
+                .all(|ty| matches!(ty, PhpType::Int | PhpType::Float))
+            {
+                Ok(Some(PhpType::Float))
+            } else {
+                Ok(Some(PhpType::Mixed))
+            }
+        }
         "intdiv" => {
             if args.len() != 2 {
                 return Err(CompileError::new(span, "intdiv() takes exactly 2 arguments"));

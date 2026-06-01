@@ -82,3 +82,16 @@ fn test_print_parses_as_expression_statement() {
         )]
     );
 }
+
+/// Verifies parenthesized expressions are accepted as standalone expression statements.
+#[test]
+fn test_parenthesized_expression_statement() {
+    let stmts = parse_source("<?php (1 + 2);");
+    assert_eq!(
+        stmts,
+        vec![Stmt::new(
+            StmtKind::ExprStmt(Expr::binop(Expr::int_lit(1), BinOp::Add, Expr::int_lit(2))),
+            elephc::span::Span::dummy(),
+        )]
+    );
+}

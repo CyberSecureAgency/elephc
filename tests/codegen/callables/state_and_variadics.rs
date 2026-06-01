@@ -118,6 +118,22 @@ counter();
     assert_eq!(out, "123");
 }
 
+/// Verifies that a static variable inside a closure links and persists across calls.
+#[test]
+fn test_closure_static_local_preserves_value_across_calls() {
+    let out = compile_and_run(
+        r#"<?php
+$f = function () {
+    static $x = 0;
+    echo ++$x;
+};
+$f();
+$f();
+"#,
+    );
+    assert_eq!(out, "12");
+}
+
 /// Verifies that a static variable's value is preserved and updated correctly across calls.
 #[test]
 fn test_static_preserves_value() {
@@ -192,6 +208,47 @@ echo $x;
 "#,
     );
     assert_eq!(out, "42");
+}
+
+/// Verifies direct reference assignment aliases reads from the source variable.
+#[test]
+fn test_reference_assignment_alias_reads_source() {
+    let out = compile_and_run(
+        r#"<?php
+$a = 1;
+$b =& $a;
+echo $b;
+"#,
+    );
+    assert_eq!(out, "1");
+}
+
+/// Verifies writes through a directly aliased variable update the original source.
+#[test]
+fn test_reference_assignment_alias_writes_through() {
+    let out = compile_and_run(
+        r#"<?php
+$a = 1;
+$b =& $a;
+$b = 42;
+echo $a;
+"#,
+    );
+    assert_eq!(out, "42");
+}
+
+/// Verifies writes to the original source remain visible through the alias.
+#[test]
+fn test_reference_assignment_source_write_visible_through_alias() {
+    let out = compile_and_run(
+        r#"<?php
+$a = 1;
+$b =& $a;
+$a = 2;
+echo $b;
+"#,
+    );
+    assert_eq!(out, "2");
 }
 
 /// Verifies that a two-argument `&$a, &$b` swap function correctly swaps the caller's values.

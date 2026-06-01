@@ -19,6 +19,15 @@ fn test_error_bitwise_compound_assignment_requires_ints() {
     );
 }
 
+/// Tests that direct reference assignment rejects a non-variable source.
+#[test]
+fn test_error_reference_assignment_requires_variable_source() {
+    expect_error(
+        "<?php $a = 1; $b =& 1;",
+        "Reference assignment source must be a variable",
+    );
+}
+
 /// Tests that two `use` statements with the same alias name produce a
 /// "Duplicate import alias" error.
 #[test]

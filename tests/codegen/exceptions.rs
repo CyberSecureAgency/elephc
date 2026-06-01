@@ -90,6 +90,27 @@ fn test_builtin_throwable_catch_dispatches_get_message() {
     assert_eq!(out, "caught:core");
 }
 
+/// Verifies a caught exception keeps its concrete runtime class for class-name lookups.
+#[test]
+fn test_caught_exception_get_class_preserves_concrete_runtime_class() {
+    let out = compile_and_run(
+        r#"<?php
+try {
+    throw new RuntimeException("x");
+} catch (Throwable $e) {
+    echo get_class($e), ":", get_parent_class($e), ":", $e->getMessage();
+}
+
+try {
+    throw new RuntimeException("y");
+} catch (LogicException | RuntimeException $e) {
+    echo ":", get_class($e), ":", $e->getMessage();
+}
+"#,
+    );
+    assert_eq!(out, "RuntimeException:Exception:x:RuntimeException:y");
+}
+
 /// Verifies the full Throwable API surface on a caught Exception: getMessage,
 /// getCode, getFile, getLine, getTrace, getTraceAsString, getPrevious, and
 /// __toString all return expected values. File/line reflect the throw site.
@@ -329,6 +350,39 @@ fn test_exception_finally_runs_on_return_break_continue() {
         "<?php function f() { try { return 5; } finally { echo 1; } } echo f(); for ($i = 0; $i < 1; $i++) { try { echo 2; break; } finally { echo 3; } } for ($j = 0; $j < 2; $j++) { try { echo $j; continue; } finally { echo 9; } }",
     );
     assert_eq!(out, "15230919");
+}
+
+/// Verifies that finally blocks run before returns from both try and catch bodies.
+/// Issue #301: catch-body returns must route through the same pending finally state as try-body returns.
+#[test]
+fn test_exception_finally_runs_on_try_and_catch_return() {
+    let out = compile_and_run(
+        r#"<?php
+function from_try() {
+    try {
+        return "t";
+    } catch (Exception $e) {
+        return "x";
+    } finally {
+        echo "F";
+    }
+}
+
+function from_catch() {
+    try {
+        throw new Exception();
+    } catch (Exception $e) {
+        return "c";
+    } finally {
+        echo "f";
+    }
+}
+
+echo from_try();
+echo from_catch();
+"#,
+    );
+    assert_eq!(out, "Ftfc");
 }
 
 /// A break inside a finally block exits the while loop that encloses the try.

@@ -1,6 +1,6 @@
 ---
 title: "Math"
-description: "Mathematical functions: abs, floor, ceil, round, trigonometry, logarithms, and more."
+description: "Mathematical functions: abs, floor, ceil, round, clamp, trigonometry, logarithms, and more."
 sidebar:
   order: 8
 ---
@@ -17,6 +17,7 @@ sidebar:
 | `pow()` | `pow($base, $exp): float` | Exponentiation |
 | `min()` | `min($a, $b, ...): int\|float` | Minimum (variadic) |
 | `max()` | `max($a, $b, ...): int\|float` | Maximum (variadic) |
+| `clamp()` | `clamp(?mixed $value, ?mixed $min, ?mixed $max): ?mixed` | Clamp a value to inclusive bounds |
 | `intdiv()` | `intdiv($a, $b): int` | Integer division |
 | `fmod()` | `fmod($a, $b): float` | Float modulo |
 | `fdiv()` | `fdiv($a, $b): float` | Float division (returns INF for /0) |
@@ -41,6 +42,14 @@ sidebar:
 | `deg2rad()` | `deg2rad($degrees): float` | Degrees to radians |
 | `rad2deg()` | `rad2deg($radians): float` | Radians to degrees |
 | `pi()` | `pi(): float` | Returns M_PI |
+
+`clamp()` validates the bounds before selecting a result. It throws `ValueError` if `$min > $max` or if either bound is `NAN`. Selection checks the upper bound first, then the lower bound.
+
+```php
+echo clamp(15, 0, 10);      // 10
+echo clamp(3.5, 0.0, 10.0); // 3.5
+echo clamp("P", "A", "Z");  // "P"
+```
 
 ## Math constants
 

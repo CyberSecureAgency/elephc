@@ -471,6 +471,24 @@ echo Color::from(2) === Color::Green; // 1
 ```
 Pure and backed enums. `->value`, `::from()`, `::tryFrom()`, `::cases()`. Only `int` and `string` backing types.
 
+### Built-in `SortDirection`
+
+PHP 8.6's global unit enum is available without a user declaration:
+
+```php
+<?php
+function sqlSortKeyword(SortDirection $direction): string {
+    return match ($direction) {
+        SortDirection::Ascending => "ASC",
+        SortDirection::Descending => "DESC",
+    };
+}
+
+echo sqlSortKeyword(SortDirection::Descending); // DESC
+```
+
+`SortDirection` has two cases, `Ascending` and `Descending`, no backing value, and works with enum case identity, `SortDirection::cases()`, `enum_exists()`, type declarations, `match`, imports, and fully-qualified `\SortDirection` references.
+
 ## Magic methods
 - `__toString()` — string coercion
 - `__get($name)` — reading undefined property
@@ -638,6 +656,7 @@ echo ($instance instanceof Route) ? "yes" : "no";
 
 | Reflection method | Supported constructor | Description |
 |---|---|---|
+| `ReflectionClass::getName()` | `new ReflectionClass($class_name)` | Return the resolved class name |
 | `ReflectionClass::getAttributes()` | `new ReflectionClass($class_name)` | Return `ReflectionAttribute` objects for class attributes |
 | `ReflectionMethod::getAttributes()` | `new ReflectionMethod($class_name, $method_name)` | Return `ReflectionAttribute` objects for method attributes |
 | `ReflectionProperty::getAttributes()` | `new ReflectionProperty($class_name, $property_name)` | Return `ReflectionAttribute` objects for property attributes |
@@ -647,7 +666,7 @@ Limitations today:
 - All arguments to `class_attribute_names()`, `class_attribute_args()`, `class_get_attributes()`, and `new ReflectionClass/Method/Property(...)` must be compile-time class/member strings. `ClassName::class` is accepted for the class-name argument of `new ReflectionClass/Method/Property(...)`, and normal named-argument / static associative-spread normalization runs before the literal-string check. Dynamic class, method, property, or attribute names require a runtime name→id lookup table that is not yet implemented.
 - Only **literal** positional arguments are materialized by reflection helpers today (string, int, bool, null, plus `-N` for negative ints). Other legal PHP attribute arguments can still be parsed and compiled, and `class_attribute_names()` can still list the attribute name, but `class_attribute_args()`, `class_get_attributes()`, and Reflection `getAttributes()` report an error if they would need unsupported argument metadata.
 - When several attributes share a name on the same class, `class_attribute_args()` returns the args of the first match; `class_get_attributes()` does expose every occurrence as a separate `ReflectionAttribute` in source order.
-- Only `getAttributes()` is implemented on `ReflectionClass`, `ReflectionMethod`, and `ReflectionProperty`; broader APIs such as `getProperties()`, `getMethods()`, and object construction through `ReflectionClass::newInstance()` are not yet available.
+- `ReflectionClass` supports `getName()` and `getAttributes()`. `ReflectionMethod` and `ReflectionProperty` currently support `getAttributes()` only; broader APIs such as `getProperties()`, `getMethods()`, and object construction through `ReflectionClass::newInstance()` are not yet available.
 
 ### Class constants
 

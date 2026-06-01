@@ -1,16 +1,15 @@
 //! Purpose:
 //! Walks the parsed program enforcing where `yield` / `yield from` may
-//! appear. Tracks function/method depth and `try`/`catch`/`finally` depth so
-//! illegal yields surface as `CompileError`s rather than codegen panics.
+//! appear. Tracks function/method depth so illegal global-scope yields surface
+//! as `CompileError`s rather than codegen panics.
 //!
 //! Called from:
 //!  - `super::validate_yield_contexts` re-export consumers (the checker driver).
 //!
 //! Key details:
 //!  - The walker treats every function/method declaration and closure body
-//!    as a fresh generator scope (function_depth++, try_finally_depth reset
-//!    on entering a closure). A yield can only appear when function_depth > 0
-//!    and try_finally_depth == 0.
+//!    as a fresh generator scope (function_depth++ on entry). A yield can only
+//!    appear when function_depth > 0.
 //!  - The walker collects all violations into one `Vec<CompileError>` so the
 //!    user sees every illegal yield in a single compile pass.
 
@@ -21,13 +20,9 @@ use crate::parser::ast::{Expr, ExprKind, Program, Stmt, StmtKind};
 ///
 /// 1. Outside any function/method/closure body — yield is only valid as part
 ///    of a generator function.
-/// 2. Inside any `try`, `catch`, or `finally` body — elephc v1 of generators
-///    does not support resuming through unwinding. The error is explicit so
-///    users can refactor before the codegen reports the same.
 pub(crate) fn validate_yield_contexts(program: &Program) -> Vec<CompileError> {
     let mut state = State {
         function_depth: 0,
-        try_finally_depth: 0,
         errors: Vec::new(),
     };
     for stmt in program {
@@ -41,9 +36,6 @@ struct State {
     /// Number of enclosing function/method/closure scopes (excluding the global
     /// program level). A yield is only valid when `function_depth > 0`.
     function_depth: u32,
-    /// Number of enclosing `try`/`catch`/`finally` blocks. Elephc v1 generators
-    /// cannot resume through unwinding, so yield is forbidden when this is > 0.
-    try_finally_depth: u32,
     /// All yield-context errors collected during the program walk. Multiple
     /// violations surface in a single pass so the user sees all problems at once.
     errors: Vec<CompileError>,
@@ -51,9 +43,8 @@ struct State {
 
 /// Recursively walks a statement, visiting each nested expression via
 /// `visit_expr`. Tracks `function_depth` by incrementing on function/method
-/// bodies and closures, and `try_finally_depth` by incrementing on `Try`
-/// blocks. Skips `InterfaceDecl` bodies (abstract/placeholder methods contain
-/// no executable code).
+/// bodies and closures. Skips `InterfaceDecl` bodies (abstract/placeholder
+/// methods contain no executable code).
 fn visit_stmt(stmt: &Stmt, st: &mut State) {
     match &stmt.kind {
         StmtKind::FunctionDecl { body, .. } => {
@@ -81,8 +72,6 @@ fn visit_stmt(stmt: &Stmt, st: &mut State) {
             catches,
             finally_body,
         } => {
-            // The `try` body itself, plus any `catch`/`finally`, all forbid yield.
-            st.try_finally_depth += 1;
             for s in try_body {
                 visit_stmt(s, st);
             }
@@ -96,7 +85,6 @@ fn visit_stmt(stmt: &Stmt, st: &mut State) {
                     visit_stmt(s, st);
                 }
             }
-            st.try_finally_depth -= 1;
         }
         StmtKind::If {
             condition,
@@ -235,6 +223,7 @@ fn visit_stmt(stmt: &Stmt, st: &mut State) {
         // Statements that don't carry expressions or sub-bodies for yield checks.
         StmtKind::Break(_)
         | StmtKind::Continue(_)
+        | StmtKind::RefAssign { .. }
         | StmtKind::NamespaceDecl { .. }
         | StmtKind::UseDecl { .. }
         | StmtKind::EnumDecl { .. }
@@ -253,8 +242,7 @@ fn visit_stmt(stmt: &Stmt, st: &mut State) {
 /// Recursively walks an expression. When a `Yield` or `YieldFrom` node is
 /// encountered, calls `check_yield_context` to validate placement.
 /// A `Closure` introduces a fresh generator scope: `function_depth` is
-/// incremented and `try_finally_depth` is reset to 0 for that closure's body,
-/// preserving the outer value on exit.
+/// incremented for that closure's body, preserving the outer value on exit.
 fn visit_expr(expr: &Expr, st: &mut State) {
     match &expr.kind {
         ExprKind::Yield { key, value } => {
@@ -274,15 +262,12 @@ fn visit_expr(expr: &Expr, st: &mut State) {
             // Closures introduce a fresh function scope. A yield inside a
             // closure refers to that closure (which would make it a generator
             // closure — currently unsupported in v1, but lex/parse/typecheck
-            // accept the syntax). Reset try-depth for the new scope.
-            let saved_try = st.try_finally_depth;
-            st.try_finally_depth = 0;
+            // accept the syntax).
             st.function_depth += 1;
             for s in body {
                 visit_stmt(s, st);
             }
             st.function_depth -= 1;
-            st.try_finally_depth = saved_try;
         }
         // Expressions with sub-expressions to recurse into.
         ExprKind::BinaryOp { left, right, .. } => {
@@ -415,8 +400,7 @@ fn visit_expr(expr: &Expr, st: &mut State) {
     }
 }
 
-/// Emits a `CompileError` if `yield` appears outside a function/method body
-/// or inside a `try`/`catch`/`finally` block, based on the current state.
+/// Emits a `CompileError` if `yield` appears outside a function/method body.
 /// Appends to `st.errors` rather than returning to allow multiple violations
 /// to be collected in a single pass.
 fn check_yield_context(span: crate::span::Span, st: &mut State) {
@@ -424,11 +408,6 @@ fn check_yield_context(span: crate::span::Span, st: &mut State) {
         st.errors.push(CompileError::new(
             span,
             "yield can only be used inside a function or method body",
-        ));
-    } else if st.try_finally_depth > 0 {
-        st.errors.push(CompileError::new(
-            span,
-            "yield inside try/catch/finally is not yet supported",
         ));
     }
 }

@@ -14,6 +14,7 @@ mod asin;
 mod atan;
 mod atan2;
 mod ceil;
+mod clamp;
 mod cos;
 mod cosh;
 mod deg2rad;
@@ -62,6 +63,7 @@ pub fn emit(
         "abs" => abs::emit(name, args, emitter, ctx, data),
         "floor" => floor::emit(name, args, emitter, ctx, data),
         "ceil" => ceil::emit(name, args, emitter, ctx, data),
+        "clamp" => clamp::emit(name, args, emitter, ctx, data),
         "round" => round::emit(name, args, emitter, ctx, data),
         "sqrt" => sqrt::emit(name, args, emitter, ctx, data),
         "pow" => pow::emit(name, args, emitter, ctx, data),

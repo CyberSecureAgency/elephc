@@ -104,6 +104,7 @@ fn stmt_has_includes(stmt: &Stmt) -> bool {
         StmtKind::IncludeOnceMark { .. }
         | StmtKind::FunctionVariantGroup { .. }
         | StmtKind::FunctionVariantMark { .. }
+        | StmtKind::RefAssign { .. }
         | StmtKind::IfDef { .. }
         | StmtKind::Break(_)
         | StmtKind::Continue(_)

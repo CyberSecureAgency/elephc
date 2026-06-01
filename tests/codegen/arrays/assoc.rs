@@ -615,3 +615,17 @@ echo match($x) {
     );
     assert_eq!(out, "unknown");
 }
+
+/// Compiles a standalone match expression statement and verifies following statements still run.
+#[test]
+fn test_standalone_match_expression_statement() {
+    let out = compile_and_run(
+        r#"<?php
+match (1) {
+    1 => 2,
+};
+echo 3;
+"#,
+    );
+    assert_eq!(out, "3");
+}

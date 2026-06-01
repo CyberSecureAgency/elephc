@@ -154,16 +154,16 @@ echo (2 <=> 3) + 2;
 }
 
 /// Verifies that a literal int-cast from a string is folded, eliminating the
-/// `__rt_atoi` call from user assembly.
+/// `__rt_str_to_int` call from user assembly.
 #[test]
-fn test_constant_folding_int_cast_removes_runtime_atoi_call() {
+fn test_constant_folding_int_cast_removes_runtime_str_to_int_call() {
     let dir = make_cli_test_dir("elephc_constant_folding_cast_int");
     let (user_asm, _runtime_asm, required_libraries) =
         compile_source_to_asm_with_options("<?php echo (int)\"42\";", &dir, 8_388_608, false, false);
 
     assert!(
-        !user_asm.contains("__rt_atoi"),
-        "constant-folded int cast should not leave __rt_atoi in user assembly:\n{}",
+        !user_asm.contains("__rt_str_to_int"),
+        "constant-folded int cast should not leave __rt_str_to_int in user assembly:\n{}",
         user_asm
     );
 

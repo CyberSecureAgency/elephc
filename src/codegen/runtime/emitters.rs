@@ -52,6 +52,7 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter, features: RuntimeFeatures) {
     strings::emit_atoi(emitter);
     strings::emit_str_eq(emitter);
     strings::emit_str_to_number(emitter);
+    strings::emit_str_to_int(emitter);
     strings::emit_str_loose_eq(emitter);
     strings::emit_number_format(emitter);
     strings::emit_strcopy(emitter);
@@ -65,6 +66,7 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter, features: RuntimeFeatures) {
     strings::emit_strrpos(emitter);
     strings::emit_str_repeat(emitter);
     strings::emit_strrev(emitter);
+    strings::emit_grapheme_strrev(emitter);
     strings::emit_chr(emitter);
     strings::emit_strcmp(emitter);
     strings::emit_strcasecmp(emitter);
@@ -143,7 +145,6 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter, features: RuntimeFeatures) {
         system::emit_preg_split(emitter);
     }
     system::emit_match_unhandled(emitter);
-    system::emit_enum_from_fail(emitter);
 
     // Exception runtime functions
     exceptions::emit_exception_cleanup_frames(emitter);
@@ -189,6 +190,7 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter, features: RuntimeFeatures) {
     arrays::emit_hash_grow(emitter);
     arrays::emit_hash_may_have_cyclic_values(emitter);
     arrays::emit_hash_set(emitter);
+    arrays::emit_hash_append(emitter);
     arrays::emit_hash_insert_owned(emitter);
     arrays::emit_hash_get(emitter);
     arrays::emit_hash_iter(emitter);
@@ -197,6 +199,7 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter, features: RuntimeFeatures) {
     arrays::emit_hash_count(emitter);
     arrays::emit_hash_free_deep(emitter);
     arrays::emit_array_key_exists(emitter);
+    arrays::emit_undefined_array_key_warning(emitter);
     arrays::emit_array_search(emitter);
     arrays::emit_array_reverse(emitter);
     arrays::emit_array_reverse_refcounted(emitter);

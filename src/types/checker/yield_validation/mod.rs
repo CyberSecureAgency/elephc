@@ -17,7 +17,7 @@
 //!  - The module splits its responsibilities across two leaf files:
 //!    - `detect` provides `body_contains_yield` and the helpers it relies on
 //!      for top-level yield discovery (skipping closures).
-//!    - `validate` walks the full program, tracking function/try depth, and
+//!    - `validate` walks the full program, tracking function depth, and
 //!      emits a `CompileError` for each yield in an illegal context so
 //!      multiple errors can surface in one pass.
 

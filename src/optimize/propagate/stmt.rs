@@ -88,6 +88,10 @@ pub(crate) fn propagate_stmt(stmt: Stmt, env: ConstantEnv) -> (Stmt, ConstantEnv
             let mut next_env = env_after_scalar_assign(env, &name, &value);
             (Stmt::new(StmtKind::Assign { name, value }, span), std::mem::take(&mut next_env))
         }
+        StmtKind::RefAssign { target, source } => (
+            Stmt::new(StmtKind::RefAssign { target, source }, span),
+            HashMap::new(),
+        ),
         StmtKind::TypedAssign {
             type_expr,
             name,

@@ -18,8 +18,8 @@
 //!    clears `sent_value` so a subsequent `next()` does not see a stale
 //!    pointer.
 //!  - `emit_yield_from_generator` uses a single state index for the whole
-//!    delegation loop: the first call rewinds the inner generator, each
-//!    `next()` resumes at the loop continuation, and exit clears
+//!    delegation loop: the first call rewinds the inner generator, later
+//!    `next()`/`send()` resumes drive the delegated frame, and exit clears
 //!    `delegated_iter` so future yields do not re-enter the inner pipeline.
 
 use super::values::{
@@ -94,6 +94,52 @@ fn emit_clear_sent_value(emitter: &mut Emitter) {
     }
 }
 
+/// Resumes the delegated generator after an outer `yield from` suspension.
+///
+/// When the outer caller used `Generator::send($value)`, transfers the boxed
+/// `sent_value` pointer from the outer frame to the inner frame and resumes
+/// the inner state machine directly. When the outer caller used `next()`, keeps
+/// the existing `__rt_gen_next` path. The transfer deliberately avoids an
+/// incref/decref pair because ownership moves from the outer frame slot to the
+/// inner frame slot.
+fn emit_resume_delegated_iter(emitter: &mut Emitter, ctx: &mut ResumeCtx) {
+    if emitter.target.arch == Arch::X86_64 {
+        emit_resume_delegated_iter_x86_64(emitter, ctx);
+        return;
+    }
+
+    let no_send_lbl = ctx.fresh_label("yield_from_no_send");
+    let done_lbl = ctx.fresh_label("yield_from_resume_done");
+    emitter.instruction(&format!("ldr x9, [x19, #{}]", gen_frame::OFF_SENT_VALUE)); // load the boxed payload sent to the outer generator
+    emitter.instruction(&format!("str xzr, [x19, #{}]", gen_frame::OFF_SENT_VALUE)); // clear the outer sent_value slot before transfer
+    emitter.instruction(&format!("ldr x0, [x19, #{}]", gen_frame::OFF_DELEGATED_ITER)); // x0 = inner generator frame pointer
+    emitter.instruction(&format!("cbz x9, {}", no_send_lbl));                   // no send payload means this resume is a plain next()
+    emitter.instruction(&format!("str x9, [x0, #{}]", gen_frame::OFF_SENT_VALUE)); // transfer the sent payload into the inner frame
+    emitter.instruction(&format!("ldr x10, [x0, #{}]", gen_frame::OFF_RESUME_FN)); // load the inner resume function pointer
+    emitter.instruction("blr x10");                                             // resume the inner generator with the transferred send payload
+    emitter.instruction(&format!("b {}", done_lbl));                            // skip the plain next() path
+    emitter.label(&no_send_lbl);
+    emitter.instruction("bl __rt_gen_next");                                    // resume the inner generator without a send payload
+    emitter.label(&done_lbl);
+}
+
+/// x86_64 implementation of `emit_resume_delegated_iter`.
+fn emit_resume_delegated_iter_x86_64(emitter: &mut Emitter, ctx: &mut ResumeCtx) {
+    let no_send_lbl = ctx.fresh_label("yield_from_no_send");
+    let done_lbl = ctx.fresh_label("yield_from_resume_done");
+    emitter.instruction(&format!("mov r10, QWORD PTR [r12 + {}]", gen_frame::OFF_SENT_VALUE)); // load the boxed payload sent to the outer generator
+    emitter.instruction(&format!("mov QWORD PTR [r12 + {}], 0", gen_frame::OFF_SENT_VALUE)); // clear the outer sent_value slot before transfer
+    emitter.instruction(&format!("mov rdi, QWORD PTR [r12 + {}]", gen_frame::OFF_DELEGATED_ITER)); // rdi = inner generator frame pointer
+    emitter.instruction("test r10, r10");                                       // check whether the outer resume came from send()
+    emitter.instruction(&format!("jz {}", no_send_lbl));                        // no send payload means this resume is a plain next()
+    emitter.instruction(&format!("mov QWORD PTR [rdi + {}], r10", gen_frame::OFF_SENT_VALUE)); // transfer the sent payload into the inner frame
+    emitter.instruction(&format!("call QWORD PTR [rdi + {}]", gen_frame::OFF_RESUME_FN)); // resume the inner generator with the transferred send payload
+    emitter.instruction(&format!("jmp {}", done_lbl));                          // skip the plain next() path
+    emitter.label(&no_send_lbl);
+    emitter.instruction("call __rt_gen_next");                                  // resume the inner generator without a send payload
+    emitter.label(&done_lbl);
+}
+
 /// Emit the runtime-delegation loop for `yield from <gen_func>(args)`.
 ///
 /// The body is structured so that **one** state index covers every
@@ -166,9 +212,7 @@ pub(super) fn emit_yield_from_generator(
     emitter.instruction(&format!("str w10, [x19, #{}]", gen_frame::OFF_STATE_IDX)); // store updated state_idx
     emitter.instruction(&format!("b {}", ctx.end_label));                       // return to the outer caller via the resume epilogue
     emitter.label(&format!("{}_resume_{}", ctx.label, state_idx));          // resume label hit on each subsequent next()
-    emit_clear_sent_value(emitter);
-    emitter.instruction(&format!("ldr x0, [x19, #{}]", gen_frame::OFF_DELEGATED_ITER)); // x0 = inner gen ptr
-    emitter.instruction("bl __rt_gen_next");                                    // advance inner one step
+    emit_resume_delegated_iter(emitter, ctx);
     emitter.instruction(&format!("b {}", loop_lbl));                            // loop back to re-check valid()
 
     emitter.label(&end_lbl);
@@ -239,9 +283,7 @@ fn emit_yield_from_generator_x86_64(
     emitter.instruction(&format!("mov DWORD PTR [r12 + {}], r10d", gen_frame::OFF_STATE_IDX)); // store updated state_idx
     emitter.instruction(&format!("jmp {}", ctx.end_label));                     // return to the outer caller via the resume epilogue
     emitter.label(&format!("{}_resume_{}", ctx.label, state_idx));              // resume label hit on each subsequent next()
-    emit_clear_sent_value(emitter);
-    emitter.instruction(&format!("mov rdi, QWORD PTR [r12 + {}]", gen_frame::OFF_DELEGATED_ITER)); // rdi = inner gen ptr
-    emitter.instruction("call __rt_gen_next");                                  // advance inner one step
+    emit_resume_delegated_iter(emitter, ctx);
     emitter.instruction(&format!("jmp {}", loop_lbl));                          // loop back to re-check valid()
 
     emitter.label(&end_lbl);

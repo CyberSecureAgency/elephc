@@ -355,6 +355,7 @@ fn discover_stmt(
         | StmtKind::IncludeOnceMark { .. }
         | StmtKind::FunctionVariantGroup { .. }
         | StmtKind::FunctionVariantMark { .. }
+        | StmtKind::RefAssign { .. }
         | StmtKind::IfDef { .. }
         | StmtKind::Break(_)
         | StmtKind::Continue(_)

@@ -211,7 +211,7 @@ echo function_exists('runtime_loaded_once') ? runtime_loaded_once() : 'no-after'
     assert_eq!(out, "no-before|yes-after");
 }
 
-/// Verifies `function_exists()` is case-insensitive inside a namespace for include-discovered functions.
+/// Verifies `function_exists()` is case-insensitive for fully-qualified include-discovered functions.
 #[test]
 fn test_conditional_include_function_exists_is_case_insensitive_in_namespace() {
     let out = compile_and_run_files(
@@ -223,7 +223,7 @@ namespace App;
 if ($argc >= 1) {
     include 'lib.php';
 }
-echo function_exists('OPTIONAL_CASE') ? optional_case() : 'missing';
+echo function_exists('App\\OPTIONAL_CASE') ? optional_case() : 'missing';
 "#,
             ),
             (
@@ -234,6 +234,41 @@ echo function_exists('OPTIONAL_CASE') ? optional_case() : 'missing';
         "main.php",
     );
     assert_eq!(out, "loaded");
+}
+
+/// Verifies include discovery, `use function` lookup, and `function_exists()`
+/// stay aligned with PHP's literal string-name semantics in a namespaced file.
+#[test]
+fn test_include_namespace_fallback_function_exists_stress() {
+    let out = compile_and_run_files(
+        &[
+            (
+                "main.php",
+                r#"<?php
+namespace App;
+use function App\Lib\helper;
+
+require __DIR__ . "/lib.php";
+
+echo function_exists("helper") ? "y\n" : "n\n";
+echo function_exists("\\App\\Lib\\helper") ? "y\n" : "n\n";
+echo helper() . "\n";
+"#,
+            ),
+            (
+                "lib.php",
+                r#"<?php
+namespace App\Lib;
+
+function helper() {
+    return "ok";
+}
+"#,
+            ),
+        ],
+        "main.php",
+    );
+    assert_eq!(out, "n\ny\nok\n");
 }
 
 /// Verifies namespace declarations inside included files are preserved in the correct namespace scope.
@@ -503,4 +538,3 @@ if ($pick) {
     );
     assert_eq!(out, "b");
 }
-

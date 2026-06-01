@@ -231,6 +231,7 @@ fn collect_assignment_prelude_reads(
         }
         StmtKind::IncludeOnceMark { .. } => {}
         StmtKind::Assign { value, .. } => collect_expr_reads(value, scope, warnings),
+        StmtKind::RefAssign { source, .. } => scope.read(source),
         _ => {}
     }
 }
@@ -277,6 +278,10 @@ pub(super) fn collect_closure_warnings_in_stmt(stmt: &Stmt, warnings: &mut Vec<C
         | StmtKind::StaticPropertyArrayPush { value, .. }
         | StmtKind::Return(Some(value)) => {
             collect_expr_reads(value, &mut ScopeUsage::default(), warnings);
+        }
+        StmtKind::RefAssign { source, .. } => {
+            let mut scope = ScopeUsage::default();
+            scope.read(source);
         }
         StmtKind::ArrayAssign { index, value, .. }
         | StmtKind::StaticPropertyArrayAssign { index, value, .. } => {

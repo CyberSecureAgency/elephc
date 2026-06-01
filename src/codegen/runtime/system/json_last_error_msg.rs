@@ -29,6 +29,17 @@ pub(crate) fn emit_json_last_error_msg(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: json_last_error_msg ---");
     emitter.label_global("__rt_json_last_error_msg");
+    emitter.instruction("b __rt_json_error_message");                           // share JSON message formatting with JsonException throws
+
+    emit_message_formatter_aarch64(emitter);
+}
+
+/// Emits the shared AArch64 JSON message formatter used by `json_last_error_msg()` and throws.
+fn emit_message_formatter_aarch64(emitter: &mut Emitter) {
+    emitter.label_global("__rt_json_error_message");
+    emitter.instruction("sub sp, sp, #80");                                     // reserve formatter slots for base and appended location fragments
+    emitter.instruction("stp x29, x30, [sp, #64]");                             // save frame pointer and return address across concat/itoa calls
+    emitter.instruction("add x29, sp, #64");                                    // establish a stable formatter frame
 
     // -- load current error code --
     emitter.adrp("x9", "_json_last_error");                                     // load page of the runtime error-code slot
@@ -51,7 +62,58 @@ pub(crate) fn emit_json_last_error_msg(emitter: &mut Emitter) {
     emitter.instruction("add x9, x9, x10");                                     // advance to the table entry for the requested code
     emitter.instruction("ldr x1, [x9]");                                        // load the message pointer into the string-result pointer register
     emitter.instruction("ldr x2, [x9, #8]");                                    // load the message length into the string-result length register
-    emitter.instruction("ret");                                                 // return the borrowed (ptr,len) message slice
+    emitter.instruction("stp x1, x2, [sp, #0]");                                // save the base message slice for fallback or suffix formatting
+
+    // -- return the base message unless decode recorded a location --
+    emitter.adrp("x9", "_json_last_error");                                     // load page of the runtime error-code slot
+    emitter.add_lo12("x9", "x9", "_json_last_error");                           // resolve absolute address of the runtime error-code slot
+    emitter.instruction("ldr x10, [x9]");                                       // reload the unclamped JSON error code
+    emitter.instruction("cbz x10, __rt_json_error_message_base_a");             // JSON_ERROR_NONE never carries a location suffix
+    emitter.adrp("x9", "_json_error_location_active");                          // load page of the decode-location active flag
+    emitter.add_lo12("x9", "x9", "_json_error_location_active");                // resolve absolute address of the decode-location active flag
+    emitter.instruction("ldr x10, [x9]");                                       // load whether the last error has a stored line/column
+    emitter.instruction("cbz x10, __rt_json_error_message_base_a");             // errors without decode locations keep the base PHP message
+
+    // -- append " near location " --
+    emitter.instruction("ldp x1, x2, [sp, #0]");                                // reload the base message as the concat left operand
+    crate::codegen::abi::emit_symbol_address(emitter, "x3", "_json_err_loc_prefix");
+    emitter.instruction("mov x4, #15");                                         // length of " near location "
+    emitter.instruction("bl __rt_concat");                                      // append the location suffix prefix
+    emitter.instruction("stp x1, x2, [sp, #16]");                               // save partial message with suffix prefix
+
+    // -- append line number --
+    crate::codegen::abi::emit_symbol_address(emitter, "x9", "_json_error_line");
+    emitter.instruction("ldr x0, [x9]");                                        // load the stored decode-error line number
+    emitter.instruction("bl __rt_itoa");                                        // format the line number as decimal text
+    emitter.instruction("stp x1, x2, [sp, #32]");                               // save the line number string
+    emitter.instruction("ldp x1, x2, [sp, #16]");                               // reload the partial message as concat left operand
+    emitter.instruction("ldp x3, x4, [sp, #32]");                               // use the line number as concat right operand
+    emitter.instruction("bl __rt_concat");                                      // append the line number
+    emitter.instruction("stp x1, x2, [sp, #16]");                               // save partial message with line number
+
+    // -- append colon --
+    crate::codegen::abi::emit_symbol_address(emitter, "x3", "_json_err_loc_colon");
+    emitter.instruction("mov x4, #1");                                          // length of ":"
+    emitter.instruction("ldp x1, x2, [sp, #16]");                               // reload the partial message as concat left operand
+    emitter.instruction("bl __rt_concat");                                      // append the line/column separator
+    emitter.instruction("stp x1, x2, [sp, #16]");                               // save partial message with separator
+
+    // -- append column number --
+    crate::codegen::abi::emit_symbol_address(emitter, "x9", "_json_error_column");
+    emitter.instruction("ldr x0, [x9]");                                        // load the stored decode-error column number
+    emitter.instruction("bl __rt_itoa");                                        // format the column number as decimal text
+    emitter.instruction("stp x1, x2, [sp, #32]");                               // save the column number string
+    emitter.instruction("ldp x1, x2, [sp, #16]");                               // reload the partial message as concat left operand
+    emitter.instruction("ldp x3, x4, [sp, #32]");                               // use the column number as concat right operand
+    emitter.instruction("bl __rt_concat");                                      // append the column number
+    emitter.instruction("b __rt_json_error_message_done_a");                    // return the formatted location-aware message
+
+    emitter.label("__rt_json_error_message_base_a");
+    emitter.instruction("ldp x1, x2, [sp, #0]");                                // return the borrowed base message slice
+    emitter.label("__rt_json_error_message_done_a");
+    emitter.instruction("ldp x29, x30, [sp, #64]");                             // restore frame pointer and return address
+    emitter.instruction("add sp, sp, #80");                                     // release formatter slots
+    emitter.instruction("ret");                                                 // return the selected message slice
 }
 
 /// Emits the x86_64-specific implementation of `__rt_json_last_error_msg`.
@@ -65,6 +127,17 @@ fn emit_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: json_last_error_msg ---");
     emitter.label_global("__rt_json_last_error_msg");
+    emitter.instruction("jmp __rt_json_error_message");                         // share JSON message formatting with JsonException throws
+
+    emit_message_formatter_x86_64(emitter);
+}
+
+/// Emits the shared x86_64 JSON message formatter used by `json_last_error_msg()` and throws.
+fn emit_message_formatter_x86_64(emitter: &mut Emitter) {
+    emitter.label_global("__rt_json_error_message");
+    emitter.instruction("push rbp");                                            // preserve the caller frame pointer for formatter scratch slots
+    emitter.instruction("mov rbp, rsp");                                        // establish a stable formatter frame
+    emitter.instruction("sub rsp, 64");                                         // reserve formatter slots for base and appended location fragments
 
     emitter.instruction("mov rcx, QWORD PTR [rip + _json_last_error]");         // load the current JSON_ERROR_* code into a scratch register
     emitter.instruction("mov r8, QWORD PTR [rip + _json_err_msg_count]");       // load the message-table cardinality into a scratch register
@@ -77,5 +150,56 @@ fn emit_x86_64(emitter: &mut Emitter) {
     emitter.instruction("add r9, rcx");                                         // advance to the table entry for the requested code
     emitter.instruction("mov rax, QWORD PTR [r9]");                             // load the message pointer into the string-result pointer register
     emitter.instruction("mov rdx, QWORD PTR [r9 + 8]");                         // load the message length into the string-result length register
-    emitter.instruction("ret");                                                 // return the borrowed (ptr,len) message slice
+    emitter.instruction("mov QWORD PTR [rbp - 8], rax");                        // save the base message pointer for fallback or suffix formatting
+    emitter.instruction("mov QWORD PTR [rbp - 16], rdx");                       // save the base message length for fallback or suffix formatting
+
+    emitter.instruction("mov rcx, QWORD PTR [rip + _json_last_error]");         // reload the unclamped JSON error code
+    emitter.instruction("test rcx, rcx");                                       // JSON_ERROR_NONE never carries a location suffix
+    emitter.instruction("je __rt_json_error_message_base_x");                   // return base message for JSON_ERROR_NONE
+    emitter.instruction("mov rcx, QWORD PTR [rip + _json_error_location_active]"); // load whether the last error has a stored line/column
+    emitter.instruction("test rcx, rcx");                                       // check whether a decode location is available
+    emitter.instruction("je __rt_json_error_message_base_x");                   // errors without decode locations keep the base PHP message
+
+    emitter.instruction("lea rdi, [rip + _json_err_loc_prefix]");               // right operand pointer = " near location "
+    emitter.instruction("mov rsi, 15");                                         // right operand length = 15
+    emitter.instruction("mov rax, QWORD PTR [rbp - 8]");                        // left operand pointer = base message
+    emitter.instruction("mov rdx, QWORD PTR [rbp - 16]");                       // left operand length = base message length
+    emitter.instruction("call __rt_concat");                                    // append the location suffix prefix
+    emitter.instruction("mov QWORD PTR [rbp - 24], rax");                       // save partial message pointer
+    emitter.instruction("mov QWORD PTR [rbp - 32], rdx");                       // save partial message length
+
+    emitter.instruction("mov rax, QWORD PTR [rip + _json_error_line]");         // load the stored decode-error line number
+    emitter.instruction("call __rt_itoa");                                      // format the line number as decimal text
+    emitter.instruction("mov rdi, rax");                                        // right operand pointer = line digits
+    emitter.instruction("mov rsi, rdx");                                        // right operand length = line digit count
+    emitter.instruction("mov rax, QWORD PTR [rbp - 24]");                       // left operand pointer = partial message
+    emitter.instruction("mov rdx, QWORD PTR [rbp - 32]");                       // left operand length = partial message length
+    emitter.instruction("call __rt_concat");                                    // append the line number
+    emitter.instruction("mov QWORD PTR [rbp - 24], rax");                       // save partial message pointer
+    emitter.instruction("mov QWORD PTR [rbp - 32], rdx");                       // save partial message length
+
+    emitter.instruction("lea rdi, [rip + _json_err_loc_colon]");                // right operand pointer = ":"
+    emitter.instruction("mov rsi, 1");                                          // right operand length = 1
+    emitter.instruction("mov rax, QWORD PTR [rbp - 24]");                       // left operand pointer = partial message
+    emitter.instruction("mov rdx, QWORD PTR [rbp - 32]");                       // left operand length = partial message length
+    emitter.instruction("call __rt_concat");                                    // append the line/column separator
+    emitter.instruction("mov QWORD PTR [rbp - 24], rax");                       // save partial message pointer
+    emitter.instruction("mov QWORD PTR [rbp - 32], rdx");                       // save partial message length
+
+    emitter.instruction("mov rax, QWORD PTR [rip + _json_error_column]");       // load the stored decode-error column number
+    emitter.instruction("call __rt_itoa");                                      // format the column number as decimal text
+    emitter.instruction("mov rdi, rax");                                        // right operand pointer = column digits
+    emitter.instruction("mov rsi, rdx");                                        // right operand length = column digit count
+    emitter.instruction("mov rax, QWORD PTR [rbp - 24]");                       // left operand pointer = partial message
+    emitter.instruction("mov rdx, QWORD PTR [rbp - 32]");                       // left operand length = partial message length
+    emitter.instruction("call __rt_concat");                                    // append the column number
+    emitter.instruction("jmp __rt_json_error_message_done_x");                  // return the formatted location-aware message
+
+    emitter.label("__rt_json_error_message_base_x");
+    emitter.instruction("mov rax, QWORD PTR [rbp - 8]");                        // return the borrowed base message pointer
+    emitter.instruction("mov rdx, QWORD PTR [rbp - 16]");                       // return the borrowed base message length
+    emitter.label("__rt_json_error_message_done_x");
+    emitter.instruction("mov rsp, rbp");                                        // release formatter slots
+    emitter.instruction("pop rbp");                                             // restore caller frame pointer
+    emitter.instruction("ret");                                                 // return the selected message slice
 }

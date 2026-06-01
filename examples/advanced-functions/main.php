@@ -45,6 +45,11 @@ $temperature = 150;
 clamp_ref($temperature, 0, 100);
 echo "Clamped: " . $temperature . "\n";
 
+$raw_score = 5;
+$score_alias =& $raw_score;
+$score_alias = 7;
+echo "Aliased score: " . $raw_score . "\n";
+
 // --- Combining features ---
 // A simple accumulator using global + reference + static
 

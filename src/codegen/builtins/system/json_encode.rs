@@ -62,6 +62,8 @@ pub fn emit(
     abi::emit_store_zero_to_symbol(emitter, "_json_last_error", 0);
     abi::emit_store_zero_to_symbol(emitter, "_json_active_depth", 0);
     abi::emit_store_zero_to_symbol(emitter, "_json_indent_depth", 0);
+    abi::emit_store_zero_to_symbol(emitter, "_json_error_location_active", 0);
+    abi::emit_store_zero_to_symbol(emitter, "_json_error_source_ptr", 0);
 
     if args.get(2).is_some() {
         abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));

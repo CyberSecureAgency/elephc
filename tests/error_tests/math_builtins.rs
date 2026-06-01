@@ -51,6 +51,12 @@ fn test_error_max_wrong_args() {
     expect_error("<?php max(1);", "max() requires at least 2 arguments");
 }
 
+/// Verifies clamp() rejects missing bound arguments. Input: `clamp(1, 2)`.
+#[test]
+fn test_error_clamp_wrong_args() {
+    expect_error("<?php clamp(1, 2);", "clamp() takes exactly 3 arguments");
+}
+
 /// Verifies intdiv() rejects missing second argument. Input: `intdiv(1)` with only one arg.
 #[test]
 fn test_error_intdiv_wrong_args() {

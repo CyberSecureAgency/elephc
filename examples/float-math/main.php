@@ -23,10 +23,11 @@ echo "  pow(2, 10)  = " . pow(2.0, 10.0) . "\n";
 echo "  abs(-42)    = " . abs(-42) . "\n";
 echo "  abs(-3.14)  = " . abs(-3.14) . "\n";
 
-// Min/max
-echo "\nMin/Max:\n";
-echo "  min(3, 7)     = " . min(3, 7) . "\n";
-echo "  max(1.5, 2.5) = " . max(1.5, 2.5) . "\n";
+// Min/max/clamp
+echo "\nMin/Max/Clamp:\n";
+echo "  min(3, 7)        = " . min(3, 7) . "\n";
+echo "  max(1.5, 2.5)    = " . max(1.5, 2.5) . "\n";
+echo "  clamp(15, 0, 10) = " . clamp(15, 0, 10) . "\n";
 
 // Exponentiation
 echo "\nExponentiation:\n";

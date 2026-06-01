@@ -378,6 +378,8 @@ pub(crate) fn emit_assign_stmt(
         }
     }
 
+    update_fiber_start_metadata(name, value, &ty, ctx);
+
     if let Some(var) = ctx.variables.get(name) {
         if var.ty != ty {
             ctx.update_var_type_static_and_ownership(
@@ -390,6 +392,141 @@ pub(crate) fn emit_assign_stmt(
     }
 }
 
+/// Emits code for direct reference alias assignment (`$target =& $source`).
+///
+/// The target local slot becomes a reference slot that stores the address of the
+/// source storage. Reads and later writes go through the existing `ref_params`
+/// path used for by-reference parameters.
+pub(crate) fn emit_ref_assign_stmt(
+    target: &str,
+    source: &str,
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+) {
+    let Some((source_ty, source_static_ty, source_offset)) = ctx
+        .variables
+        .get(source)
+        .map(|var| (var.ty.clone(), var.static_ty.clone(), var.stack_offset))
+    else {
+        emitter.comment(&format!("WARNING: undefined variable ${}", source));
+        return;
+    };
+    let Some((target_ty, target_offset, target_ownership)) = ctx
+        .variables
+        .get(target)
+        .map(|var| (var.ty.clone(), var.stack_offset, var.ownership))
+    else {
+        emitter.comment(&format!("WARNING: undefined variable ${}", target));
+        return;
+    };
+
+    emitter.blank();
+    emitter.comment(&format!("${} =& ${}", target, source));
+    if target == source {
+        emitter.comment("self-reference assignment leaves the local binding unchanged");
+        return;
+    }
+
+    if !ctx.ref_params.contains(target)
+        && matches!(target_ownership, HeapOwnership::Owned | HeapOwnership::MaybeOwned)
+    {
+        release_owned_target_before_alias(emitter, &target_ty, target_offset);
+    }
+
+    let pointer_reg = abi::symbol_scratch_reg(emitter);
+    if ctx.ref_params.contains(source) {
+        abi::load_at_offset(emitter, pointer_reg, source_offset);               // reuse the source variable's existing reference target address
+    } else {
+        abi::emit_frame_slot_address(emitter, pointer_reg, source_offset);
+    }
+    abi::store_at_offset(emitter, pointer_reg, target_offset);                  // bind the target variable slot to the source storage address
+    ctx.ref_params.insert(target.to_string());
+    ctx.update_var_type_static_and_ownership(
+        target,
+        source_ty.clone(),
+        source_static_ty.clone(),
+        HeapOwnership::borrowed_alias_for_type(&source_static_ty),
+    );
+    copy_ref_assign_callable_metadata(target, source, &source_ty, ctx);
+    copy_ref_assign_fiber_metadata(target, source, &source_ty, ctx);
+}
+
+/// Releases a target local's previous owned heap value before it becomes an alias.
+///
+/// Unlike ordinary assignment cleanup, this path has no RHS result registers to
+/// preserve. It only frees/decrefs the current local slot when the previous type
+/// can own heap storage.
+fn release_owned_target_before_alias(emitter: &mut Emitter, ty: &PhpType, offset: usize) {
+    if matches!(ty, PhpType::Str) {
+        abi::load_at_offset(emitter, abi::int_result_reg(emitter), offset);      // load the old string pointer before rebinding the local as a reference alias
+        abi::emit_call_label(emitter, "__rt_heap_free_safe");                   // release the old owned string storage before aliasing another slot
+    } else if matches!(ty, PhpType::Callable) {
+        abi::load_at_offset(emitter, abi::int_result_reg(emitter), offset);      // load the old callable descriptor before rebinding the local as a reference alias
+        callable_descriptor::emit_release_current_descriptor(emitter);
+    } else if ty.is_refcounted() {
+        abi::load_at_offset(emitter, abi::int_result_reg(emitter), offset);      // load the old heap pointer before rebinding the local as a reference alias
+        abi::emit_decref_if_refcounted(emitter, ty);
+    }
+}
+
+/// Mirrors or clears callable metadata when a reference alias targets a callable source.
+fn copy_ref_assign_callable_metadata(target: &str, source: &str, ty: &PhpType, ctx: &mut Context) {
+    if ty == &PhpType::Callable || is_callable_array_type(ty) {
+        if let Some(sig) = ctx.closure_sigs.get(source).cloned() {
+            ctx.closure_sigs.insert(target.to_string(), sig);
+        } else {
+            ctx.closure_sigs.remove(target);
+        }
+        if let Some(captures) = ctx.closure_captures.get(source).cloned() {
+            ctx.closure_captures.insert(target.to_string(), captures);
+        } else {
+            ctx.closure_captures.remove(target);
+        }
+        if let Some(array_target) = ctx.callable_array_targets.get(source).cloned() {
+            ctx.callable_array_targets
+                .insert(target.to_string(), array_target);
+        } else {
+            ctx.callable_array_targets.remove(target);
+        }
+        if let Some(callable_target) = ctx.first_class_callable_targets.get(source).cloned() {
+            ctx.first_class_callable_targets
+                .insert(target.to_string(), callable_target);
+        } else {
+            ctx.first_class_callable_targets.remove(target);
+        }
+        if let Some(label) = ctx.variable_fcc_label.get(source).cloned() {
+            ctx.variable_fcc_label.insert(target.to_string(), label);
+        } else {
+            ctx.variable_fcc_label.remove(target);
+        }
+        if ctx.runtime_callable_vars.contains(source) {
+            ctx.runtime_callable_vars.insert(target.to_string());
+        } else {
+            ctx.runtime_callable_vars.remove(target);
+        }
+    } else {
+        ctx.closure_sigs.remove(target);
+        ctx.closure_captures.remove(target);
+        ctx.callable_array_targets.remove(target);
+        ctx.first_class_callable_targets.remove(target);
+        ctx.variable_fcc_label.remove(target);
+        ctx.runtime_callable_vars.remove(target);
+    }
+}
+
+/// Mirrors or clears Fiber callback metadata when a reference alias targets a Fiber source.
+fn copy_ref_assign_fiber_metadata(target: &str, source: &str, ty: &PhpType, ctx: &mut Context) {
+    if matches!(ty, PhpType::Object(class_name) if php_symbol_key(class_name) == php_symbol_key("Fiber")) {
+        if let Some(sig) = ctx.fiber_start_sigs.get(source).cloned() {
+            ctx.fiber_start_sigs.insert(target.to_string(), sig);
+        } else {
+            ctx.fiber_start_sigs.remove(target);
+        }
+    } else {
+        ctx.fiber_start_sigs.remove(target);
+    }
+}
+
 /// Returns true when an assigned value is an array whose elements are callable descriptors.
 fn is_callable_array_type(ty: &PhpType) -> bool {
     match ty {
@@ -397,6 +534,19 @@ fn is_callable_array_type(ty: &PhpType) -> bool {
         PhpType::AssocArray { value, .. } => value.as_ref() == &PhpType::Callable,
         _ => false,
     }
+}
+
+/// Updates or clears Fiber callback metadata for a local assignment.
+fn update_fiber_start_metadata(name: &str, value: &Expr, ty: &PhpType, ctx: &mut Context) {
+    if let Some(sig) = crate::codegen::fiber_sigs::fiber_start_sig_for_expr(value, ctx) {
+        ctx.fiber_start_sigs.insert(name.to_string(), sig);
+        return;
+    }
+    if matches!(ty, PhpType::Object(class_name) if php_symbol_key(class_name) == php_symbol_key("Fiber")) {
+        ctx.fiber_start_sigs.remove(name);
+        return;
+    }
+    ctx.fiber_start_sigs.remove(name);
 }
 
 /// Specializes generic array assignment types when callable-array metadata is known.

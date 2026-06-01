@@ -32,8 +32,10 @@ pub(crate) enum FunctionLookup {
 ///
 /// Checks order: include variants → externs → user functions → builtins.
 /// The first match wins; builtin lookup is case-insensitive via `canonical_builtin_function_name`.
+/// Leading global namespace separators are ignored for PHP string-introspection names.
 /// Returns `None` if the name does not resolve to any known variant.
 pub(crate) fn lookup_function(ctx: &Context, name: &str) -> Option<FunctionLookup> {
+    let name = name.trim_start_matches('\\');
     if let Some(name) = lookup_folded(ctx.function_variant_groups.iter(), name) {
         return Some(FunctionLookup::IncludeVariant(name));
     }

@@ -22,7 +22,7 @@ function my_min(int $a, int $b): int {
     return $b;
 }
 
-function clamp(int $val, int $lo, int $hi): int {
+function my_clamp(int $val, int $lo, int $hi): int {
     return my_max($lo, my_min($val, $hi));
 }
 
@@ -66,7 +66,7 @@ function profile(string $name, int $age = 18): string {
 
 echo "my_abs(-42) = " . my_abs(-42) . "\n";
 echo "my_max(3, 7) = " . my_max(3, 7) . "\n";
-echo "clamp(15, 0, 10) = " . clamp(15, 0, 10) . "\n";
+echo "clamp(15, 0, 10) = " . my_clamp(15, 0, 10) . "\n";
 echo "gcd(48, 18) = " . gcd(48, 18) . "\n";
 echo "2^10 = " . power(2, 10) . "\n";
 echo "describe(42) = " . describe(42) . "\n";

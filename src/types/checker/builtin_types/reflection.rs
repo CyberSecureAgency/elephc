@@ -77,10 +77,7 @@ pub(crate) fn inject_builtin_reflection(
     );
     class_map.insert(
         "ReflectionClass".to_string(),
-        builtin_reflection_owner_class(
-            "ReflectionClass",
-            vec![("class_name", Some(TypeExpr::Str), None, false)],
-        ),
+        builtin_reflection_class(),
     );
     class_map.insert(
         "ReflectionMethod".to_string(),
@@ -264,10 +261,75 @@ fn builtin_reflection_attribute_new_instance_method() -> ClassMethod {
     }
 }
 
-/// Builds a `FlattenedClass` for `ReflectionClass`, `ReflectionMethod`, or
-/// `ReflectionProperty` with a private `__attrs` array property and two methods:
-/// `__construct` (public, accepting the supplied params) and `getAttributes`
-/// (public, returning the `__attrs` array).
+/// Builds the `ReflectionClass` shell with a private resolved-name slot,
+/// private attribute array slot, public constructor, `getName()`, and
+/// `getAttributes()`.
+fn builtin_reflection_class() -> FlattenedClass {
+    FlattenedClass {
+        name: "ReflectionClass".to_string(),
+        extends: None,
+        implements: Vec::new(),
+        is_abstract: false,
+        is_final: true,
+        is_readonly_class: false,
+        properties: vec![
+            builtin_property("__name", Visibility::Private, Some(TypeExpr::Str), empty_string()),
+            builtin_property(
+                "__attrs",
+                Visibility::Private,
+                Some(array_type()),
+                empty_array(),
+            ),
+        ],
+        methods: vec![
+            builtin_reflection_owner_constructor_method(vec![(
+                "class_name",
+                Some(TypeExpr::Str),
+                None,
+                false,
+            )]),
+            builtin_reflection_class_get_name_method(),
+            builtin_reflection_owner_get_attributes_method(),
+        ],
+        attributes: Vec::new(),
+        constants: Vec::new(),
+        used_traits: Vec::new(),
+    }
+}
+
+/// Returns a public `ReflectionClass::getName()` method that returns the
+/// resolved reflected class name from the private `__name` slot.
+fn builtin_reflection_class_get_name_method() -> ClassMethod {
+    let dummy_span = crate::span::Span::dummy();
+    ClassMethod {
+        name: "getName".to_string(),
+        visibility: Visibility::Public,
+        is_static: false,
+        is_abstract: false,
+        is_final: false,
+        has_body: true,
+        params: Vec::new(),
+        variadic: None,
+        return_type: Some(TypeExpr::Str),
+        body: vec![Stmt::new(
+            StmtKind::Return(Some(Expr::new(
+                ExprKind::PropertyAccess {
+                    object: Box::new(Expr::new(ExprKind::This, dummy_span)),
+                    property: "__name".to_string(),
+                },
+                dummy_span,
+            ))),
+            dummy_span,
+        )],
+        span: dummy_span,
+        attributes: Vec::new(),
+    }
+}
+
+/// Builds a `FlattenedClass` for `ReflectionMethod` or `ReflectionProperty`
+/// with a private `__attrs` array property and two methods: `__construct`
+/// (public, accepting the supplied params) and `getAttributes` (public,
+/// returning the `__attrs` array).
 fn builtin_reflection_owner_class(
     name: &str,
     constructor_params: Vec<(&str, Option<TypeExpr>, Option<Expr>, bool)>,
@@ -374,6 +436,11 @@ pub(crate) fn patch_builtin_reflection_signatures(checker: &mut Checker) {
         if let Some(class_info) = checker.classes.get_mut(class_name) {
             if let Some(sig) = class_info.methods.get_mut("__construct") {
                 sig.return_type = PhpType::Void;
+            }
+            if class_name == "ReflectionClass" {
+                if let Some(sig) = class_info.methods.get_mut(&php_symbol_key("getName")) {
+                    sig.return_type = PhpType::Str;
+                }
             }
             if let Some(sig) = class_info.methods.get_mut(&php_symbol_key("getAttributes")) {
                 sig.return_type = PhpType::Array(Box::new(PhpType::Object(

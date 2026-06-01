@@ -33,7 +33,7 @@ pub(super) fn infer_function_call_type(
 ) -> PhpType {
     match name {
         "strtolower" | "strtoupper" | "ucfirst" | "lcfirst" | "ucwords" | "trim"
-        | "ltrim" | "rtrim" | "substr" | "str_repeat" | "strrev" | "str_replace"
+        | "ltrim" | "rtrim" | "chop" | "substr" | "str_repeat" | "strrev" | "str_replace"
         | "str_ireplace" | "substr_replace" | "str_pad" | "chr" | "implode" | "join"
         | "sprintf" | "number_format" | "nl2br" | "wordwrap" | "addslashes"
         | "stripslashes" | "htmlspecialchars" | "html_entity_decode" | "htmlentities"
@@ -171,7 +171,7 @@ pub(super) fn infer_function_call_type(
         | "is_file" | "is_dir" | "is_readable" | "is_writable" | "file_exists"
         | "in_array" | "array_key_exists" | "str_contains" | "str_starts_with"
         | "str_ends_with" | "ctype_alpha" | "ctype_digit" | "ctype_alnum"
-        | "ctype_space" | "function_exists" | "chmod" | "chown" | "chgrp"
+        | "ctype_space" | "function_exists" | "defined" | "chmod" | "chown" | "chgrp"
         | "touch" | "ftruncate" | "fflush" | "fsync" | "fdatasync" | "ptr_is_null"
         | "json_validate" | "flock" | "symlink" | "link" | "feof" | "rewind"
         | "fclose" => {
@@ -180,9 +180,10 @@ pub(super) fn infer_function_call_type(
         "define" => PhpType::Bool,
         "umask" | "fpassthru" | "linkinfo" | "fseek" | "ftell" | "fwrite"
         | "fputcsv" => PhpType::Int,
-        "strpos" | "strrpos" | "array_search" | "file_get_contents" | "json_encode" | "fileatime"
-        | "filectime" | "fileperms" | "fileowner" | "filegroup" | "fileinode"
-        | "filetype" | "stat" | "lstat" | "fstat" | "fgetc" | "readfile" | "readlink" => PhpType::Mixed,
+        "strpos" | "strrpos" | "array_search" | "file_get_contents" | "json_encode"
+        | "grapheme_strrev" | "fileatime" | "filectime" | "fileperms" | "fileowner"
+        | "filegroup" | "fileinode" | "filetype" | "stat" | "lstat" | "fstat"
+        | "fgetc" | "readfile" | "readlink" => PhpType::Mixed,
         "fopen" | "tmpfile" => merge_union_members(vec![PhpType::stream_resource(), PhpType::Bool]),
         "pathinfo" => infer_pathinfo_type(args),
         "abs" => {
@@ -208,6 +209,29 @@ pub(super) fn infer_function_call_type(
                 }
             } else {
                 PhpType::Int
+            }
+        }
+        "clamp" => {
+            if args.len() >= 3 {
+                let arg_types: Vec<PhpType> = args
+                    .iter()
+                    .take(3)
+                    .map(|arg| infer_local_type(arg, sig, ctx).codegen_repr())
+                    .collect();
+                if arg_types.iter().all(|ty| *ty == PhpType::Str) {
+                    PhpType::Str
+                } else if arg_types.iter().all(|ty| *ty == PhpType::Int) {
+                    PhpType::Int
+                } else if arg_types
+                    .iter()
+                    .all(|ty| matches!(ty, PhpType::Int | PhpType::Float))
+                {
+                    PhpType::Float
+                } else {
+                    PhpType::Mixed
+                }
+            } else {
+                PhpType::Mixed
             }
         }
         "ptr" | "ptr_null" => PhpType::Pointer(None),

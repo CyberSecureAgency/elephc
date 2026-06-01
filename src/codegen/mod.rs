@@ -22,6 +22,7 @@ mod driver_support;
 mod emit;
 mod expr;
 mod ffi;
+mod fiber_sigs;
 mod function_variants;
 mod functions;
 mod interface_wrappers;
@@ -180,6 +181,7 @@ pub fn generate_user_asm(
     let function_variant_groups = function_variants::collect_function_variant_groups(program);
     let function_variant_group_names: HashSet<String> =
         function_variant_groups.keys().cloned().collect();
+    let fiber_return_sigs = fiber_sigs::collect_fiber_return_sigs(program);
     for (name, sig) in functions {
         if extern_functions.contains_key(name) {
             continue; // extern functions have no body — they're linked from C
@@ -201,6 +203,7 @@ pub fn generate_user_asm(
             callable_param_sigs,
             callable_return_sigs,
             callable_array_return_sigs,
+            &fiber_return_sigs,
             &function_variant_group_names,
             &global_constants, &all_global_var_names, &all_static_vars,
             interfaces,
@@ -251,6 +254,7 @@ pub fn generate_user_asm(
             callable_param_sigs,
             callable_return_sigs,
             callable_array_return_sigs,
+            &fiber_return_sigs,
             &function_variant_group_names,
             &global_constants,
             interfaces,
@@ -280,6 +284,7 @@ pub fn generate_user_asm(
         callable_param_sigs,
         callable_return_sigs,
         callable_array_return_sigs,
+        &fiber_return_sigs,
         &function_variant_group_names,
         interfaces,
         &declared_traits,

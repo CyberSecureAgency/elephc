@@ -129,6 +129,10 @@ pub(super) fn collect_scope_reads(
                 collect_expr_reads(value, scope, warnings);
                 scope.declare(name, stmt.span);
             }
+            StmtKind::RefAssign { target, source } => {
+                scope.read(source);
+                scope.declare(target, stmt.span);
+            }
             StmtKind::TypedAssign { name, value, .. } => {
                 collect_expr_reads(value, scope, warnings);
                 scope.declare(name, stmt.span);

@@ -14,8 +14,10 @@ mod ftoa;
 mod str_eq;
 mod str_loose_eq;
 mod str_to_number;
+mod str_to_int;
 mod number_format;
 mod atoi;
+mod grapheme_strrev;
 mod strcopy;
 mod str_persist;
 mod strtolower;
@@ -78,6 +80,8 @@ pub use str_loose_eq::emit_str_loose_eq;
 /// Emit case-insensitive string equality check.
 pub use str_to_number::emit_str_to_number;
 /// Emit string-to-number conversion helper.
+pub use str_to_int::emit_str_to_int;
+/// Emit PHP string-to-integer cast helper.
 pub use number_format::emit_number_format;
 /// Emit number formatting helper.
 pub use atoi::emit_atoi;
@@ -104,6 +108,8 @@ pub use str_repeat::emit_str_repeat;
 /// Emit string repeat helper.
 pub use strrev::emit_strrev;
 /// Emit string reverse helper.
+pub use grapheme_strrev::emit_grapheme_strrev;
+/// Emit grapheme-aware string reverse helper.
 pub use chr::emit_chr;
 /// Emit character code to string helper.
 pub use strcmp::emit_strcmp;

@@ -86,9 +86,25 @@ pub(super) fn check_builtin(
             }
             Ok(Some(PhpType::Str))
         }
+        "grapheme_strrev" => {
+            if args.len() != 1 {
+                return Err(CompileError::new(
+                    span,
+                    "grapheme_strrev() takes exactly 1 argument",
+                ));
+            }
+            let ty = checker.infer_type(&args[0], env)?;
+            if !matches!(ty, PhpType::Str | PhpType::Mixed | PhpType::Union(_)) {
+                return Err(CompileError::new(
+                    span,
+                    "grapheme_strrev() argument must be string",
+                ));
+            }
+            Ok(Some(PhpType::Union(vec![PhpType::Str, PhpType::Bool])))
+        }
         "strtolower" | "strtoupper" | "ucfirst" | "lcfirst" | "ucwords" | "trim"
-        | "ltrim" | "rtrim" | "strrev" | "str_repeat" | "str_replace" | "str_ireplace"
-        | "chr" | "addslashes" | "stripslashes" | "nl2br" | "bin2hex" => {
+        | "ltrim" | "rtrim" | "chop" | "strrev" | "str_repeat" | "str_replace"
+        | "str_ireplace" | "chr" | "addslashes" | "stripslashes" | "nl2br" | "bin2hex" => {
             let expected = match name {
                 "str_repeat" => 2,
                 "str_replace" | "str_ireplace" => 3,
@@ -98,7 +114,7 @@ pub(super) fn check_builtin(
                 if args.len() != 1 {
                     return Err(CompileError::new(span, "chr() takes exactly 1 argument"));
                 }
-            } else if name == "trim" || name == "ltrim" || name == "rtrim" {
+            } else if matches!(name, "trim" | "ltrim" | "rtrim" | "chop") {
                 if args.is_empty() || args.len() > 2 {
                     return Err(CompileError::new(
                         span,

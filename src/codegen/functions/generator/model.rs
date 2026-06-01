@@ -60,6 +60,14 @@ pub(super) enum ResumeNode {
         cases: Vec<(Vec<i64>, Vec<ResumeNode>)>,
         default: Vec<ResumeNode>,
     },
+    /// `try { ... } finally { ... }` inside a generator body. The v1
+    /// generator IR preserves the normal no-exception path by running the
+    /// translated try body followed by the translated finally body. Catch
+    /// dispatch remains outside this narrow IR.
+    Try {
+        try_body: Vec<ResumeNode>,
+        finally_body: Vec<ResumeNode>,
+    },
     /// `yield from <expr>` — runtime delegation. `source` describes how
     /// to materialise the inner Generator pointer. The single state index
     /// is reused on every resume call so successive `next()` invocations
@@ -99,6 +107,13 @@ pub(super) enum BodyStmt {
     /// previous Mixed pointer in x20, materialize the new boxed Mixed
     /// pointer in x0, store it into the slot, then decref the previous.
     AssignMixed(usize, MixedSource),
+    /// `echo <mixed_expr>` inside a generator body. The expression is boxed as
+    /// a Mixed cell, written with PHP echo semantics, then released.
+    EchoMixed(MixedSource),
+    /// `var_dump(<mixed_expr>)` inside a generator body. The expression is
+    /// boxed as a Mixed cell, formatted with PHP diagnostic semantics, then
+    /// released.
+    VarDumpMixed(MixedSource),
     PostIncrement(usize),
     PostDecrement(usize),
 }

@@ -115,6 +115,12 @@ pub(crate) fn stmt_local_writes(stmt: &Stmt) -> Option<HashSet<String>> {
             writes.insert(name.clone());
             Some(writes)
         }
+        StmtKind::RefAssign { target, source } => {
+            let mut writes = HashSet::new();
+            writes.insert(target.clone());
+            writes.insert(source.clone());
+            Some(writes)
+        }
         StmtKind::ListUnpack { vars, value } => {
             let mut writes = expr_local_writes(value)?;
             writes.extend(vars.iter().cloned());

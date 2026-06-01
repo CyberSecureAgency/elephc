@@ -10,11 +10,15 @@
 
 use super::*;
 
-/// Extracts a filtered constant environment containing only the captured variable names.
-/// Returns a new `ConstantEnv` with entries for each name in `captures` that exists in `env`.
-pub(crate) fn captured_constant_env(captures: &[String], env: &ConstantEnv) -> ConstantEnv {
+/// Extracts constants for by-value closure captures while excluding by-reference captures.
+pub(crate) fn captured_constant_env(
+    captures: &[String],
+    capture_refs: &[String],
+    env: &ConstantEnv,
+) -> ConstantEnv {
     captures
         .iter()
+        .filter(|name| !capture_refs.contains(name))
         .filter_map(|name| env.get(name).cloned().map(|value| (name.clone(), value)))
         .collect()
 }
@@ -153,7 +157,7 @@ pub(crate) fn propagate_expr(expr: Expr, env: &ConstantEnv) -> Expr {
             params: propagate_params(params),
             variadic,
             return_type,
-            body: propagate_block(body, captured_constant_env(&captures, env)).0,
+            body: propagate_block(body, captured_constant_env(&captures, &capture_refs, env)).0,
             is_arrow,
             is_static,
             captures,

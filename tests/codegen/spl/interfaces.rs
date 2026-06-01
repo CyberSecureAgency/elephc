@@ -304,6 +304,16 @@ echo isset($b["k"]);
     assert_eq!(out, "SGvE1UE0");
 }
 
+/// Verifies the checked-in ArrayAccess exception-order stress example preserves key
+/// evaluation side effects before an offsetGet exception unwinds to the catch block.
+#[test]
+fn test_array_access_exception_side_effect_order_example() {
+    let out = compile_and_run(include_str!(
+        "../../../examples/array-access-exception-order/main.php"
+    ));
+    assert_eq!(out, "KG|caught\n");
+}
+
 /// Verifies subscript operations work when an `ArrayAccess` implementer is passed
 /// through an interface-typed parameter (dispatch via interface type, not concrete type).
 #[test]

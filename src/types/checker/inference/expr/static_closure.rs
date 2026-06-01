@@ -37,6 +37,7 @@ fn stmt_must_not_use_this(stmt: &Stmt, span: Span) -> Result<(), CompileError> {
         | StmtKind::Assign { value: e, .. }
         | StmtKind::TypedAssign { value: e, .. }
         | StmtKind::ArrayPush { value: e, .. } => expr_must_not_use_this(e, span),
+        StmtKind::RefAssign { .. } => Ok(()),
         StmtKind::ArrayAssign { index, value, .. } => {
             expr_must_not_use_this(index, span)?;
             expr_must_not_use_this(value, span)

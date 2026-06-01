@@ -921,6 +921,101 @@ foreach ($attrs as $attr) {
     assert_eq!(out, "2\nAuthor:[Ada][1815]\nVersion:[1.0][1]\n");
 }
 
+/// Verifies that `ReflectionClass::getName()` returns the declared class name
+/// for a regular class reflector.
+#[test]
+fn test_reflection_class_get_name_returns_class_name() {
+    let out = compile_and_run(
+        r#"<?php
+class Plain {}
+$ref = new ReflectionClass('Plain');
+echo $ref->getName();
+"#,
+    );
+    assert_eq!(out, "Plain");
+}
+
+/// Verifies that `ReflectionClass::getName()` returns the canonical declared
+/// name after case-insensitive class-string construction.
+#[test]
+fn test_reflection_class_get_name_uses_resolved_class_case() {
+    let out = compile_and_run(
+        r#"<?php
+namespace Demo;
+class Thing {}
+$ref = new \ReflectionClass('demo\thing');
+echo $ref->getName();
+"#,
+    );
+    assert_eq!(out, "Demo\\Thing");
+}
+
+/// Verifies that `ReflectionClass::getName()` works for a class discovered
+/// through `class_exists()` autoload resolution before the reflector is built.
+#[test]
+fn test_reflection_class_get_name_for_autoloaded_class() {
+    let out = compile_and_run_files(
+        &[
+            (
+                "DemoThing.php",
+                "<?php\nnamespace Demo;\nclass Thing {}\n",
+            ),
+            (
+                "main.php",
+                r#"<?php
+spl_autoload_register(function ($name) {
+    if (strtolower($name) === "demo\\thing") {
+        require __DIR__ . "/DemoThing.php";
+    }
+});
+
+if (class_exists("demo\\thing")) {
+    $ref = new ReflectionClass("DEMO\\THING");
+    echo $ref->getName();
+}
+"#,
+            ),
+        ],
+        "main.php",
+    );
+    assert_eq!(out, "Demo\\Thing");
+}
+
+/// Verifies that a lowercased `class_exists()` autoload demand, an
+/// differently-cased `ReflectionClass` constructor, and attribute lookup all
+/// resolve to the same autoloaded class declaration.
+#[test]
+fn test_autoload_reflection_case_insensitive_class_lookup_reads_attributes() {
+    let out = compile_and_run_files(
+        &[
+            (
+                "DemoThing.php",
+                "<?php\nnamespace Demo;\n#[Marker]\nclass Thing {}\n",
+            ),
+            (
+                "main.php",
+                r#"<?php
+spl_autoload_register(function ($name) {
+    if ($name === "Demo\\Thing") {
+        require __DIR__ . "/DemoThing.php";
+    }
+});
+
+if (class_exists("demo\\thing")) {
+    $r = new ReflectionClass("DEMO\\THING");
+    $attrs = $r->getAttributes();
+    echo $r->getName() . "\n";
+    echo count($attrs) . "\n";
+    echo $attrs[0]->getName() . "\n";
+}
+"#,
+            ),
+        ],
+        "main.php",
+    );
+    assert_eq!(out, "Demo\\Thing\n1\nDemo\\Marker\n");
+}
+
 /// Verifies that `ReflectionClass::getAttributes()` works when called on
 /// a temporary `ReflectionClass` object directly (without storing the
 /// reflector in a variable), and returns the correct attribute name and

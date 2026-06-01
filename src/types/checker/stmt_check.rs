@@ -61,6 +61,7 @@ impl Checker {
                 Ok(())
             }
             StmtKind::Assign { .. }
+            | StmtKind::RefAssign { .. }
             | StmtKind::ArrayAssign { .. }
             | StmtKind::NestedArrayAssign { .. }
             | StmtKind::ArrayPush { .. }

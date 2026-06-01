@@ -132,6 +132,7 @@ impl Checker {
             | StmtKind::TypedAssign { value, .. }
             | StmtKind::ConstDecl { value, .. }
             | StmtKind::ListUnpack { value, .. } => Self::expr_contains_method_call(value),
+            StmtKind::RefAssign { .. } => false,
             StmtKind::ArrayAssign { index, value, .. } => {
                 Self::expr_contains_method_call(index) || Self::expr_contains_method_call(value)
             }
@@ -322,6 +323,7 @@ impl Checker {
             | StmtKind::TypedAssign { value, .. }
             | StmtKind::ConstDecl { value, .. }
             | StmtKind::ListUnpack { value, .. } => Self::expr_contains_property_access(value),
+            StmtKind::RefAssign { .. } => false,
             StmtKind::ArrayAssign { index, value, .. } => {
                 Self::expr_contains_property_access(index)
                     || Self::expr_contains_property_access(value)

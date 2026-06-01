@@ -216,6 +216,7 @@ fn stmt_has_regex_call(stmt: &Stmt) -> bool {
                 || finally_body.as_deref().is_some_and(body_has_regex_call)
         }
         StmtKind::Return(None)
+        | StmtKind::RefAssign { .. }
         | StmtKind::Break(_)
         | StmtKind::Continue(_)
         | StmtKind::NamespaceDecl { .. }

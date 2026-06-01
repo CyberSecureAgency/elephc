@@ -149,6 +149,34 @@ pub(super) fn check_assign(
     merge_local_assignment_type(checker, name, &ty, span, env)
 }
 
+/// Type-checks direct reference alias assignment (`$target =& $source`).
+///
+/// The source must already be visible in the current environment. On success,
+/// the target is rebound to the source type, marked as by-reference storage for
+/// later checks, and callable metadata is mirrored from the source variable.
+pub(super) fn check_ref_assign(
+    checker: &mut Checker,
+    target: &str,
+    source: &str,
+    span: Span,
+    env: &mut TypeEnv,
+) -> Result<(), CompileError> {
+    let source_ty = env.get(source).cloned().ok_or_else(|| {
+        CompileError::new(span, &format!("Undefined variable: ${}", source))
+    })?;
+    if target == source {
+        return Ok(());
+    }
+    env.insert(target.to_string(), source_ty.clone());
+    checker.active_ref_params.insert(target.to_string());
+    if source_ty == PhpType::Callable || is_callable_array_type(&source_ty) {
+        copy_callable_metadata(checker, target, source);
+    } else {
+        clear_callable_metadata(checker, target);
+    }
+    Ok(())
+}
+
 /// Returns `true` if `value` is a closure that captures `name` both by value and by reference.
 ///
 /// Used to detect self-referential assignments (`$x = fn() use($x) { ... }`) where the

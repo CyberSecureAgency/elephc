@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::names::php_symbol_key;
 use crate::parser::ast::{BinOp, Expr, ExprKind, Stmt, StmtKind};
 
 use super::rule::AutoloadRule;
@@ -20,7 +21,10 @@ use super::rule::AutoloadRule;
 /// Subset of PHP values the interpreter can represent.
 #[derive(Clone, Debug, PartialEq)]
 enum Value {
-    Str(String),
+    Str {
+        value: String,
+        is_class_name: bool,
+    },
     Bool(bool),
     Int(i64),
     Null,
@@ -29,11 +33,22 @@ enum Value {
 impl Value {
     /// Convert a Value to a string slice if it is a string variant.
     fn as_str(&self) -> Option<&str> {
-        if let Value::Str(s) = self {
-            Some(s.as_str())
+        if let Value::Str { value, .. } = self {
+            Some(value.as_str())
         } else {
             None
         }
+    }
+
+    /// Return true when the string originated from the SPL autoload class-name parameter.
+    fn is_class_name(&self) -> bool {
+        matches!(
+            self,
+            Value::Str {
+                is_class_name: true,
+                ..
+            }
+        )
     }
 
     /// Return true if the value is truthy according to PHP rules.
@@ -41,7 +56,7 @@ impl Value {
         match self {
             Value::Bool(b) => *b,
             Value::Int(n) => *n != 0,
-            Value::Str(s) => !s.is_empty() && s != "0",
+            Value::Str { value, .. } => !value.is_empty() && value != "0",
             Value::Null => false,
         }
     }
@@ -103,7 +118,7 @@ impl Interpreter {
                 once: _,
                 required: _,
             } => match self.eval(path) {
-                Some(Value::Str(s)) => Flow::Include(PathBuf::from(s)),
+                Some(Value::Str { value, .. }) => Flow::Include(PathBuf::from(value)),
                 _ => Flow::Unfoldable,
             },
             StmtKind::If {
@@ -143,7 +158,10 @@ impl Interpreter {
     /// Evaluate an expression to a Value, or return None if it cannot be folded.
     fn eval(&mut self, expr: &Expr) -> Option<Value> {
         match &expr.kind {
-            ExprKind::StringLiteral(s) => Some(Value::Str(s.clone())),
+            ExprKind::StringLiteral(s) => Some(Value::Str {
+                value: s.clone(),
+                is_class_name: false,
+            }),
             ExprKind::IntLiteral(n) => Some(Value::Int(*n)),
             ExprKind::BoolLiteral(b) => Some(Value::Bool(*b)),
             ExprKind::Null => Some(Value::Null),
@@ -162,10 +180,13 @@ impl Interpreter {
                     BinOp::Concat => {
                         let ls = value_to_string(&l)?;
                         let rs = value_to_string(&r)?;
-                        Some(Value::Str(format!("{}{}", ls, rs)))
+                        Some(Value::Str {
+                            value: format!("{}{}", ls, rs),
+                            is_class_name: false,
+                        })
                     }
-                    BinOp::Eq | BinOp::StrictEq => Some(Value::Bool(l == r)),
-                    BinOp::NotEq | BinOp::StrictNotEq => Some(Value::Bool(l != r)),
+                    BinOp::Eq | BinOp::StrictEq => Some(Value::Bool(values_equal(&l, &r))),
+                    BinOp::NotEq | BinOp::StrictNotEq => Some(Value::Bool(!values_equal(&l, &r))),
                     BinOp::And => Some(Value::Bool(l.truthy() && r.truthy())),
                     BinOp::Or => Some(Value::Bool(l.truthy() || r.truthy())),
                     _ => None,
@@ -182,7 +203,12 @@ impl Interpreter {
             ExprKind::Cast {
                 target: crate::parser::ast::CastType::String,
                 expr: inner,
-            } => self.eval(inner).and_then(|v| value_to_string(&v).map(Value::Str)),
+            } => self.eval(inner).and_then(|v| {
+                value_to_string(&v).map(|value| Value::Str {
+                    value,
+                    is_class_name: false,
+                })
+            }),
             _ => None,
         }
     }
@@ -197,7 +223,10 @@ impl Interpreter {
                 let from_s = from.as_str()?;
                 let to_s = to.as_str()?;
                 let hay_s = hay.as_str()?;
-                Some(Value::Str(hay_s.replace(from_s, to_s)))
+                Some(Value::Str {
+                    value: hay_s.replace(from_s, to_s),
+                    is_class_name: false,
+                })
             }
             "str_starts_with" => {
                 let hay = self.eval(args.first()?)?;
@@ -216,11 +245,17 @@ impl Interpreter {
             "strtolower" => self
                 .eval(args.first()?)
                 .and_then(|v| v.as_str().map(|s| s.to_lowercase()))
-                .map(Value::Str),
+                .map(|value| Value::Str {
+                    value,
+                    is_class_name: false,
+                }),
             "strtoupper" => self
                 .eval(args.first()?)
                 .and_then(|v| v.as_str().map(|s| s.to_uppercase()))
-                .map(Value::Str),
+                .map(|value| Value::Str {
+                    value,
+                    is_class_name: false,
+                }),
             "file_exists" => {
                 let path = self.eval(args.first()?)?;
                 let path_str = path.as_str()?;
@@ -249,7 +284,10 @@ impl Interpreter {
                     let v = self.eval(arg)?;
                     substitutions.push(value_to_string(&v)?);
                 }
-                fold_sprintf(&format_s, &substitutions).map(Value::Str)
+                fold_sprintf(&format_s, &substitutions).map(|value| Value::Str {
+                    value,
+                    is_class_name: false,
+                })
             }
             "dirname" => {
                 let path = self.eval(args.first()?)?;
@@ -261,7 +299,10 @@ impl Interpreter {
                         _ => return None,
                     },
                 };
-                fold_dirname(path_str, levels).map(Value::Str)
+                fold_dirname(path_str, levels).map(|value| Value::Str {
+                    value,
+                    is_class_name: false,
+                })
             }
             "basename" => {
                 let path = self.eval(args.first()?)?;
@@ -269,13 +310,19 @@ impl Interpreter {
                 let p = Path::new(path_str);
                 p.file_name()
                     .and_then(|s| s.to_str())
-                    .map(|s| Value::Str(s.to_string()))
+                    .map(|s| Value::Str {
+                        value: s.to_string(),
+                        is_class_name: false,
+                    })
             }
             "realpath" => {
                 let path = self.eval(args.first()?)?;
                 let path_str = path.as_str()?;
                 Some(match Path::new(path_str).canonicalize() {
-                    Ok(c) => Value::Str(c.to_string_lossy().into_owned()),
+                    Ok(c) => Value::Str {
+                        value: c.to_string_lossy().into_owned(),
+                        is_class_name: false,
+                    },
                     Err(_) => Value::Bool(false),
                 })
             }
@@ -311,7 +358,10 @@ impl Interpreter {
                         .unwrap_or_default(),
                     _ => return None,
                 };
-                Some(Value::Str(component))
+                Some(Value::Str {
+                    value: component,
+                    is_class_name: false,
+                })
             }
             _ => None,
         }
@@ -378,11 +428,36 @@ fn is_readable_path(path: &Path) -> bool {
 /// Convert a Value to a String representation.
 fn value_to_string(value: &Value) -> Option<String> {
     match value {
-        Value::Str(s) => Some(s.clone()),
+        Value::Str { value, .. } => Some(value.clone()),
         Value::Int(n) => Some(n.to_string()),
         Value::Bool(true) => Some("1".to_string()),
         Value::Bool(false) => Some(String::new()),
         Value::Null => Some(String::new()),
+    }
+}
+
+/// Compare two interpreter values, using PHP's case-insensitive class-name lookup when one side
+/// is the SPL autoload parameter.
+fn values_equal(left: &Value, right: &Value) -> bool {
+    match (left, right) {
+        (
+            Value::Str {
+                value: left_value, ..
+            },
+            Value::Str {
+                value: right_value, ..
+            },
+        ) => {
+            if (left.is_class_name() || right.is_class_name())
+                && !left_value.is_empty()
+                && !right_value.is_empty()
+            {
+                php_symbol_key(left_value) == php_symbol_key(right_value)
+            } else {
+                left_value == right_value
+            }
+        }
+        _ => left == right,
     }
 }
 
@@ -392,9 +467,13 @@ fn value_to_string(value: &Value) -> Option<String> {
 /// unsupported operation aborted evaluation).
 pub fn resolve(rule: &AutoloadRule, class_name: &str) -> Option<PathBuf> {
     let mut interp = Interpreter::new();
-    interp
-        .vars
-        .insert(rule.param_name.clone(), Value::Str(class_name.to_string()));
+    interp.vars.insert(
+        rule.param_name.clone(),
+        Value::Str {
+            value: class_name.to_string(),
+            is_class_name: true,
+        },
+    );
     match interp.exec_block(&rule.body) {
         Flow::Include(path) => Some(path),
         _ => None,

@@ -42,6 +42,19 @@ fn test_compound_assignment_missing_ops_parse() {
     }
 }
 
+/// Verifies that direct reference assignment parses as a `RefAssign` statement.
+#[test]
+fn test_parse_reference_assignment() {
+    let stmts = parse_source("<?php $b =& $a;");
+    match &stmts[0].kind {
+        StmtKind::RefAssign { target, source } => {
+            assert_eq!(target, "b");
+            assert_eq!(source, "a");
+        }
+        other => panic!("expected RefAssign, got {:?}", other),
+    }
+}
+
 /// Verifies that `<?php $items[0] += 3;` parses to an `ArrayAssign` (not a generic `Assign`).
 /// Compound assignment on an array element must produce the correct AST shape.
 #[test]
@@ -59,6 +72,37 @@ fn test_parse_array_compound_assignment() {
                 ExprKind::BinaryOp { left, op, right } => {
                     assert_eq!(op, &BinOp::Add);
                     assert!(matches!(right.kind, ExprKind::IntLiteral(3)));
+                    match &left.kind {
+                        ExprKind::ArrayAccess { array, index } => {
+                            assert!(matches!(array.kind, ExprKind::Variable(ref name) if name == "items"));
+                            assert!(matches!(index.kind, ExprKind::IntLiteral(0)));
+                        }
+                        other => panic!("Expected ArrayAccess lhs, got {:?}", other),
+                    }
+                }
+                other => panic!("Expected BinaryOp value, got {:?}", other),
+            }
+        }
+        other => panic!("Expected ArrayAssign, got {:?}", other),
+    }
+}
+
+/// Verifies that array-element post-increment lowers to an `ArrayAssign` read-modify-write.
+#[test]
+fn test_parse_array_element_post_increment_assignment() {
+    let stmts = parse_source("<?php $items[0]++;");
+    match &stmts[0].kind {
+        StmtKind::ArrayAssign {
+            array,
+            index,
+            value,
+        } => {
+            assert_eq!(array, "items");
+            assert!(matches!(index.kind, ExprKind::IntLiteral(0)));
+            match &value.kind {
+                ExprKind::BinaryOp { left, op, right } => {
+                    assert_eq!(op, &BinOp::Add);
+                    assert!(matches!(right.kind, ExprKind::IntLiteral(1)));
                     match &left.kind {
                         ExprKind::ArrayAccess { array, index } => {
                             assert!(matches!(array.kind, ExprKind::Variable(ref name) if name == "items"));
@@ -107,6 +151,51 @@ fn test_parse_nested_array_assignment_target() {
             }
         }
         other => panic!("Expected NestedArrayAssign, got {:?}", other),
+    }
+}
+
+/// Verifies that nested append (`$items[0][] = 2`) lowers to a synthetic
+/// read/append/write-back sequence instead of overwriting `$items[0]` directly.
+#[test]
+fn test_parse_nested_array_append_lowers_to_temp_push_writeback() {
+    let stmts = parse_source("<?php $items[0][] = 2;");
+    match &stmts[0].kind {
+        StmtKind::Synthetic(stmts) => {
+            assert_eq!(stmts.len(), 3);
+            let temp = match &stmts[0].kind {
+                StmtKind::Assign { name, value } => {
+                    match &value.kind {
+                        ExprKind::ArrayAccess { array, index } => {
+                            assert!(matches!(array.kind, ExprKind::Variable(ref name) if name == "items"));
+                            assert!(matches!(index.kind, ExprKind::IntLiteral(0)));
+                        }
+                        other => panic!("Expected temp read from ArrayAccess, got {:?}", other),
+                    }
+                    name.clone()
+                }
+                other => panic!("Expected temp Assign, got {:?}", other),
+            };
+            match &stmts[1].kind {
+                StmtKind::ArrayPush { array, value } => {
+                    assert_eq!(array, &temp);
+                    assert!(matches!(value.kind, ExprKind::IntLiteral(2)));
+                }
+                other => panic!("Expected temp ArrayPush, got {:?}", other),
+            }
+            match &stmts[2].kind {
+                StmtKind::ArrayAssign {
+                    array,
+                    index,
+                    value,
+                } => {
+                    assert_eq!(array, "items");
+                    assert!(matches!(index.kind, ExprKind::IntLiteral(0)));
+                    assert!(matches!(value.kind, ExprKind::Variable(ref name) if name == &temp));
+                }
+                other => panic!("Expected write-back ArrayAssign, got {:?}", other),
+            }
+        }
+        other => panic!("Expected Synthetic lowering, got {:?}", other),
     }
 }
 

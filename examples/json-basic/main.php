@@ -64,14 +64,14 @@ $o->status = "ok";
 $o->count = 7;
 echo json_encode($o) . "\n";
 
-// Malformed input returns null and sets JSON_ERROR_SYNTAX. Subsequent
-// successful calls reset the slot so error state never leaks.
-$bad = json_decode("not json");
-echo "garbage type: " . gettype($bad) . " (err " . json_last_error() . ", " . json_last_error_msg() . ")\n";
+// Malformed json_decode input returns null and sets JSON_ERROR_SYNTAX.
+// Error messages include PHP 8.6-style one-based line/column locations.
+$bad = json_decode("[1,\n 2,]");
+echo "bad array type: " . gettype($bad) . " (err " . json_last_error() . ", " . json_last_error_msg() . ")\n";
 
 // JSON_THROW_ON_ERROR raises a JsonException on malformed input or
 // depth overflow; both fold the runtime error code into a catchable
-// exception with the PHP-faithful message.
+// exception with the same PHP-faithful location-aware message.
 try {
     json_decode("{", null, 512, JSON_THROW_ON_ERROR);
 } catch (JsonException $e) {

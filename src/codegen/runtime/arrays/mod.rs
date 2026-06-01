@@ -80,6 +80,7 @@ mod gc_collect_cycles_x86_64;
 mod gc_mark_reachable;
 mod gc_note_child_ref;
 mod hash_count;
+mod hash_append;
 mod hash_clone_shallow;
 mod hash_fnv1a;
 mod hash_free_deep;
@@ -127,7 +128,9 @@ mod mixed_write_stdout;
 mod refcount;
 mod shuffle;
 mod sort_int;
+mod undefined_array_key_warning;
 mod usort;
+mod value_error;
 
 pub use array_chunk::emit_array_chunk;
 /// Emit array chunk helper (split array into chunks).
@@ -264,6 +267,8 @@ pub use decref_object::emit_decref_object;
 /// Emit object reference decrement helper.
 pub use hash_count::emit_hash_count;
 /// Emit hash count helper.
+pub use hash_append::emit_hash_append;
+/// Emit hash append helper.
 pub use hash_clone_shallow::emit_hash_clone_shallow;
 /// Emit shallow hash clone helper.
 pub use gc_collect_cycles::emit_gc_collect_cycles;
@@ -363,6 +368,7 @@ pub use refcount::emit_refcount;
 pub use shuffle::emit_shuffle;
 /// Emit array shuffle helper.
 pub use sort_int::emit_sort_int;
-/// Emit integer sort helper.
+/// Emit undefined integer array key warning helper.
+pub use undefined_array_key_warning::emit_undefined_array_key_warning;
 /// Emit user-defined sort helper.
 pub use usort::emit_usort;

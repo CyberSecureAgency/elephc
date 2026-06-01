@@ -68,11 +68,13 @@ pub(super) fn emit_runtime_linux_x86_64_minimal(
     strings::emit_str_persist(emitter);
     strings::emit_str_eq(emitter);
     strings::emit_str_to_number(emitter);
+    strings::emit_str_to_int(emitter);
     strings::emit_str_loose_eq(emitter);
     strings::emit_strtolower(emitter);
     strings::emit_strpos(emitter);
     strings::emit_strrpos(emitter);
     strings::emit_strrev(emitter);
+    strings::emit_grapheme_strrev(emitter);
     strings::emit_strcmp(emitter);
     strings::emit_strcasecmp(emitter);
     strings::emit_str_starts_with(emitter);
@@ -183,6 +185,7 @@ pub(super) fn emit_runtime_linux_x86_64_minimal(
     arrays::emit_hash_ensure_unique(emitter);
     arrays::emit_hash_may_have_cyclic_values(emitter);
     arrays::emit_hash_set(emitter);
+    arrays::emit_hash_append(emitter);
     arrays::emit_hash_get(emitter);
     arrays::emit_hash_iter(emitter);
     arrays::emit_hash_union(emitter);
@@ -191,6 +194,7 @@ pub(super) fn emit_runtime_linux_x86_64_minimal(
     arrays::emit_array_fill_keys_refcounted(emitter);
     arrays::emit_decref_array(emitter);
     arrays::emit_array_key_exists(emitter);
+    arrays::emit_undefined_array_key_warning(emitter);
     arrays::emit_array_search(emitter);
     arrays::emit_array_column(emitter);
     arrays::emit_array_column_mixed(emitter);
@@ -322,7 +326,6 @@ pub(super) fn emit_runtime_linux_x86_64_minimal(
         system::emit_preg_split(emitter);
     }
     system::emit_match_unhandled(emitter);
-    system::emit_enum_from_fail(emitter);
 }
 
 #[cfg(test)]
@@ -355,6 +358,7 @@ mod tests {
         assert!(asm.contains("__rt_ftoa:\n"));
         assert!(asm.contains("__rt_concat:\n"));
         assert!(asm.contains("__rt_atoi:\n"));
+        assert!(asm.contains("__rt_str_to_int:\n"));
         assert!(asm.contains("__rt_str_persist:\n"));
         assert!(asm.contains("__rt_str_eq:\n"));
         assert!(asm.contains("__rt_is_callable_string:\n"));
@@ -431,9 +435,11 @@ mod tests {
         assert!(asm.contains("__rt_array_filter_refcounted:\n"));
         assert!(asm.contains("__rt_array_reduce:\n"));
         assert!(asm.contains("__rt_array_walk:\n"));
+        assert!(asm.contains("__rt_warn_undefined_array_key_int:\n"));
         assert!(asm.contains("__rt_hash_fnv1a:\n"));
         assert!(asm.contains("__rt_hash_new:\n"));
         assert!(asm.contains("__rt_hash_set:\n"));
+        assert!(asm.contains("__rt_hash_append:\n"));
         assert!(asm.contains("__rt_hash_get:\n"));
         assert!(asm.contains("__rt_hash_union:\n"));
         assert!(asm.contains("__rt_hash_to_mixed:\n"));
@@ -498,6 +504,5 @@ mod tests {
         assert!(asm.contains("__rt_json_decode:\n"));
         assert!(asm.contains("__rt_json_encode_array_int:\n"));
         assert!(asm.contains("__rt_json_encode_array_str:\n"));
-        assert!(asm.contains("__rt_enum_from_fail:\n"));
     }
 }

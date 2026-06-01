@@ -89,6 +89,85 @@ foreach (outer() as $v) {
     assert_eq!(out, "1\n42\n");
 }
 
+/// Verifies the delegated return value remains available when the outer
+/// generator uses it in normal code after the `yield from` expression.
+#[test]
+fn test_generator_yield_from_return_value_can_be_echoed_after_delegation() {
+    let out = compile_and_run(
+        r#"<?php
+function inner() {
+    yield 1;
+    return 7;
+}
+
+function outer() {
+    $x = yield from inner();
+    echo $x;
+}
+
+foreach (outer() as $v) {
+    echo $v;
+}
+"#,
+    );
+    assert_eq!(out, "17");
+}
+
+/// Regression test for delegated generator sends: a typed generator may
+/// `return` its terminal value, and `send()` on the outer generator must
+/// deliver the payload into the currently active inner generator.
+#[test]
+fn test_generator_yield_from_typed_delegate_forwards_send_payload_and_return() {
+    let out = compile_and_run(
+        r#"<?php
+function inner(): Generator {
+    $v = yield "a";
+    yield $v;
+    return "done";
+}
+
+function outer(): Generator {
+    $r = yield from inner();
+    yield $r;
+}
+
+$g = outer();
+echo $g->current() . "\n";
+echo $g->send("b") . "\n";
+$g->next();
+echo $g->current() . "\n";
+"#,
+    );
+    assert_eq!(out, "a\nb\ndone\n");
+}
+
+/// Verifies a delegated generator return can be consumed by a normal
+/// generator-body diagnostic statement after `yield from` completes, while
+/// the outer generator still has a null return value when it does not return.
+#[test]
+fn test_generator_yield_from_return_value_survives_var_dump_statement() {
+    let out = compile_and_run(
+        r#"<?php
+function a() {
+    yield 1;
+    return 9;
+}
+
+function b() {
+    $r = yield from a();
+    var_dump($r);
+}
+
+$g = b();
+foreach ($g as $v) {
+    echo $v, "\n";
+}
+var_dump($g->getReturn());
+"#,
+    );
+    assert_eq!(out, "1\nint(9)\nNULL\n");
+}
+
 /// Verifies `return yield from inner()` propagates the inner generator's
 /// return value (42) so that `$g->getReturn()` returns it correctly.
 #[test]

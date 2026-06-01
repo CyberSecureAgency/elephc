@@ -187,3 +187,108 @@ echo round(log(27, 3), 4);
     );
     assert_eq!(out, "3");
 }
+
+/// Verifies clamp() returns an in-range integer value unchanged.
+#[test]
+fn test_clamp_int_inside_range() {
+    let out = compile_and_run("<?php echo clamp(5, 0, 10);");
+    assert_eq!(out, "5");
+}
+
+/// Verifies clamp() returns the upper integer bound when the value is too large.
+#[test]
+fn test_clamp_int_upper_bound() {
+    let out = compile_and_run("<?php echo clamp(15, 0, 10);");
+    assert_eq!(out, "10");
+}
+
+/// Verifies clamp() returns the lower integer bound when the value is too small.
+#[test]
+fn test_clamp_int_lower_bound() {
+    let out = compile_and_run("<?php echo clamp(-5, 0, 10);");
+    assert_eq!(out, "0");
+}
+
+/// Verifies clamp() preserves inclusive boundary equality.
+#[test]
+fn test_clamp_boundary_equality() {
+    let out = compile_and_run("<?php echo clamp(0, 0, 10) . ':' . clamp(10, 0, 10);");
+    assert_eq!(out, "0:10");
+}
+
+/// Verifies clamp() works with floating-point values and bounds.
+#[test]
+fn test_clamp_float() {
+    let out = compile_and_run("<?php echo clamp(2.75, 1.5, 2.5);");
+    assert_eq!(out, "2.5");
+}
+
+/// Verifies clamp() handles mixed integer and floating-point operands.
+#[test]
+fn test_clamp_mixed_int_float() {
+    let out = compile_and_run("<?php echo clamp(2, 1.5, 3.5);");
+    assert_eq!(out, "2");
+}
+
+/// Verifies clamp() uses lexicographic ordering for all-string operands.
+#[test]
+fn test_clamp_string_comparison() {
+    let out = compile_and_run("<?php echo clamp('P', 'A', 'C') . ':' . clamp('P', 'X', 'Z');");
+    assert_eq!(out, "C:X");
+}
+
+/// Verifies clamp() participates in case-insensitive lookup, namespace fallback, function_exists(), and first-class callable syntax.
+#[test]
+fn test_clamp_lookup_and_first_class_callable() {
+    let out = compile_and_run(
+        r#"<?php
+namespace Demo;
+echo function_exists("ClAmP") ? "1" : "0";
+echo ":";
+echo ClAmP(15, 0, 10);
+echo ":";
+$clamp = clamp(...);
+echo $clamp(-1, 0, 10);
+"#,
+    );
+    assert_eq!(out, "1:10:0");
+}
+
+/// Verifies clamp() throws a catchable ValueError when min is greater than max.
+#[test]
+fn test_clamp_invalid_bounds_throws_value_error() {
+    let out = compile_and_run(
+        r#"<?php
+try {
+    clamp(5, 10, 0);
+    echo "bad";
+} catch (ValueError $e) {
+    echo get_class($e);
+}
+"#,
+    );
+    assert_eq!(out, "ValueError");
+}
+
+/// Verifies clamp() rejects NaN lower and upper bounds with catchable ValueError exceptions.
+#[test]
+fn test_clamp_nan_bounds_throw_value_error() {
+    let out = compile_and_run(
+        r#"<?php
+try {
+    clamp(5.0, NAN, 10.0);
+    echo "bad-min";
+} catch (ValueError $e) {
+    echo get_class($e);
+}
+echo ":";
+try {
+    clamp(5.0, 0.0, NAN);
+    echo "bad-max";
+} catch (ValueError $e) {
+    echo get_class($e);
+}
+"#,
+    );
+    assert_eq!(out, "ValueError:ValueError");
+}

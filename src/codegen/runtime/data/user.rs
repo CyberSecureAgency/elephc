@@ -107,6 +107,10 @@ pub(crate) fn emit_runtime_data_user(
         .iter()
         .map(|(_, class_info)| (class_info.class_id, *class_info))
         .collect();
+    let class_name_by_id: HashMap<u64, &String> = sorted_classes
+        .iter()
+        .map(|(name, class_info)| (class_info.class_id, *name))
+        .collect();
     let max_class_id = sorted_classes.iter().map(|(_, class_info)| class_info.class_id).max();
 
     out.push_str(".data\n");
@@ -114,6 +118,7 @@ pub(crate) fn emit_runtime_data_user(
     emit_callable_function_data(&mut out, functions, function_variant_groups);
     out.push_str(".p2align 3\n");
     super::instanceof::emit_instanceof_target_lookup_data(&mut out, &sorted_interfaces, &sorted_classes);
+    emit_class_name_lookup_data(&mut out, max_class_id, &class_name_by_id);
 
     // Per-program class id of the built-in `Fiber` class. The fiber runtime
     // checks this against the receiver's class_id in __rt_object_free_deep so
@@ -635,9 +640,54 @@ pub(crate) fn emit_runtime_data_user(
     out
 }
 
+/// Emits a dense class-id to class-name lookup table for runtime `get_class()`.
+///
+/// Each `_class_name_entries` row is two words: `(name_ptr, name_len)`. Missing
+/// class ids point at `_class_name_missing` with length zero so runtime lookups
+/// can fail to an empty string without branching into undefined labels.
+fn emit_class_name_lookup_data(
+    out: &mut String,
+    max_class_id: Option<u64>,
+    class_name_by_id: &HashMap<u64, &String>,
+) {
+    out.push_str(".p2align 3\n");
+    out.push_str(".globl _class_name_count\n_class_name_count:\n");
+    out.push_str(&format!(
+        "    .quad {}\n",
+        max_class_id.map_or(0, |class_id| class_id + 1)
+    ));
+    out.push_str(".globl _class_name_entries\n_class_name_entries:\n");
+    if let Some(max_class_id) = max_class_id {
+        for class_id in 0..=max_class_id {
+            if let Some(class_name) = class_name_by_id.get(&class_id) {
+                out.push_str(&format!("    .quad _class_name_{}\n", class_id));
+                out.push_str(&format!("    .quad {}\n", class_name.len()));
+            } else {
+                out.push_str("    .quad _class_name_missing\n");
+                out.push_str("    .quad 0\n");
+            }
+        }
+    }
+    out.push_str(".globl _class_name_missing\n_class_name_missing:\n");
+    out.push_str("    .byte 0\n");
+    if let Some(max_class_id) = max_class_id {
+        for class_id in 0..=max_class_id {
+            let Some(class_name) = class_name_by_id.get(&class_id) else {
+                continue;
+            };
+            out.push_str(&format!(
+                ".globl _class_name_{0}\n_class_name_{0}:\n",
+                class_id
+            ));
+            out.push_str(&format!("    .ascii \"{}\"\n", escaped_ascii(class_name)));
+        }
+    }
+    out.push_str("    .p2align 3\n");
+}
+
 /// Emits the callable-function name table and pointer table for user-defined functions.
-/// Each function name is emitted as an ASCII label; the pointer table references either
-/// the active variant symbol (for polymorphic functions) or zero.
+/// Each function name is emitted as an ASCII label; the pointer table references
+/// either the active variant symbol for polymorphic functions or zero.
 fn emit_callable_function_data(
     out: &mut String,
     functions: &HashMap<String, FunctionSig>,

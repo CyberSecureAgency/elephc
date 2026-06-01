@@ -16,8 +16,9 @@ use crate::types::{PhpType};
 use super::temps::source_temp_offset;
 use super::super::{
     array_element_stride, emit_array_length_bounds_check, emit_hash_lookup_for_param_or_index,
-    emit_named_spread_length_abort, load_array_element_to_result, push_expr_arg,
-    push_loaded_array_element_arg, push_loaded_hash_value_arg, spread_source_elem_ty,
+    emit_named_spread_duplicate_abort, emit_named_spread_length_abort,
+    load_array_element_to_result, push_expr_arg, push_loaded_array_element_arg,
+    push_loaded_hash_value_arg, spread_source_elem_ty,
 };
 
 /// Emits a bounds check for the positional prefix length before named spread args.
@@ -26,29 +27,98 @@ pub(super) fn emit_prefix_array_length_check(
     source_temp_types: &[PhpType],
     min_len: usize,
     max_len: Option<usize>,
+    max_len_param_name: Option<&str>,
     emitter: &mut Emitter,
     ctx: &mut Context,
     data: &mut DataSection,
 ) {
     let ok_label = ctx.next_label("named_prefix_len_ok");
-    let fail_label = ctx.next_label("named_prefix_len_fail");
+    let underflow_label = ctx.next_label("named_prefix_len_underflow");
+    let overflow_label = ctx.next_label("named_prefix_len_overflow");
     emitter.comment("validate named-argument positional prefix length");
     let prefix_offset = source_temp_offset(source_temp_types, prefix_temp_idx, 0);
     match emitter.target.arch {
         crate::codegen::platform::Arch::AArch64 => {
             abi::emit_load_temporary_stack_slot(emitter, "x8", prefix_offset);
             emitter.instruction("ldr x9, [x8]");                                // load the evaluated positional-prefix array length
-            emit_array_length_bounds_check("x9", min_len, max_len, &fail_label, &ok_label, emitter);
+            emit_array_length_bounds_check(
+                "x9",
+                min_len,
+                max_len,
+                &underflow_label,
+                &overflow_label,
+                &ok_label,
+                emitter,
+            );
         }
         crate::codegen::platform::Arch::X86_64 => {
             abi::emit_load_temporary_stack_slot(emitter, "r8", prefix_offset);
             emitter.instruction("mov r10, QWORD PTR [r8]");                     // load the evaluated positional-prefix array length
-            emit_array_length_bounds_check("r10", min_len, max_len, &fail_label, &ok_label, emitter);
+            emit_array_length_bounds_check(
+                "r10",
+                min_len,
+                max_len,
+                &underflow_label,
+                &overflow_label,
+                &ok_label,
+                emitter,
+            );
         }
     }
-    emitter.label(&fail_label);
+    emitter.label(&underflow_label);
     emit_named_spread_length_abort(emitter, data);
+    emitter.label(&overflow_label);
+    if let Some(param_name) = max_len_param_name {
+        emit_named_spread_duplicate_abort(emitter, data, param_name);
+    } else {
+        emit_named_spread_length_abort(emitter, data);
+    }
     emitter.label(&ok_label);
+}
+
+/// Checks dynamic associative spread prefixes for numeric keys that would fill
+/// parameters later assigned by explicit named arguments.
+pub(super) fn emit_prefix_duplicate_named_checks(
+    prefix_temp_idx: usize,
+    source_temp_types: &[PhpType],
+    duplicate_params: &[(usize, &str)],
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) {
+    if duplicate_params.is_empty()
+        || !matches!(source_temp_types[prefix_temp_idx], PhpType::AssocArray { .. })
+    {
+        return;
+    }
+
+    let prefix_offset = source_temp_offset(source_temp_types, prefix_temp_idx, 0);
+    for (param_idx, param_name) in duplicate_params {
+        let ok_label = ctx.next_label("named_prefix_duplicate_ok");
+        let fail_label = ctx.next_label("named_prefix_duplicate_fail");
+        emitter.comment("validate named-argument prefix duplicate");
+        match emitter.target.arch {
+            crate::codegen::platform::Arch::AArch64 => {
+                abi::emit_load_temporary_stack_slot(emitter, "x8", prefix_offset);
+                emitter.instruction("mov x0, x8");                              // pass the associative prefix hash to the numeric-key duplicate probe
+                abi::emit_load_int_immediate(emitter, "x1", *param_idx as i64);
+                abi::emit_load_int_immediate(emitter, "x2", -1);
+                abi::emit_call_label(emitter, "__rt_hash_get");
+            }
+            crate::codegen::platform::Arch::X86_64 => {
+                abi::emit_load_temporary_stack_slot(emitter, "r8", prefix_offset);
+                emitter.instruction("mov rdi, r8");                             // pass the associative prefix hash to the numeric-key duplicate probe
+                abi::emit_load_int_immediate(emitter, "rsi", *param_idx as i64);
+                abi::emit_load_int_immediate(emitter, "rdx", -1);
+                abi::emit_call_label(emitter, "__rt_hash_get");
+            }
+        }
+        abi::emit_branch_if_int_result_nonzero(emitter, &fail_label);
+        abi::emit_jump(emitter, &ok_label);
+        emitter.label(&fail_label);
+        emit_named_spread_duplicate_abort(emitter, data, param_name);
+        emitter.label(&ok_label);
+    }
 }
 
 /// Pushes a prefix array element as a named call argument, with optional default.

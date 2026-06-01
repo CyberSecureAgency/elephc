@@ -561,6 +561,68 @@ echo $f->getReturn();
     assert_eq!(out, "p2/null/2");
 }
 
+/// Verifies an associative spread passed to `Fiber::start()` maps string keys
+/// onto the fiber callback's fixed parameters, not synthetic start() slot names.
+#[test]
+fn test_fiber_start_assoc_spread_maps_named_callback_params() {
+    let out = compile_and_run(
+        r#"<?php
+$f = new Fiber(function(mixed $a, mixed $b, mixed $c): void {
+    echo gettype($a) . ":" . $a . "\n";
+    echo gettype($b) . ":" . $b . "\n";
+    echo gettype($c) . ":" . $c . "\n";
+});
+$args = ["b" => "bee", "a" => 7, "c" => 9];
+$f->start(...$args);
+"#,
+    );
+    assert_eq!(out, "integer:7\nstring:bee\ninteger:9\n");
+}
+
+/// Verifies `Fiber::start(...$assoc)` preserves named callback mapping while
+/// `resume()` delivers a scalar payload back to the suspended fiber.
+#[test]
+fn test_fiber_start_assoc_spread_then_resume_scalar_round_trip() {
+    let out = compile_and_run(
+        r#"<?php
+$f = new Fiber(function(mixed $a, mixed $b, mixed $c): void {
+    echo $a . ":" . $b . ":" . $c . "\n";
+    $x = Fiber::suspend("ready");
+    echo gettype($x) . ":" . $x;
+});
+$args = ["c" => "see", "a" => "aye", "b" => "bee"];
+echo $f->start(...$args) . "\n";
+$f->resume("done");
+"#,
+    );
+    assert_eq!(out, "aye:bee:see\nready\nstring:done");
+}
+
+/// Verifies `Fiber::start(...$assoc)` keeps array payloads boxed and owned
+/// correctly across the fiber start/suspend boundary.
+#[test]
+fn test_fiber_start_assoc_spread_preserves_array_payload() {
+    let out = compile_and_run(
+        r#"<?php
+function make(): Fiber {
+    return new Fiber(function(mixed $a, mixed $b, mixed $c): void {
+        echo gettype($a) . ":" . $a . "\n";
+        echo gettype($b) . ":" . $b . "\n";
+        $x = Fiber::suspend($c);
+        echo gettype($x) . ":" . $x . "\n";
+    });
+}
+
+$args = ["b" => "bee", "a" => 7, "c" => ["k" => 1]];
+$f = make();
+$ret = $f->start(...$args);
+echo $ret["k"] . "\n";
+$f->resume("done");
+"#,
+    );
+    assert_eq!(out, "integer:7\nstring:bee\n1\nstring:done\n");
+}
+
 /// Verifies that seven `mixed` arguments can be passed through `start()` to the
 /// fiber closure.  Seven is the maximum on AArch64 (integer arg-reg count
 /// minus `$this`).

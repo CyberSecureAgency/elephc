@@ -362,9 +362,9 @@ echo \Demo\Values\ANSWER;
     assert_eq!(out, "4242");
 }
 
-/// Verifies that `call_user_func` with a short name (`"triple"`) resolves to the current
-/// namespace's function, while `function_exists` also sees the local name. Both checks
-/// return truthy, confirming the function is found without a global prefix.
+/// Verifies that fully-qualified `function_exists()` sees a namespaced function,
+/// while `call_user_func` with a short name still resolves through the current
+/// namespace's callback lookup.
 #[test]
 fn test_namespace_callback_string_literals_resolve_current_namespace() {
     let out = compile_and_run(
@@ -375,7 +375,7 @@ function triple($value) {
     return $value * 3;
 }
 
-echo function_exists("triple");
+echo function_exists("Demo\\Callbacks\\triple");
 echo call_user_func("triple", 4);
 "#,
     );

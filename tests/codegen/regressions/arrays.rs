@@ -1,5 +1,6 @@
 //! Purpose:
-//! Integration or regression tests for end-to-end codegen coverage of regressions arrays, including function exists builtin array push, negative array index returns null, and out of bounds returns null.
+//! Integration or regression tests for end-to-end codegen coverage of array regressions,
+//! including array push metadata, associative append keys, and bounds behavior.
 //!
 //! Called from:
 //! - `cargo test` through Rust's test harness.
@@ -37,14 +38,34 @@ if (is_null($v)) { echo "null"; } else { echo "not null"; }
 /// Fixture: 3-element array accessed at index `5`.
 #[test]
 fn test_array_out_of_bounds_returns_null() {
-    let out = compile_and_run(
+    let out = compile_and_run_capture(
         r#"<?php
 $a = [10, 20, 30];
 $v = $a[5];
 if (is_null($v)) { echo "null"; } else { echo "not null"; }
 "#,
     );
-    assert_eq!(out, "null");
+    assert!(out.success);
+    assert_eq!(out.stdout, "null");
+    assert!(out.stderr.contains("Warning: Undefined array key 5"));
+}
+
+/// Verifies missing indexed-array reads emit PHP's undefined-key warning.
+/// Issue #293: the nested receiver expression must still run exactly once.
+#[test]
+fn test_array_out_of_bounds_warns_and_preserves_index_side_effects() {
+    let out = compile_and_run_capture(
+        r#"<?php
+function bump(&$i) { $i++; return $i - 1; }
+$arr = [["ok"], []];
+$i = 0;
+var_dump($arr[bump($i)][1]);
+echo "i=$i\n";
+"#,
+    );
+    assert!(out.success);
+    assert_eq!(out.stdout, "NULL\ni=1\n");
+    assert!(out.stderr.contains("Warning: Undefined array key 1"));
 }
 
 /// Verifies that valid integer indices still work correctly after the null-bounds check.
@@ -58,6 +79,38 @@ echo $a[0] . "|" . $a[1] . "|" . $a[2];
 "#,
     );
     assert_eq!(out, "10|20|30");
+}
+
+/// Verifies that float indexed-array keys are truncated to PHP integer keys on write and read.
+/// Issue #302: float keys must not use stale integer registers and grow the array until heap exhaustion.
+#[test]
+fn test_float_array_key_assignment_and_read_truncate_to_int() {
+    let out = compile_and_run(
+        r#"<?php
+$a = [];
+$a[1.9] = 3;
+$b = [10, 20];
+echo $a[1] . "|" . $a[1.2] . "|" . $b[1.9];
+"#,
+    );
+    assert_eq!(out, "3|3|20");
+}
+
+/// Verifies that multiple float keys that truncate to the same integer key update one slot.
+/// Issue #302: repeated float-key writes should replace the integer slot instead of crashing.
+#[test]
+fn test_float_array_key_collisions_replace_integer_slot() {
+    let out = compile_and_run(
+        r#"<?php
+$a = [];
+$a[1.2] = "x";
+$a[1.8] = "y";
+foreach ($a as $k => $v) {
+    echo $k, ":", $v, "\n";
+}
+"#,
+    );
+    assert_eq!(out, "1:y\n");
 }
 
 // -- Issue #20: assoc array missing key should return null, not garbage --
@@ -217,6 +270,49 @@ echo $x[2];
 "#,
     );
     assert_eq!(out, "330");
+}
+
+/// Verifies the checked-in large-arity by-ref array mutation stress example keeps
+/// the late by-reference array parameter connected to the caller's storage.
+#[test]
+fn test_large_arity_by_ref_array_mutation_example() {
+    let out = compile_and_run(include_str!(
+        "../../../examples/large-by-ref-array-mutation/main.php"
+    ));
+    assert_eq!(out, "41|42\n");
+}
+
+/// Verifies that appending after a negative integer key uses the next PHP auto key.
+/// Issue #305: appending after `$a[-2] = ...` should insert at key `-1`, not drop the value.
+#[test]
+fn test_append_after_negative_assoc_key_preserves_next_key() {
+    let out = compile_and_run(
+        r#"<?php
+$a = [];
+$a[-2] = 10;
+$a[] = 20;
+foreach ($a as $k => $v) {
+    echo $k, ":", $v, "\n";
+}
+"#,
+    );
+    assert_eq!(out, "-2:10\n-1:20\n");
+}
+
+/// Verifies that appending to a string-key-only associative array starts at integer key zero.
+/// Fixture: `["name" => 10]` followed by `$a[] = 20` should preserve both entries.
+#[test]
+fn test_append_to_string_key_assoc_array_starts_at_zero() {
+    let out = compile_and_run(
+        r#"<?php
+$a = ["name" => 10];
+$a[] = 20;
+foreach ($a as $k => $v) {
+    echo $k, ":", $v, "\n";
+}
+"#,
+    );
+    assert_eq!(out, "name:10\n0:20\n");
 }
 
 /// Verifies that writing to two different computed indices of a by-ref array does not corrupt values.

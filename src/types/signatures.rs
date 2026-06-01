@@ -82,10 +82,10 @@ pub(crate) fn builtin_call_sig(name: &str) -> Option<FunctionSig> {
         | "ptr_null" | "getcwd" | "sys_get_temp_dir" | "tmpfile" => Some(fixed(&[])),
 
         "strlen" | "strtolower" | "strtoupper" | "ucfirst" | "lcfirst" | "strrev"
-        | "addslashes" | "stripslashes" | "nl2br" | "bin2hex" | "hex2bin"
-        | "htmlspecialchars" | "htmlentities" | "html_entity_decode" | "urlencode"
-        | "urldecode" | "rawurlencode" | "rawurldecode" | "base64_encode"
-        | "base64_decode" => Some(fixed(&["string"])),
+        | "grapheme_strrev" | "addslashes" | "stripslashes" | "nl2br" | "bin2hex"
+        | "hex2bin" | "htmlspecialchars" | "htmlentities" | "html_entity_decode"
+        | "urlencode" | "urldecode" | "rawurlencode" | "rawurldecode"
+        | "base64_encode" | "base64_decode" => Some(fixed(&["string"])),
         "ord" => Some(fixed(&["character"])),
         "chr" => Some(fixed(&["codepoint"])),
 
@@ -107,6 +107,7 @@ pub(crate) fn builtin_call_sig(name: &str) -> Option<FunctionSig> {
         }
         "function_exists" => Some(fixed(&["function"])),
         "is_callable" => Some(fixed(&["value"])),
+        "defined" => Some(fixed(&["constant_name"])),
         "class_alias" => Some(optional(
             &["class", "alias", "autoload"],
             2,
@@ -167,10 +168,10 @@ pub(crate) fn builtin_call_sig(name: &str) -> Option<FunctionSig> {
         "umask" => Some(optional(&["mask"], 0, vec![null_lit()])),
         "exit" | "die" => Some(optional(&["status"], 0, vec![int_lit(0)])),
 
-        "trim" | "ltrim" | "rtrim" => Some(optional(
+        "trim" | "ltrim" | "rtrim" | "chop" => Some(optional(
             &["string", "characters"],
             1,
-            vec![string_lit(" \n\r\t\u{0b}\0")],
+            vec![string_lit(" \n\r\t\u{0b}\u{0c}\0")],
         )),
         "ucwords" => Some(optional(
             &["string", "separators"],
@@ -288,6 +289,7 @@ pub(crate) fn builtin_call_sig(name: &str) -> Option<FunctionSig> {
         "hypot" => Some(fixed(&["x", "y"])),
         "pow" => Some(fixed(&["num", "exponent"])),
         "intdiv" | "fmod" | "fdiv" => Some(fixed(&["num1", "num2"])),
+        "clamp" => Some(fixed(&["value", "min", "max"])),
         "min" | "max" => Some(variadic(&["value"], "values")),
         "rand" | "mt_rand" | "random_int" => Some(fixed(&["min", "max"])),
         "round" => Some(optional(&["num", "precision"], 1, vec![int_lit(0)])),
@@ -499,16 +501,26 @@ fn general_first_class_callable_builtin_sig(name: &str) -> Option<FunctionSig> {
         | "ctype_alpha" | "ctype_digit" | "ctype_alnum" | "ctype_space" => {
             Some(typed_first_class_builtin_sig(name, &[PhpType::Mixed], PhpType::Bool))
         }
+        "defined" => Some(typed_first_class_builtin_sig(
+            name,
+            &[PhpType::Str],
+            PhpType::Bool,
+        )),
         "gettype" => Some(typed_first_class_builtin_sig(
             name,
             &[PhpType::Mixed],
             PhpType::Str,
         )),
+        "grapheme_strrev" => Some(typed_first_class_builtin_sig(
+            name,
+            &[PhpType::Str],
+            PhpType::Union(vec![PhpType::Str, PhpType::Bool]),
+        )),
         "strtolower" | "strtoupper" | "ucfirst" | "lcfirst" | "strrev"
         | "addslashes" | "stripslashes" | "nl2br" | "bin2hex" | "hex2bin"
         | "htmlspecialchars" | "htmlentities" | "html_entity_decode" | "urlencode"
         | "urldecode" | "rawurlencode" | "rawurldecode" | "base64_encode"
-        | "base64_decode" | "trim" | "ltrim" | "rtrim" | "ucwords" | "substr"
+        | "base64_decode" | "trim" | "ltrim" | "rtrim" | "chop" | "ucwords" | "substr"
         | "str_repeat" | "strstr" | "str_replace" | "str_ireplace" | "explode"
         | "implode" | "substr_replace" | "str_pad" | "str_split" | "wordwrap"
         | "sprintf" | "hash" | "md5" | "sha1" | "number_format" | "chr" => {
@@ -614,6 +626,11 @@ fn general_first_class_callable_builtin_sig(name: &str) -> Option<FunctionSig> {
         "abs" | "min" | "max" => Some(typed_first_class_builtin_sig(
             name,
             &[PhpType::Mixed],
+            PhpType::Mixed,
+        )),
+        "clamp" => Some(typed_first_class_builtin_sig(
+            name,
+            &[PhpType::Mixed, PhpType::Mixed, PhpType::Mixed],
             PhpType::Mixed,
         )),
         "floor" | "ceil" | "sqrt" | "sin" | "cos" | "tan" | "asin" | "acos" | "atan"

@@ -51,6 +51,11 @@ pub(crate) fn prune_stmt(stmt: Stmt) -> Vec<Stmt> {
             span,
             attributes: Vec::new(),
         }],
+        StmtKind::RefAssign { target, source } => vec![Stmt {
+            kind: StmtKind::RefAssign { target, source },
+            span,
+            attributes: Vec::new(),
+        }],
         StmtKind::If {
             condition,
             then_body,

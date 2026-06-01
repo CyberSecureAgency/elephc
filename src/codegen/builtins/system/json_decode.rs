@@ -55,6 +55,7 @@ pub fn emit(
     // state or call configuration.
     abi::emit_store_zero_to_symbol(emitter, "_json_last_error", 0);
     abi::emit_store_zero_to_symbol(emitter, "_json_active_depth", 0);
+    abi::emit_store_zero_to_symbol(emitter, "_json_error_location_active", 0);
 
     if args.get(3).is_some() {
         abi::emit_pop_reg(emitter, abi::int_result_reg(emitter));
@@ -107,6 +108,7 @@ pub fn emit(
 
     let (ptr_reg, len_reg) = abi::string_result_regs(emitter);
     abi::emit_pop_reg_pair(emitter, ptr_reg, len_reg);
+    abi::emit_store_reg_to_symbol(emitter, ptr_reg, "_json_error_source_ptr", 0);
     let done_label = ctx.next_label("json_decode_done");
     match emitter.target.arch {
         Arch::AArch64 => {

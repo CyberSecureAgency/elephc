@@ -53,6 +53,12 @@ pub(super) fn parse_assign(
         .ok_or_else(|| CompileError::new(span, "Expected '=' after variable name"))?;
     *pos += 1;
 
+    if op == AssignmentOperator::Assign
+        && matches!(tokens.get(*pos).map(|(token, _)| token), Some(Token::Ampersand))
+    {
+        return parse_ref_assign(tokens, pos, name, span);
+    }
+
     let rhs = parse_assignment_value_expr(tokens, pos)?;
     if matches!(
         tokens.get(*pos).map(|(token, _)| token),
@@ -69,6 +75,32 @@ pub(super) fn parse_assign(
     let value = assignment_value(target, op, rhs, span);
 
     Ok(Stmt::new(StmtKind::Assign { name, value }, span))
+}
+
+/// Parses direct variable reference assignment after the leading `$target =` tokens.
+///
+/// PHP spells reference aliasing as `$target =& $source;`. This parser accepts
+/// direct variable sources and leaves broader lvalue reference targets for
+/// future storage-specific lowering.
+fn parse_ref_assign(
+    tokens: &[(Token, Span)],
+    pos: &mut usize,
+    target: String,
+    span: Span,
+) -> Result<Stmt, CompileError> {
+    *pos += 1;
+    let source = match tokens.get(*pos).map(|(token, _)| token) {
+        Some(Token::Variable(source)) => source.clone(),
+        _ => {
+            return Err(CompileError::new(
+                span,
+                "Reference assignment source must be a variable",
+            ));
+        }
+    };
+    *pos += 1;
+    expect_semicolon(tokens, pos)?;
+    Ok(Stmt::new(StmtKind::RefAssign { target, source }, span))
 }
 
 /// Converts a lexer `Token` into an `AssignmentOperator` variant.

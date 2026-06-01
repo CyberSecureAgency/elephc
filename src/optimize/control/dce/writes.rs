@@ -387,6 +387,10 @@ fn collect_written_names(stmt: &Stmt, written: &mut Vec<String>) {
         StmtKind::Assign { name, .. }
         | StmtKind::TypedAssign { name, .. }
         | StmtKind::StaticVar { name, .. } => push_written_name(written, name),
+        StmtKind::RefAssign { target, source } => {
+            push_written_name(written, target);
+            push_written_name(written, source);
+        }
         StmtKind::ArrayAssign { array, .. } | StmtKind::ArrayPush { array, .. } => {
             push_written_name(written, array)
         }

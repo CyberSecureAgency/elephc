@@ -49,9 +49,10 @@ pub fn resolve(program: Program) -> Result<Program, CompileError> {
     statements::resolve_stmt_list(&program, None, &Imports::default(), &symbols)
 }
 
-/// Rewrites string literal arguments in callbacks for functions that accept callable names.
+/// Rewrites string literal arguments for functions that invoke callable names.
 /// For functions like `array_map` or `usort`, resolves string callback names to their canonical
-/// fully-qualified form using the current namespace and imports.
+/// fully-qualified form using the current namespace and imports. `function_exists()` is excluded
+/// because PHP treats its argument as a literal introspection name rather than a callable lookup.
 fn rewrite_callback_literal_args(
     function_name: &str,
     args: &[Expr],
@@ -60,7 +61,7 @@ fn rewrite_callback_literal_args(
     symbols: &Symbols,
 ) -> Vec<Expr> {
     let callback_positions: &[usize] = match function_name {
-        "function_exists" | "call_user_func" | "call_user_func_array" => &[0],
+        "call_user_func" | "call_user_func_array" => &[0],
         "array_map" | "array_filter" | "array_reduce" | "array_walk" => &[0],
         "usort" | "uksort" | "uasort" => &[1],
         _ => &[],

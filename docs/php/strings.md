@@ -95,13 +95,15 @@ Read-only. Negative indices count from end. Out-of-bounds returns empty string.
 | `ucfirst()` | `ucfirst($str): string` | Uppercase first character |
 | `lcfirst()` | `lcfirst($str): string` | Lowercase first character |
 | `ucwords()` | `ucwords($str): string` | Uppercase first letter of each word |
-| `trim()` | `trim($str [, $chars]): string` | Strip whitespace from both ends |
-| `ltrim()` | `ltrim($str [, $chars]): string` | Strip whitespace from left |
-| `rtrim()` | `rtrim($str [, $chars]): string` | Strip whitespace from right |
+| `trim()` | `trim($str [, $chars]): string` | Strip the default mask (`" \n\r\t\v\f\0"`) or explicit characters from both ends |
+| `ltrim()` | `ltrim($str [, $chars]): string` | Strip the default mask (`" \n\r\t\v\f\0"`) or explicit characters from the left |
+| `rtrim()` | `rtrim($str [, $chars]): string` | Strip the default mask (`" \n\r\t\v\f\0"`) or explicit characters from the right |
+| `chop()` | `chop($str [, $chars]): string` | Alias of `rtrim()` |
 | `str_repeat()` | `str_repeat($str, $times): string` | Repeat a string |
 | `str_pad()` | `str_pad($str, $len [, $pad, $type]): string` | Pad string to length |
 | `str_split()` | `str_split($str [, $len]): array` | Split into chunks |
 | `strrev()` | `strrev($str): string` | Reverse a string |
+| `grapheme_strrev()` | `grapheme_strrev($str): string\|false` | Reverse a UTF-8 string by grapheme clusters, preserving embedded NUL bytes and keeping combining marks, emoji modifiers, and ZWJ sequences with their base cluster. Returns `false` on malformed UTF-8. |
 | `strcmp()` | `strcmp($a, $b): int` | Binary-safe string comparison |
 | `strcasecmp()` | `strcasecmp($a, $b): int` | Case-insensitive comparison |
 | `str_contains()` | `str_contains($hay, $needle): bool` | Check if string contains substring |
@@ -137,5 +139,6 @@ Read-only. Negative indices count from end. Out-of-bounds returns empty string.
 | `ctype_digit()` | `ctype_digit($str): bool` | All chars are 0-9 |
 | `ctype_alnum()` | `ctype_alnum($str): bool` | All chars are alphanumeric |
 | `ctype_space()` | `ctype_space($str): bool` | All chars are whitespace |
+
 Regex functions are documented separately in [Regex](regex.md), including the
 PCRE2 build requirements for programs that use `preg_*`.

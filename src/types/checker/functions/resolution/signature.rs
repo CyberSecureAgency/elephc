@@ -150,7 +150,27 @@ impl Checker {
             return Err(CompileError::from_many(errors));
         }
 
-        if let Some(type_ann) = decl.return_type.as_ref() {
+        let contains_yield = super::super::super::yield_validation::body_contains_yield(&decl.body);
+        if contains_yield {
+            let generator_ty = PhpType::Object("Generator".to_string());
+            if let Some(type_ann) = decl.return_type.as_ref() {
+                let declared_ret = self.resolve_declared_return_type_hint(
+                    type_ann,
+                    decl.span,
+                    &format!("Function '{}'", name),
+                )?;
+                if !self.generator_return_type_accepts(&declared_ret) {
+                    self.require_compatible_return_type(
+                        &declared_ret,
+                        &generator_ty,
+                        true,
+                        decl.span,
+                        &format!("Function '{}' return type", name),
+                    )?;
+                }
+            }
+            return_type = generator_ty;
+        } else if let Some(type_ann) = decl.return_type.as_ref() {
             let declared_ret = self.resolve_declared_return_type_hint(
                 type_ann,
                 decl.span,
@@ -191,15 +211,6 @@ impl Checker {
             for return_info in &all_return_infos[1..] {
                 return_type = Self::wider_type(&return_type, &return_info.ty);
             }
-        }
-
-        // Generator override: any function whose body contains `yield` is
-        // implicitly a generator and returns a `Generator` object regardless
-        // of its declared/inferred return type. PHP requires the declared
-        // type to be `Generator`, `Iterator`, `Traversable`, or `iterable` —
-        // we accept any of those plus the absence of an explicit annotation.
-        if super::super::super::yield_validation::body_contains_yield(&decl.body) {
-            return_type = PhpType::Object("Generator".to_string());
         }
 
         let sig = FunctionSig {
@@ -243,13 +254,22 @@ impl Checker {
 
         Ok(return_type)
     }
+
+    /// Returns true when a declared generator return annotation accepts
+    /// the actual `Generator` object returned when the body contains `yield`.
+    fn generator_return_type_accepts(&self, declared_ret: &PhpType) -> bool {
+        if matches!(declared_ret, PhpType::Object(name) if name == "Traversable") {
+            return true;
+        }
+        self.type_accepts(declared_ret, &PhpType::Object("Generator".to_string()))
+    }
 }
 
 /// Infers a concrete array type from return info when the declared return type is a generic `array` hint.
-    ///
-    /// Returns `Some(PhpType)` only when every non-void return in `return_types` is the same
-    /// array type (including `array<T>` or `assocArray` shapes). Returns `None` if returns differ,
-    /// include non-array types, or are all `void`.
+///
+/// Returns `Some(PhpType)` only when every non-void return in `return_types` is the same
+/// array type (including `array<T>` or `assocArray` shapes). Returns `None` if returns differ,
+/// include non-array types, or are all `void`.
 fn inferred_specific_array_type_from_infos(
     return_types: &[super::super::returns::ReturnInfo],
 ) -> Option<PhpType> {

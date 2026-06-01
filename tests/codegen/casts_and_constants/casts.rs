@@ -23,6 +23,29 @@ fn test_cast_int_from_string() {
     assert_eq!(out, "42");
 }
 
+/// Verifies PHP numeric-string rules for int casts, `intval()`, and Mixed string payloads.
+#[test]
+fn test_cast_int_from_numeric_strings_uses_php_conversion_rules() {
+    let out = compile_and_run(
+        r#"<?php
+echo (int)" 42", ":", (float)" 42", "\n";
+echo (int)"1e2", ":", (float)"1e2", "\n";
+echo (int)"  +7", ":", (float)"  +7", "\n";
+echo (int)"1.9", ":", (float)"1.9", "\n";
+echo (int)"1.9e2", ":", (float)"1.9e2", "\n";
+echo (int)"1e2abc", ":", (float)"1e2abc", "\n";
+echo (int)"  -2.7e1", ":", (float)"  -2.7e1", "\n";
+echo "intval:", intval("  +7"), ":", intval("1e2"), "\n";
+$map = ["exp" => "1e2", "plus" => "  +7", "n" => 5];
+echo "mixed:", (int)$map["exp"], ":", (int)$map["plus"];
+"#,
+    );
+    assert_eq!(
+        out,
+        "42:42\n100:100\n7:7\n1:1.9\n190:190\n100:100\n-27:-27\nintval:7:100\nmixed:100:7"
+    );
+}
+
 /// Compiles `<?php echo (int)true;` and asserts stdout is `"1"` — true becomes 1.
 #[test]
 fn test_cast_int_from_bool() {

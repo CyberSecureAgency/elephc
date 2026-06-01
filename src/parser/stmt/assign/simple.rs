@@ -47,6 +47,9 @@ pub(in crate::parser::stmt) fn parse_variable_stmt(
     if let Some(stmt) = postfix::try_parse_postfix_assignment(tokens, pos, span)? {
         return Ok(stmt);
     }
+    if let Some(stmt) = postfix::try_parse_postfix_incdec(tokens, pos, span)? {
+        return Ok(stmt);
+    }
 
     // Post-increment/decrement
     if *pos + 1 < tokens.len() {

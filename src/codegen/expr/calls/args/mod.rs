@@ -41,7 +41,10 @@ pub(crate) use normalize::{
 };
 pub(crate) use spread_checks::emit_spread_length_checks;
 use array_elements::spread_source_elem_ty;
-use spread_checks::{emit_array_length_bounds_check, emit_named_spread_length_abort};
+use spread_checks::{
+    emit_array_length_bounds_check, emit_named_spread_duplicate_abort,
+    emit_named_spread_length_abort,
+};
 use variadic::{store_current_array_element, variadic_container_elem_ty};
 pub(crate) use variadic::emit_empty_variadic_array_arg;
 

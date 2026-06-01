@@ -342,6 +342,9 @@ fn plan_named_call_args(
                 } else {
                     Some(max_len)
                 };
+                let upper_bound_param_name = has_regular_named_bound
+                    .then(|| sig.params.get(next_named_idx).map(|(name, _)| name.clone()))
+                    .flatten();
                 let min_len = (positional_idx..next_named_idx)
                     .rfind(|idx| sig.defaults.get(*idx).and_then(|default| default.as_ref()).is_none())
                     .map(|idx| idx - positional_idx + 1)
@@ -350,6 +353,7 @@ fn plan_named_call_args(
                     spread_expr: expr.clone(),
                     min_len,
                     max_len: upper_bound,
+                    max_len_param_name: upper_bound_param_name,
                 });
                 for element_idx in 0..max_len {
                     let prefix_element_idx = positional_idx;
