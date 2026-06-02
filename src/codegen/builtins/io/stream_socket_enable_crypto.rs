@@ -74,12 +74,12 @@ pub fn emit(
     // -- disable path: v1 stub. Drop the stashed fd, report success. --
     abi::emit_release_temporary_stack(emitter, 16);                             // drop the stashed fd
     match emitter.target.arch {
-        Arch::AArch64 => emitter.instruction("mov x0, #1"),
-        Arch::X86_64 => emitter.instruction("mov eax, 1"),
+        Arch::AArch64 => emitter.instruction("mov x0, #1"),                     // disable stub reports success
+        Arch::X86_64 => emitter.instruction("mov eax, 1"),                      // disable stub reports success
     }
     match emitter.target.arch {
-        Arch::AArch64 => emitter.instruction(&format!("b {}", done_label)),
-        Arch::X86_64 => emitter.instruction(&format!("jmp {}", done_label)),
+        Arch::AArch64 => emitter.instruction(&format!("b {}", done_label)),     // return without attaching TLS
+        Arch::X86_64 => emitter.instruction(&format!("jmp {}", done_label)),    // return without attaching TLS
     }
 
     // -- enable path: publish tls fn pointers, attach the fd, record session --
@@ -118,7 +118,7 @@ pub fn emit(
             emitter.label(&host_default);
             abi::emit_symbol_address(emitter, "x9", "_tls_peer_name_default");
             emitter.instruction("str x9, [sp, #0]");                            // fall back to "localhost" ptr
-            emitter.instruction("mov x9, #9");
+            emitter.instruction("mov x9, #9");                                  // strlen("localhost")
             emitter.instruction("str x9, [sp, #8]");                            // fall back to "localhost" len
             emitter.label("__rt_ssec_peer_ok_aarch64");
             // -- look up ssl.local_cert / ssl.local_pk for mutual-TLS client
@@ -157,7 +157,7 @@ pub fn emit(
             emitter.instruction("ldr x6, [sp, #40]");                           // local_pk path len → 7th arg
             abi::emit_symbol_address(emitter, "x9", "_elephc_tls_attach_fd_client_cert_fn");
             emitter.instruction("ldr x9, [x9]");                                // mutual-TLS attach variant
-            emitter.instruction(&format!("b {}", do_attach));
+            emitter.instruction(&format!("b {}", do_attach));                   // call the selected mutual-TLS attach function
             emitter.label(&plain_attach);
             abi::emit_symbol_address(emitter, "x9", "_elephc_tls_attach_fd_fn");
             emitter.instruction("ldr x9, [x9]");                                // server-auth-only attach variant
@@ -166,14 +166,14 @@ pub fn emit(
             emitter.instruction("ldr x10, [sp, #64]");                          // reload fd
             abi::emit_release_temporary_stack(emitter, 64);                     // pop the peer-name + cert/key spill area
             abi::emit_release_temporary_stack(emitter, 16);                     // pop the saved fd
-            emitter.instruction("cmp x0, #0");
-            emitter.instruction(&format!("b.lt {}", fail_label));
+            emitter.instruction("cmp x0, #0");                                  // did TLS attach return a failure handle?
+            emitter.instruction(&format!("b.lt {}", fail_label));               // report false when attach failed
             abi::emit_symbol_address(emitter, "x11", "_tls_sessions");
             emitter.instruction("str x0, [x11, x10, lsl #3]");                  // _tls_sessions[fd] = handle
-            emitter.instruction("mov x0, #1");
-            emitter.instruction(&format!("b {}", done_label));
+            emitter.instruction("mov x0, #1");                                  // report successful TLS enablement
+            emitter.instruction(&format!("b {}", done_label));                  // skip the failure result
             emitter.label(&fail_label);
-            emitter.instruction("mov x0, #0");
+            emitter.instruction("mov x0, #0");                                  // report failed TLS enablement
         }
         Arch::X86_64 => {
             // Same peer-name lookup as the AArch64 branch. `emit_push_reg`
@@ -190,8 +190,8 @@ pub fn emit(
             emitter.instruction("lea rdi, [rsp + 0]");                          // out_ptr address
             emitter.instruction("lea rsi, [rsp + 8]");                          // out_len address
             emitter.instruction("call __rt_get_ssl_peer_name");                 // rax = 1 hit / 0 miss
-            emitter.instruction("test rax, rax");
-            emitter.instruction("jnz __rt_ssec_peer_ok_x86");
+            emitter.instruction("test rax, rax");                               // did the context provide ssl.peer_name?
+            emitter.instruction("jnz __rt_ssec_peer_ok_x86");                   // use the loaded peer-name when present
             // -- miss: default the SNI to the connection host recorded by
             //    stream_socket_client (_stream_connect_host[fd]) before falling
             //    back to the hardcoded "localhost". The fd sits at [rsp+64]. --
@@ -208,10 +208,10 @@ pub fn emit(
             emitter.instruction("mov QWORD PTR [rsp + 8], r11");                // peer_name len = connection host length
             emitter.instruction("jmp __rt_ssec_peer_ok_x86");                   // host defaulted from the connection — skip localhost
             emitter.label(&host_default);
-            emitter.instruction("lea r9, [rip + _tls_peer_name_default]");
-            emitter.instruction("mov QWORD PTR [rsp + 0], r9");
+            emitter.instruction("lea r9, [rip + _tls_peer_name_default]");      // fallback peer-name literal
+            emitter.instruction("mov QWORD PTR [rsp + 0], r9");                 // peer_name ptr = "localhost"
             emitter.instruction("mov r9, 9");                                   // route the immediate through a register so the assembler always emits a 64-bit store
-            emitter.instruction("mov QWORD PTR [rsp + 8], r9");
+            emitter.instruction("mov QWORD PTR [rsp + 8], r9");                 // peer_name len = strlen("localhost")
             emitter.label("__rt_ssec_peer_ok_x86");
             // -- look up ssl.local_cert / ssl.local_pk for mutual-TLS client
             //    auth; pre-zero the length slots so a miss selects plain attach. --
@@ -238,10 +238,10 @@ pub fn emit(
             emitter.instruction("mov rsi, QWORD PTR [rsp + 0]");                // peer_name ptr → 2nd arg
             emitter.instruction("mov rdx, QWORD PTR [rsp + 8]");                // peer_name len → 3rd arg
             emitter.instruction("mov rax, QWORD PTR [rsp + 24]");               // local_cert length
-            emitter.instruction("test rax, rax");
+            emitter.instruction("test rax, rax");                               // is a client certificate path present?
             emitter.instruction(&format!("jz {}", plain_attach));               // no client cert → plain attach
             emitter.instruction("mov rax, QWORD PTR [rsp + 40]");               // local_pk length
-            emitter.instruction("test rax, rax");
+            emitter.instruction("test rax, rax");                               // is a client key path present?
             emitter.instruction(&format!("jz {}", plain_attach));               // missing key → plain attach
             // mutual-TLS attach: args 4-6 in rcx/r8/r9, arg 7 (key_len) on stack
             emitter.instruction("mov rcx, QWORD PTR [rsp + 16]");               // local_cert path ptr → 4th arg
@@ -250,28 +250,28 @@ pub fn emit(
             emitter.instruction("mov r9, QWORD PTR [rsp + 32]");                // local_pk path ptr → 6th arg
             emitter.instruction("sub rsp, 16");                                 // reserve the 7th stack arg + padding (stays 0-mod-16)
             emitter.instruction("mov QWORD PTR [rsp + 0], rax");                // 7th arg = local_pk path len
-            emitter.instruction("mov r10, QWORD PTR [rip + _elephc_tls_attach_fd_client_cert_fn]");
+            emitter.instruction("mov r10, QWORD PTR [rip + _elephc_tls_attach_fd_client_cert_fn]"); // mutual-TLS attach function pointer
             emitter.instruction("call r10");                                    // rax = handle or -1
             emitter.instruction("add rsp, 16");                                 // pop the 7th stack arg
-            emitter.instruction(&format!("jmp {}", after_attach));
+            emitter.instruction(&format!("jmp {}", after_attach));              // skip the plain attach variant
             emitter.label(&plain_attach);
             emitter.instruction("mov rdi, QWORD PTR [rsp + 64]");               // reload fd → 1st arg
             emitter.instruction("mov rsi, QWORD PTR [rsp + 0]");                // peer_name ptr → 2nd arg
             emitter.instruction("mov rdx, QWORD PTR [rsp + 8]");                // peer_name len → 3rd arg
-            emitter.instruction("mov r9, QWORD PTR [rip + _elephc_tls_attach_fd_fn]");
+            emitter.instruction("mov r9, QWORD PTR [rip + _elephc_tls_attach_fd_fn]"); // server-auth-only attach function pointer
             emitter.instruction("call r9");                                     // rax = handle or -1
             emitter.label(&after_attach);
             emitter.instruction("mov r10, QWORD PTR [rsp + 64]");               // reload fd
             abi::emit_release_temporary_stack(emitter, 64);                     // pop peer-name + cert/key spill
             abi::emit_release_temporary_stack(emitter, 16);                     // pop saved fd
-            emitter.instruction("cmp rax, 0");
-            emitter.instruction(&format!("jl {}", fail_label));
-            emitter.instruction("lea r11, [rip + _tls_sessions]");
-            emitter.instruction("mov QWORD PTR [r11 + r10 * 8], rax");
-            emitter.instruction("mov eax, 1");
-            emitter.instruction(&format!("jmp {}", done_label));
+            emitter.instruction("cmp rax, 0");                                  // did TLS attach return a failure handle?
+            emitter.instruction(&format!("jl {}", fail_label));                 // report false when attach failed
+            emitter.instruction("lea r11, [rip + _tls_sessions]");              // TLS session handle table
+            emitter.instruction("mov QWORD PTR [r11 + r10 * 8], rax");          // _tls_sessions[fd] = handle
+            emitter.instruction("mov eax, 1");                                  // report successful TLS enablement
+            emitter.instruction(&format!("jmp {}", done_label));                // skip the failure result
             emitter.label(&fail_label);
-            emitter.instruction("xor eax, eax");
+            emitter.instruction("xor eax, eax");                                // report failed TLS enablement
         }
     }
 

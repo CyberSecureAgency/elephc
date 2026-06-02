@@ -43,8 +43,8 @@ pub fn emit(
         _ => {
             // Unparseable or empty path lowers to PHP false.
             match emitter.target.arch {
-                Arch::AArch64 => emitter.instruction("mov x0, #-1"),
-                Arch::X86_64 => emitter.instruction("mov rax, -1"),
+                Arch::AArch64 => emitter.instruction("mov x0, #-1"),            // negative fd sentinel for PHP false
+                Arch::X86_64 => emitter.instruction("mov rax, -1"),             // negative fd sentinel for PHP false
             }
             super::fopen::box_fopen_result(emitter, ctx);
             return Some(PhpType::Mixed);
@@ -58,16 +58,16 @@ pub fn emit(
     match emitter.target.arch {
         Arch::AArch64 => {
             abi::emit_symbol_address(emitter, "x1", &path_sym);
-            emitter.instruction(&format!("mov x2, #{}", path_len));                 // path length
+            emitter.instruction(&format!("mov x2, #{}", path_len));             // path length
             abi::emit_symbol_address(emitter, "x3", &mode_sym);
-            emitter.instruction(&format!("mov x4, #{}", mode_len));                 // mode length
+            emitter.instruction(&format!("mov x4, #{}", mode_len));             // mode length
             abi::emit_call_label(emitter, "__rt_fopen");
         }
         Arch::X86_64 => {
             abi::emit_symbol_address(emitter, "rax", &path_sym);
-            emitter.instruction(&format!("mov rdx, {}", path_len));                 // path length
+            emitter.instruction(&format!("mov rdx, {}", path_len));             // path length
             abi::emit_symbol_address(emitter, "rdi", &mode_sym);
-            emitter.instruction(&format!("mov rsi, {}", mode_len));                 // mode length
+            emitter.instruction(&format!("mov rsi, {}", mode_len));             // mode length
             abi::emit_call_label(emitter, "__rt_fopen");
         }
     }
@@ -77,12 +77,12 @@ pub fn emit(
     let done_label = ctx.next_label("czlib_done");
     match emitter.target.arch {
         Arch::AArch64 => {
-            emitter.instruction("cmp x0, #0");                                      // negative fd = open failed
-            emitter.instruction(&format!("b.lt {}", false_label));
+            emitter.instruction("cmp x0, #0");                                  // negative fd = open failed
+            emitter.instruction(&format!("b.lt {}", false_label));              // box false when the source open failed
         }
         Arch::X86_64 => {
-            emitter.instruction("test rax, rax");
-            emitter.instruction(&format!("js {}", false_label));                    // sign bit set = negative fd
+            emitter.instruction("test rax, rax");                               // negative fd = open failed
+            emitter.instruction(&format!("js {}", false_label));                // sign bit set = negative fd
         }
     }
     // Attach inflate; this returns x0/rax = Mixed-boxed resource.
@@ -91,8 +91,8 @@ pub fn emit(
         Arch::X86_64 => super::stream_filter_inflate::emit_x86_64(emitter, ctx),
     }
     match emitter.target.arch {
-        Arch::AArch64 => emitter.instruction(&format!("b {}", done_label)),
-        Arch::X86_64 => emitter.instruction(&format!("jmp {}", done_label)),
+        Arch::AArch64 => emitter.instruction(&format!("b {}", done_label)),     // skip false boxing after attaching inflate
+        Arch::X86_64 => emitter.instruction(&format!("jmp {}", done_label)),    // skip false boxing after attaching inflate
     }
     emitter.label(&false_label);
     super::fopen::box_fopen_result(emitter, ctx);                                   // boxes false (fd < 0)

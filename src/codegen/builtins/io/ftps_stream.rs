@@ -51,15 +51,15 @@ pub fn emit(
                     // Set _ftp_use_tls = 1 so __rt_ftp_open does the AUTH TLS
                     // dance, PBSZ 0 / PROT P, and TLS-attaches both channels.
                     abi::emit_symbol_address(emitter, "x9", "_ftp_use_tls");
-                    emitter.instruction("mov x10, #1");
-                    emitter.instruction("str x10, [x9]");
+                    emitter.instruction("mov x10, #1");                         // flag the next FTP open as AUTH-TLS
+                    emitter.instruction("str x10, [x9]");                       // publish the AUTH-TLS flag for __rt_ftp_open
                     abi::emit_symbol_address(emitter, "x0", &ctrl_sym);
                     emitter.instruction(&format!("mov x1, #{}", ctrl_len));     // control address length
                     abi::emit_symbol_address(emitter, "x2", &retr_sym);
                     emitter.instruction(&format!("mov x3, #{}", retr_len));     // RETR command length
                 }
                 Arch::X86_64 => {
-                    emitter.instruction("mov QWORD PTR [rip + _ftp_use_tls], 1");
+                    emitter.instruction("mov QWORD PTR [rip + _ftp_use_tls], 1"); // publish the AUTH-TLS flag for __rt_ftp_open
                     abi::emit_symbol_address(emitter, "rdi", &ctrl_sym);
                     emitter.instruction(&format!("mov rsi, {}", ctrl_len));     // control address length
                     abi::emit_symbol_address(emitter, "rdx", &retr_sym);

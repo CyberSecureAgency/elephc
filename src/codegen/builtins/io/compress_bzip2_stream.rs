@@ -51,8 +51,8 @@ pub fn emit(
         Some(p) if !p.is_empty() => p,
         _ => {
             match emitter.target.arch {
-                Arch::AArch64 => emitter.instruction("mov x0, #-1"),
-                Arch::X86_64 => emitter.instruction("mov rax, -1"),
+                Arch::AArch64 => emitter.instruction("mov x0, #-1"),            // negative fd sentinel for PHP false
+                Arch::X86_64 => emitter.instruction("mov rax, -1"),             // negative fd sentinel for PHP false
             }
             super::fopen::box_fopen_result(emitter, ctx);
             return Some(PhpType::Mixed);
@@ -64,16 +64,16 @@ pub fn emit(
     match emitter.target.arch {
         Arch::AArch64 => {
             abi::emit_symbol_address(emitter, "x1", &path_sym);
-            emitter.instruction(&format!("mov x2, #{}", path_len));
+            emitter.instruction(&format!("mov x2, #{}", path_len));             // path length
             abi::emit_symbol_address(emitter, "x3", &mode_sym);
-            emitter.instruction(&format!("mov x4, #{}", mode_len));
+            emitter.instruction(&format!("mov x4, #{}", mode_len));             // mode length
             abi::emit_call_label(emitter, "__rt_fopen");
         }
         Arch::X86_64 => {
             abi::emit_symbol_address(emitter, "rax", &path_sym);
-            emitter.instruction(&format!("mov rdx, {}", path_len));
+            emitter.instruction(&format!("mov rdx, {}", path_len));             // path length
             abi::emit_symbol_address(emitter, "rdi", &mode_sym);
-            emitter.instruction(&format!("mov rsi, {}", mode_len));
+            emitter.instruction(&format!("mov rsi, {}", mode_len));             // mode length
             abi::emit_call_label(emitter, "__rt_fopen");
         }
     }
@@ -82,12 +82,12 @@ pub fn emit(
     let done_label = ctx.next_label("cbz2_done");
     match emitter.target.arch {
         Arch::AArch64 => {
-            emitter.instruction("cmp x0, #0");
-            emitter.instruction(&format!("b.lt {}", false_label));
+            emitter.instruction("cmp x0, #0");                                  // negative fd = source open failed
+            emitter.instruction(&format!("b.lt {}", false_label));              // box false when the source open failed
         }
         Arch::X86_64 => {
-            emitter.instruction("test rax, rax");
-            emitter.instruction(&format!("js {}", false_label));
+            emitter.instruction("test rax, rax");                               // negative fd = source open failed
+            emitter.instruction(&format!("js {}", false_label));                // sign bit set = negative fd
         }
     }
 
@@ -96,8 +96,8 @@ pub fn emit(
         Arch::X86_64 => emit_x86_64(emitter, ctx),
     }
     match emitter.target.arch {
-        Arch::AArch64 => emitter.instruction(&format!("b {}", done_label)),
-        Arch::X86_64 => emitter.instruction(&format!("jmp {}", done_label)),
+        Arch::AArch64 => emitter.instruction(&format!("b {}", done_label)),     // skip false boxing after bzip2 setup
+        Arch::X86_64 => emitter.instruction(&format!("jmp {}", done_label)),    // skip false boxing after bzip2 setup
     }
     emitter.label(&false_label);
     super::fopen::box_fopen_result(emitter, ctx);
@@ -125,9 +125,9 @@ pub(super) fn emit_arm64(emitter: &mut Emitter, ctx: &mut Context) {
     let decompress_fail = ctx.next_label("bz2_decompress_fail");
     let common_done = ctx.next_label("bz2_done_arm");
 
-    emitter.instruction("sub sp, sp, #96");
-    emitter.instruction("stp x29, x30, [sp, #64]");
-    emitter.instruction("add x29, sp, #64");
+    emitter.instruction("sub sp, sp, #96");                                     // reserve the bzip2 scratch frame
+    emitter.instruction("stp x29, x30, [sp, #64]");                             // save frame pointer and return address
+    emitter.instruction("add x29, sp, #64");                                    // establish the helper frame pointer
     emitter.instruction("str x0, [sp, #0]");                                    // save source fd
 
     // Slurp every compressed byte from the descriptor into _stream_filter_buf.
@@ -135,32 +135,32 @@ pub(super) fn emit_arm64(emitter: &mut Emitter, ctx: &mut Context) {
     emitter.label(&slurp);
     emitter.instruction("ldr x0, [sp, #0]");                                    // fd to read from
     abi::emit_symbol_address(emitter, "x1", "_stream_filter_buf");
-    emitter.instruction("ldr x9, [sp, #8]");
+    emitter.instruction("ldr x9, [sp, #8]");                                    // current compressed-byte count
     emitter.instruction("add x1, x1, x9");                                      // write ptr = buf + offset
-    emitter.instruction(&format!("mov x2, #{}", FILTER_BUF_SIZE));
+    emitter.instruction(&format!("mov x2, #{}", FILTER_BUF_SIZE));              // total slurp buffer capacity
     emitter.instruction("sub x2, x2, x9");                                      // remaining capacity
     emitter.syscall(3);                                                         // read
-    emitter.instruction("cmp x0, #0");
+    emitter.instruction("cmp x0, #0");                                          // did read return EOF or an error?
     emitter.instruction(&format!("b.le {}", slurp_done));                       // EOF or error
-    emitter.instruction("ldr x9, [sp, #8]");
-    emitter.instruction("add x9, x9, x0");
-    emitter.instruction("str x9, [sp, #8]");
-    emitter.instruction(&format!("mov x10, #{}", FILTER_BUF_SIZE));
-    emitter.instruction("cmp x9, x10");
-    emitter.instruction(&format!("b.lt {}", slurp));
+    emitter.instruction("ldr x9, [sp, #8]");                                    // reload compressed-byte count
+    emitter.instruction("add x9, x9, x0");                                      // include the bytes just read
+    emitter.instruction("str x9, [sp, #8]");                                    // persist the compressed-byte count
+    emitter.instruction(&format!("mov x10, #{}", FILTER_BUF_SIZE));             // slurp buffer capacity
+    emitter.instruction("cmp x9, x10");                                         // is there still room to read more?
+    emitter.instruction(&format!("b.lt {}", slurp));                            // continue slurping until buffer is full or EOF
     emitter.label(&slurp_done);
 
     // Size + allocate output buffer (256x input, min 64 KiB).
-    emitter.instruction("ldr x9, [sp, #8]");
+    emitter.instruction("ldr x9, [sp, #8]");                                    // compressed input length
     emitter.instruction("lsl x9, x9, #8");                                      // 256x compressed
-    emitter.instruction(&format!("mov x10, #{}", FILTER_BUF_SIZE));
-    emitter.instruction("cmp x9, x10");
+    emitter.instruction(&format!("mov x10, #{}", FILTER_BUF_SIZE));             // minimum output capacity
+    emitter.instruction("cmp x9, x10");                                         // compare computed capacity with minimum
     emitter.instruction("csel x9, x9, x10, gt");                                // max(256x, 64KiB)
     emitter.instruction("str w9, [sp, #48]");                                   // destLen = capacity (u32)
-    emitter.instruction("mov x0, x9");
+    emitter.instruction("mov x0, x9");                                          // allocation size for decompressed output
     emitter.instruction("bl __rt_heap_alloc");                                  // allocate output buffer
     emitter.instruction("mov x9, #1");                                          // heap kind 1 = persisted string
-    emitter.instruction("str x9, [x0, #-8]");
+    emitter.instruction("str x9, [x0, #-8]");                                   // stamp the heap kind for the output buffer
     emitter.instruction("str x0, [sp, #16]");                                   // save output buffer ptr
 
     // BZ2_bzBuffToBuffDecompress(dest, &destLen, source, sourceLen, 0, 0).
@@ -171,7 +171,7 @@ pub(super) fn emit_arm64(emitter: &mut Emitter, ctx: &mut Context) {
     emitter.instruction("mov w4, #0");                                          // small = 0
     emitter.instruction("mov w5, #0");                                          // verbosity = 0
     emitter.bl_c("BZ2_bzBuffToBuffDecompress");                                 // libbz2 one-shot decompress
-    emitter.instruction("cmp w0, #0");
+    emitter.instruction("cmp w0, #0");                                          // did libbz2 report an error?
     emitter.instruction(&format!("b.ne {}", decompress_fail));                  // non-zero = error → skip dup2
 
     emitter.instruction("ldr w9, [sp, #48]");                                   // destLen now holds bytes written
@@ -186,23 +186,23 @@ pub(super) fn emit_arm64(emitter: &mut Emitter, ctx: &mut Context) {
     emitter.label(&write);
     emitter.instruction("ldr x10, [sp, #24]");                                  // total decompressed length
     emitter.instruction("ldr x9, [sp, #40]");                                   // write offset
-    emitter.instruction("cmp x9, x10");
-    emitter.instruction(&format!("b.ge {}", write_done));
+    emitter.instruction("cmp x9, x10");                                         // has every decompressed byte been written?
+    emitter.instruction(&format!("b.ge {}", write_done));                       // finish when output is fully written
     emitter.instruction("ldr x0, [sp, #32]");                                   // temp fd
-    emitter.instruction("ldr x1, [sp, #16]");
+    emitter.instruction("ldr x1, [sp, #16]");                                   // decompressed output buffer
     emitter.instruction("add x1, x1, x9");                                      // src = buf + offset
     emitter.instruction("sub x2, x10, x9");                                     // remaining bytes
     emitter.syscall(4);                                                         // write
-    emitter.instruction("cmp x0, #0");
+    emitter.instruction("cmp x0, #0");                                          // did write make progress?
     emitter.instruction(&format!("b.le {}", write_done));                       // bail on error or short write
-    emitter.instruction("ldr x9, [sp, #40]");
-    emitter.instruction("add x9, x9, x0");
-    emitter.instruction("str x9, [sp, #40]");
-    emitter.instruction(&format!("b {}", write));
+    emitter.instruction("ldr x9, [sp, #40]");                                   // reload write offset
+    emitter.instruction("add x9, x9, x0");                                      // advance by bytes written
+    emitter.instruction("str x9, [sp, #40]");                                   // persist write offset
+    emitter.instruction(&format!("b {}", write));                               // continue writing decompressed bytes
     emitter.label(&write_done);
 
     // lseek(temp_fd, 0, SEEK_SET) — rewind so reads start at byte 0.
-    emitter.instruction("ldr x0, [sp, #32]");
+    emitter.instruction("ldr x0, [sp, #32]");                                   // temp fd to rewind
     emitter.instruction("mov x1, #0");                                          // offset
     emitter.instruction("mov x2, #0");                                          // whence = SEEK_SET
     emitter.syscall(199);                                                       // lseek
@@ -217,10 +217,10 @@ pub(super) fn emit_arm64(emitter: &mut Emitter, ctx: &mut Context) {
     emitter.label(&decompress_fail);
     emitter.label(&common_done);
     emitter.instruction("ldr x0, [sp, #0]");                                    // return source fd
-    emitter.instruction("ldp x29, x30, [sp, #64]");
-    emitter.instruction("add sp, sp, #96");
+    emitter.instruction("ldp x29, x30, [sp, #64]");                             // restore frame pointer and return address
+    emitter.instruction("add sp, sp, #96");                                     // release the bzip2 scratch frame
     emitter.instruction("mov x1, x0");                                          // resource payload = fd
-    emitter.instruction("mov x2, #0");
+    emitter.instruction("mov x2, #0");                                          // resource mixed payloads have no high word
     emitter.instruction("mov x0, #9");                                          // tag 9 = resource
     abi::emit_call_label(emitter, "__rt_mixed_from_value");
 }
@@ -234,8 +234,8 @@ pub(super) fn emit_x86_64(emitter: &mut Emitter, ctx: &mut Context) {
     let decompress_fail = ctx.next_label("bz2_decompress_fail_x");
     let common_done = ctx.next_label("bz2_done_x");
 
-    emitter.instruction("push rbp");
-    emitter.instruction("mov rbp, rsp");
+    emitter.instruction("push rbp");                                            // preserve the caller frame pointer
+    emitter.instruction("mov rbp, rsp");                                        // establish the helper frame pointer
     emitter.instruction("sub rsp, 88");                                         // reserve frame; 88≡8 mod 16 so rsp is 16-aligned at libc calls (push rbp made it 8)
     emitter.instruction("mov QWORD PTR [rbp - 8], rax");                        // save source fd
 
@@ -243,27 +243,27 @@ pub(super) fn emit_x86_64(emitter: &mut Emitter, ctx: &mut Context) {
     emitter.instruction("mov QWORD PTR [rbp - 16], 0");                         // slurp offset
     emitter.label(&slurp);
     emitter.instruction("mov rdi, QWORD PTR [rbp - 8]");                        // fd
-    emitter.instruction("lea rsi, [rip + _stream_filter_buf]");
+    emitter.instruction("lea rsi, [rip + _stream_filter_buf]");                 // slurp buffer base
     emitter.instruction("add rsi, QWORD PTR [rbp - 16]");                       // ptr = buf + offset
-    emitter.instruction(&format!("mov rdx, {}", FILTER_BUF_SIZE));
+    emitter.instruction(&format!("mov rdx, {}", FILTER_BUF_SIZE));              // total slurp buffer capacity
     emitter.instruction("sub rdx, QWORD PTR [rbp - 16]");                       // remaining
     emitter.instruction("call read");                                           // read
-    emitter.instruction("cmp rax, 0");
-    emitter.instruction(&format!("jle {}", slurp_done));
+    emitter.instruction("cmp rax, 0");                                          // did read return EOF or an error?
+    emitter.instruction(&format!("jle {}", slurp_done));                        // stop slurping on EOF or error
     emitter.instruction("add QWORD PTR [rbp - 16], rax");                       // bump offset
-    emitter.instruction(&format!("cmp QWORD PTR [rbp - 16], {}", FILTER_BUF_SIZE));
-    emitter.instruction(&format!("jl {}", slurp));
+    emitter.instruction(&format!("cmp QWORD PTR [rbp - 16], {}", FILTER_BUF_SIZE)); // is there still room to read more?
+    emitter.instruction(&format!("jl {}", slurp));                              // continue slurping until buffer is full or EOF
     emitter.label(&slurp_done);
 
     // Size + allocate output buffer.
     emitter.instruction("mov rax, QWORD PTR [rbp - 16]");                       // compressed len
     emitter.instruction("shl rax, 8");                                          // 256x
-    emitter.instruction(&format!("mov rcx, {}", FILTER_BUF_SIZE));
-    emitter.instruction("cmp rax, rcx");
+    emitter.instruction(&format!("mov rcx, {}", FILTER_BUF_SIZE));              // minimum output capacity
+    emitter.instruction("cmp rax, rcx");                                        // compare computed capacity with minimum
     emitter.instruction("cmovl rax, rcx");                                      // max(256x, 64KiB)
     emitter.instruction("mov DWORD PTR [rbp - 48], eax");                       // destLen u32 = capacity
-    emitter.instruction("mov rdi, rax");
-    emitter.instruction("call __rt_heap_alloc");
+    emitter.instruction("mov rdi, rax");                                        // allocation size for decompressed output
+    emitter.instruction("call __rt_heap_alloc");                                // allocate output buffer
     emitter.instruction("mov QWORD PTR [rax - 8], 1");                          // heap kind = string
     emitter.instruction("mov QWORD PTR [rbp - 24], rax");                       // save output buffer ptr
 
@@ -275,7 +275,7 @@ pub(super) fn emit_x86_64(emitter: &mut Emitter, ctx: &mut Context) {
     emitter.instruction("xor r8d, r8d");                                        // small = 0
     emitter.instruction("xor r9d, r9d");                                        // verbosity = 0
     emitter.bl_c("BZ2_bzBuffToBuffDecompress");                                 // libbz2 one-shot decompress
-    emitter.instruction("test eax, eax");
+    emitter.instruction("test eax, eax");                                       // did libbz2 report an error?
     emitter.instruction(&format!("jnz {}", decompress_fail));                   // non-zero = error
 
     emitter.instruction("mov eax, DWORD PTR [rbp - 48]");                       // destLen now holds decompressed length
@@ -283,45 +283,45 @@ pub(super) fn emit_x86_64(emitter: &mut Emitter, ctx: &mut Context) {
 
     // Temp file backing.
     emitter.instruction("call __rt_tmpfile");                                   // rax = temp fd
-    emitter.instruction("mov QWORD PTR [rbp - 40], rax");
+    emitter.instruction("mov QWORD PTR [rbp - 40], rax");                       // save temp fd
 
     // Write loop.
     emitter.instruction("mov QWORD PTR [rbp - 56], 0");                         // write offset
     emitter.label(&write);
     emitter.instruction("mov rcx, QWORD PTR [rbp - 32]");                       // total
     emitter.instruction("mov rax, QWORD PTR [rbp - 56]");                       // offset
-    emitter.instruction("cmp rax, rcx");
-    emitter.instruction(&format!("jge {}", write_done));
+    emitter.instruction("cmp rax, rcx");                                        // has every decompressed byte been written?
+    emitter.instruction(&format!("jge {}", write_done));                        // finish when output is fully written
     emitter.instruction("mov rdi, QWORD PTR [rbp - 40]");                       // temp fd
-    emitter.instruction("mov rsi, QWORD PTR [rbp - 24]");
+    emitter.instruction("mov rsi, QWORD PTR [rbp - 24]");                       // decompressed output buffer
     emitter.instruction("add rsi, rax");                                        // src = buf + offset
-    emitter.instruction("mov rdx, rcx");
+    emitter.instruction("mov rdx, rcx");                                        // total decompressed length
     emitter.instruction("sub rdx, rax");                                        // remaining bytes
-    emitter.instruction("call write");
-    emitter.instruction("cmp rax, 0");
-    emitter.instruction(&format!("jle {}", write_done));
-    emitter.instruction("add QWORD PTR [rbp - 56], rax");
-    emitter.instruction(&format!("jmp {}", write));
+    emitter.instruction("call write");                                          // copy decompressed bytes into the temp fd
+    emitter.instruction("cmp rax, 0");                                          // did write make progress?
+    emitter.instruction(&format!("jle {}", write_done));                        // bail on error or short write
+    emitter.instruction("add QWORD PTR [rbp - 56], rax");                       // advance by bytes written
+    emitter.instruction(&format!("jmp {}", write));                             // continue writing decompressed bytes
     emitter.label(&write_done);
 
     // lseek + dup2 + close.
-    emitter.instruction("mov rdi, QWORD PTR [rbp - 40]");
+    emitter.instruction("mov rdi, QWORD PTR [rbp - 40]");                       // temp fd to rewind
     emitter.instruction("xor esi, esi");                                        // offset = 0
     emitter.instruction("xor edx, edx");                                        // whence = SEEK_SET
     emitter.instruction("call lseek");                                          // libc lseek
     emitter.instruction("mov rdi, QWORD PTR [rbp - 40]");                       // oldfd = temp fd
     emitter.instruction("mov rsi, QWORD PTR [rbp - 8]");                        // newfd = source fd
-    emitter.instruction("call dup2");
-    emitter.instruction("mov rdi, QWORD PTR [rbp - 40]");
-    emitter.instruction("call close");
+    emitter.instruction("call dup2");                                           // replace source fd with temp fd contents
+    emitter.instruction("mov rdi, QWORD PTR [rbp - 40]");                       // temp fd to close after dup2
+    emitter.instruction("call close");                                          // close the temporary descriptor
 
     emitter.label(&decompress_fail);
     emitter.label(&common_done);
     emitter.instruction("mov rax, QWORD PTR [rbp - 8]");                        // return source fd
     emitter.instruction("add rsp, 88");                                         // release the 88-byte frame (matches the aligned sub rsp, 88)
-    emitter.instruction("pop rbp");
+    emitter.instruction("pop rbp");                                             // restore the caller frame pointer
     emitter.instruction("mov rdi, rax");                                        // resource payload = fd
-    emitter.instruction("xor esi, esi");
+    emitter.instruction("xor esi, esi");                                        // resource mixed payloads have no high word
     emitter.instruction("mov eax, 9");                                          // tag 9 = resource
     abi::emit_call_label(emitter, "__rt_mixed_from_value");
 }
