@@ -69,9 +69,7 @@ $stmt->bindValue(":score", 5, PDO::PARAM_INT);
 $stmt->execute();
 ```
 
-Do **not** mix positional `?` and named `:name` placeholders in the same
-statement when binding — use one style per statement (PHP discourages mixing
-anyway). `bindParam()` binds the variable's *current* value (it does not defer a
+`bindParam()` binds the variable's *current* value (it does not defer a
 by-reference read to `execute()` time), so bind immediately before `execute()`.
 
 ## Fetching results
@@ -139,8 +137,6 @@ try {
 
 - **SQLite only.** MySQL and PostgreSQL drivers are not yet implemented (the
   bridge is structured to add them later).
-- **Mixing `?` and `:name`** placeholders in one statement is not supported when
-  binding — use a single placeholder style per statement.
 - **`bindParam()`** binds the current value, not a deferred by-reference read.
 - **`FETCH_CLASS` / `FETCH_INTO`** are not implemented.
 - **`FETCH_OBJ`** materializes the stdClass via a JSON round-trip, so a result

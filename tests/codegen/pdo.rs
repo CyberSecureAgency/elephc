@@ -223,6 +223,26 @@ echo $row["id"] . ":" . $row["name"];
     assert_eq!(out, "3:Cyd");
 }
 
+/// A statement that mixes a positional `?` and a named `:name` placeholder binds
+/// both correctly. Regression for a parameter-inference bug that previously lost
+/// the positional binding.
+#[test]
+fn test_pdo_mixed_positional_named_bind() {
+    let out = compile_and_run(
+        r#"<?php
+$db = new PDO("sqlite::memory:");
+$db->exec("CREATE TABLE t (id INTEGER, name TEXT)");
+$ins = $db->prepare("INSERT INTO t (id, name) VALUES (?, :name)");
+$ins->bindValue(1, 10, PDO::PARAM_INT);
+$ins->bindValue(":name", "Ada");
+$ins->execute();
+$row = $db->query("SELECT id, name FROM t")->fetch(PDO::FETCH_ASSOC);
+echo $row["id"] . ":" . $row["name"];
+"#,
+    );
+    assert_eq!(out, "10:Ada");
+}
+
 /// `bindParam()` binds the current value of the passed variable.
 #[test]
 fn test_pdo_bind_param() {

@@ -21,3 +21,5 @@ mod closures_and_refs;
 mod string_memory;
 #[path = "regressions/builtins_misc.rs"]
 mod builtins_misc;
+#[path = "regressions/param_inference.rs"]
+mod param_inference;

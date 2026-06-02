@@ -329,10 +329,16 @@ impl Checker {
                 for (i, arg_ty) in arg_types.iter().enumerate() {
                     if i < regular_param_count
                         && !declared_flags.get(i).copied().unwrap_or(false)
-                        && sig.params[i].1 == PhpType::Int
-                        && *arg_ty != PhpType::Int
+                        && !matches!(*arg_ty, PhpType::Void | PhpType::Never | PhpType::Callable)
                     {
-                        sig.params[i].1 = arg_ty.clone();
+                        let key = (format!("{}::{}", impl_class_name, method_key), i);
+                        let seen = self.param_specialization_seen.contains(&key);
+                        if sig.params[i].1 == PhpType::Int && !seen {
+                            self.param_specialization_seen.insert(key);
+                            sig.params[i].1 = arg_ty.clone();
+                        } else {
+                            sig.params[i].1 = Self::union_param_type(&sig.params[i].1, arg_ty);
+                        }
                     }
                 }
                 if method_variadic_tail_needs_iterable(
@@ -717,10 +723,16 @@ impl Checker {
                 for (i, arg_ty) in arg_types.iter().enumerate() {
                     if i < regular_param_count
                         && !static_declared_flags.get(i).copied().unwrap_or(false)
-                        && sig.params[i].1 == PhpType::Int
-                        && *arg_ty != PhpType::Int
+                        && !matches!(*arg_ty, PhpType::Void | PhpType::Never | PhpType::Callable)
                     {
-                        sig.params[i].1 = arg_ty.clone();
+                        let key = (format!("static:{}::{}", class_name, method), i);
+                        let seen = self.param_specialization_seen.contains(&key);
+                        if sig.params[i].1 == PhpType::Int && !seen {
+                            self.param_specialization_seen.insert(key);
+                            sig.params[i].1 = arg_ty.clone();
+                        } else {
+                            sig.params[i].1 = Self::union_param_type(&sig.params[i].1, arg_ty);
+                        }
                     }
                 }
                 if method_variadic_tail_needs_iterable(
@@ -764,10 +776,16 @@ impl Checker {
                 for (i, arg_ty) in arg_types.iter().enumerate() {
                     if i < regular_param_count
                         && !instance_declared_flags.get(i).copied().unwrap_or(false)
-                        && sig.params[i].1 == PhpType::Int
-                        && *arg_ty != PhpType::Int
+                        && !matches!(*arg_ty, PhpType::Void | PhpType::Never | PhpType::Callable)
                     {
-                        sig.params[i].1 = arg_ty.clone();
+                        let key = (format!("{}::{}", direct_impl_class_name, method), i);
+                        let seen = self.param_specialization_seen.contains(&key);
+                        if sig.params[i].1 == PhpType::Int && !seen {
+                            self.param_specialization_seen.insert(key);
+                            sig.params[i].1 = arg_ty.clone();
+                        } else {
+                            sig.params[i].1 = Self::union_param_type(&sig.params[i].1, arg_ty);
+                        }
                     }
                 }
                 if sig.variadic.is_some() && arg_types.len() > regular_param_count {
