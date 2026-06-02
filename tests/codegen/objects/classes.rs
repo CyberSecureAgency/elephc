@@ -27,10 +27,10 @@ echo "ok";
 /// Both variables reference the same heap object, so mutating via one is visible via the other.
 #[test]
 fn test_class_dynamic_instantiation() {
-    // Phase 10: `new $variable()` consults the runtime class registry
-    // emitted by `emit_classes_by_name_table` and allocates via
-    // `__rt_new_by_name`. A known name yields an object Mixed cell; an
-    // unknown name lowers to PHP null.
+    // `new $variable()` dispatches known class names through the same AOT
+    // allocation path as `new ClassName()`. A known name yields an object
+    // Mixed cell; an unknown name currently preserves the legacy PHP null
+    // fallback until the missing-class fatal path is tightened.
     let out = compile_and_run(
         r#"<?php
 class Foo {}
@@ -67,6 +67,37 @@ echo $o->n . "|" . $o->s . "|" . $o->f . "|" . ($o->b ? "T" : "F") . "|" . count
 "#,
     );
     assert_eq!(out, "7|hi|1.5|T|3");
+}
+
+/// Verifies that dynamic instantiation forwards constructor arguments.
+#[test]
+fn test_class_dynamic_instantiation_runs_constructor_args() {
+    let out = compile_and_run(
+        r#"<?php
+class C {
+    public int $x = 1;
+    public function __construct(int $x) { $this->x = $x; }
+}
+$cls = "C";
+$o = new $cls(7);
+echo $o->x;
+"#,
+    );
+    assert_eq!(out, "7");
+}
+
+/// Verifies that dynamic instantiation uses SPL-specific runtime storage initialization.
+#[test]
+fn test_class_dynamic_instantiation_uses_spl_storage() {
+    let out = compile_and_run(
+        r#"<?php
+$cls = "SplFixedArray";
+$a = new $cls(2);
+$a[0] = "x";
+echo count($a) . ":" . $a[0];
+"#,
+    );
+    assert_eq!(out, "2:x");
 }
 
 #[test]

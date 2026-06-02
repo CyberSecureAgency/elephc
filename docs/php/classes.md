@@ -235,7 +235,7 @@ class User {
 
 Property type declarations are checked at compile time for both instance and static properties. Defaults and later assignments must be compatible with the declared type, including constructor assignments through untyped parameters. Typed properties without an explicit default start in PHP's uninitialized state; reading an instance or static property before the first assignment is a fatal runtime error, while assigning values such as `0`, `false`, `""`, or `null` to compatible nullable storage initializes the slot normally. Nullable shorthand (`?T`) and union storage use the compiler's boxed mixed representation internally. `void` and `callable` property types are rejected.
 
-Property default values are applied both for the normal `new ClassName()` form and for dynamic `new $variable()` instantiation (and therefore for runtime-instantiated stream wrappers and stream filters). `__construct` is still not invoked on the `new $variable()` path — only declared property defaults run there — so dynamic instantiation suits classes that initialize from defaults (the common wrapper/filter case) rather than constructor arguments.
+Property default values are applied both for the normal `new ClassName()` form and for dynamic `new $variable()` instantiation (and therefore for runtime-instantiated stream wrappers and stream filters). When the class name resolves to a known class, dynamic instantiation follows the same allocation path as direct construction, so constructor arguments are evaluated and `__construct` runs normally.
 
 ### Property redeclaration
 
@@ -448,7 +448,7 @@ $bad = new $missing();                   // PHP null
 echo gettype($bad);                      // "NULL"
 ```
 
-elephc resolves the class name by linear-scanning a compile-time registry of every declared class. A match allocates an object byte-compatible with the corresponding `new ClassName()`; an unknown name yields PHP `null`. The constructor is **not** invoked — `new $variable()` only allocates the object and zeroes its property slots, so the class must be safe to use without `__construct`. This matches the elephc stream-wrapper dispatch (`stream_wrapper_register`), which is the primary motivation for the feature.
+elephc resolves the class name against compile-time class metadata. A match dispatches through the same allocation path as `new ClassName()`, including constructor calls, declared property defaults, and supported built-in/SPL runtime storage initialization. An unknown name currently yields PHP `null`; the missing-class fatal path is not yet tightened.
 
 ## Override rules
 Same parameter count, same pass-by-reference positions, same default layout, same variadic shape.

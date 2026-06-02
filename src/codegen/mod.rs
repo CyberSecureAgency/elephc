@@ -521,6 +521,7 @@ fn collect_emitted_class_names(
     for factory in reflection::collect_attribute_factories(classes) {
         names.insert(factory.class_name);
     }
+    collect_dynamic_object_factory_classes(program, classes, &mut names);
     expand_emitted_class_dependencies(&mut names, classes);
     names
 }
@@ -770,6 +771,17 @@ fn collect_dynamic_object_factory_classes_in_expr(
         | ExprKind::StaticMethodCall { args, .. }
         | ExprKind::NewObject { args, .. }
         | ExprKind::NewScopedObject { args, .. } => {
+            for arg in args {
+                collect_dynamic_object_factory_classes_in_expr(arg, classes, names);
+            }
+        }
+        ExprKind::NewDynamic { name_expr, args } => {
+            for class_name in expr::objects::supported_dynamic_new_builtin_class_names() {
+                if classes.contains_key(*class_name) {
+                    names.insert((*class_name).to_string());
+                }
+            }
+            collect_dynamic_object_factory_classes_in_expr(name_expr, classes, names);
             for arg in args {
                 collect_dynamic_object_factory_classes_in_expr(arg, classes, names);
             }

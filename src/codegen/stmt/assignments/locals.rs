@@ -78,6 +78,7 @@ pub(crate) fn emit_assign_stmt(
         !ctx.ref_params.contains(name)
             && matches!(var.ty, PhpType::Mixed)
             && !matches!(ty, PhpType::Mixed | PhpType::Union(_))
+            && !stores_precise_dynamic_new_object(value, &ty, &static_ty)
     });
     if dest_needs_mixed_box {
         super::super::super::emit_box_current_expr_value_as_mixed_for_container(
@@ -390,6 +391,13 @@ pub(crate) fn emit_assign_stmt(
             );
         }
     }
+}
+
+/// Returns true when a literal dynamic-new RHS can replace an imprecise Mixed local with an object.
+fn stores_precise_dynamic_new_object(value: &Expr, ty: &PhpType, static_ty: &PhpType) -> bool {
+    matches!(value.kind, ExprKind::NewDynamic { .. })
+        && matches!(ty, PhpType::Object(_))
+        && matches!(static_ty, PhpType::Object(_))
 }
 
 /// Emits code for direct reference alias assignment (`$target =& $source`).

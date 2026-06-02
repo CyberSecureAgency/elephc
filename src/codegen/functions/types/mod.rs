@@ -350,6 +350,9 @@ pub(super) fn infer_local_type(
         ExprKind::Spread(inner) => infer_local_type(inner, sig, ctx),
         ExprKind::NamedArg { value, .. } => infer_local_type(value, sig, ctx),
         ExprKind::NewObject { class_name, .. } => PhpType::Object(class_name.as_str().to_string()),
+        ExprKind::NewDynamic { name_expr, .. } => {
+            literal_dynamic_new_object_type(name_expr, ctx).unwrap_or(PhpType::Mixed)
+        }
         ExprKind::BufferNew { element_type, .. } => {
             if let Some(c) = ctx {
                 let elem_ty = resolve_buffer_element_type(element_type, c);
@@ -384,6 +387,18 @@ pub(super) fn infer_local_type(
         ExprKind::PtrCast { target_type, .. } => PhpType::Pointer(Some(target_type.clone())),
         _ => PhpType::Int,
     }
+}
+
+/// Resolves a literal `new $class` class-string to an object type for codegen-local inference.
+fn literal_dynamic_new_object_type(name_expr: &Expr, ctx: Option<&Context>) -> Option<PhpType> {
+    let ExprKind::StringLiteral(class_name) = &name_expr.kind else {
+        return None;
+    };
+    let ctx = ctx?;
+    let normalized = class_name.trim_start_matches('\\');
+    ctx.classes
+        .get_key_value(normalized)
+        .map(|(class_name, _)| PhpType::Object(class_name.clone()))
 }
 
 /// Infers the return type of a pipe (`|>`) expression given the callable at the pipe's RHS.
