@@ -14,7 +14,7 @@ use std::process;
 use crate::codegen::platform::Target;
 
 /// Usage string printed to stderr when command-line arguments are invalid or missing.
-pub(crate) const USAGE: &str = "Usage: elephc [--target TARGET] [--heap-size=BYTES] [--gc-stats] [--heap-debug] [--emit-asm] [--check] [--timings] [--source-map] [--define SYMBOL] [--link LIB|-lLIB] [--link-path DIR|-LDIR] [--framework NAME] <source.php>";
+pub(crate) const USAGE: &str = "Usage: elephc [--target TARGET] [--heap-size=BYTES] [--gc-stats] [--heap-debug] [--emit-ir] [--emit-asm] [--check] [--timings] [--source-map] [--define SYMBOL] [--link LIB|-lLIB] [--link-path DIR|-LDIR] [--framework NAME] <source.php>";
 
 /// Configuration derived from command-line arguments, passed to the compile pipeline.
 /// Controls heap allocation size, debug output, code generation options, and linking behavior.
@@ -23,6 +23,7 @@ pub(crate) struct CliConfig {
     pub(crate) heap_size: usize,
     pub(crate) gc_stats: bool,
     pub(crate) heap_debug: bool,
+    pub(crate) emit_ir: bool,
     pub(crate) emit_asm: bool,
     pub(crate) check_only: bool,
     pub(crate) emit_timings: bool,
@@ -44,6 +45,7 @@ pub(crate) fn parse_args(args: &[String]) -> CliConfig {
     let mut heap_size: usize = 8_388_608; // 8MB default
     let mut gc_stats = false;
     let mut heap_debug = false;
+    let mut emit_ir = false;
     let mut emit_asm = false;
     let mut check_only = false;
     let mut emit_timings = false;
@@ -69,6 +71,8 @@ pub(crate) fn parse_args(args: &[String]) -> CliConfig {
             gc_stats = true;
         } else if arg == "--heap-debug" {
             heap_debug = true;
+        } else if arg == "--emit-ir" {
+            emit_ir = true;
         } else if arg == "--emit-asm" {
             emit_asm = true;
         } else if arg == "--check" {
@@ -121,8 +125,9 @@ pub(crate) fn parse_args(args: &[String]) -> CliConfig {
             process::exit(1);
         }
     };
-    if emit_asm && check_only {
-        fail("--emit-asm and --check are mutually exclusive");
+    let output_modes = usize::from(emit_ir) + usize::from(emit_asm) + usize::from(check_only);
+    if output_modes > 1 {
+        fail("--emit-ir, --emit-asm, and --check are mutually exclusive");
     }
 
     CliConfig {
@@ -130,6 +135,7 @@ pub(crate) fn parse_args(args: &[String]) -> CliConfig {
         heap_size,
         gc_stats,
         heap_debug,
+        emit_ir,
         emit_asm,
         check_only,
         emit_timings,

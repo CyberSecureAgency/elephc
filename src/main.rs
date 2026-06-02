@@ -16,6 +16,8 @@ mod errors;
 mod intrinsics;
 #[allow(dead_code, unused_imports)]
 mod ir;
+#[allow(dead_code, unused_imports)]
+mod ir_lower;
 mod linker;
 mod lexer;
 mod magic_constants;

@@ -16,8 +16,8 @@ use std::time::Instant;
 use crate::cli::CliConfig;
 use crate::timings::CompileTimings;
 use crate::{
-    autoload, codegen, conditional, errors, lexer, linker, magic_constants, name_resolver,
-    optimize, parser, resolver, runtime_cache, source_map, types,
+    autoload, codegen, conditional, errors, ir, ir_lower, lexer, linker, magic_constants,
+    name_resolver, optimize, parser, resolver, runtime_cache, source_map, types,
 };
 
 /// Holds the paths for all compilation output files (assembly, object, binary, source map).
@@ -37,6 +37,7 @@ pub(crate) fn compile(config: CliConfig) {
         heap_size,
         gc_stats,
         heap_debug,
+        emit_ir,
         emit_asm,
         check_only,
         emit_timings,
@@ -174,6 +175,25 @@ pub(crate) fn compile(config: CliConfig) {
     let phase_started = Instant::now();
     let ast = optimize::eliminate_dead_code(ast);
     timings.record_since("dce", phase_started);
+
+    if emit_ir {
+        let phase_started = Instant::now();
+        let module = match ir_lower::lower_program(&ast, &check_result, target) {
+            Ok(module) => module,
+            Err(err) => {
+                eprintln!("EIR lowering error: {}", err);
+                process::exit(1);
+            }
+        };
+        timings.record_since("ir-lower", phase_started);
+
+        let phase_started = Instant::now();
+        let text = ir::print_module(&module);
+        timings.record_since("ir-print", phase_started);
+        timings.report();
+        print!("{}", text);
+        return;
+    }
 
     let runtime_features =
         codegen::runtime_features_for_program_and_classes(&ast, &check_result.classes);

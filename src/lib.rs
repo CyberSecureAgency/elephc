@@ -19,6 +19,8 @@ pub mod errors;
 pub mod intrinsics;
 /// Intermediate representation used by the EIR backend track.
 pub mod ir;
+/// AST-to-EIR lowering pass used by `--emit-ir` diagnostics.
+pub mod ir_lower;
 /// Lexer for tokenizing PHP source.
 pub mod lexer;
 /// Magic constant substitution.

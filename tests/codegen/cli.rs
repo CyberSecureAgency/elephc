@@ -105,6 +105,55 @@ echo "ok";
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Verifies `--emit-ir` prints textual EIR and stops before assembly, object,
+/// or binary emission.
+#[test]
+fn test_cli_emit_ir_prints_eir_only() {
+    let dir = make_cli_test_dir("elephc_cli_emit_ir");
+    let php_path = dir.join("main.php");
+    fs::write(
+        &php_path,
+        r#"<?php
+function greet(): int {
+    return 7;
+}
+echo greet();
+"#,
+    )
+    .unwrap();
+
+    let output = elephc_cli_command(&dir)
+        .arg("--emit-ir")
+        .arg(&php_path)
+        .output()
+        .expect("failed to run elephc CLI with --emit-ir");
+
+    assert!(
+        output.status.success(),
+        "elephc --emit-ir failed: stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("module target="), "missing module header: {stdout}");
+    assert!(stdout.contains("function greet"), "missing lowered function: {stdout}");
+    assert!(stdout.contains("const_i64 7"), "missing lowered return literal: {stdout}");
+    assert!(stdout.contains("function main"), "missing lowered main function: {stdout}");
+    assert!(
+        !dir.join("main.s").exists(),
+        "--emit-ir should not emit assembly files"
+    );
+    assert!(
+        !dir.join("main.o").exists(),
+        "--emit-ir should not emit object files"
+    );
+    assert!(
+        !dir.join("main").exists(),
+        "--emit-ir should not emit binaries"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// Verifies that passing `--emit-asm` and `--check` together fails with a
 /// "mutually exclusive" error message.
 #[test]
@@ -129,6 +178,36 @@ fn test_cli_rejects_emit_asm_and_check_together() {
         "expected conflict message, got stderr={}",
         String::from_utf8_lossy(&output.stderr)
     );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// Verifies `--emit-ir` participates in the same exclusive output-mode group
+/// as `--emit-asm` and `--check`.
+#[test]
+fn test_cli_rejects_emit_ir_output_mode_conflicts() {
+    let dir = make_cli_test_dir("elephc_cli_emit_ir_flag_conflict");
+    let php_path = dir.join("main.php");
+    fs::write(&php_path, "<?php echo 1;").unwrap();
+
+    for conflicting_flag in ["--emit-asm", "--check"] {
+        let output = elephc_cli_command(&dir)
+            .arg("--emit-ir")
+            .arg(conflicting_flag)
+            .arg(&php_path)
+            .output()
+            .expect("failed to run elephc CLI with conflicting --emit-ir flag");
+
+        assert!(
+            !output.status.success(),
+            "expected --emit-ir {conflicting_flag} to fail"
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("mutually exclusive"),
+            "expected conflict message, got stderr={}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
 
     let _ = fs::remove_dir_all(&dir);
 }
