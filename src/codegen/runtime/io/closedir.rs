@@ -55,6 +55,7 @@ pub fn emit_closedir(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return to the caller
 }
 
+/// Emits the Linux x86_64 stream runtime helper for closedir.
 fn emit_closedir_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: closedir ---");

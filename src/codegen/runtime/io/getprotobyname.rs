@@ -187,6 +187,7 @@ pub fn emit_getprotobyname(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the protocol number or -1
 }
 
+/// Emits the Linux x86_64 stream runtime helper for getprotobyname.
 fn emit_getprotobyname_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: getprotobyname ---");

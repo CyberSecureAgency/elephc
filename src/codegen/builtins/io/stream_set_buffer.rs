@@ -28,6 +28,7 @@ use crate::types::PhpType;
 
 use super::stream_arg::emit_stream_fd_arg;
 
+/// Emits codegen for PHP `stream_set_buffer()` stream and I/O builtin calls.
 pub fn emit(
     name: &str,
     args: &[Expr],

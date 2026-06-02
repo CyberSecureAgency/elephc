@@ -198,6 +198,7 @@ fn test_error_stream_modify_builtins_require_resource_handle() {
     }
 }
 
+/// Verifies the invalid-call diagnostic for error is resource wrong args.
 #[test]
 fn test_error_is_resource_wrong_args() {
     expect_error(
@@ -206,6 +207,7 @@ fn test_error_is_resource_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error get resource type wrong args.
 #[test]
 fn test_error_get_resource_type_wrong_args() {
     expect_error(
@@ -214,6 +216,7 @@ fn test_error_get_resource_type_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error get resource id wrong args.
 #[test]
 fn test_error_get_resource_id_wrong_args() {
     expect_error(
@@ -222,6 +225,7 @@ fn test_error_get_resource_id_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream isatty wrong args.
 #[test]
 fn test_error_stream_isatty_wrong_args() {
     expect_error(
@@ -230,6 +234,7 @@ fn test_error_stream_isatty_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream isatty requires resource handle.
 #[test]
 fn test_error_stream_isatty_requires_resource_handle() {
     expect_error(
@@ -238,6 +243,7 @@ fn test_error_stream_isatty_requires_resource_handle() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream supports lock requires resource handle.
 #[test]
 fn test_error_stream_supports_lock_requires_resource_handle() {
     expect_error(
@@ -246,6 +252,7 @@ fn test_error_stream_supports_lock_requires_resource_handle() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream is local wrong args.
 #[test]
 fn test_error_stream_is_local_wrong_args() {
     expect_error(
@@ -254,6 +261,7 @@ fn test_error_stream_is_local_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream get contents wrong args.
 #[test]
 fn test_error_stream_get_contents_wrong_args() {
     expect_error(
@@ -262,6 +270,7 @@ fn test_error_stream_get_contents_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream get contents requires resource handle.
 #[test]
 fn test_error_stream_get_contents_requires_resource_handle() {
     expect_error(
@@ -270,6 +279,7 @@ fn test_error_stream_get_contents_requires_resource_handle() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream copy to stream wrong args.
 #[test]
 fn test_error_stream_copy_to_stream_wrong_args() {
     expect_error(
@@ -278,6 +288,7 @@ fn test_error_stream_copy_to_stream_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream copy to stream requires resource handles.
 #[test]
 fn test_error_stream_copy_to_stream_requires_resource_handles() {
     expect_error(
@@ -286,6 +297,7 @@ fn test_error_stream_copy_to_stream_requires_resource_handles() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream introspection lists take no args.
 #[test]
 fn test_error_stream_introspection_lists_take_no_args() {
     for (source, message) in [
@@ -306,6 +318,7 @@ fn test_error_stream_introspection_lists_take_no_args() {
     }
 }
 
+/// Verifies the invalid-call diagnostic for error stream socket server wrong args.
 #[test]
 fn test_error_stream_socket_server_wrong_args() {
     expect_error(
@@ -314,6 +327,7 @@ fn test_error_stream_socket_server_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream socket client wrong args.
 #[test]
 fn test_error_stream_socket_client_wrong_args() {
     expect_error(
@@ -322,6 +336,7 @@ fn test_error_stream_socket_client_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error fsockopen wrong args.
 #[test]
 fn test_error_fsockopen_wrong_args() {
     expect_error(
@@ -330,6 +345,7 @@ fn test_error_fsockopen_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error fsockopen error code not variable.
 #[test]
 fn test_error_fsockopen_error_code_not_variable() {
     expect_error(
@@ -338,6 +354,7 @@ fn test_error_fsockopen_error_code_not_variable() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream wrapper register wrong args.
 #[test]
 fn test_error_stream_wrapper_register_wrong_args() {
     expect_error(
@@ -346,6 +363,7 @@ fn test_error_stream_wrapper_register_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream wrapper register unknown class.
 #[test]
 fn test_error_stream_wrapper_register_unknown_class() {
     expect_error(
@@ -354,6 +372,7 @@ fn test_error_stream_wrapper_register_unknown_class() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream wrapper unregister wrong args.
 #[test]
 fn test_error_stream_wrapper_unregister_wrong_args() {
     expect_error(
@@ -362,6 +381,7 @@ fn test_error_stream_wrapper_unregister_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream wrapper restore wrong args.
 #[test]
 fn test_error_stream_wrapper_restore_wrong_args() {
     expect_error(
@@ -370,6 +390,7 @@ fn test_error_stream_wrapper_restore_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream socket enable crypto wrong args.
 #[test]
 fn test_error_stream_socket_enable_crypto_wrong_args() {
     expect_error(
@@ -378,6 +399,7 @@ fn test_error_stream_socket_enable_crypto_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream filter register wrong args.
 #[test]
 fn test_error_stream_filter_register_wrong_args() {
     expect_error(
@@ -386,6 +408,7 @@ fn test_error_stream_filter_register_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream filter register unknown class.
 #[test]
 fn test_error_stream_filter_register_unknown_class() {
     expect_error(
@@ -394,6 +417,7 @@ fn test_error_stream_filter_register_unknown_class() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream socket accept wrong args.
 #[test]
 fn test_error_stream_socket_accept_wrong_args() {
     expect_error(
@@ -402,6 +426,7 @@ fn test_error_stream_socket_accept_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream socket accept requires resource.
 #[test]
 fn test_error_stream_socket_accept_requires_resource() {
     expect_error(
@@ -410,6 +435,7 @@ fn test_error_stream_socket_accept_requires_resource() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream get line wrong args.
 #[test]
 fn test_error_stream_get_line_wrong_args() {
     expect_error(
@@ -418,6 +444,7 @@ fn test_error_stream_get_line_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream get line requires resource.
 #[test]
 fn test_error_stream_get_line_requires_resource() {
     expect_error(
@@ -426,6 +453,7 @@ fn test_error_stream_get_line_requires_resource() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream set blocking wrong args.
 #[test]
 fn test_error_stream_set_blocking_wrong_args() {
     expect_error(
@@ -434,6 +462,7 @@ fn test_error_stream_set_blocking_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream set blocking requires resource.
 #[test]
 fn test_error_stream_set_blocking_requires_resource() {
     expect_error(
@@ -442,6 +471,7 @@ fn test_error_stream_set_blocking_requires_resource() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream socket shutdown wrong args.
 #[test]
 fn test_error_stream_socket_shutdown_wrong_args() {
     expect_error(
@@ -450,6 +480,7 @@ fn test_error_stream_socket_shutdown_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error gethostname wrong args.
 #[test]
 fn test_error_gethostname_wrong_args() {
     expect_error(
@@ -458,6 +489,7 @@ fn test_error_gethostname_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error gethostbyname wrong args.
 #[test]
 fn test_error_gethostbyname_wrong_args() {
     expect_error(
@@ -466,6 +498,7 @@ fn test_error_gethostbyname_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error gethostbyaddr wrong args.
 #[test]
 fn test_error_gethostbyaddr_wrong_args() {
     expect_error(
@@ -474,6 +507,7 @@ fn test_error_gethostbyaddr_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream filter append wrong args.
 #[test]
 fn test_error_stream_filter_append_wrong_args() {
     // Too few (1) and too many (5) arguments both fail; the optional 4th
@@ -495,6 +529,7 @@ fn test_error_stream_filter_append_wrong_args() {
 // retired; runtime behavior is verified in the codegen test
 // `test_user_stream_filter_unknown_name_returns_false`.
 
+/// Verifies the invalid-call diagnostic for error stream filter remove wrong args.
 #[test]
 fn test_error_stream_filter_remove_wrong_args() {
     expect_error(
@@ -503,6 +538,7 @@ fn test_error_stream_filter_remove_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error getprotobyname wrong args.
 #[test]
 fn test_error_getprotobyname_wrong_args() {
     expect_error(
@@ -511,6 +547,7 @@ fn test_error_getprotobyname_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error getprotobynumber wrong args.
 #[test]
 fn test_error_getprotobynumber_wrong_args() {
     expect_error(
@@ -519,6 +556,7 @@ fn test_error_getprotobynumber_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error getservbyname wrong args.
 #[test]
 fn test_error_getservbyname_wrong_args() {
     expect_error(
@@ -527,6 +565,7 @@ fn test_error_getservbyname_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error getservbyport wrong args.
 #[test]
 fn test_error_getservbyport_wrong_args() {
     expect_error(
@@ -535,6 +574,7 @@ fn test_error_getservbyport_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream set timeout wrong args.
 #[test]
 fn test_error_stream_set_timeout_wrong_args() {
     expect_error(
@@ -543,6 +583,7 @@ fn test_error_stream_set_timeout_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream set timeout requires resource.
 #[test]
 fn test_error_stream_set_timeout_requires_resource() {
     expect_error(
@@ -551,6 +592,7 @@ fn test_error_stream_set_timeout_requires_resource() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream socket sendto wrong args.
 #[test]
 fn test_error_stream_socket_sendto_wrong_args() {
     expect_error(
@@ -559,6 +601,7 @@ fn test_error_stream_socket_sendto_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream socket sendto requires resource.
 #[test]
 fn test_error_stream_socket_sendto_requires_resource() {
     expect_error(
@@ -567,6 +610,7 @@ fn test_error_stream_socket_sendto_requires_resource() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream socket recvfrom wrong args.
 #[test]
 fn test_error_stream_socket_recvfrom_wrong_args() {
     expect_error(
@@ -575,6 +619,7 @@ fn test_error_stream_socket_recvfrom_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream socket recvfrom requires resource.
 #[test]
 fn test_error_stream_socket_recvfrom_requires_resource() {
     expect_error(
@@ -583,6 +628,7 @@ fn test_error_stream_socket_recvfrom_requires_resource() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream socket recvfrom address not variable.
 #[test]
 fn test_error_stream_socket_recvfrom_address_not_variable() {
     expect_error(
@@ -591,6 +637,7 @@ fn test_error_stream_socket_recvfrom_address_not_variable() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream socket recvfrom address not string.
 #[test]
 fn test_error_stream_socket_recvfrom_address_not_string() {
     expect_error(
@@ -599,6 +646,7 @@ fn test_error_stream_socket_recvfrom_address_not_string() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream socket get name wrong args.
 #[test]
 fn test_error_stream_socket_get_name_wrong_args() {
     expect_error(
@@ -607,6 +655,7 @@ fn test_error_stream_socket_get_name_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream socket get name requires resource.
 #[test]
 fn test_error_stream_socket_get_name_requires_resource() {
     expect_error(
@@ -615,6 +664,7 @@ fn test_error_stream_socket_get_name_requires_resource() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream socket pair wrong args.
 #[test]
 fn test_error_stream_socket_pair_wrong_args() {
     expect_error(
@@ -623,6 +673,7 @@ fn test_error_stream_socket_pair_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error popen wrong args.
 #[test]
 fn test_error_popen_wrong_args() {
     expect_error(
@@ -631,6 +682,7 @@ fn test_error_popen_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error pclose requires resource.
 #[test]
 fn test_error_pclose_requires_resource() {
     expect_error(
@@ -639,31 +691,37 @@ fn test_error_pclose_requires_resource() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error opendir wrong args.
 #[test]
 fn test_error_opendir_wrong_args() {
     expect_error("<?php opendir();", "opendir() takes exactly 1 argument");
 }
 
+/// Verifies the invalid-call diagnostic for error readdir wrong args.
 #[test]
 fn test_error_readdir_wrong_args() {
     expect_error("<?php readdir();", "readdir() takes exactly 1 argument");
 }
 
+/// Verifies the invalid-call diagnostic for error readdir requires resource.
 #[test]
 fn test_error_readdir_requires_resource() {
     expect_error("<?php readdir(1);", "readdir() expects resource, got int");
 }
 
+/// Verifies the invalid-call diagnostic for error closedir requires resource.
 #[test]
 fn test_error_closedir_requires_resource() {
     expect_error("<?php closedir(1);", "closedir() expects resource, got int");
 }
 
+/// Verifies the invalid-call diagnostic for error rewinddir wrong args.
 #[test]
 fn test_error_rewinddir_wrong_args() {
     expect_error("<?php rewinddir();", "rewinddir() takes exactly 1 argument");
 }
 
+/// Verifies the invalid-call diagnostic for error stream select wrong args.
 #[test]
 fn test_error_stream_select_wrong_args() {
     expect_error(
@@ -672,6 +730,7 @@ fn test_error_stream_select_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream get meta data wrong args.
 #[test]
 fn test_error_stream_get_meta_data_wrong_args() {
     expect_error(
@@ -680,6 +739,7 @@ fn test_error_stream_get_meta_data_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error stream get meta data requires resource.
 #[test]
 fn test_error_stream_get_meta_data_requires_resource() {
     expect_error(

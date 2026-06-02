@@ -18,6 +18,7 @@ use crate::codegen::platform::Arch;
 use crate::parser::ast::Expr;
 use crate::types::PhpType;
 
+/// Emits codegen for PHP `ip2long()` string builtin calls.
 pub fn emit(
     _name: &str,
     args: &[Expr],

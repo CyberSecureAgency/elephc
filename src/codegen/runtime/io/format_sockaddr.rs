@@ -136,6 +136,7 @@ pub fn emit_format_sockaddr_in(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the formatted address string
 }
 
+/// Emits the Linux x86_64 stream runtime helper for format sockaddr in.
 fn emit_format_sockaddr_in_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: format_sockaddr_in ---");
@@ -394,6 +395,7 @@ pub fn emit_format_sockaddr_in6(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the failure result
 }
 
+/// Emits the Linux x86_64 stream runtime helper for format sockaddr in6.
 fn emit_format_sockaddr_in6_linux_x86_64(emitter: &mut Emitter) {
     let af_inet6 = crate::codegen::platform::Platform::Linux.af_inet6();
     emitter.blank();
@@ -607,6 +609,7 @@ pub fn emit_format_sockaddr_unix(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the empty path string
 }
 
+/// Emits the Linux x86_64 stream runtime helper for format sockaddr unix.
 fn emit_format_sockaddr_unix_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: format_sockaddr_unix ---");

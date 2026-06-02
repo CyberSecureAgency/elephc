@@ -88,6 +88,7 @@ pub fn emit_get_ssl_peer_name(emitter: &mut Emitter) {
     emitter.instruction("ret");
 }
 
+/// Emits the Linux x86_64 stream runtime helper for get ssl peer name.
 fn emit_get_ssl_peer_name_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: get_ssl_peer_name ---");

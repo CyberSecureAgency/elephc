@@ -199,6 +199,7 @@ pub fn emit_stream_socket_accept(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the failure result
 }
 
+/// Emits the Linux x86_64 stream runtime helper for stream socket accept.
 fn emit_stream_socket_accept_linux_x86_64(emitter: &mut Emitter) {
     let family_off = family_byte_offset(Platform::Linux);
     emitter.blank();

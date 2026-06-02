@@ -229,6 +229,7 @@ pub fn emit_stream_socket_server(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the failure result
 }
 
+/// Emits the Linux x86_64 stream runtime helper for stream socket server.
 fn emit_stream_socket_server_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: stream_socket_server ---");

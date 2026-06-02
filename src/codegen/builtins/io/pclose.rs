@@ -18,6 +18,7 @@ use crate::types::PhpType;
 
 use super::stream_arg::emit_stream_fd_arg;
 
+/// Emits codegen for PHP `pclose()` stream and I/O builtin calls.
 pub fn emit(
     _name: &str,
     args: &[Expr],

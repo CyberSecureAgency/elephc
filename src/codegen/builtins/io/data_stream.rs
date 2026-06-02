@@ -77,6 +77,7 @@ fn decode_data_uri(path: &str) -> Option<Vec<u8>> {
 /// Decodes a base64 payload, tolerating embedded whitespace and stopping at the
 /// first `=` padding character. Returns `None` on an invalid alphabet byte.
 fn base64_decode(input: &str) -> Option<Vec<u8>> {
+    /// Converts one base64 byte into its six-bit value for data:// decoding.
     fn sextet(c: u8) -> Option<u32> {
         match c {
             b'A'..=b'Z' => Some((c - b'A') as u32),

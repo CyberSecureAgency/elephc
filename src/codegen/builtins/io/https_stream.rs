@@ -191,12 +191,14 @@ fn split_authority(authority: &str) -> Option<(String, String, &str)> {
 mod tests {
     use super::*;
 
+    /// Parses an HTTPS URL into host, port, and path pieces for unit assertions.
     fn first_line(url: &str) -> Option<(String, u16, String)> {
         let parsed = parse_https_url(url)?;
         let request_line = parsed.request.lines().next()?.to_string();
         Some((parsed.host, parsed.port, request_line))
     }
 
+    /// Verifies HTTPS URL parsing with the default port.
     #[test]
     fn parses_default_port() {
         let (host, port, line) = first_line("https://example.com/").unwrap();
@@ -205,6 +207,7 @@ mod tests {
         assert_eq!(line, "GET / HTTP/1.0");
     }
 
+    /// Verifies HTTPS URL parsing with an explicit port and path.
     #[test]
     fn parses_explicit_port_and_path() {
         let (host, port, line) = first_line("https://example.com:8443/api?id=1").unwrap();
@@ -213,6 +216,7 @@ mod tests {
         assert_eq!(line, "GET /api?id=1 HTTP/1.0");
     }
 
+    /// Verifies HTTPS URL parsing with an IPv6 literal and default port.
     #[test]
     fn parses_ipv6_literal_default_port() {
         let parsed = parse_https_url("https://[::1]/").unwrap();
@@ -221,6 +225,7 @@ mod tests {
         assert!(parsed.request.contains("\r\nHost: [::1]\r\n"));
     }
 
+    /// Verifies HTTPS URL parsing with an IPv6 literal and explicit port.
     #[test]
     fn parses_ipv6_literal_with_port() {
         let parsed = parse_https_url("https://[2001:db8::1]:8443/path").unwrap();
@@ -230,17 +235,20 @@ mod tests {
         assert!(parsed.request.starts_with("GET /path HTTP/1.0"));
     }
 
+    /// Verifies HTTPS URL rejection with a missing authority.
     #[test]
     fn rejects_missing_authority() {
         assert!(parse_https_url("https://").is_none());
         assert!(parse_https_url("https:///path").is_none());
     }
 
+    /// Verifies HTTPS URL rejection with an unclosed IPv6 literal.
     #[test]
     fn rejects_unclosed_ipv6() {
         assert!(parse_https_url("https://[::1/").is_none());
     }
 
+    /// Verifies HTTPS URL rejection with an empty port.
     #[test]
     fn rejects_empty_port() {
         assert!(parse_https_url("https://example.com:/").is_none());

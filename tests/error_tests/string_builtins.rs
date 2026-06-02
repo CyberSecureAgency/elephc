@@ -219,46 +219,55 @@ fn test_error_ptr_set_requires_word_value() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error long2ip wrong args.
 #[test]
 fn test_error_long2ip_wrong_args() {
     expect_error("<?php long2ip();", "long2ip() takes exactly 1 argument");
 }
 
+/// Verifies the invalid-call diagnostic for error ip2long wrong args.
 #[test]
 fn test_error_ip2long_wrong_args() {
     expect_error("<?php ip2long();", "ip2long() takes exactly 1 argument");
 }
 
+/// Verifies the invalid-call diagnostic for error inet ntop wrong args.
 #[test]
 fn test_error_inet_ntop_wrong_args() {
     expect_error("<?php inet_ntop();", "inet_ntop() takes exactly 1 argument");
 }
 
+/// Verifies the invalid-call diagnostic for error inet pton wrong args.
 #[test]
 fn test_error_inet_pton_wrong_args() {
     expect_error("<?php inet_pton();", "inet_pton() takes exactly 1 argument");
 }
 
+/// Verifies the invalid-call diagnostic for error gzcompress wrong args.
 #[test]
 fn test_error_gzcompress_wrong_args() {
     expect_error("<?php gzcompress();", "gzcompress() expects 1 or 2 arguments");
 }
 
+/// Verifies the invalid-call diagnostic for error gzuncompress wrong args.
 #[test]
 fn test_error_gzuncompress_wrong_args() {
     expect_error("<?php gzuncompress();", "gzuncompress() expects 1 or 2 arguments");
 }
 
+/// Verifies the invalid-call diagnostic for error gzdeflate wrong args.
 #[test]
 fn test_error_gzdeflate_wrong_args() {
     expect_error("<?php gzdeflate();", "gzdeflate() expects 1 or 2 arguments");
 }
 
+/// Verifies the invalid-call diagnostic for error gzinflate wrong args.
 #[test]
 fn test_error_gzinflate_wrong_args() {
     expect_error("<?php gzinflate();", "gzinflate() expects 1 or 2 arguments");
 }
 
+/// Verifies the invalid-call diagnostic for error vsprintf wrong args.
 #[test]
 fn test_error_vsprintf_wrong_args() {
     expect_error(
@@ -267,6 +276,7 @@ fn test_error_vsprintf_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error vprintf wrong args.
 #[test]
 fn test_error_vprintf_wrong_args() {
     expect_error(

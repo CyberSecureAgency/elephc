@@ -130,6 +130,7 @@ pub fn emit_new_by_name(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return null
 }
 
+/// Emits the Linux x86_64 object runtime helper for new by name.
 fn emit_new_by_name_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: new_by_name ---");

@@ -110,6 +110,7 @@ pub fn emit_resolve_host_v6(emitter: &mut Emitter) {
     emitter.instruction("ret");
 }
 
+/// Emits the Linux x86_64 stream runtime helper for resolve host v6.
 fn emit_resolve_host_v6_linux_x86_64(emitter: &mut Emitter) {
     let af_inet6 = emitter.platform.af_inet6();
     let addr_off = emitter.platform.addrinfo_addr_offset();

@@ -57,6 +57,7 @@ pub fn emit_stream_wrapper_register(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return to the caller
 }
 
+/// Emits the Linux x86_64 stream runtime helper for stream wrapper register.
 fn emit_stream_wrapper_register_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: stream_wrapper_register ---");

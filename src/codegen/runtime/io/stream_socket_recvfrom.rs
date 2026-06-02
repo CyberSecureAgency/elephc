@@ -158,6 +158,7 @@ pub fn emit_stream_socket_recvfrom(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the received string slice
 }
 
+/// Emits the Linux x86_64 stream runtime helper for stream socket recvfrom.
 fn emit_stream_socket_recvfrom_linux_x86_64(emitter: &mut Emitter) {
     let family_off = family_byte_offset(Platform::Linux);
     emitter.blank();

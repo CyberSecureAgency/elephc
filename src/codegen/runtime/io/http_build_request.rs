@@ -418,6 +418,7 @@ pub fn emit_http_build_request(emitter: &mut Emitter) {
     emitter.instruction("ret");
 }
 
+/// Emits the Linux x86_64 stream runtime helper for http build request.
 fn emit_http_build_request_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: http_build_request ---");

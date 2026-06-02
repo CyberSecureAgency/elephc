@@ -218,6 +218,7 @@ echo (gzuncompress($packed) === $data ? "roundtrip-ok" : "roundtrip-fail");
     assert_eq!(out, "smaller|roundtrip-ok");
 }
 
+/// Verifies compiled PHP output for gzuncompress invalid is false.
 #[test]
 fn test_gzuncompress_invalid_is_false() {
     // gzuncompress() of non-zlib data returns false.
@@ -227,6 +228,7 @@ fn test_gzuncompress_invalid_is_false() {
     assert_eq!(out, "false");
 }
 
+/// Verifies compiled PHP output for gzdeflate gzinflate roundtrip.
 #[test]
 fn test_gzdeflate_gzinflate_roundtrip() {
     // gzdeflate() / gzinflate() round-trip a string through raw DEFLATE.
@@ -242,6 +244,7 @@ echo (gzinflate($packed) === $data ? "roundtrip-ok" : "roundtrip-fail");
     assert_eq!(out, "smaller|roundtrip-ok");
 }
 
+/// Verifies compiled PHP output for gzinflate invalid is false.
 #[test]
 fn test_gzinflate_invalid_is_false() {
     // gzinflate() of data that is not raw DEFLATE returns false.
@@ -251,6 +254,7 @@ fn test_gzinflate_invalid_is_false() {
     assert_eq!(out, "false");
 }
 
+/// Verifies compiled PHP output for gzinflate decodes zlib deflate filter.
 #[test]
 fn test_gzinflate_decodes_zlib_deflate_filter() {
     // gzinflate() decodes the raw DEFLATE produced by the zlib.deflate stream
@@ -268,6 +272,7 @@ echo (gzinflate(file_get_contents("filtered.bin")) === $data ? "decoded-ok" : "F
     assert_eq!(out, "decoded-ok");
 }
 
+/// Verifies compiled PHP output for gz builtins case insensitive.
 #[test]
 fn test_gz_builtins_case_insensitive() {
     // PHP builtin names are case-insensitive.
@@ -277,6 +282,7 @@ fn test_gz_builtins_case_insensitive() {
     assert_eq!(out, "ci-ok");
 }
 
+/// Verifies compiled PHP output for ctype alpha true.
 #[test]
 fn test_ctype_alpha_true() {
     let out = compile_and_run(r#"<?php echo ctype_alpha("Hello");"#);
@@ -343,18 +349,21 @@ fn test_sprintf_hex() {
 
 // --- long2ip ---
 
+/// Verifies compiled PHP output for long2ip private address.
 #[test]
 fn test_long2ip_private_address() {
     let out = compile_and_run(r#"<?php echo long2ip(3232235777);"#);
     assert_eq!(out, "192.168.1.1");
 }
 
+/// Verifies compiled PHP output for long2ip loopback.
 #[test]
 fn test_long2ip_loopback() {
     let out = compile_and_run(r#"<?php echo long2ip(2130706433);"#);
     assert_eq!(out, "127.0.0.1");
 }
 
+/// Verifies compiled PHP output for long2ip zero and broadcast.
 #[test]
 fn test_long2ip_zero_and_broadcast() {
     let out = compile_and_run(r#"<?php echo long2ip(0) . "|" . long2ip(4294967295);"#);
@@ -363,6 +372,7 @@ fn test_long2ip_zero_and_broadcast() {
 
 // --- ip2long ---
 
+/// Verifies compiled PHP output for ip2long valid addresses.
 #[test]
 fn test_ip2long_valid_addresses() {
     let out = compile_and_run(
@@ -371,6 +381,7 @@ fn test_ip2long_valid_addresses() {
     assert_eq!(out, "3232235777|0|4294967295");
 }
 
+/// Verifies compiled PHP output for ip2long rejects invalid.
 #[test]
 fn test_ip2long_rejects_invalid() {
     let out = compile_and_run(
@@ -386,24 +397,28 @@ echo ip2long("1.2.3.4.5") === false ? "d" : "D";
 
 // --- inet_ntop / inet_pton ---
 
+/// Verifies compiled PHP output for inet ntop ipv4.
 #[test]
 fn test_inet_ntop_ipv4() {
     let out = compile_and_run(r#"<?php echo inet_ntop(chr(192) . chr(168) . chr(0) . chr(1));"#);
     assert_eq!(out, "192.168.0.1");
 }
 
+/// Verifies compiled PHP output for inet ntop loopback.
 #[test]
 fn test_inet_ntop_loopback() {
     let out = compile_and_run(r#"<?php echo inet_ntop(chr(127) . chr(0) . chr(0) . chr(1));"#);
     assert_eq!(out, "127.0.0.1");
 }
 
+/// Verifies compiled PHP output for inet ntop rejects wrong length.
 #[test]
 fn test_inet_ntop_rejects_wrong_length() {
     let out = compile_and_run(r#"<?php var_dump(inet_ntop("xx"));"#);
     assert_eq!(out, "bool(false)\n");
 }
 
+/// Verifies compiled PHP output for inet pton valid and invalid.
 #[test]
 fn test_inet_pton_valid_and_invalid() {
     let out = compile_and_run(

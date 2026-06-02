@@ -18,6 +18,7 @@ use crate::codegen::expr::emit_expr;
 use crate::parser::ast::Expr;
 use crate::types::PhpType;
 
+/// Emits codegen for PHP `opendir()` stream and I/O builtin calls.
 pub fn emit(
     _name: &str,
     args: &[Expr],

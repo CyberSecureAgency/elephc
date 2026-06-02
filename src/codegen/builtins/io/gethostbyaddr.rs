@@ -22,6 +22,7 @@ use crate::types::PhpType;
 
 const X86_64_HEAP_MAGIC_HI32: u64 = 0x454C5048;
 
+/// Emits codegen for PHP `gethostbyaddr()` stream and I/O builtin calls.
 pub fn emit(
     _name: &str,
     args: &[Expr],

@@ -106,6 +106,7 @@ pub fn emit_opendir_glob(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the failure result
 }
 
+/// Emits the Linux x86_64 stream runtime helper for opendir glob.
 fn emit_opendir_glob_linux_x86_64(emitter: &mut Emitter) {
     let pathv_off = emitter.platform.glob_pathv_offset() as i64;
     emitter.blank();

@@ -64,6 +64,7 @@ pub fn emit_disk_space(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the byte count in d0
 }
 
+/// Emits the Linux x86_64 stream runtime helper for disk space.
 fn emit_disk_space_linux_x86_64(emitter: &mut Emitter) {
     let plat = emitter.platform;
     // Frame: [rbp-8) mode, the statfs buffer occupies [rbp-buf_top .. rbp-8).

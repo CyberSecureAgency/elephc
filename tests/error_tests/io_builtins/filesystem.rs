@@ -240,6 +240,7 @@ fn test_error_sys_get_temp_dir_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error disk free space wrong args.
 #[test]
 fn test_error_disk_free_space_wrong_args() {
     expect_error(
@@ -248,6 +249,7 @@ fn test_error_disk_free_space_wrong_args() {
     );
 }
 
+/// Verifies the invalid-call diagnostic for error disk total space wrong args.
 #[test]
 fn test_error_disk_total_space_wrong_args() {
     expect_error(

@@ -268,6 +268,7 @@ pub fn emit_stream_socket_get_name(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the empty path string
 }
 
+/// Emits the Linux x86_64 stream runtime helper for stream socket get name.
 fn emit_stream_socket_get_name_linux_x86_64(emitter: &mut Emitter) {
     let family_off_in_buffer = family_byte_offset(Platform::Linux);
     emitter.blank();

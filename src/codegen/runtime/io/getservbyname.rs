@@ -269,6 +269,7 @@ pub fn emit_getservbyname(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the port number or -1
 }
 
+/// Emits the Linux x86_64 stream runtime helper for getservbyname.
 fn emit_getservbyname_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: getservbyname ---");

@@ -155,6 +155,7 @@ pub fn emit_fwrite(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the byte count from write
 }
 
+/// Emits the Linux x86_64 stream runtime helper for fwrite.
 fn emit_fwrite_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: fwrite ---");

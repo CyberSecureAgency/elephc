@@ -81,6 +81,7 @@ pub fn emit_stream_get_contents(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the accumulated string slice
 }
 
+/// Emits the Linux x86_64 stream runtime helper for stream get contents.
 fn emit_stream_get_contents_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: stream_get_contents ---");

@@ -59,6 +59,7 @@ pub fn emit_inet_pton(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the invalid-address result
 }
 
+/// Emits the Linux x86_64 string runtime helper for inet pton.
 fn emit_inet_pton_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: inet_pton ---");

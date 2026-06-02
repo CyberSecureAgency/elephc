@@ -37,6 +37,7 @@ unlink("readfn.txt");
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Verifies compiled PHP output for mkdir rmdir.
 #[test]
 fn test_mkdir_rmdir() {
     let (out, dir) = compile_and_run_in_dir(
@@ -214,6 +215,7 @@ rmdir("gw");
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Verifies compiled PHP output for tempnam.
 #[test]
 fn test_tempnam() {
     let (out, dir) = compile_and_run_in_dir(
@@ -227,6 +229,7 @@ unlink($tmp);
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Verifies compiled PHP output for disk space positive and ordered.
 #[test]
 fn test_disk_space_positive_and_ordered() {
     let out = compile_and_run(
@@ -241,6 +244,7 @@ echo $total >= $free ? "o" : "O";
     assert_eq!(out, "fto");
 }
 
+/// Verifies compiled PHP output for disk free space invalid path returns zero.
 #[test]
 fn test_disk_free_space_invalid_path_returns_zero() {
     let out = compile_and_run(r#"<?php var_dump(disk_free_space("/no/such/path/xyz123"));"#);

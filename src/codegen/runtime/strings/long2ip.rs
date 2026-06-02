@@ -90,6 +90,7 @@ fn emit_octet_aarch64(emitter: &mut Emitter, shift: u32, index: u32, with_dot: b
     }
 }
 
+/// Emits the Linux x86_64 string runtime helper for long2ip.
 fn emit_long2ip_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: long2ip ---");

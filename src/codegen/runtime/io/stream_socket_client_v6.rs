@@ -195,6 +195,7 @@ pub fn emit_stream_socket_client_v6(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the failure result
 }
 
+/// Emits the Linux x86_64 stream runtime helper for stream socket client v6.
 fn emit_stream_socket_client_v6_linux_x86_64(emitter: &mut Emitter) {
     let af_inet6 = Platform::Linux.af_inet6();
     emitter.blank();

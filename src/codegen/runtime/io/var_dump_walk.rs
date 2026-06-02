@@ -72,6 +72,7 @@ pub fn emit_var_dump_array_int(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return to the var_dump builtin caller
 }
 
+/// Emits the Linux x86_64 stream runtime helper for var dump array int.
 fn emit_var_dump_array_int_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: var_dump_array_int ---");
@@ -168,6 +169,7 @@ pub fn emit_var_dump_array_str(emitter: &mut Emitter) {
     emitter.instruction("ret");
 }
 
+/// Emits the Linux x86_64 stream runtime helper for var dump array str.
 fn emit_var_dump_array_str_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: var_dump_array_str ---");
@@ -249,6 +251,7 @@ pub fn emit_var_dump_emit_indexed_key(emitter: &mut Emitter) {
     emitter.instruction("ret");
 }
 
+/// Emits the Linux x86_64 stream runtime helper for var dump emit indexed key.
 fn emit_var_dump_emit_indexed_key_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: var_dump_emit_indexed_key ---");
@@ -326,6 +329,7 @@ pub fn emit_var_dump_emit_int_line(emitter: &mut Emitter) {
     emitter.instruction("ret");
 }
 
+/// Emits the Linux x86_64 stream runtime helper for var dump emit int line.
 fn emit_var_dump_emit_int_line_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: var_dump_emit_int_line ---");
@@ -412,6 +416,7 @@ pub fn emit_var_dump_emit_string_line(emitter: &mut Emitter) {
     emitter.instruction("ret");
 }
 
+/// Emits the Linux x86_64 stream runtime helper for var dump emit string line.
 fn emit_var_dump_emit_string_line_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: var_dump_emit_string_line ---");
@@ -487,6 +492,7 @@ pub fn emit_var_dump_emit_bool_line(emitter: &mut Emitter) {
     emitter.instruction("ret");
 }
 
+/// Emits the Linux x86_64 stream runtime helper for var dump emit bool line.
 fn emit_var_dump_emit_bool_line_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: var_dump_emit_bool_line ---");
@@ -592,6 +598,7 @@ pub fn emit_var_dump_emit_float_line(emitter: &mut Emitter) {
     emitter.instruction("ret");
 }
 
+/// Emits the Linux x86_64 stream runtime helper for var dump emit float line.
 fn emit_var_dump_emit_float_line_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: var_dump_emit_float_line ---");
@@ -670,6 +677,7 @@ pub fn emit_var_dump_array_float(emitter: &mut Emitter) {
     emitter.instruction("ret");
 }
 
+/// Emits the Linux x86_64 stream runtime helper for var dump array float.
 fn emit_var_dump_array_float_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: var_dump_array_float ---");
@@ -824,6 +832,7 @@ pub fn emit_var_dump_array_mixed(emitter: &mut Emitter) {
     emitter.instruction("ret");
 }
 
+/// Emits the Linux x86_64 stream runtime helper for var dump array mixed.
 fn emit_var_dump_array_mixed_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: var_dump_array_mixed ---");
@@ -904,6 +913,7 @@ fn emit_var_dump_array_mixed_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("ret");
 }
 
+/// Emits the Linux x86_64 stream runtime helper for var dump array bool.
 fn emit_var_dump_array_bool_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: var_dump_array_bool ---");

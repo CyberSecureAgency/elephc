@@ -44,6 +44,7 @@ pub fn emit_inet_ntop(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the invalid-address result
 }
 
+/// Emits the Linux x86_64 string runtime helper for inet ntop.
 fn emit_inet_ntop_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: inet_ntop ---");

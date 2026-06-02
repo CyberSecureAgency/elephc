@@ -90,6 +90,7 @@ pub fn emit_path_is_wrapper(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return false
 }
 
+/// Emits the Linux x86_64 stream runtime helper for path is wrapper.
 fn emit_path_is_wrapper_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: path_is_wrapper ---");

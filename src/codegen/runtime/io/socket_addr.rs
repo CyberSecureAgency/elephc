@@ -135,6 +135,7 @@ pub fn emit_inet_addr_parse(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the failure result
 }
 
+/// Emits the Linux x86_64 stream runtime helper for inet addr parse.
 fn emit_inet_addr_parse_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: inet_addr_parse ---");

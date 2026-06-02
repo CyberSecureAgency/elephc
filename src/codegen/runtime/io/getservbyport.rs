@@ -199,6 +199,7 @@ pub fn emit_getservbyport(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the not-found result
 }
 
+/// Emits the Linux x86_64 stream runtime helper for getservbyport.
 fn emit_getservbyport_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: getservbyport ---");

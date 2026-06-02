@@ -49,6 +49,7 @@ pub fn emit_rewinddir(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return to the caller
 }
 
+/// Emits the Linux x86_64 stream runtime helper for rewinddir.
 fn emit_rewinddir_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: rewinddir ---");

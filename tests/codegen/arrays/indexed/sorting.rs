@@ -93,6 +93,7 @@ echo $a[0];
     assert_eq!(out, "1");
 }
 
+/// Verifies compiled PHP output for sort string array.
 #[test]
 fn test_sort_string_array() {
     let out = compile_and_run(
@@ -105,6 +106,7 @@ echo $a[0] . "," . $a[1] . "," . $a[2] . "," . $a[3];
     assert_eq!(out, "apple,banana,cherry,date");
 }
 
+/// Verifies compiled PHP output for rsort string array.
 #[test]
 fn test_rsort_string_array() {
     let out = compile_and_run(

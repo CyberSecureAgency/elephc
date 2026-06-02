@@ -213,6 +213,7 @@ echo "count=$count";
     assert_eq!(out, "line1\nline2\nline3\ncount=3");
 }
 
+/// Verifies compiled PHP output for fgets stdin.
 #[test]
 fn test_fgets_stdin() {
     let out = compile_and_run_with_stdin(
@@ -460,12 +461,14 @@ unlink("eof.txt");
 
 // --- resource & stream introspection (streams/sockets phase 1) ---
 
+/// Verifies compiled PHP output for is resource true for stream.
 #[test]
 fn test_is_resource_true_for_stream() {
     let out = compile_and_run("<?php var_dump(is_resource(STDIN));");
     assert_eq!(out, "bool(true)\n");
 }
 
+/// Verifies compiled PHP output for is resource false for non resource.
 #[test]
 fn test_is_resource_false_for_non_resource() {
     let out = compile_and_run(
@@ -478,12 +481,14 @@ echo is_resource(null) ? "y" : "n";
     assert_eq!(out, "nnn");
 }
 
+/// Verifies compiled PHP output for get resource type returns stream.
 #[test]
 fn test_get_resource_type_returns_stream() {
     let out = compile_and_run("<?php echo get_resource_type(STDOUT);");
     assert_eq!(out, "stream");
 }
 
+/// Verifies compiled PHP output for get resource id matches display marker.
 #[test]
 fn test_get_resource_id_matches_display_marker() {
     let out = compile_and_run(
@@ -492,6 +497,7 @@ fn test_get_resource_id_matches_display_marker() {
     assert_eq!(out, "1|2|3");
 }
 
+/// Verifies compiled PHP output for resource introspection is case insensitive.
 #[test]
 fn test_resource_introspection_is_case_insensitive() {
     let out = compile_and_run(
@@ -500,6 +506,7 @@ fn test_resource_introspection_is_case_insensitive() {
     assert_eq!(out, "ystream");
 }
 
+/// Verifies compiled PHP output for stream isatty false for regular file.
 #[test]
 fn test_stream_isatty_false_for_regular_file() {
     let (out, dir) = compile_and_run_in_dir(
@@ -514,6 +521,7 @@ unlink("tty_probe.txt");
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Verifies compiled PHP output for stream is local and supports lock are true.
 #[test]
 fn test_stream_is_local_and_supports_lock_are_true() {
     let out = compile_and_run(
@@ -522,6 +530,7 @@ fn test_stream_is_local_and_supports_lock_are_true() {
     assert_eq!(out, "LS");
 }
 
+/// Verifies compiled PHP output for stream get wrappers lists known wrappers.
 #[test]
 fn test_stream_get_wrappers_lists_known_wrappers() {
     // Full PHP-published wrapper list (Phase D: surface 100%). ftps,
@@ -533,6 +542,7 @@ fn test_stream_get_wrappers_lists_known_wrappers() {
     assert_eq!(out, "11:file,ftp,https");
 }
 
+/// Verifies compiled PHP output for stream get transports and filters.
 #[test]
 fn test_stream_get_transports_and_filters() {
     // Full PHP-published transport and filter lists. tlsv1.0/1.1/1.2/1.3
@@ -545,6 +555,7 @@ fn test_stream_get_transports_and_filters() {
     assert_eq!(out, "12,14");
 }
 
+/// Verifies compiled PHP output for stream filter rot13 on read.
 #[test]
 fn test_stream_filter_rot13_on_read() {
     // A read-direction filter transforms bytes as they leave the stream.
@@ -561,6 +572,7 @@ fclose($m);
     assert_eq!(out, "Uryyb Jbeyq");
 }
 
+/// Verifies compiled PHP output for stream filter toupper on write.
 #[test]
 fn test_stream_filter_toupper_on_write() {
     // A write-direction filter transforms bytes as they enter the stream.
@@ -577,6 +589,7 @@ fclose($m);
     assert_eq!(out, "WRITTEN LOWER");
 }
 
+/// Verifies compiled PHP output for php filter read toupper over temp.
 #[test]
 fn test_php_filter_read_toupper_over_temp() {
     // php://filter/read=F/resource=R opens R and attaches F to the read side.
@@ -592,6 +605,7 @@ fclose($f);
     assert_eq!(out, "HELLO TEMP");
 }
 
+/// Verifies compiled PHP output for php filter write rot13 over temp.
 #[test]
 fn test_php_filter_write_rot13_over_temp() {
     // php://filter/write=F transforms bytes as they enter the stream; reading
@@ -608,6 +622,7 @@ fclose($f);
     assert_eq!(out, "uryyb");
 }
 
+/// Verifies compiled PHP output for php filter bare filter applies to read.
 #[test]
 fn test_php_filter_bare_filter_applies_to_read() {
     // A bare filter (no read=/write=) is STREAM_FILTER_ALL, so it applies on read.
@@ -623,6 +638,7 @@ fclose($f);
     assert_eq!(out, "BOTH WAYS");
 }
 
+/// Verifies compiled PHP output for php filter unknown filter returns unfiltered stream.
 #[test]
 fn test_php_filter_unknown_filter_returns_unfiltered_stream() {
     // PHP emits a warning but still returns the unfiltered stream for an unknown
@@ -640,6 +656,7 @@ fclose($f);
     assert_eq!(out, "resource|raw bytes");
 }
 
+/// Verifies compiled PHP output for fprintf formats and writes to stream.
 #[test]
 fn test_fprintf_formats_and_writes_to_stream() {
     // fprintf = sprintf + fwrite: it formats the arguments and writes the result
@@ -656,6 +673,7 @@ fclose($f);
     assert_eq!(out, "n=11|[x=42 (3.14)]");
 }
 
+/// Verifies compiled PHP output for fscanf float via shared sscanf engine.
 #[test]
 fn test_fscanf_float_via_shared_sscanf_engine() {
     // fscanf shares __rt_sscanf, so the new %f branch must work through it too.
@@ -672,6 +690,7 @@ fclose($g);
     assert_eq!(out, "9.99");
 }
 
+/// Verifies compiled PHP output for fscanf reads and parses line by line.
 #[test]
 fn test_fscanf_reads_and_parses_line_by_line() {
     // fscanf reads one line per call and parses it with the sscanf engine,
@@ -691,6 +710,7 @@ fclose($g);
     assert_eq!(out, "alice=30|bob=25");
 }
 
+/// Verifies compiled PHP output for fprintf inside function returns int.
 #[test]
 fn test_fprintf_inside_function_returns_int() {
     // Exercises local-type inference: the fprintf result assigned to a local
@@ -708,6 +728,7 @@ fclose($f);
     assert_eq!(out, "3:[7]");
 }
 
+/// Verifies compiled PHP output for stream filter prepend and remove.
 #[test]
 fn test_stream_filter_prepend_and_remove() {
     // stream_filter_prepend attaches a filter; stream_filter_remove drops it.
@@ -729,6 +750,7 @@ fclose($m);
     assert_eq!(out, "first pass|FIRST PASS");
 }
 
+/// Verifies compiled PHP output for stream filter zlib deflate compresses.
 #[test]
 fn test_stream_filter_zlib_deflate_compresses() {
     // The zlib.deflate write filter deflate-compresses data into the stream;
@@ -747,6 +769,7 @@ echo (strlen($packed) > 0 && strlen($packed) < strlen($data)) ? "compressed" : "
     assert_eq!(out, "compressed");
 }
 
+/// Verifies compiled PHP output for compress zlib wrapper round trips through deflate.
 #[test]
 fn test_compress_zlib_wrapper_round_trips_through_deflate() {
     // compress.zlib:// opens a file and attaches the zlib.inflate read filter
@@ -767,6 +790,7 @@ fclose($r);
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Verifies compiled PHP output for compress bzip2 wrapper decompresses file.
 #[test]
 fn test_compress_bzip2_wrapper_decompresses_file() {
     // compress.bzip2:// slurps the underlying file and runs libbz2's
@@ -786,6 +810,7 @@ fclose($f);
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Verifies compiled PHP output for stream filter bzip2 compress then decompress roundtrip.
 #[test]
 fn test_stream_filter_bzip2_compress_then_decompress_roundtrip() {
     // bzip2.compress (write) streams the payload through libbz2's BZ2_bzCompress
@@ -812,6 +837,7 @@ echo ($restored === $payload) ? "|match" : "|MISMATCH";
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Verifies compiled PHP output for stream filter params compression level round trips.
 #[test]
 fn test_stream_filter_params_compression_level_round_trips() {
     // The 4th stream_filter_append $params arg sets the compression level
@@ -847,6 +873,7 @@ echo ($brestored === $payload) ? "|bok" : "|bBAD";
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Verifies compiled PHP output for stream filter params array form round trips.
 #[test]
 fn test_stream_filter_params_array_form_round_trips() {
     // PHP's canonical $params shape is an associative array, not a bare int:
@@ -882,6 +909,7 @@ echo ($brestored === $payload) ? "|bok" : "|bBAD";
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Verifies compiled PHP output for stream filter bzip2 decompress reads real bzip2.
 #[test]
 fn test_stream_filter_bzip2_decompress_reads_real_bzip2() {
     // bzip2.decompress (the FILTER path, distinct from the compress.bzip2://
@@ -901,6 +929,7 @@ fclose($f);
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Verifies compiled PHP output for compress bzip2 wrapper missing file returns false.
 #[test]
 fn test_compress_bzip2_wrapper_missing_file_returns_false() {
     // compress.bzip2:// surfaces a missing-file failure as PHP false,
@@ -914,6 +943,7 @@ echo ($r === false) ? "FALSE" : "OTHER";
     assert_eq!(out, "FALSE");
 }
 
+/// Verifies compiled PHP output for compress zlib wrapper missing file returns false.
 #[test]
 fn test_compress_zlib_wrapper_missing_file_returns_false() {
     // compress.zlib:// must surface a missing-file failure as PHP `false`,
@@ -927,6 +957,7 @@ echo ($r === false) ? "FALSE" : "OTHER";
     assert_eq!(out, "FALSE");
 }
 
+/// Verifies compiled PHP output for stream filter zlib inflate decompresses.
 #[test]
 fn test_stream_filter_zlib_inflate_decompresses() {
     // The zlib.inflate read filter decompresses a zlib.deflate-compressed
@@ -948,6 +979,7 @@ echo ($got === $data) ? "roundtrip-ok" : "FAIL";
     assert_eq!(out, "roundtrip-ok");
 }
 
+/// Verifies compiled PHP output for stream filter iconv utf8 to utf16le.
 #[test]
 fn test_stream_filter_iconv_utf8_to_utf16le() {
     // convert.iconv.UTF-8/UTF-16LE transcodes the stream at attach time via
@@ -967,6 +999,7 @@ fclose($m);
     assert_eq!(out, "4:72,0,105,0");
 }
 
+/// Verifies compiled PHP output for stream filter iconv utf16le to utf8 roundtrips.
 #[test]
 fn test_stream_filter_iconv_utf16le_to_utf8_roundtrips() {
     // The reverse direction: UTF-16LE bytes decode back to the UTF-8 source.
@@ -985,6 +1018,7 @@ fclose($m);
     assert_eq!(out, "Hi!");
 }
 
+/// Verifies compiled PHP output for stream filter iconv write transcodes on fwrite.
 #[test]
 fn test_stream_filter_iconv_write_transcodes_on_fwrite() {
     // STREAM_FILTER_WRITE installs a streaming per-fwrite transcoder: "Hi"
@@ -1004,6 +1038,7 @@ fclose($f);
     assert_eq!(out, "48006900");
 }
 
+/// Verifies compiled PHP output for stream filter iconv write then read roundtrips.
 #[test]
 fn test_stream_filter_iconv_write_then_read_roundtrips() {
     // Write through the UTF-8->UTF-16LE write filter, then read back through the
@@ -1024,6 +1059,7 @@ fclose($r);
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Verifies compiled PHP output for stream filter iconv read still default on all mode.
 #[test]
 fn test_stream_filter_iconv_read_still_default_on_all_mode() {
     // Regression for the new mode dispatch: a bare append (no 3rd arg = ALL)
@@ -1041,6 +1077,7 @@ fclose($m);
     assert_eq!(out, "4");
 }
 
+/// Verifies compiled PHP output for stream filter base64 encode pads correctly.
 #[test]
 fn test_stream_filter_base64_encode_pads_correctly() {
     // The convert.base64-encode write filter encodes 3-byte groups into 4
@@ -1073,6 +1110,7 @@ fclose($m3);
     assert_eq!(out, "SGVsbG8gV29ybGQ=|YWI=|YQ==");
 }
 
+/// Verifies compiled PHP output for stream filter qp encode escapes non printables.
 #[test]
 fn test_stream_filter_qp_encode_escapes_non_printables() {
     // The convert.quoted-printable-encode write filter escapes bytes outside
@@ -1092,6 +1130,7 @@ fclose($m);
     assert_eq!(out, "abc=C3=A9=0A=3D");
 }
 
+/// Verifies compiled PHP output for stream filter base64 decode decompacts.
 #[test]
 fn test_stream_filter_base64_decode_decompacts() {
     // The convert.base64-decode read filter decodes 4-byte base64 quads
@@ -1111,6 +1150,7 @@ echo "'" . $s . "' len=" . strlen($s);
     assert_eq!(out, "'Hello World' len=11");
 }
 
+/// Verifies compiled PHP output for stream filter qp decode handles escapes and soft breaks.
 #[test]
 fn test_stream_filter_qp_decode_handles_escapes_and_soft_breaks() {
     // The convert.quoted-printable-decode read filter expands "=XX" hex
@@ -1129,6 +1169,7 @@ echo "'" . $s . "' len=" . strlen($s);
     assert_eq!(out, "'Café brûlé' len=13");
 }
 
+/// Verifies compiled PHP output for stream filter strip tags removes html.
 #[test]
 fn test_stream_filter_strip_tags_removes_html() {
     // The string.strip_tags read filter elides everything between '<' and '>'.
@@ -1145,6 +1186,7 @@ fclose($m);
     assert_eq!(out, "Hello World");
 }
 
+/// Verifies compiled PHP output for stream filter dechunk parses chunked encoding.
 #[test]
 fn test_stream_filter_dechunk_parses_chunked_encoding() {
     // The dechunk read filter parses HTTP/1.1 chunked-transfer encoding:
@@ -1162,6 +1204,7 @@ fclose($m);
     assert_eq!(out, "Hello World");
 }
 
+/// Verifies compiled PHP output for stream get contents reads whole stream.
 #[test]
 fn test_stream_get_contents_reads_whole_stream() {
     let (out, dir) = compile_and_run_in_dir(
@@ -1177,6 +1220,7 @@ unlink("sgc.txt");
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Verifies compiled PHP output for stream get contents reads from current position.
 #[test]
 fn test_stream_get_contents_reads_from_current_position() {
     let (out, dir) = compile_and_run_in_dir(
@@ -1193,6 +1237,7 @@ unlink("sgc_pos.txt");
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Verifies compiled PHP output for stream get contents empty at eof.
 #[test]
 fn test_stream_get_contents_empty_at_eof() {
     let (out, dir) = compile_and_run_in_dir(
@@ -1210,6 +1255,7 @@ unlink("sgc_eof.txt");
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Verifies compiled PHP output for stream copy to stream copies all bytes.
 #[test]
 fn test_stream_copy_to_stream_copies_all_bytes() {
     let (out, dir) = compile_and_run_in_dir(
@@ -1229,6 +1275,7 @@ unlink("scts_dst.txt");
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Verifies compiled PHP output for stream copy to stream resumes from position.
 #[test]
 fn test_stream_copy_to_stream_resumes_from_position() {
     let (out, dir) = compile_and_run_in_dir(
@@ -1249,6 +1296,7 @@ unlink("scts_p_dst.txt");
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Verifies compiled PHP output for stream copy to stream empty source.
 #[test]
 fn test_stream_copy_to_stream_empty_source() {
     let (out, dir) = compile_and_run_in_dir(
@@ -1267,6 +1315,7 @@ unlink("scts_e_dst.txt");
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Verifies compiled PHP output for fopen php stdout writes to stdout.
 #[test]
 fn test_fopen_php_stdout_writes_to_stdout() {
     let out =
@@ -1274,12 +1323,14 @@ fn test_fopen_php_stdout_writes_to_stdout() {
     assert_eq!(out, "via php-wrapper");
 }
 
+/// Verifies compiled PHP output for fopen php output is stdout alias.
 #[test]
 fn test_fopen_php_output_is_stdout_alias() {
     let out = compile_and_run(r#"<?php $h = fopen("php://output", "w"); fwrite($h, "aliased");"#);
     assert_eq!(out, "aliased");
 }
 
+/// Verifies compiled PHP output for fopen php stream yields resource.
 #[test]
 fn test_fopen_php_stream_yields_resource() {
     let out = compile_and_run(
@@ -1288,6 +1339,7 @@ fn test_fopen_php_stream_yields_resource() {
     assert_eq!(out, "ystream");
 }
 
+/// Verifies compiled PHP output for fopen php memory round trip.
 #[test]
 fn test_fopen_php_memory_round_trip() {
     // php://memory is a writable, seekable in-memory stream.
@@ -1303,6 +1355,7 @@ fclose($m);
     assert_eq!(out, "memory contents");
 }
 
+/// Verifies compiled PHP output for fopen php temp seek and tell.
 #[test]
 fn test_fopen_php_temp_seek_and_tell() {
     // php://temp behaves like php://memory; fseek/ftell work on it.
@@ -1320,6 +1373,7 @@ fclose($t);
     assert_eq!(out, "456|7");
 }
 
+/// Verifies compiled PHP output for fopen data uri base64.
 #[test]
 fn test_fopen_data_uri_base64() {
     // data:// with ;base64 decodes the payload at compile time.
@@ -1333,6 +1387,7 @@ fclose($d);
     assert_eq!(out, "Hello world");
 }
 
+/// Verifies compiled PHP output for fopen data uri percent encoded.
 #[test]
 fn test_fopen_data_uri_percent_encoded() {
     // A non-base64 data:// payload is percent-decoded (%HH and + → space).
@@ -1346,6 +1401,7 @@ fclose($d);
     assert_eq!(out, "Hello raw+world");
 }
 
+/// Verifies compiled PHP output for fopen data uri invalid returns false.
 #[test]
 fn test_fopen_data_uri_invalid_returns_false() {
     // A data:// URI without the mandatory comma fails like any bad fopen().
@@ -1410,6 +1466,7 @@ fn build_minimal_phar(entries: &[(&str, &[u8])]) -> Vec<u8> {
     build_phar(&raw)
 }
 
+/// Verifies compiled PHP output for fopen phar reads uncompressed entry.
 #[test]
 fn test_fopen_phar_reads_uncompressed_entry() {
     // fopen("phar://archive/entry") reads the named uncompressed entry out of the
@@ -1571,6 +1628,7 @@ echo "|" . (file_get_contents("phar://" . $p . "/missing.txt") === false ? "fals
     assert_eq!(out, "runtime fgc|false");
 }
 
+/// Verifies compiled PHP output for fopen phar missing archive returns false.
 #[test]
 fn test_fopen_phar_missing_archive_returns_false() {
     // A phar:// URL whose archive file does not exist lowers to PHP false,
@@ -1581,6 +1639,7 @@ fn test_fopen_phar_missing_archive_returns_false() {
     assert_eq!(out, "false");
 }
 
+/// Verifies compiled PHP output for fopen phar reads gzip entry.
 #[test]
 fn test_fopen_phar_reads_gzip_entry() {
     // PHP stores gzip-compressed phar entries as raw DEFLATE; the compiler
@@ -1609,6 +1668,7 @@ fn test_fopen_phar_reads_gzip_entry() {
     assert_eq!(out, format!("{}|gzip", content.len()));
 }
 
+/// Verifies compiled PHP output for fopen phar reads bzip2 entry.
 #[test]
 fn test_fopen_phar_reads_bzip2_entry() {
     // PHP stores bzip2 phar entries as a standard bzip2 stream ("BZh..."); the
@@ -1641,6 +1701,7 @@ fn test_fopen_phar_reads_bzip2_entry() {
     assert_eq!(out, "232|bzip2-compressed phar entr");
 }
 
+/// Verifies compiled PHP output for stream socket server creates listening socket.
 #[test]
 fn test_stream_socket_server_creates_listening_socket() {
     let out = compile_and_run(
@@ -1653,6 +1714,7 @@ echo get_resource_type($srv);
     assert_eq!(out, "rstream");
 }
 
+/// Verifies compiled PHP output for stream socket client tcp nodelay does not crash.
 #[test]
 fn test_stream_socket_client_tcp_nodelay_does_not_crash() {
     // socket.tcp_nodelay = 1 triggers __rt_apply_socket_client_opts after
@@ -1673,6 +1735,7 @@ fclose($srv);
     assert_eq!(out, "ok");
 }
 
+/// Verifies compiled PHP output for stream socket client so broadcast does not crash.
 #[test]
 fn test_stream_socket_client_so_broadcast_does_not_crash() {
     // socket.so_broadcast = 1 triggers __rt_apply_socket_client_opts, which sets
@@ -1692,6 +1755,7 @@ fclose($srv);
     assert_eq!(out, "ok");
 }
 
+/// Verifies compiled PHP output for stream socket client bindto binds local address.
 #[test]
 fn test_stream_socket_client_bindto_binds_local_address() {
     // socket.bindto = "127.0.0.1:0" routes through __rt_apply_socket_bindto
@@ -1713,6 +1777,7 @@ fclose($srv);
     assert_eq!(out, "ok");
 }
 
+/// Verifies compiled PHP output for stream socket server ipv6 v6only does not crash.
 #[test]
 fn test_stream_socket_server_ipv6_v6only_does_not_crash() {
     // socket.ipv6_v6only = 1 is best-effort: the option only matters for
@@ -1729,6 +1794,7 @@ if ($srv) { fclose($srv); }
     assert_eq!(out, "ok");
 }
 
+/// Verifies compiled PHP output for stream socket server so reuseport does not crash.
 #[test]
 fn test_stream_socket_server_so_reuseport_does_not_crash() {
     // socket.so_reuseport = 1 triggers __rt_apply_socket_server_opts after
@@ -1745,6 +1811,7 @@ if ($srv) { fclose($srv); }
     assert_eq!(out, "ok");
 }
 
+/// Verifies compiled PHP output for stream socket server backlog accepts connection.
 #[test]
 fn test_stream_socket_server_backlog_accepts_connection() {
     // socket.backlog (read as a string, like ftp.resume_pos) feeds the listen()
@@ -1766,6 +1833,7 @@ fclose($srv);
     assert_eq!(out, "accepted");
 }
 
+/// Verifies compiled PHP output for stream socket server backlog default when unset.
 #[test]
 fn test_stream_socket_server_backlog_default_when_unset() {
     // No backlog option set: __rt_socket_backlog falls back to the default 128
@@ -1780,6 +1848,7 @@ if ($srv) { fclose($srv); }
     assert_eq!(out, "ok");
 }
 
+/// Verifies compiled PHP output for unix socket server backlog does not crash.
 #[test]
 fn test_unix_socket_server_backlog_does_not_crash() {
     // Exercises the unix_socket_server backlog site (whose ARM64 path is a leaf
@@ -1798,6 +1867,7 @@ if ($srv) { fclose($srv); }
     assert_eq!(out, "ok");
 }
 
+/// Verifies compiled PHP output for stream socket server rejects bad address.
 #[test]
 fn test_stream_socket_server_rejects_bad_address() {
     let out = compile_and_run(
@@ -1809,6 +1879,7 @@ echo stream_socket_server("tcp://999.1.2.3:80") === false ? "b" : "B";
     assert_eq!(out, "ab");
 }
 
+/// Verifies compiled PHP output for stream socket client connects to server.
 #[test]
 fn test_stream_socket_client_connects_to_server() {
     let out = compile_and_run(
@@ -1843,6 +1914,7 @@ echo ($bad === false) ? ":closed" : ":open";
     assert_eq!(out, "ping:ok:closed");
 }
 
+/// Verifies compiled PHP output for stream socket client rejects closed port.
 #[test]
 fn test_stream_socket_client_rejects_closed_port() {
     let out =
@@ -1850,6 +1922,7 @@ fn test_stream_socket_client_rejects_closed_port() {
     assert_eq!(out, "bool(true)\n");
 }
 
+/// Verifies compiled PHP output for stream socket accept exchanges data.
 #[test]
 fn test_stream_socket_accept_exchanges_data() {
     let out = compile_and_run(
@@ -1865,6 +1938,7 @@ echo fread($conn, 16);
     assert_eq!(out, "aping");
 }
 
+/// Verifies compiled PHP output for stream socket accept timeout returns false.
 #[test]
 fn test_stream_socket_accept_timeout_returns_false() {
     // With no client connecting, stream_socket_accept() must respect the
@@ -1880,6 +1954,7 @@ echo is_bool($conn) ? "timeout" : "got_conn";
     assert_eq!(out, "timeout");
 }
 
+/// Verifies compiled PHP output for stream socket accept peer name inet.
 #[test]
 fn test_stream_socket_accept_peer_name_inet() {
     // The optional 3rd argument receives the peer A.B.C.D:port string for
@@ -1898,6 +1973,7 @@ echo substr($peer, 0, 10);
     assert_eq!(out, "ok|127.0.0.1:");
 }
 
+/// Verifies compiled PHP output for stream socket accept peer name unix.
 #[test]
 fn test_stream_socket_accept_peer_name_unix() {
     // Unix-domain peers are anonymous unless the client bound a name first,
@@ -1919,6 +1995,7 @@ unlink($path);
     assert_eq!(out, "ok|0");
 }
 
+/// Verifies compiled PHP output for stream get line splits on delimiter.
 #[test]
 fn test_stream_get_line_splits_on_delimiter() {
     let (out, dir) = compile_and_run_in_dir(
@@ -1936,6 +2013,7 @@ unlink("sgl.txt");
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Verifies compiled PHP output for stream get line respects length cap.
 #[test]
 fn test_stream_get_line_respects_length_cap() {
     let (out, dir) = compile_and_run_in_dir(
@@ -1951,6 +2029,7 @@ unlink("sgl_cap.txt");
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Verifies compiled PHP output for stream get line loop terminates at eof.
 #[test]
 fn test_stream_get_line_loop_terminates_at_eof() {
     let (out, dir) = compile_and_run_in_dir(
@@ -1971,6 +2050,7 @@ unlink("sgl_eof.txt");
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Verifies compiled PHP output for stream set blocking toggles mode.
 #[test]
 fn test_stream_set_blocking_toggles_mode() {
     let out = compile_and_run(
@@ -1982,6 +2062,7 @@ echo stream_set_blocking(STDIN, true) ? "b" : "B";
     assert_eq!(out, "nb");
 }
 
+/// Verifies compiled PHP output for stream socket shutdown on connection.
 #[test]
 fn test_stream_socket_shutdown_on_connection() {
     let out = compile_and_run(
@@ -1995,12 +2076,14 @@ echo stream_socket_shutdown($conn, 2) ? "down" : "fail";
     assert_eq!(out, "down");
 }
 
+/// Verifies compiled PHP output for gethostname returns nonempty string.
 #[test]
 fn test_gethostname_returns_nonempty_string() {
     let out = compile_and_run(r#"<?php echo strlen(gethostname()) > 0 ? "named" : "empty";"#);
     assert_eq!(out, "named");
 }
 
+/// Verifies compiled PHP output for gethostbyname resolves localhost.
 #[test]
 fn test_gethostbyname_resolves_localhost() {
     // gethostbyname() resolves a host name to its IPv4 address; a numeric
@@ -2011,6 +2094,7 @@ fn test_gethostbyname_resolves_localhost() {
     assert_eq!(out, "127.0.0.1|127.0.0.1");
 }
 
+/// Verifies compiled PHP output for gethostbyname unresolved returns input.
 #[test]
 fn test_gethostbyname_unresolved_returns_input() {
     // PHP returns the host name unchanged when it cannot be resolved.
@@ -2018,6 +2102,7 @@ fn test_gethostbyname_unresolved_returns_input() {
     assert_eq!(out, "no-such-host.invalid");
 }
 
+/// Verifies compiled PHP output for gethostbyaddr resolves valid address.
 #[test]
 fn test_gethostbyaddr_resolves_valid_address() {
     // gethostbyaddr() reverse-resolves a valid IPv4 address to a host name,
@@ -2028,6 +2113,7 @@ fn test_gethostbyaddr_resolves_valid_address() {
     assert_eq!(out, "named");
 }
 
+/// Verifies compiled PHP output for gethostbyaddr malformed address is false.
 #[test]
 fn test_gethostbyaddr_malformed_address_is_false() {
     // A malformed address yields PHP false.
@@ -2037,6 +2123,7 @@ fn test_gethostbyaddr_malformed_address_is_false() {
     assert_eq!(out, "false");
 }
 
+/// Verifies compiled PHP output for getprotobyname known protocols.
 #[test]
 fn test_getprotobyname_known_protocols() {
     let out = compile_and_run(
@@ -2053,6 +2140,7 @@ echo getprotobyname("ip");
     assert_eq!(out, "6|17|1|0");
 }
 
+/// Verifies compiled PHP output for getprotobyname alias and missing.
 #[test]
 fn test_getprotobyname_alias_and_missing() {
     let out = compile_and_run(
@@ -2065,6 +2153,7 @@ echo getprotobyname("no_such_protocol") === false ? "false" : "?";
     assert_eq!(out, "6|false");
 }
 
+/// Verifies compiled PHP output for getprotobynumber known numbers.
 #[test]
 fn test_getprotobynumber_known_numbers() {
     let out = compile_and_run(
@@ -2081,6 +2170,7 @@ echo getprotobynumber(0);
     assert_eq!(out, "tcp|udp|icmp|ip");
 }
 
+/// Verifies compiled PHP output for getprotobynumber persists across calls.
 #[test]
 fn test_getprotobynumber_persists_across_calls() {
     let out = compile_and_run(
@@ -2095,6 +2185,7 @@ echo getprotobynumber(999) === false ? "false" : "?";
     assert_eq!(out, "tcp/udp|false");
 }
 
+/// Verifies compiled PHP output for getservbyname known services.
 #[test]
 fn test_getservbyname_known_services() {
     let out = compile_and_run(
@@ -2109,6 +2200,7 @@ echo getservbyname("domain", "udp");
     assert_eq!(out, "80|443|53");
 }
 
+/// Verifies compiled PHP output for getservbyname alias and missing.
 #[test]
 fn test_getservbyname_alias_and_missing() {
     let out = compile_and_run(
@@ -2121,6 +2213,7 @@ echo getservbyname("no_such_service", "tcp") === false ? "false" : "?";
     assert_eq!(out, "80|false");
 }
 
+/// Verifies compiled PHP output for getservbyport known ports.
 #[test]
 fn test_getservbyport_known_ports() {
     let out = compile_and_run(
@@ -2135,6 +2228,7 @@ echo getservbyport(53, "udp");
     assert_eq!(out, "http|https|domain");
 }
 
+/// Verifies compiled PHP output for getservbyport persists and missing.
 #[test]
 fn test_getservbyport_persists_and_missing() {
     let out = compile_and_run(
@@ -2149,6 +2243,7 @@ echo getservbyport(80, "no_such_proto") === false ? "false" : "?";
     assert_eq!(out, "http/ssh|false");
 }
 
+/// Verifies compiled PHP output for stream set timeout on socket.
 #[test]
 fn test_stream_set_timeout_on_socket() {
     // A short receive timeout makes the no-data fread() return instead of
@@ -2167,6 +2262,7 @@ echo "done";
     assert_eq!(out, "set|done");
 }
 
+/// Verifies compiled PHP output for stream socket sendto connected.
 #[test]
 fn test_stream_socket_sendto_connected() {
     let out = compile_and_run(
@@ -2182,6 +2278,7 @@ echo fread($conn, 16);
     assert_eq!(out, "4|ping");
 }
 
+/// Verifies compiled PHP output for stream socket recvfrom connected.
 #[test]
 fn test_stream_socket_recvfrom_connected() {
     let out = compile_and_run(
@@ -2199,6 +2296,7 @@ echo $a . "/" . $b;
     assert_eq!(out, "first/second");
 }
 
+/// Verifies compiled PHP output for stream socket recvfrom address out param.
 #[test]
 fn test_stream_socket_recvfrom_address_out_param() {
     // The optional 4th argument receives the sender address by reference.
@@ -2215,6 +2313,7 @@ echo $data . "|" . substr($addr, 0, 10);
     assert_eq!(out, "hello|127.0.0.1:");
 }
 
+/// Verifies compiled PHP output for stream socket recvfrom address overwrites slot.
 #[test]
 fn test_stream_socket_recvfrom_address_overwrites_slot() {
     // Regression: the address write-back must overwrite the variable's
@@ -2236,6 +2335,7 @@ echo $data . "|" . $addr . "|" . strlen($addr);
     assert_eq!(out, "hi||0");
 }
 
+/// Verifies compiled PHP output for udp socket round trip.
 #[test]
 fn test_udp_socket_round_trip() {
     let out = compile_and_run(
@@ -2249,6 +2349,7 @@ echo fread($srv, 32);
     assert_eq!(out, "udp datagram");
 }
 
+/// Verifies compiled PHP output for stream socket sendto to udp address.
 #[test]
 fn test_stream_socket_sendto_to_udp_address() {
     let out = compile_and_run(
@@ -2263,6 +2364,7 @@ echo fread($a, 16);
     assert_eq!(out, "3|abc");
 }
 
+/// Verifies compiled PHP output for unix socket round trip.
 #[test]
 fn test_unix_socket_round_trip() {
     let out = compile_and_run(
@@ -2280,6 +2382,7 @@ unlink($path);
     assert_eq!(out, "unix payload");
 }
 
+/// Verifies compiled PHP output for udg socket round trip.
 #[test]
 fn test_udg_socket_round_trip() {
     // udg:// is the Unix-domain datagram transport: the server binds (no
@@ -2299,6 +2402,7 @@ unlink($path);
     assert_eq!(out, "udg datagram");
 }
 
+/// Verifies compiled PHP output for stream socket sendto to udg address.
 #[test]
 fn test_stream_socket_sendto_to_udg_address() {
     // stream_socket_sendto() accepts a udg:// target: the sender must be a
@@ -2321,6 +2425,7 @@ unlink($cli_path);
     assert_eq!(out, "14|udg-via-sendto");
 }
 
+/// Verifies compiled PHP output for stream socket sendto to unix address.
 #[test]
 fn test_stream_socket_sendto_to_unix_address() {
     // stream_socket_sendto() can also target a unix:// (SOCK_STREAM) listener
@@ -2482,6 +2587,7 @@ fn spawn_ftp_command_echo_server(port: u16) -> std::thread::JoinHandle<()> {
     })
 }
 
+/// Verifies compiled PHP output for fopen ftp resume pos sends rest command.
 #[test]
 fn test_fopen_ftp_resume_pos_sends_rest_command() {
     // Phase 11 B2: stream_context_create(['ftp' => ['resume_pos' => '1024']])
@@ -2501,6 +2607,7 @@ echo strpos($log, "REST 1024\r\n") !== false ? "has-rest" : "no-rest";
     assert_eq!(out, "has-rest");
 }
 
+/// Verifies compiled PHP output for fopen ftp no resume pos skips rest.
 #[test]
 fn test_fopen_ftp_no_resume_pos_skips_rest() {
     // With no resume_pos in context, the runtime must NOT send REST.
@@ -2518,6 +2625,7 @@ echo strpos($log, "REST") !== false ? "has-rest" : "no-rest";
     assert_eq!(out, "no-rest");
 }
 
+/// Verifies compiled PHP output for fopen ftp retrieves file.
 #[test]
 fn test_fopen_ftp_retrieves_file() {
     // fopen("ftp://...") performs the anonymous passive-mode handshake and
@@ -2533,6 +2641,7 @@ fclose($f);
     assert_eq!(out, "contents fetched over ftp");
 }
 
+/// Verifies compiled PHP output for fopen ftp invalid url is false.
 #[test]
 fn test_fopen_ftp_invalid_url_is_false() {
     // An ftp:// URL without a path component fails like any bad fopen().
@@ -2678,6 +2787,7 @@ fn twoway_find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     (0..=haystack.len() - needle.len()).find(|&i| &haystack[i..i + needle.len()] == needle)
 }
 
+/// Verifies compiled PHP output for fopen http method default is get.
 #[test]
 fn test_fopen_http_method_default_is_get() {
     // Without a stream context, the request method falls back to "GET".
@@ -2695,6 +2805,7 @@ echo substr($req, 0, 19);
     assert_eq!(out, "GET /echo HTTP/1.0\r");
 }
 
+/// Verifies compiled PHP output for fopen http method overrides via context.
 #[test]
 fn test_fopen_http_method_overrides_via_context() {
     // Phase 11 B2: stream_context_create(['http' => ['method' => 'POST']])
@@ -2713,6 +2824,7 @@ echo substr($req, 0, 21);
     assert_eq!(out, "POST /api HTTP/1.0\r\nH");
 }
 
+/// Verifies compiled PHP output for fopen http header inserted via context.
 #[test]
 fn test_fopen_http_header_inserted_via_context() {
     // Phase 11 B2: stream_context_create(['http' => ['header' => ...]])
@@ -2731,6 +2843,7 @@ echo strpos($req, "\r\nX-Trace: abc\r\n") !== false ? "has-header" : "no-header"
     assert_eq!(out, "has-header");
 }
 
+/// Verifies compiled PHP output for fopen http content only emits body.
 #[test]
 fn test_fopen_http_content_only_emits_body() {
     // Reduced repro of the POST + content gap: set only ['http']['content']
@@ -2751,6 +2864,7 @@ echo ($has_clen ? "clen-ok" : "clen-MISSING") . "|" . ($has_body ? "body-ok" : "
     assert_eq!(out, "clen-ok|body-ok");
 }
 
+/// Verifies compiled PHP output for fopen http content post body with content length.
 #[test]
 fn test_fopen_http_content_post_body_with_content_length() {
     // Phase 11 B2 + post-deliverable: setting ['http']['content'] alongside
@@ -2773,6 +2887,7 @@ echo ($has_clen ? "clen-ok" : "clen-MISSING") . "|" . ($has_body ? "body-ok" : "
     assert_eq!(out, "clen-ok|body-ok");
 }
 
+/// Verifies compiled PHP output for fopen http retrieves body.
 #[test]
 fn test_fopen_http_retrieves_body() {
     // fopen("http://...") issues an HTTP GET and exposes the response body
@@ -2788,6 +2903,7 @@ fclose($f);
     assert_eq!(out, "body delivered over http");
 }
 
+/// Verifies compiled PHP output for fopen http follow location relative path.
 #[test]
 fn test_fopen_http_follow_location_relative_path() {
     // 302 with a Location: /new redirects to the same host. The redirect
@@ -2805,6 +2921,7 @@ fclose($f);
     assert_eq!(out, "after-relative-redirect");
 }
 
+/// Verifies compiled PHP output for fopen http follow location absolute same host.
 #[test]
 fn test_fopen_http_follow_location_absolute_same_host() {
     // 302 with a Location: http://127.0.0.1:53902/final — same-host absolute
@@ -2830,6 +2947,7 @@ fclose($f);
     assert_eq!(out, "after-absolute-redirect");
 }
 
+/// Verifies compiled PHP output for fopen http follow location cross host is not followed.
 #[test]
 fn test_fopen_http_follow_location_cross_host_is_not_followed() {
     // 302 with a Location: pointing to a different host:port is NOT followed
@@ -2855,6 +2973,7 @@ fclose($f);
     assert_eq!(out, "0");
 }
 
+/// Verifies compiled PHP output for fopen ftps invalid url is false.
 #[test]
 fn test_fopen_ftps_invalid_url_is_false() {
     // An ftps:// URL with no authority fails at compile-time URL parsing,
@@ -2868,6 +2987,7 @@ fn test_fopen_ftps_invalid_url_is_false() {
     assert_eq!(out, "false");
 }
 
+/// Verifies compiled PHP output for fopen ftps unreachable host is false.
 #[test]
 fn test_fopen_ftps_unreachable_host_is_false() {
     // ftps://127.0.0.1:1/foo — port 1 is unbound so __rt_stream_socket_client
@@ -2879,6 +2999,7 @@ fn test_fopen_ftps_unreachable_host_is_false() {
     assert_eq!(out, "false");
 }
 
+/// Verifies compiled PHP output for fopen http invalid url is false.
 #[test]
 fn test_fopen_http_invalid_url_is_false() {
     // An http:// URL with no authority fails like any bad fopen().
@@ -2888,6 +3009,7 @@ fn test_fopen_http_invalid_url_is_false() {
     assert_eq!(out, "false");
 }
 
+/// Verifies compiled PHP output for fopen https invalid url is false.
 #[test]
 fn test_fopen_https_invalid_url_is_false() {
     // An https:// URL with no authority fails at compile-time URL parsing.
@@ -2901,6 +3023,7 @@ fn test_fopen_https_invalid_url_is_false() {
     assert_eq!(out, "false");
 }
 
+/// Verifies compiled PHP output for fopen https cafile bad path is false.
 #[test]
 fn test_fopen_https_cafile_bad_path_is_false() {
     // ssl.cafile routes the connect through elephc_tls_connect_cafile, which
@@ -2918,6 +3041,7 @@ echo ($f === false) ? "false" : "open";
     assert_eq!(out, "false");
 }
 
+/// Verifies compiled PHP output for fopen https capath bad path is false.
 #[test]
 fn test_fopen_https_capath_bad_path_is_false() {
     // OOS Phase C: ssl.capath routes the connect through elephc_tls_connect_capath,
@@ -2934,6 +3058,7 @@ echo ($f === false) ? "false" : "open";
     assert_eq!(out, "false");
 }
 
+/// Verifies compiled PHP output for fopen https peer name and relaxed options fail closed.
 #[test]
 fn test_fopen_https_peer_name_and_relaxed_options_fail_closed() {
     // OOS Phase C: ssl.peer_name routes through elephc_tls_connect_peer_name
@@ -3051,6 +3176,7 @@ fn spawn_tcp_server(port: u16, content: &'static [u8]) -> std::thread::JoinHandl
     })
 }
 
+/// Verifies compiled PHP output for fsockopen connects and reads.
 #[test]
 fn test_fsockopen_connects_and_reads() {
     // fsockopen() connects a TCP socket; on success the error outputs are
@@ -3071,6 +3197,7 @@ fclose($s);
     assert_eq!(out, "ok|errno=0|errstr=[]|data over fsockopen");
 }
 
+/// Verifies compiled PHP output for fsockopen refused sets error.
 #[test]
 fn test_fsockopen_refused_sets_error() {
     // A refused connection returns false and fills the by-reference error
@@ -3088,6 +3215,7 @@ echo "|" . $errstr;
     assert_eq!(out, "false|errno-set|Connection refused");
 }
 
+/// Verifies compiled PHP output for pfsockopen connects and reads.
 #[test]
 fn test_pfsockopen_connects_and_reads() {
     // pfsockopen() is an alias of fsockopen() — persistence is meaningless in a
@@ -3109,6 +3237,7 @@ fclose($s);
     assert_eq!(out, "ok|errno=0|errstr=[]|data over pfsockopen");
 }
 
+/// Verifies compiled PHP output for stream wrapper register records class.
 #[test]
 fn test_stream_wrapper_register_records_class() {
     // stream_wrapper_register() stores the user wrapper registration. v1
@@ -3125,6 +3254,7 @@ echo stream_wrapper_register("alt", "CustomWrapper", 0) ? "true" : "false";
     assert_eq!(out, "true|true");
 }
 
+/// Verifies compiled PHP output for stream wrapper unregister round trip.
 #[test]
 fn test_stream_wrapper_unregister_round_trip() {
     // unregister removes a previously-registered protocol, then a fresh
@@ -3144,6 +3274,7 @@ echo stream_wrapper_register("foo", "W") ? "true" : "false";
     assert_eq!(out, "true|false|true");
 }
 
+/// Verifies compiled PHP output for stream wrapper restore always true.
 #[test]
 fn test_stream_wrapper_restore_always_true() {
     // v1 cannot unregister built-in wrappers, so stream_wrapper_restore()
@@ -3154,6 +3285,7 @@ fn test_stream_wrapper_restore_always_true() {
     assert_eq!(out, "true");
 }
 
+/// Verifies compiled PHP output for stream socket enable crypto reads peer name from context.
 #[test]
 fn test_stream_socket_enable_crypto_reads_peer_name_from_context() {
     // Phase 11 B3 follow-up: enable_crypto navigates
@@ -3177,6 +3309,7 @@ fclose($m);
     assert_eq!(out, "bool|1");
 }
 
+/// Verifies compiled PHP output for stream socket enable crypto returns bool.
 #[test]
 fn test_stream_socket_enable_crypto_returns_bool() {
     // Phase 11 B3: stream_socket_enable_crypto invokes elephc_tls_attach_fd
@@ -3236,6 +3369,7 @@ fclose($m);
     assert_eq!(out, "no");
 }
 
+/// Verifies compiled PHP output for stream context create returns resource.
 #[test]
 fn test_stream_context_create_returns_resource() {
     // v1 stub: stream_context_create/get_default return a resource so PHP
@@ -3255,6 +3389,7 @@ echo stream_context_set_option($c, "http", "method", "GET") ? "set-ok" : "FAIL";
     assert_eq!(out, "ok|ok|set-ok");
 }
 
+/// Verifies compiled PHP output for stream context get options returns array.
 #[test]
 fn test_stream_context_get_options_returns_array() {
     // stream_context_get_options now returns the hash that was passed to
@@ -3272,6 +3407,7 @@ echo gettype(stream_context_get_params($c));
     assert_eq!(out, "array|1|array");
 }
 
+/// Verifies compiled PHP output for fopen accepts 4 arg form with context.
 #[test]
 fn test_fopen_accepts_4_arg_form_with_context() {
     // Phase 11 B2: fopen($file, $mode, $use_include_path, $context) compiles
@@ -3341,6 +3477,7 @@ unlink($path);
     assert_eq!(out, "OR");
 }
 
+/// Verifies compiled PHP output for stream context set option four arg per option updates.
 #[test]
 fn test_stream_context_set_option_four_arg_per_option_updates() {
     // Phase 11 B2: the 4-arg form
@@ -3365,6 +3502,7 @@ echo $out;
     assert_eq!(out, "wrappers:2|http:2|ssl:1");
 }
 
+/// Verifies compiled PHP output for stream context set option two arg replaces options.
 #[test]
 fn test_stream_context_set_option_two_arg_replaces_options() {
     // Phase 11 B2: the 2-arg form
@@ -3382,6 +3520,7 @@ echo count(stream_context_get_options($ctx));
     assert_eq!(out, "1|2");
 }
 
+/// Verifies compiled PHP output for stream context get options empty when no create.
 #[test]
 fn test_stream_context_get_options_empty_when_no_create() {
     // Before any stream_context_create, the persisted-options slot is
@@ -3395,6 +3534,7 @@ echo count(stream_context_get_options($d));
     assert_eq!(out, "0");
 }
 
+/// Verifies compiled PHP output for stream set buffer stubs.
 #[test]
 fn test_stream_set_buffer_stubs() {
     // stream_set_chunk_size returns the previous chunk size (8192 default on the
@@ -3433,6 +3573,7 @@ fclose($m);
     assert_eq!(out, "8192|4096|2048");
 }
 
+/// Verifies compiled PHP output for user stream filter write transforms payload.
 #[test]
 fn test_user_stream_filter_write_transforms_payload() {
     // Phase 10 tier 3: a user-registered filter class attached in write
@@ -3458,6 +3599,7 @@ echo fread($f, 64);
     assert_eq!(out, "HELLO WORLD");
 }
 
+/// Verifies compiled PHP output for user stream filter registered class is case insensitive.
 #[test]
 fn test_user_stream_filter_registered_class_is_case_insensitive() {
     let out = compile_and_run(
@@ -3478,6 +3620,7 @@ echo fread($f, 64);
     assert_eq!(out, "HELLO");
 }
 
+/// Verifies compiled PHP output for user stream filter read transforms payload.
 #[test]
 fn test_user_stream_filter_read_transforms_payload() {
     // Phase 10 tier 3: a user-registered filter class attached in read
@@ -3501,6 +3644,7 @@ echo fread($f, 64);
     assert_eq!(out, "hello world");
 }
 
+/// Verifies compiled PHP output for user stream filter unknown name returns false.
 #[test]
 fn test_user_stream_filter_unknown_name_returns_false() {
     // stream_filter_append on an unknown user-filter name resolves the
@@ -3516,6 +3660,7 @@ echo $r === false ? "false" : "open";
     assert_eq!(out, "false");
 }
 
+/// Verifies compiled PHP output for stream filter user onclose fires on remove.
 #[test]
 fn test_stream_filter_user_onclose_fires_on_remove() {
     // Phase 11 B4 (partial): stream_filter_remove() now shares the same
@@ -3549,6 +3694,7 @@ fclose($m);
     assert_eq!(out, "|closedAb");
 }
 
+/// Verifies compiled PHP output for stream bucket new returns object with data and datalen.
 #[test]
 fn test_stream_bucket_new_returns_object_with_data_and_datalen() {
     // Phase 11 B4 (API-surface delivery): stream_bucket_new($stream, $data)
@@ -3569,6 +3715,7 @@ fclose($m);
     assert_eq!(out, "object|hello world|11");
 }
 
+/// Verifies compiled PHP output for stream bucket make writeable returns null for empty brigade.
 #[test]
 fn test_stream_bucket_make_writeable_returns_null_for_empty_brigade() {
     // Phase 11 B4: stream_bucket_make_writeable on an empty brigade
@@ -3585,6 +3732,7 @@ echo is_null($b) ? "null" : "non-null";
     assert_eq!(out, "null");
 }
 
+/// Verifies compiled PHP output for stream filter user oncreate refusal blocks attach.
 #[test]
 fn test_stream_filter_user_oncreate_refusal_blocks_attach() {
     // Phase 11 B4 (partial): if a user-filter class's onCreate() returns
@@ -3614,6 +3762,7 @@ fclose($m);
     assert_eq!(out, "attach=false|hi");
 }
 
+/// Verifies compiled PHP output for stream filter user oncreate and onclose fire.
 #[test]
 fn test_stream_filter_user_oncreate_and_onclose_fire() {
     // Phase 11 B4 (partial): onCreate() runs at attach time (so its
@@ -3649,6 +3798,7 @@ fclose($m);
     assert_eq!(out, ">>x|closed");
 }
 
+/// Verifies compiled PHP output for stream filter register accepts registration.
 #[test]
 fn test_stream_filter_register_accepts_registration() {
     // v1 stub: stream_filter_register() accepts the registration and reports
@@ -3662,6 +3812,7 @@ echo stream_filter_register("custom.filter", "CustomFilter") ? "true" : "false";
     assert_eq!(out, "true");
 }
 
+/// Verifies compiled PHP output for fopen silent fail for registered user wrapper.
 #[test]
 fn test_fopen_silent_fail_for_registered_user_wrapper() {
     // Phase 10 dispatch v1: __rt_fopen recognises paths whose scheme matches
@@ -3684,6 +3835,7 @@ echo $f === false ? "false" : "open";
     );
 }
 
+/// Verifies compiled PHP output for fopen user wrapper stream open true returns resource.
 #[test]
 fn test_fopen_user_wrapper_stream_open_true_returns_resource() {
     // Phase 10 step 3: when the wrapper class implements `stream_open` and
@@ -3705,6 +3857,7 @@ echo is_resource($f) ? "ok" : "fail";
     assert_eq!(out, "ok");
 }
 
+/// Verifies compiled PHP output for fopen user wrapper registered class is case insensitive.
 #[test]
 fn test_fopen_user_wrapper_registered_class_is_case_insensitive() {
     let out = compile_and_run(
@@ -3722,6 +3875,7 @@ echo is_resource($f) ? "ok" : "fail";
     assert_eq!(out, "ok");
 }
 
+/// Verifies compiled PHP output for fopen user wrapper round trip read write close.
 #[test]
 fn test_fopen_user_wrapper_round_trip_read_write_close() {
     // Phase 10 step 4: fread/fwrite/fclose dispatch into the wrapper class's
@@ -3751,6 +3905,7 @@ echo fclose($f) ? "1" : "0";
     assert_eq!(out, "hello|3|0|1");
 }
 
+/// Verifies compiled PHP output for fopen user wrapper fputcsv routes through stream write.
 #[test]
 fn test_fopen_user_wrapper_fputcsv_routes_through_stream_write() {
     // fputcsv() on a userspace-wrapper resource must route its field/separator/
@@ -3775,6 +3930,7 @@ fclose($f);
     assert_eq!(out, "a,b,c\n\"x,y\",z\n");
 }
 
+/// Verifies compiled PHP output for fopen user wrapper fgetc and rewind dispatch.
 #[test]
 fn test_fopen_user_wrapper_fgetc_and_rewind_dispatch() {
     // fgetc() reads a single byte via the wrapper's stream_read; rewind()
@@ -3801,6 +3957,7 @@ fclose($f);
     assert_eq!(out, "ABA");
 }
 
+/// Verifies compiled PHP output for fopen user wrapper applies property defaults.
 #[test]
 fn test_fopen_user_wrapper_applies_property_defaults() {
     // A registered wrapper instantiated by __rt_new_by_name now receives its
@@ -3826,6 +3983,7 @@ fclose($h);
     assert_eq!(out, "PFX:body");
 }
 
+/// Verifies compiled PHP output for fopen user wrapper stream get contents drains.
 #[test]
 fn test_fopen_user_wrapper_stream_get_contents_drains() {
     // stream_get_contents() on a synthetic wrapper fd drains via a compiled,
@@ -3853,6 +4011,7 @@ echo "|t=" . gettype($f);
     assert_eq!(out, "[hello, world!]|t=resource");
 }
 
+/// Verifies compiled PHP output for fopen user wrapper fpassthru writes and counts.
 #[test]
 fn test_fopen_user_wrapper_fpassthru_writes_and_counts() {
     // fpassthru() on a wrapper fd uses the same feof-gated loop: it streams each
@@ -3878,6 +4037,7 @@ echo "|t=" . gettype($f);
     assert_eq!(out, "Hello, world!|n=13|t=resource");
 }
 
+/// Verifies compiled PHP output for fopen user wrapper fgets reads lines.
 #[test]
 fn test_fopen_user_wrapper_fgets_reads_lines() {
     // fgets() on a wrapper fd reads one line at a time through a feof-gated
@@ -3902,6 +4062,7 @@ echo "|t=" . gettype($f);
     assert_eq!(out, "[line1][line2][last]|t=resource");
 }
 
+/// Verifies compiled PHP output for fopen user wrapper fscanf reads through stream read.
 #[test]
 fn test_fopen_user_wrapper_fscanf_reads_through_stream_read() {
     // fscanf() reads its line via __rt_fgets, which gained a wrapper-fd branch in
@@ -3926,6 +4087,7 @@ fclose($f);
     assert_eq!(out, "42|3.14|hi");
 }
 
+/// Verifies compiled PHP output for fopen user wrapper stream copy to stream drains.
 #[test]
 fn test_fopen_user_wrapper_stream_copy_to_stream_drains() {
     // stream_copy_to_stream() with a wrapper source uses the feof-gated loop:
@@ -3953,6 +4115,7 @@ echo "|st=" . gettype($src);
     assert_eq!(out, "n=13|got=[copy-me-over!]|st=resource");
 }
 
+/// Verifies compiled PHP output for fopen user wrapper ftell dispatches to stream tell.
 #[test]
 fn test_fopen_user_wrapper_ftell_dispatches_to_stream_tell() {
     // Phase 10 follow-up: ftell() dispatches into the wrapper's stream_tell
@@ -3979,6 +4142,7 @@ echo ftell($g);
     assert_eq!(out, "42|-1");
 }
 
+/// Verifies compiled PHP output for fopen user wrapper fstat dispatches to stream stat.
 #[test]
 fn test_fopen_user_wrapper_fstat_dispatches_to_stream_stat() {
     // OOS Phase E: fstat() on a synthetic wrapper fd dispatches into the
@@ -4021,6 +4185,7 @@ fclose($g);
     assert_eq!(out, "array:5:33188|false");
 }
 
+/// Verifies compiled PHP output for file exists dispatches to wrapper url stat.
 #[test]
 fn test_file_exists_dispatches_to_wrapper_url_stat() {
     // OOS Phase E: file_exists("scheme://...") on a registered userspace wrapper
@@ -4052,6 +4217,7 @@ echo file_exists("no_such_elephc_probe.txt") ? "Y" : "N";
     assert_eq!(out, "YNYN");
 }
 
+/// Verifies compiled PHP output for filesize and is file dispatch to wrapper url stat.
 #[test]
 fn test_filesize_and_is_file_dispatch_to_wrapper_url_stat() {
     // OOS Phase E: filesize()/is_file() on a registered wrapper route through
@@ -4083,6 +4249,7 @@ echo ":" . (is_file("no_such_elephc_probe") ? "Y" : "N");
     assert_eq!(out, "123:5:Y:N:N:Y:N");
 }
 
+/// Verifies compiled PHP output for readfile dispatches to wrapper.
 #[test]
 fn test_readfile_dispatches_to_wrapper() {
     // OOS Phase E: readfile("scheme://...") on a registered wrapper routes
@@ -4109,6 +4276,7 @@ echo "|" . $m;
     assert_eq!(out, "HELLO|5|abc|3");
 }
 
+/// Verifies compiled PHP output for fgetcsv and stream get line on wrapper.
 #[test]
 fn test_fgetcsv_and_stream_get_line_on_wrapper() {
     // OOS Phase E: fgetcsv() and stream_get_line() read from a wrapper fd.
@@ -4147,6 +4315,7 @@ fclose($h);
     assert_eq!(out, "a|b|c:1|2|3/a,b,c,1,2,3");
 }
 
+/// Verifies compiled PHP output for fopen user wrapper fflush dispatches to stream flush.
 #[test]
 fn test_fopen_user_wrapper_fflush_dispatches_to_stream_flush() {
     // Phase 10 follow-up: fflush() dispatches into the wrapper's stream_flush
@@ -4173,6 +4342,7 @@ echo fflush($g) ? "1" : "0";
     assert_eq!(out, "1|1");
 }
 
+/// Verifies compiled PHP output for fopen user wrapper fseek dispatches to stream seek.
 #[test]
 fn test_fopen_user_wrapper_fseek_dispatches_to_stream_seek() {
     // Phase 10 step 4: fseek dispatches into the wrapper's stream_seek and
@@ -4194,6 +4364,7 @@ echo fseek($f, 0, 2);
     assert_eq!(out, "0|0");
 }
 
+/// Verifies compiled PHP output for fopen user wrapper fseek missing method returns minus one.
 #[test]
 fn test_fopen_user_wrapper_fseek_missing_method_returns_minus_one() {
     // Phase 10 step 4: when the wrapper class does not implement stream_seek,
@@ -4392,6 +4563,7 @@ echo ftruncate($g, 42) ? "1" : "0";
     assert_eq!(out, "1|0|0");
 }
 
+/// Verifies compiled PHP output for fopen user wrapper stream open receives opened path arg.
 #[test]
 fn test_fopen_user_wrapper_stream_open_receives_opened_path_arg() {
     // Phase 10 follow-up: stream_open is now called with the 5th
@@ -4419,6 +4591,7 @@ echo is_resource($f) ? "ok" : "fail";
     assert_eq!(out, "ok");
 }
 
+/// Verifies compiled PHP output for fopen user wrapper handles above old cap.
 #[test]
 fn test_fopen_user_wrapper_handles_above_old_cap() {
     // Phase 10 follow-up: bumped USER_WRAPPER_HANDLES_CAP from 64 to 256.
@@ -4442,6 +4615,7 @@ echo "ok-" . count($handles);
     assert_eq!(out, "ok-100");
 }
 
+/// Verifies compiled PHP output for fopen user wrapper failure does not leak.
 #[test]
 fn test_fopen_user_wrapper_failure_does_not_leak() {
     // Phase 10 follow-up: after stream_open returns false, the runtime
@@ -4468,6 +4642,7 @@ echo "ok";
     assert_eq!(out, "ok");
 }
 
+/// Verifies compiled PHP output for fopen user wrapper stream open false returns false.
 #[test]
 fn test_fopen_user_wrapper_stream_open_false_returns_false() {
     // Phase 10 step 3: when the wrapper class's stream_open returns false,
@@ -4493,6 +4668,7 @@ echo $f === false ? "false" : "open";
     );
 }
 
+/// Verifies compiled PHP output for stream socket get name.
 #[test]
 fn test_stream_socket_get_name() {
     let out = compile_and_run(
@@ -4507,6 +4683,7 @@ echo stream_socket_get_name($cli, true);
     assert_eq!(out, "127.0.0.1:54743|127.0.0.1:54743");
 }
 
+/// Verifies compiled PHP output for stream socket client resolves hostname.
 #[test]
 fn test_stream_socket_client_resolves_hostname() {
     // A non-numeric host in a socket address is resolved through gethostbyname.
@@ -4522,6 +4699,7 @@ echo fread($conn, 16);
     assert_eq!(out, "resolved");
 }
 
+/// Verifies compiled PHP output for stream socket server resolves hostname.
 #[test]
 fn test_stream_socket_server_resolves_hostname() {
     // Host-name resolution applies to the server bind address too.
@@ -4537,6 +4715,7 @@ echo fread($conn, 32);
     assert_eq!(out, "bound by name");
 }
 
+/// Verifies compiled PHP output for stream socket client ipv6 hostname via dns.
 #[test]
 fn test_stream_socket_client_ipv6_hostname_via_dns() {
     // Phase 11 B1: tcp://[hostname]:port now resolves the bracketed token
@@ -4559,6 +4738,7 @@ fclose($conn); fclose($cli); fclose($srv);
     assert_eq!(out, "srv|cli|v6-dns");
 }
 
+/// Verifies compiled PHP output for stream socket server ipv6 literal roundtrip.
 #[test]
 fn test_stream_socket_server_ipv6_literal_roundtrip() {
     // Full PHP-side IPv6 round-trip: stream_socket_server binds [::1]:port,
@@ -4579,6 +4759,7 @@ echo fread($conn, 16);
     assert_eq!(out, "srv|cli|v6-ping");
 }
 
+/// Verifies compiled PHP output for udp ipv6 round trip.
 #[test]
 fn test_udp_ipv6_round_trip() {
     // UDP over IPv6: stream_socket_server binds [::1]:port with SOCK_DGRAM
@@ -4598,6 +4779,7 @@ echo fread($srv, 16);
     assert_eq!(out, "srv|cli|v6-udp");
 }
 
+/// Verifies compiled PHP output for stream socket get name ipv6.
 #[test]
 fn test_stream_socket_get_name_ipv6() {
     // stream_socket_get_name on an AF_INET6 socket should surface the peer
@@ -4616,6 +4798,7 @@ echo substr(stream_socket_get_name($cli, false), 0, 5);
     assert_eq!(out, "[::1]:54938\n[::1]:54938\n[::1]");
 }
 
+/// Verifies compiled PHP output for stream socket client ipv6 literal roundtrip.
 #[test]
 fn test_stream_socket_client_ipv6_literal_roundtrip() {
     // tcp://[::1]:port routes through the IPv6 dispatch: __rt_inet6_pton
@@ -4645,6 +4828,7 @@ echo fread($cli, 4);
     assert_eq!(out, "ok|PONG");
 }
 
+/// Verifies compiled PHP output for stream socket client unresolvable host is false.
 #[test]
 fn test_stream_socket_client_unresolvable_host_is_false() {
     // An unresolvable host fails the connection like any bad address.
@@ -4654,6 +4838,7 @@ fn test_stream_socket_client_unresolvable_host_is_false() {
     assert_eq!(out, "false");
 }
 
+/// Verifies compiled PHP output for stream socket pair unsupported domain is false.
 #[test]
 fn test_stream_socket_pair_unsupported_domain_is_false() {
     // socketpair() refuses STREAM_PF_INET on every platform we target.
@@ -4670,6 +4855,7 @@ echo ($pair === false) ? "strict_false" : "not_false";
     assert_eq!(out, "boolean|strict_false");
 }
 
+/// Verifies compiled PHP output for stream socket pair round trip.
 #[test]
 fn test_stream_socket_pair_round_trip() {
     // Also a regression test for indexed reads of an array<resource>:
@@ -4689,6 +4875,7 @@ echo fread($pair[0], 16);
     assert_eq!(out, "2|ping|pong");
 }
 
+/// Verifies compiled PHP output for stream socket get name udp.
 #[test]
 fn test_stream_socket_get_name_udp() {
     // Phase 5 audit: stream_socket_get_name on a UDP socket must format the
@@ -4706,6 +4893,7 @@ echo stream_socket_get_name($cli, true);
     assert_eq!(out, "127.0.0.1:54928|127.0.0.1:54928");
 }
 
+/// Verifies compiled PHP output for stream socket get name unix.
 #[test]
 fn test_stream_socket_get_name_unix() {
     // Phase 5 audit: stream_socket_get_name on a Unix-domain socket must
@@ -4723,6 +4911,7 @@ unlink($path);
     assert_eq!(out, "/tmp/elephc_unix_getname_test.sock");
 }
 
+/// Verifies compiled PHP output for popen read mode.
 #[test]
 fn test_popen_read_mode() {
     let out = compile_and_run(
@@ -4736,6 +4925,7 @@ echo pclose($p);
     assert_eq!(out, "abc|0");
 }
 
+/// Verifies compiled PHP output for opendir readdir iterates directory.
 #[test]
 fn test_opendir_readdir_iterates_directory() {
     let out = compile_and_run(
@@ -4756,6 +4946,7 @@ echo $count . ":" . $found;
     assert_eq!(out, "3:1");
 }
 
+/// Verifies compiled PHP output for opendir invalid path returns false.
 #[test]
 fn test_opendir_invalid_path_returns_false() {
     let out = compile_and_run(
@@ -4766,6 +4957,7 @@ var_dump(opendir("/nonexistent/path/elephc-xyz") === false);
     assert_eq!(out, "bool(true)\n");
 }
 
+/// Verifies compiled PHP output for readdir returns false at end of directory.
 #[test]
 fn test_readdir_returns_false_at_end_of_directory() {
     let out = compile_and_run(
@@ -4784,6 +4976,7 @@ echo ($x === false ? "F" : "?");
     assert_eq!(out, "ssF");
 }
 
+/// Verifies compiled PHP output for rewinddir restarts iteration.
 #[test]
 fn test_rewinddir_restarts_iteration() {
     let out = compile_and_run(
@@ -4803,6 +4996,7 @@ echo ($again === $first ? "1" : "0");
     assert_eq!(out, "11");
 }
 
+/// Verifies compiled PHP output for closedir allows directory handle reuse.
 #[test]
 fn test_closedir_allows_directory_handle_reuse() {
     let out = compile_and_run(
@@ -4820,6 +5014,7 @@ echo (is_string($e) ? "ok" : "no");
     assert_eq!(out, "rok");
 }
 
+/// Verifies compiled PHP output for array literal of resources round trips.
 #[test]
 fn test_array_literal_of_resources_round_trips() {
     let out = compile_and_run(
@@ -4831,6 +5026,7 @@ echo $arr[0] . "|" . $arr[1] . "|" . $arr[2];
     assert_eq!(out, "Resource id #1|Resource id #2|Resource id #3");
 }
 
+/// Verifies compiled PHP output for stream get meta data describes file stream.
 #[test]
 fn test_stream_get_meta_data_describes_file_stream() {
     let out = compile_and_run(
@@ -4854,6 +5050,7 @@ fclose($f);
     );
 }
 
+/// Verifies compiled PHP output for stream get meta data reports eof consistently with feof.
 #[test]
 fn test_stream_get_meta_data_reports_eof_consistently_with_feof() {
     let out = compile_and_run(
@@ -4872,6 +5069,7 @@ fclose($f);
     assert_eq!(out, "eof:consistent");
 }
 
+/// Verifies compiled PHP output for readdir loop collects results into array.
 #[test]
 fn test_readdir_loop_collects_results_into_array() {
     // Regression: appending a string|false value to an array inside a loop
@@ -4894,6 +5092,7 @@ echo is_string($names[2]) ? "s" : "?";
     assert_eq!(out, "3sss");
 }
 
+/// Verifies compiled PHP output for stream select detects ready socket.
 #[test]
 fn test_stream_select_detects_ready_socket() {
     let out = compile_and_run(
@@ -4912,6 +5111,7 @@ echo "n1=" . $n1 . " r1=" . count($r1) . " n2=" . $n2 . " r2=" . count($r2);
     assert_eq!(out, "n1=1 r1=1 n2=0 r2=0");
 }
 
+/// Verifies compiled PHP output for stream select compacts to ready subset.
 #[test]
 fn test_stream_select_compacts_to_ready_subset() {
     let out = compile_and_run(
@@ -4929,6 +5129,7 @@ echo $n . ":" . count($r);
     assert_eq!(out, "1:1");
 }
 
+/// Verifies compiled PHP output for stream bucket append then pop in order.
 #[test]
 fn test_stream_bucket_append_then_pop_in_order() {
     // Phase 11 B4 v2: stream_bucket_append actually appends to the
@@ -4955,6 +5156,7 @@ fclose($m);
     assert_eq!(out, "[alpha][beta][gamma]|done");
 }
 
+/// Verifies compiled PHP output for user filter 4arg brigade dispatch.
 #[test]
 fn test_user_filter_4arg_brigade_dispatch() {
     // Phase 11 B4 v2: when a user filter class's filter() method has 4
@@ -4991,6 +5193,7 @@ unlink($path);
     assert_eq!(out, "hello brigade");
 }
 
+/// Verifies compiled PHP output for user filter 4arg brigade transforms via while loop.
 #[test]
 fn test_user_filter_4arg_brigade_transforms_via_while_loop() {
     // Regression for two pre-existing Mixed bugs that blocked the canonical
@@ -5028,6 +5231,7 @@ echo fread($w, 64);
     assert_eq!(out, "HELLO BRIGADE");
 }
 
+/// Verifies compiled PHP output for mixed object is truthy.
 #[test]
 fn test_mixed_object_is_truthy() {
     // Regression: a Mixed cell holding an object (tag 6) must be truthy in a
@@ -5048,6 +5252,7 @@ echo ($n ? "|null-truthy" : "|null-falsy");
     assert_eq!(out, "obj-truthy|null-falsy");
 }
 
+/// Verifies compiled PHP output for fopen http content emits content length header.
 #[test]
 #[ignore = "test is reliable standalone but flakes in parallel sweep (port-binding race); the underlying Content-Length emission is verified by ad-hoc Ruby + standalone elephc runs — see the http_build_request.rs commit body for the reproduction"]
 fn test_fopen_http_content_emits_content_length_header() {
@@ -5080,6 +5285,7 @@ echo $found ? "ok" : "MISS:" . strlen($req);
     assert_eq!(out, "ok");
 }
 
+/// Verifies compiled PHP output for stream context set default returns resource.
 #[test]
 fn test_stream_context_set_default_returns_resource() {
     let out = compile_and_run(
@@ -5091,6 +5297,7 @@ echo is_resource($r) ? "resource" : "no";
     assert_eq!(out, "resource");
 }
 
+/// Verifies compiled PHP output for stream context set params returns true.
 #[test]
 fn test_stream_context_set_params_returns_true() {
     let out = compile_and_run(
@@ -5102,6 +5309,7 @@ echo stream_context_set_params($ctx, []) ? "ok" : "FAIL";
     assert_eq!(out, "ok");
 }
 
+/// Verifies compiled PHP output for stream resolve include path existing and missing.
 #[test]
 fn test_stream_resolve_include_path_existing_and_missing() {
     let out = compile_and_run(
@@ -5114,6 +5322,7 @@ echo (is_string($r) ? "s" : "n") . "|" . ($miss === false ? "f" : "x");
     assert_eq!(out, "s|f");
 }
 
+/// Verifies compiled PHP output for fopen http user agent in request.
 #[test]
 fn test_fopen_http_user_agent_in_request() {
     let _server = spawn_http_echo_server(56010);
@@ -5135,6 +5344,7 @@ echo $found ? "ok" : "MISS";
     assert_eq!(out, "ok");
 }
 
+/// Verifies compiled PHP output for fopen http protocol version 1 1.
 #[test]
 fn test_fopen_http_protocol_version_1_1() {
     let _server = spawn_http_echo_server(56011);
@@ -5156,6 +5366,7 @@ echo $found ? "ok" : "MISS";
     assert_eq!(out, "ok");
 }
 
+/// Verifies compiled PHP output for fopen php fd n writes to descriptor.
 #[test]
 fn test_fopen_php_fd_n_writes_to_descriptor() {
     let out = compile_and_run(
@@ -5168,6 +5379,7 @@ fclose($f);
     assert_eq!(out, "fd-route");
 }
 
+/// Verifies compiled PHP output for fopen http request fulluri in request line.
 #[test]
 #[ignore = "reliable standalone but flakes in parallel sweep (fixed-port echo server, port-binding race); run with --ignored --test-threads=1. The request_fulluri absolute-form URI now includes the non-default port (fixed in parse_http_url)"]
 fn test_fopen_http_request_fulluri_in_request_line() {

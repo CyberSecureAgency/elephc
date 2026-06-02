@@ -564,6 +564,7 @@ fn emit_typed_null_fallback(emitter: &mut Emitter, ty: &PhpType) {
     }
 }
 
+/// Provides the objects boxed null for array access helper for codegen lowering in this module.
 fn objects_boxed_null_for_array_access(emitter: &mut Emitter) {
     abi::emit_load_int_immediate(
         emitter,

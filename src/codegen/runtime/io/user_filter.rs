@@ -67,6 +67,7 @@ pub fn emit_stream_filter_register(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return to the caller
 }
 
+/// Emits the Linux x86_64 stream runtime helper for stream filter register.
 fn emit_stream_filter_register_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: stream_filter_register ---");
@@ -265,6 +266,7 @@ pub fn emit_stream_filter_attach_user(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return to the caller
 }
 
+/// Emits the Linux x86_64 stream runtime helper for stream filter attach user.
 fn emit_stream_filter_attach_user_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: stream_filter_attach_user ---");
@@ -438,6 +440,7 @@ pub fn emit_apply_user_stream_filter(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the original buf/len unchanged
 }
 
+/// Emits the Linux x86_64 stream runtime helper for apply user stream filter.
 fn emit_apply_user_stream_filter_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: apply_user_stream_filter ---");
@@ -505,6 +508,7 @@ fn emit_apply_user_stream_filter_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the original buf/len unchanged
 }
 
+/// Emits the Linux x86_64 stream runtime helper for resolve user filter id.
 fn emit_resolve_user_filter_id_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: resolve_user_filter_id ---");
@@ -610,6 +614,7 @@ pub fn emit_user_filter_release_fd(emitter: &mut Emitter) {
     emitter.instruction("ret");
 }
 
+/// Emits the Linux x86_64 stream runtime helper for user filter release fd.
 fn emit_user_filter_release_fd_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: user_filter_release_fd ---");

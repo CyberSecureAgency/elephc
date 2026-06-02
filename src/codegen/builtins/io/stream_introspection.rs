@@ -20,6 +20,7 @@ use crate::parser::ast::{Expr, ExprKind};
 use crate::span::Span;
 use crate::types::PhpType;
 
+/// Emits codegen for PHP `stream_introspection()` stream and I/O builtin calls.
 pub fn emit(
     name: &str,
     args: &[Expr],

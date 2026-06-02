@@ -97,6 +97,7 @@ pub fn emit_get_string_context_option(emitter: &mut Emitter) {
     emitter.instruction("ret");
 }
 
+/// Emits the Linux x86_64 stream runtime helper for get string context option.
 fn emit_get_string_context_option_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: get_string_context_option ---");

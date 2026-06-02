@@ -177,6 +177,7 @@ pub fn emit_stream_get_line(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the line slice
 }
 
+/// Emits the Linux x86_64 stream runtime helper for stream get line.
 fn emit_stream_get_line_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: stream_get_line ---");

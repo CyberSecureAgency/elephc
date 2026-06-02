@@ -183,6 +183,7 @@ echo "|r=" . strrpos($h, "o");
     assert_eq!(out, "p=6|c=Y|s=Y|e=Y|ss=[world]|r=7");
 }
 
+/// Verifies compiled PHP output for vsprintf vprintf vfprintf.
 #[test]
 fn test_vsprintf_vprintf_vfprintf() {
     // OOS Phase G: vsprintf/vprintf/vfprintf format with the arguments supplied

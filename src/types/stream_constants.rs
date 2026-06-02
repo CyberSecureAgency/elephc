@@ -137,6 +137,7 @@ pub(crate) const STREAM_INT_CONSTANTS: &[(&str, i64)] = &[
 mod tests {
     use super::*;
 
+    /// Verifies the stream constant invariant for stream filter all is three.
     #[test]
     fn stream_filter_all_is_three() {
         let entry = STREAM_INT_CONSTANTS
@@ -146,6 +147,7 @@ mod tests {
         assert_eq!(entry.1, 3);
     }
 
+    /// Verifies the stream constant invariant for stream client connect is four.
     #[test]
     fn stream_client_connect_is_four() {
         let entry = STREAM_INT_CONSTANTS
@@ -155,6 +157,7 @@ mod tests {
         assert_eq!(entry.1, 4);
     }
 
+    /// Verifies the stream constant invariant for no duplicate constant names.
     #[test]
     fn no_duplicate_constant_names() {
         let mut names: Vec<&str> = STREAM_INT_CONSTANTS.iter().map(|(n, _)| *n).collect();
@@ -164,6 +167,7 @@ mod tests {
         assert_eq!(names.len(), len_before, "duplicate stream constant name");
     }
 
+    /// Verifies the stream constant invariant for does not redeclare lock or fnmatch constants.
     #[test]
     fn does_not_redeclare_lock_or_fnmatch_constants() {
         // LOCK_* and FNM_* are registered elsewhere — keep them out of this table.

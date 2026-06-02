@@ -36,6 +36,7 @@ pub fn emit_stream_socket_shutdown(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the success result
 }
 
+/// Emits the Linux x86_64 stream runtime helper for stream socket shutdown.
 fn emit_stream_socket_shutdown_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: stream_socket_shutdown ---");

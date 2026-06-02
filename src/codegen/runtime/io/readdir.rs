@@ -89,6 +89,7 @@ pub fn emit_readdir(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the entry name or the false marker
 }
 
+/// Emits the Linux x86_64 stream runtime helper for readdir.
 fn emit_readdir_linux_x86_64(emitter: &mut Emitter) {
     let name_off = emitter.platform.dirent_name_offset();
 

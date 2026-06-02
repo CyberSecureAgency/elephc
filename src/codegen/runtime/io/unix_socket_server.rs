@@ -136,6 +136,7 @@ fn emit_sockaddr_un_aarch64(emitter: &mut Emitter, plat: Platform) {
     emitter.instruction("strb wzr, [x11, x12]");                                // NUL-terminate sun_path
 }
 
+/// Emits the Linux x86_64 stream runtime helper for unix socket server.
 fn emit_unix_socket_server_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: unix_socket_server ---");

@@ -105,6 +105,7 @@ pub fn emit_sort_str(emitter: &mut Emitter, reverse: bool) {
     emitter.instruction("ret");                                                 // return to the caller
 }
 
+/// Emits the Linux x86_64 array runtime helper for sort str.
 fn emit_sort_str_linux_x86_64(emitter: &mut Emitter, reverse: bool) {
     let label = if reverse { "__rt_rsort_str" } else { "__rt_sort_str" };
     let cmp_jump = if reverse { "jge" } else { "jle" };

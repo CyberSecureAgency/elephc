@@ -920,6 +920,7 @@ fn class_has_user_filter_method(class_info: &ClassInfo) -> bool {
     })
 }
 
+/// Emits runtime metadata for user filter vtable.
 fn emit_user_filter_vtable(out: &mut String, class_info: &ClassInfo) {
     if !class_has_user_filter_method(class_info) {
         return;
@@ -956,6 +957,7 @@ fn emit_user_filter_vtable(out: &mut String, class_info: &ClassInfo) {
     out.push_str(&format!("    .quad {}\n", if brigade_arity { 1 } else { 0 }));
 }
 
+/// Emits runtime metadata for user wrapper vtable.
 fn emit_user_wrapper_vtable(out: &mut String, class_info: &ClassInfo) {
     if !class_has_user_wrapper_method(class_info) {
         return;

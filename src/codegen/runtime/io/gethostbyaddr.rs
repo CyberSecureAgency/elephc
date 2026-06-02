@@ -86,6 +86,7 @@ pub fn emit_gethostbyaddr(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the malformed-address result
 }
 
+/// Emits the Linux x86_64 stream runtime helper for gethostbyaddr.
 fn emit_gethostbyaddr_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: gethostbyaddr ---");

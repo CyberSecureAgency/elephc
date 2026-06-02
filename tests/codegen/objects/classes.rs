@@ -47,6 +47,7 @@ echo gettype($obj) . "|" . gettype($obj2) . "|" . gettype($bad);
     assert_eq!(out, "object|object|NULL");
 }
 
+/// Verifies compiled PHP output for class dynamic instantiation runs property defaults.
 #[test]
 fn test_class_dynamic_instantiation_runs_property_defaults() {
     // `new $var()` must apply declared property defaults through the same
@@ -120,6 +121,7 @@ echo gettype($o) . ":" . $o->x;
     assert_eq!(out, "object:12");
 }
 
+/// Verifies compiled PHP output for dynamic instantiation missing class skips propinit.
 #[test]
 fn test_dynamic_instantiation_missing_class_skips_propinit() {
     // An unknown class name must still return null and must NOT dispatch a
@@ -139,6 +141,7 @@ echo "|" . $o->x;
     assert_eq!(out, "NULL|9");
 }
 
+/// Verifies compiled PHP output for class object aliasing.
 #[test]
 fn test_class_object_aliasing() {
     let out = compile_and_run(

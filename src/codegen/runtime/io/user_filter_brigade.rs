@@ -50,6 +50,7 @@ pub fn emit_user_filter_brigade_invoke(emitter: &mut Emitter) {
     emit_user_filter_brigade_invoke_aarch64(emitter);
 }
 
+/// Emits the user filter brigade invoke aarch64 stream runtime helper.
 fn emit_user_filter_brigade_invoke_aarch64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: user_filter_brigade_invoke ---");
@@ -262,6 +263,7 @@ fn emit_user_filter_brigade_invoke_aarch64(emitter: &mut Emitter) {
     emitter.instruction("ret");
 }
 
+/// Emits the Linux x86_64 stream runtime helper for user filter brigade invoke.
 fn emit_user_filter_brigade_invoke_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: user_filter_brigade_invoke ---");

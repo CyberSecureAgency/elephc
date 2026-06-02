@@ -24,6 +24,7 @@ use super::args::emit_string_arg;
 
 const X86_64_HEAP_MAGIC_HI32: u64 = 0x454C5048;
 
+/// Emits codegen for PHP `gzuncompress()` string builtin calls.
 pub fn emit(
     _name: &str,
     args: &[Expr],

@@ -21,6 +21,7 @@ use crate::codegen::{abi, platform::Arch};
 use crate::parser::ast::Expr;
 use crate::types::PhpType;
 
+/// Emits codegen for PHP `stream_wrapper_register()` stream and I/O builtin calls.
 pub fn emit(
     _name: &str,
     args: &[Expr],

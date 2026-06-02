@@ -40,6 +40,7 @@ pub fn emit_fd_write(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the byte count
 }
 
+/// Emits the Linux x86_64 stream runtime helper for fd write.
 fn emit_fd_write_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: fd_write ---");

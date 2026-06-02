@@ -141,6 +141,7 @@ fn emit_hash_put_aarch64(emitter: &mut Emitter, key_sym: &str, key_len: i64) {
     emitter.instruction("str x0, [sp, #8]");                                    // persist any post-grow hash pointer
 }
 
+/// Emits the set bool const stream runtime helper.
 fn emit_set_bool_const(emitter: &mut Emitter, key_sym: &str, key_len: i64, value: i64) {
     emitter.instruction(&format!("mov x3, #{}", value));                        // value_lo = boolean payload
     emitter.instruction("mov x4, #0");                                          // value_hi unused for booleans
@@ -148,6 +149,7 @@ fn emit_set_bool_const(emitter: &mut Emitter, key_sym: &str, key_len: i64, value
     emit_hash_put_aarch64(emitter, key_sym, key_len);
 }
 
+/// Emits the set bool slot stream runtime helper.
 fn emit_set_bool_slot(emitter: &mut Emitter, key_sym: &str, key_len: i64, slot: i64) {
     emitter.instruction(&format!("ldr x3, [sp, #{}]", slot));                   // value_lo = computed boolean
     emitter.instruction("mov x4, #0");                                          // value_hi unused for booleans
@@ -155,6 +157,7 @@ fn emit_set_bool_slot(emitter: &mut Emitter, key_sym: &str, key_len: i64, slot: 
     emit_hash_put_aarch64(emitter, key_sym, key_len);
 }
 
+/// Emits the set int const stream runtime helper.
 fn emit_set_int_const(emitter: &mut Emitter, key_sym: &str, key_len: i64) {
     emitter.instruction("mov x3, #0");                                          // value_lo = 0 (elephc keeps no read buffer)
     emitter.instruction("mov x4, #0");                                          // value_hi unused for integers
@@ -162,6 +165,7 @@ fn emit_set_int_const(emitter: &mut Emitter, key_sym: &str, key_len: i64) {
     emit_hash_put_aarch64(emitter, key_sym, key_len);
 }
 
+/// Emits the set str const stream runtime helper.
 fn emit_set_str_const(emitter: &mut Emitter, key_sym: &str, key_len: i64, val_sym: &str, val_len: i64) {
     emitter.adrp("x3", val_sym);  // load page of the value literal
     emitter.add_lo12("x3", "x3", val_sym);  // resolve the value literal address
@@ -170,6 +174,7 @@ fn emit_set_str_const(emitter: &mut Emitter, key_sym: &str, key_len: i64, val_sy
     emit_hash_put_aarch64(emitter, key_sym, key_len);
 }
 
+/// Emits the set str slots stream runtime helper.
 fn emit_set_str_slots(emitter: &mut Emitter, key_sym: &str, key_len: i64, ptr_slot: i64, len_slot: i64) {
     emitter.instruction(&format!("ldr x3, [sp, #{}]", ptr_slot));               // value_lo = string pointer
     emitter.instruction(&format!("ldr x4, [sp, #{}]", len_slot));               // value_hi = string length
@@ -177,6 +182,7 @@ fn emit_set_str_slots(emitter: &mut Emitter, key_sym: &str, key_len: i64, ptr_sl
     emit_hash_put_aarch64(emitter, key_sym, key_len);
 }
 
+/// Emits the Linux x86_64 stream runtime helper for stream get meta data.
 fn emit_stream_get_meta_data_linux_x86_64(emitter: &mut Emitter) {
     let plat = emitter.platform;
     let nonblock = plat.o_nonblock();
@@ -287,6 +293,7 @@ fn emit_hash_put_x86(emitter: &mut Emitter, key_sym: &str, key_len: i64) {
     emitter.instruction("mov QWORD PTR [rbp - 16], rax");                       // persist any post-grow hash pointer
 }
 
+/// Emits the set bool const x86 stream runtime helper.
 fn emit_set_bool_const_x86(emitter: &mut Emitter, key_sym: &str, key_len: i64, value: i64) {
     emitter.instruction(&format!("mov rcx, {}", value));                        // value_lo = boolean payload
     emitter.instruction("xor r8d, r8d");                                        // value_hi unused for booleans
@@ -294,6 +301,7 @@ fn emit_set_bool_const_x86(emitter: &mut Emitter, key_sym: &str, key_len: i64, v
     emit_hash_put_x86(emitter, key_sym, key_len);
 }
 
+/// Emits the set bool slot x86 stream runtime helper.
 fn emit_set_bool_slot_x86(emitter: &mut Emitter, key_sym: &str, key_len: i64, slot: i64) {
     emitter.instruction(&format!("mov rcx, QWORD PTR [rbp - {}]", slot));       // value_lo = computed boolean
     emitter.instruction("xor r8d, r8d");                                        // value_hi unused for booleans
@@ -301,6 +309,7 @@ fn emit_set_bool_slot_x86(emitter: &mut Emitter, key_sym: &str, key_len: i64, sl
     emit_hash_put_x86(emitter, key_sym, key_len);
 }
 
+/// Emits the set int const x86 stream runtime helper.
 fn emit_set_int_const_x86(emitter: &mut Emitter, key_sym: &str, key_len: i64) {
     emitter.instruction("xor ecx, ecx");                                        // value_lo = 0 (elephc keeps no read buffer)
     emitter.instruction("xor r8d, r8d");                                        // value_hi unused for integers
@@ -308,6 +317,7 @@ fn emit_set_int_const_x86(emitter: &mut Emitter, key_sym: &str, key_len: i64) {
     emit_hash_put_x86(emitter, key_sym, key_len);
 }
 
+/// Emits the set str const x86 stream runtime helper.
 fn emit_set_str_const_x86(emitter: &mut Emitter, key_sym: &str, key_len: i64, val_sym: &str, val_len: i64) {
     emitter.instruction(&format!("lea rcx, [rip + {}]", val_sym));              // value_lo = string pointer
     emitter.instruction(&format!("mov r8, {}", val_len));                       // value_hi = string length
@@ -315,6 +325,7 @@ fn emit_set_str_const_x86(emitter: &mut Emitter, key_sym: &str, key_len: i64, va
     emit_hash_put_x86(emitter, key_sym, key_len);
 }
 
+/// Emits the set str slots x86 stream runtime helper.
 fn emit_set_str_slots_x86(emitter: &mut Emitter, key_sym: &str, key_len: i64, ptr_slot: i64, len_slot: i64) {
     emitter.instruction(&format!("mov rcx, QWORD PTR [rbp - {}]", ptr_slot));   // value_lo = string pointer
     emitter.instruction(&format!("mov r8, QWORD PTR [rbp - {}]", len_slot));    // value_hi = string length

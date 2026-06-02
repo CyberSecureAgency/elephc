@@ -83,6 +83,7 @@ pub fn emit_user_wrapper_fclose(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return to the inline fclose dispatch site
 }
 
+/// Emits the Linux x86_64 stream runtime helper for user wrapper fclose.
 fn emit_user_wrapper_fclose_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: user_wrapper_fclose ---");
@@ -150,6 +151,7 @@ pub fn emit_user_wrapper_fread(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the empty-string result
 }
 
+/// Emits the Linux x86_64 stream runtime helper for user wrapper fread.
 fn emit_user_wrapper_fread_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: user_wrapper_fread ---");
@@ -215,6 +217,7 @@ pub fn emit_user_wrapper_fwrite(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return 0 bytes written
 }
 
+/// Emits the Linux x86_64 stream runtime helper for user wrapper fwrite.
 fn emit_user_wrapper_fwrite_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: user_wrapper_fwrite ---");
@@ -278,6 +281,7 @@ pub fn emit_user_wrapper_feof(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return EOF
 }
 
+/// Emits the Linux x86_64 stream runtime helper for user wrapper feof.
 fn emit_user_wrapper_feof_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: user_wrapper_feof ---");
@@ -331,6 +335,7 @@ pub fn emit_user_wrapper_ftell(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return -1
 }
 
+/// Emits the Linux x86_64 stream runtime helper for user wrapper ftell.
 fn emit_user_wrapper_ftell_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: user_wrapper_ftell ---");
@@ -384,6 +389,7 @@ pub fn emit_user_wrapper_fflush(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return true
 }
 
+/// Emits the Linux x86_64 stream runtime helper for user wrapper fflush.
 fn emit_user_wrapper_fflush_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: user_wrapper_fflush ---");
@@ -444,6 +450,7 @@ pub fn emit_user_wrapper_fseek(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return -1
 }
 
+/// Emits the Linux x86_64 stream runtime helper for user wrapper fseek.
 fn emit_user_wrapper_fseek_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: user_wrapper_fseek ---");
@@ -511,6 +518,7 @@ pub fn emit_user_wrapper_flock(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return false
 }
 
+/// Emits the Linux x86_64 stream runtime helper for user wrapper flock.
 fn emit_user_wrapper_flock_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: user_wrapper_flock ---");
@@ -569,6 +577,7 @@ pub fn emit_user_wrapper_ftruncate(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return false
 }
 
+/// Emits the Linux x86_64 stream runtime helper for user wrapper ftruncate.
 fn emit_user_wrapper_ftruncate_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: user_wrapper_ftruncate ---");
@@ -660,6 +669,7 @@ pub fn emit_box_wrapper_stat_result(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return boxed false
 }
 
+/// Emits the Linux x86_64 stream runtime helper for box wrapper stat result.
 fn emit_box_wrapper_stat_result_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: box_wrapper_stat_result ---");
@@ -747,6 +757,7 @@ pub fn emit_user_wrapper_fstat(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return boxed false
 }
 
+/// Emits the Linux x86_64 stream runtime helper for user wrapper fstat.
 fn emit_user_wrapper_fstat_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: user_wrapper_fstat ---");

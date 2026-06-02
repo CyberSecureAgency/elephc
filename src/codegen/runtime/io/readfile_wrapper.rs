@@ -90,6 +90,7 @@ pub fn emit_readfile_wrapper(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return -2
 }
 
+/// Emits the Linux x86_64 stream runtime helper for readfile wrapper.
 fn emit_readfile_wrapper_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: readfile_wrapper ---");

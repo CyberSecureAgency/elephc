@@ -57,6 +57,7 @@ pub fn emit_gethostbyname(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the unchanged host name
 }
 
+/// Emits the Linux x86_64 stream runtime helper for gethostbyname.
 fn emit_gethostbyname_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: gethostbyname ---");

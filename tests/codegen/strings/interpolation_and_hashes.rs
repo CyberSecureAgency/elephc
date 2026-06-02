@@ -83,6 +83,7 @@ fn test_sha1_hello() {
 // Verifies crc32() against PHP reference vectors, including the empty string (0)
 // and the canonical "123456789" CRC-32 test vector. The result is a non-negative
 // 64-bit int (the unsigned 32-bit checksum), matching 64-bit PHP.
+/// Verifies compiled PHP output for crc32 known vectors.
 #[test]
 fn test_crc32_known_vectors() {
     let out = compile_and_run(
@@ -93,6 +94,7 @@ fn test_crc32_known_vectors() {
 
 // Verifies crc32() resolves through PHP's case-insensitive builtin lookup and
 // that its result feeds arithmetic as a plain int.
+/// Verifies compiled PHP output for crc32 case insensitive and int.
 #[test]
 fn test_crc32_case_insensitive_and_int() {
     let out = compile_and_run(r#"<?php echo CRC32("abc") + 1;"#);

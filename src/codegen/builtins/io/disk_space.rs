@@ -17,6 +17,7 @@ use crate::codegen::{abi, platform::Arch};
 use crate::parser::ast::Expr;
 use crate::types::PhpType;
 
+/// Emits codegen for PHP `disk_space()` stream and I/O builtin calls.
 pub fn emit(
     name: &str,
     args: &[Expr],

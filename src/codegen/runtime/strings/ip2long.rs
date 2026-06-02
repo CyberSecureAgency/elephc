@@ -79,6 +79,7 @@ pub fn emit_ip2long(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // failure
 }
 
+/// Emits the Linux x86_64 string runtime helper for ip2long.
 fn emit_ip2long_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: ip2long ---");

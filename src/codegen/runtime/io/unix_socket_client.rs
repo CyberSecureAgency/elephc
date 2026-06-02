@@ -108,6 +108,7 @@ pub fn emit_unix_socket_client(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the failure result
 }
 
+/// Emits the Linux x86_64 stream runtime helper for unix socket client.
 fn emit_unix_socket_client_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: unix_socket_client ---");

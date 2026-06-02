@@ -17,6 +17,7 @@ use crate::codegen::platform::Arch;
 use crate::parser::ast::Expr;
 use crate::types::PhpType;
 
+/// Emits codegen for PHP `get_resource_id()` resource/type builtin calls.
 pub fn emit(
     _name: &str,
     args: &[Expr],

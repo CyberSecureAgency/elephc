@@ -19,6 +19,7 @@ use crate::types::PhpType;
 
 const X86_64_HEAP_MAGIC_HI32: u64 = 0x454C5048;
 
+/// Emits codegen for PHP `inet()` string builtin calls.
 pub fn emit(
     name: &str,
     args: &[Expr],

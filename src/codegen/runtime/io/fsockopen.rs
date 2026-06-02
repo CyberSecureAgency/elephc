@@ -94,6 +94,7 @@ pub fn emit_fsockopen(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the connected descriptor
 }
 
+/// Emits the Linux x86_64 stream runtime helper for fsockopen.
 fn emit_fsockopen_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: fsockopen ---");

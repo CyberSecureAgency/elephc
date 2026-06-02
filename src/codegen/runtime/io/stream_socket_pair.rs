@@ -61,6 +61,7 @@ pub fn emit_stream_socket_pair(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the descriptor-pair array
 }
 
+/// Emits the Linux x86_64 stream runtime helper for stream socket pair.
 fn emit_stream_socket_pair_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: stream_socket_pair ---");

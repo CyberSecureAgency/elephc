@@ -60,6 +60,7 @@ pub fn emit_inet6_pton(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the success flag
 }
 
+/// Emits the Linux x86_64 stream runtime helper for inet6 pton.
 fn emit_inet6_pton_linux_x86_64(emitter: &mut Emitter) {
     let af_inet6 = emitter.platform.af_inet6();
     emitter.blank();

@@ -72,6 +72,7 @@ pub fn emit_stream_copy_to_stream(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the copied-byte count to the caller
 }
 
+/// Emits the Linux x86_64 stream runtime helper for stream copy to stream.
 fn emit_stream_copy_to_stream_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: stream_copy_to_stream ---");

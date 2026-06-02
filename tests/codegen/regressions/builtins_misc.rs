@@ -24,6 +24,7 @@ var_dump($a);
     assert_eq!(out, "array(3) {\n  [0]=>\n  int(10)\n  [1]=>\n  int(20)\n  [2]=>\n  int(30)\n}\n");
 }
 
+/// Verifies compiled PHP output for var dump array bool elements.
 #[test]
 fn test_var_dump_array_bool_elements() {
     // Phase 11 follow-up: var_dump([true, false, ...]) walks via
@@ -37,6 +38,7 @@ var_dump($a);
     assert_eq!(out, "array(3) {\n  [0]=>\n  bool(true)\n  [1]=>\n  bool(false)\n  [2]=>\n  bool(true)\n}\n");
 }
 
+/// Verifies compiled PHP output for var dump array float elements.
 #[test]
 fn test_var_dump_array_float_elements() {
     // Phase 11 follow-up: var_dump([1.5, 2.75, 3.0]) walks via
@@ -50,6 +52,7 @@ var_dump($a);
     assert_eq!(out, "array(3) {\n  [0]=>\n  float(1.5)\n  [1]=>\n  float(2.75)\n  [2]=>\n  float(3)\n}\n");
 }
 
+/// Verifies compiled PHP output for var dump array str elements.
 #[test]
 fn test_var_dump_array_str_elements() {
     // Same regression as test_var_dump_array_int_elements but for
@@ -64,6 +67,7 @@ var_dump($a);
     assert_eq!(out, "array(2) {\n  [0]=>\n  string(5) \"hello\"\n  [1]=>\n  string(5) \"world\"\n}\n");
 }
 
+/// Verifies compiled PHP output for function exists builtin.
 #[test]
 fn test_function_exists_builtin() {
     let out = compile_and_run(r#"<?php echo function_exists("strlen") ? "yes" : "no";"#);

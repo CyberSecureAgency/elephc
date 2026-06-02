@@ -53,6 +53,7 @@ pub fn emit_addr_is_udp(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the non-udp result
 }
 
+/// Emits the Linux x86_64 stream runtime helper for addr is udp.
 fn emit_addr_is_udp_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: addr_is_udp ---");

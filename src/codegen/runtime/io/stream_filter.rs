@@ -585,6 +585,7 @@ pub fn emit_apply_stream_filter(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return to the stream-filter caller
 }
 
+/// Emits the Linux x86_64 stream runtime helper for apply stream filter.
 fn emit_apply_stream_filter_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: apply_stream_filter ---");

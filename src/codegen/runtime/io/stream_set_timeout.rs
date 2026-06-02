@@ -53,6 +53,7 @@ pub fn emit_stream_set_timeout(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the boolean result
 }
 
+/// Emits the Linux x86_64 stream runtime helper for stream set timeout.
 fn emit_stream_set_timeout_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: stream_set_timeout ---");

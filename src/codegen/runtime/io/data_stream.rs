@@ -62,6 +62,7 @@ pub fn emit_data_stream(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the failure result
 }
 
+/// Emits the Linux x86_64 stream runtime helper for data stream.
 fn emit_data_stream_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: data_stream ---");

@@ -106,6 +106,7 @@ pub fn emit_apply_socket_bindto(emitter: &mut Emitter) {
     emitter.instruction("ret");
 }
 
+/// Emits the Linux x86_64 stream runtime helper for apply socket bindto.
 fn emit_apply_socket_bindto_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: apply_socket_bindto ---");
@@ -317,6 +318,7 @@ pub fn emit_apply_socket_server_opts(emitter: &mut Emitter) {
     emitter.instruction("ret");
 }
 
+/// Emits the Linux x86_64 stream runtime helper for apply socket client opts.
 fn emit_apply_socket_client_opts_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: apply_socket_client_opts ---");
@@ -375,6 +377,7 @@ fn emit_apply_socket_client_opts_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("ret");
 }
 
+/// Emits the Linux x86_64 stream runtime helper for apply socket server opts.
 fn emit_apply_socket_server_opts_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: apply_socket_server_opts ---");

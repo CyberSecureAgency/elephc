@@ -84,6 +84,7 @@ pub fn emit_protoent_load(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the empty buffer result
 }
 
+/// Emits the Linux x86_64 stream runtime helper for protoent load.
 fn emit_protoent_load_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: protoent_load (read /etc/protocols) ---");

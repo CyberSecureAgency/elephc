@@ -359,6 +359,7 @@ pub fn emit_ftp(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the failure result
 }
 
+/// Emits the Linux x86_64 stream runtime helper for ftp.
 fn emit_ftp_linux_x86_64(emitter: &mut Emitter) {
     // ================================================================
     // __rt_ftp_send_recv: send a command and read the server reply.

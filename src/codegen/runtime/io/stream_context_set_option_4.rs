@@ -126,6 +126,7 @@ pub fn emit_stream_context_set_option_4(emitter: &mut Emitter) {
     emitter.instruction("ret");
 }
 
+/// Emits the Linux x86_64 stream runtime helper for stream context set option 4.
 fn emit_stream_context_set_option_4_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: stream_context_set_option_4 ---");

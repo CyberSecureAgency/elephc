@@ -215,6 +215,7 @@ fn emit_compact_aarch64(emitter: &mut Emitter, arr_off: i64, fds_off: i64, suffi
     emitter.instruction("str x13, [x9]");                                       // store the compacted array length
 }
 
+/// Emits the Linux x86_64 stream runtime helper for stream select.
 fn emit_stream_select_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: stream_select ---");
@@ -266,6 +267,7 @@ fn emit_stream_select_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return to the caller
 }
 
+/// Emits the build fdset x86 stream runtime helper.
 fn emit_build_fdset_x86(emitter: &mut Emitter, arr_off: i64, fds_off: i64, suffix: &str) {
     let loop_l = format!("__rt_stream_select_build_{}_loop_x86", suffix);
     let next_l = format!("__rt_stream_select_build_{}_next_x86", suffix);
@@ -320,6 +322,7 @@ fn emit_build_fdset_x86(emitter: &mut Emitter, arr_off: i64, fds_off: i64, suffi
     emitter.label(&done_l);
 }
 
+/// Emits the compact x86 stream runtime helper.
 fn emit_compact_x86(emitter: &mut Emitter, arr_off: i64, fds_off: i64, suffix: &str) {
     let loop_l = format!("__rt_stream_select_keep_{}_loop_x86", suffix);
     let next_l = format!("__rt_stream_select_keep_{}_next_x86", suffix);

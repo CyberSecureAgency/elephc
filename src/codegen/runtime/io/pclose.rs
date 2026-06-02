@@ -48,6 +48,7 @@ pub fn emit_pclose(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the zero status
 }
 
+/// Emits the Linux x86_64 stream runtime helper for pclose.
 fn emit_pclose_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: pclose ---");

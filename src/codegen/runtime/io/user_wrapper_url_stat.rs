@@ -364,6 +364,7 @@ pub fn emit_user_wrapper_url_stat_field(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the integer field (or -1)
 }
 
+/// Emits the Linux x86_64 stream runtime helper for user wrapper url stat field.
 fn emit_user_wrapper_url_stat_field_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: user_wrapper_url_stat_field ---");

@@ -93,6 +93,7 @@ pub fn emit_gethostname(emitter: &mut Emitter) {
     }
 }
 
+/// Emits the Linux x86_64 stream runtime helper for gethostname.
 fn emit_gethostname_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: gethostname ---");

@@ -47,11 +47,13 @@ struct HandleEntry {
     conn: ClientConnection,
 }
 
+/// Returns the process-wide TLS handle table guarded by a mutex.
 fn handles() -> &'static Mutex<HashMap<i64, Box<HandleEntry>>> {
     static HANDLES: OnceLock<Mutex<HashMap<i64, Box<HandleEntry>>>> = OnceLock::new();
     HANDLES.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// Allocates the next positive handle id for a TLS session.
 fn next_handle_id() -> i64 {
     static NEXT_ID: AtomicI64 = AtomicI64::new(1);
     NEXT_ID.fetch_add(1, Ordering::SeqCst)
@@ -65,6 +67,7 @@ fn next_handle_id() -> i64 {
 struct NoVerification;
 
 impl ServerCertVerifier for NoVerification {
+    /// Accepts a server certificate in the explicit insecure verifier path.
     fn verify_server_cert(
         &self,
         _end_entity: &CertificateDer<'_>,
@@ -76,6 +79,7 @@ impl ServerCertVerifier for NoVerification {
         Ok(ServerCertVerified::assertion())
     }
 
+    /// Accepts TLS 1.2 signatures in the explicit insecure verifier path.
     fn verify_tls12_signature(
         &self,
         _message: &[u8],
@@ -85,6 +89,7 @@ impl ServerCertVerifier for NoVerification {
         Ok(HandshakeSignatureValid::assertion())
     }
 
+    /// Accepts TLS 1.3 signatures in the explicit insecure verifier path.
     fn verify_tls13_signature(
         &self,
         _message: &[u8],
@@ -94,6 +99,7 @@ impl ServerCertVerifier for NoVerification {
         Ok(HandshakeSignatureValid::assertion())
     }
 
+    /// Reports the signature schemes accepted by the insecure verifier.
     fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
         vec![
             SignatureScheme::RSA_PKCS1_SHA256,
@@ -109,6 +115,7 @@ impl ServerCertVerifier for NoVerification {
     }
 }
 
+/// Builds a rustls client configuration with certificate verification disabled.
 fn insecure_client_config() -> Arc<ClientConfig> {
     static CFG: OnceLock<Arc<ClientConfig>> = OnceLock::new();
     CFG.get_or_init(|| {
@@ -123,6 +130,7 @@ fn insecure_client_config() -> Arc<ClientConfig> {
     .clone()
 }
 
+/// Returns the lazily initialized default rustls client configuration.
 fn shared_client_config() -> Arc<ClientConfig> {
     static CFG: OnceLock<Arc<ClientConfig>> = OnceLock::new();
     CFG.get_or_init(|| {
@@ -479,6 +487,7 @@ unsafe fn client_cert_paths<'a>(
     Some((cert_path, key_path))
 }
 
+/// Creates a TCP connection, completes the TLS handshake, and stores the session handle.
 unsafe fn tls_connect_inner(
     host_ptr: *const u8,
     host_len: usize,
@@ -659,11 +668,13 @@ pub extern "C" fn elephc_tls_close(handle_id: i64) {
 mod tests {
     use super::*;
 
+    /// Verifies that the exported TLS ABI version remains at v1.
     #[test]
     fn version_is_v1() {
         assert_eq!(elephc_tls_version(), 1);
     }
 
+    /// Verifies reads from an unknown TLS handle fail with -1.
     #[test]
     fn unknown_handle_read_returns_minus_one() {
         let mut buf = [0u8; 16];
@@ -671,6 +682,7 @@ mod tests {
         assert_eq!(n, -1);
     }
 
+    /// Verifies writes to an unknown TLS handle fail with -1.
     #[test]
     fn unknown_handle_write_returns_minus_one() {
         let buf = [0u8; 4];
@@ -678,6 +690,7 @@ mod tests {
         assert_eq!(n, -1);
     }
 
+    /// Verifies closing an unknown TLS handle is harmless.
     #[test]
     fn close_unknown_handle_is_no_op() {
         // Should not panic when the handle is not in the table.

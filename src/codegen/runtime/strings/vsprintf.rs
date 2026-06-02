@@ -134,6 +134,7 @@ pub fn emit_vsprintf(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the formatted string (x1/x2)
 }
 
+/// Emits the Linux x86_64 string runtime helper for vsprintf.
 fn emit_vsprintf_linux_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: vsprintf ---");

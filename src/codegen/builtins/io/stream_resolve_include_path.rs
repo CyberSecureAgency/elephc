@@ -22,6 +22,7 @@ use crate::codegen::platform::Arch;
 use crate::parser::ast::Expr;
 use crate::types::PhpType;
 
+/// Emits codegen for PHP `stream_resolve_include_path()` stream and I/O builtin calls.
 pub fn emit(
     _name: &str,
     args: &[Expr],

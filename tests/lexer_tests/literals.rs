@@ -88,6 +88,7 @@ fn test_string_control_escape_sequences() {
     );
 }
 
+/// Verifies lexer tokenization for integer literal.
 #[test]
 fn test_integer_literal() {
     let t = tokens("<?php 42");

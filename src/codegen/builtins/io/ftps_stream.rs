@@ -25,6 +25,7 @@ use crate::codegen::{abi, platform::Arch};
 use crate::parser::ast::{Expr, ExprKind};
 use crate::types::PhpType;
 
+/// Emits codegen for PHP `ftps_stream()` stream and I/O builtin calls.
 pub fn emit(
     args: &[Expr],
     emitter: &mut Emitter,

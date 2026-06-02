@@ -72,6 +72,7 @@ pub fn emit_stream_set_blocking(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the failure result
 }
 
+/// Emits the Linux x86_64 stream runtime helper for stream set blocking.
 fn emit_stream_set_blocking_linux_x86_64(emitter: &mut Emitter) {
     let plat = emitter.platform;
     emitter.blank();

@@ -25,6 +25,7 @@ fn test_multibyte_string_literal_before_ascii_digits_round_trips() {
     assert_eq!(out, "日本語123");
 }
 
+/// Verifies compiled PHP output for string control escape sequences.
 #[test]
 fn test_string_control_escape_sequences() {
     // \r, \v, \e, \f process to their ASCII control bytes (regression for
