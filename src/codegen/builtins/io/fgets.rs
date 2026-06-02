@@ -158,7 +158,7 @@ pub fn emit(
             emitter.instruction(&format!("cbz x2, {}", false_label));           // zero-length read → PHP false
             emitter.instruction("mov x0, #1");                                  // runtime tag 1 = string
             abi::emit_call_label(emitter, "__rt_mixed_from_value");             // box the line as a Mixed string
-            emitter.instruction(&format!("b {}", done_label));
+            emitter.instruction(&format!("b {}", done_label));                  // continue at target label
             emitter.label(&false_label);
             emitter.instruction("mov x1, #0");                                  // bool payload = 0 (false)
             emitter.instruction("mov x2, #0");                                  // bool mixed payloads have no high word
@@ -168,12 +168,12 @@ pub fn emit(
         }
         Arch::X86_64 => {
             emitter.instruction("test rdx, rdx");                               // zero-length read → PHP false
-            emitter.instruction(&format!("jz {}", false_label));
+            emitter.instruction(&format!("jz {}", false_label));                // branch when the checked value is zero or equal
             emitter.instruction("mov rdi, rax");                                // string ptr → mixed_from_value's payload-lo register
             emitter.instruction("mov rsi, rdx");                                // string len → mixed_from_value's payload-hi register
             emitter.instruction("mov eax, 1");                                  // runtime tag 1 = string
             abi::emit_call_label(emitter, "__rt_mixed_from_value");             // box the line as a Mixed string
-            emitter.instruction(&format!("jmp {}", done_label));
+            emitter.instruction(&format!("jmp {}", done_label));                // continue at target label
             emitter.label(&false_label);
             emitter.instruction("xor edi, edi");                                // bool payload = 0 (false)
             emitter.instruction("xor esi, esi");                                // bool mixed payloads have no high word

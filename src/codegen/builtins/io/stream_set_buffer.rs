@@ -87,7 +87,7 @@ fn emit_chunk_size(
             emitter.label(&have_old_label);
             emitter.instruction("str x1, [x9, x2, lsl #3]");                    // store the new chunk size for this fd
             emitter.instruction("mov x0, x10");                                 // return the previous chunk size
-            emitter.instruction(&format!("b {}", done_label));
+            emitter.instruction(&format!("b {}", done_label));                  // continue at target label
             emitter.label(&default_label);
             emitter.instruction("mov x0, #8192");                               // out-of-range fd → report the default chunk size
             emitter.label(&done_label);

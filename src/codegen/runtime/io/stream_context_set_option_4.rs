@@ -69,11 +69,11 @@ pub fn emit_stream_context_set_option_4(emitter: &mut Emitter) {
     emitter.instruction("cbnz x10, __rt_scso4_top_ok");                         // already initialised → skip allocation
     emitter.instruction("mov x0, #4");                                          // initial capacity for the wrapper-keyed top hash
     emitter.instruction("mov x1, #7");                                          // value tag = Mixed (the top hash holds Mixed-boxed sub-hashes)
-    emitter.instruction("bl __rt_hash_new");
+    emitter.instruction("bl __rt_hash_new");                                    // call runtime helper
     abi::emit_symbol_address(emitter, "x9", "_stream_context_options");
     emitter.instruction("str x0, [x9]");                                        // publish the fresh top hash
     emitter.instruction("bl __rt_incref");                                      // retain — the global slot owns it
-    emitter.instruction("mov x10, x0");
+    emitter.instruction("mov x10, x0");                                         // move runtime value between registers
     emitter.label("__rt_scso4_top_ok");
     emitter.instruction("str x10, [sp, #48]");                                  // save the top hash pointer
 
@@ -82,13 +82,13 @@ pub fn emit_stream_context_set_option_4(emitter: &mut Emitter) {
     emitter.instruction("ldr x1, [sp, #0]");                                    // wrapper_ptr
     emitter.instruction("ldr x2, [sp, #8]");                                    // wrapper_len
     emitter.instruction("bl __rt_hash_get");                                    // x0=found, x1=value_lo (sub-hash ptr on hit)
-    emitter.instruction("cbnz x0, __rt_scso4_sub_found");
+    emitter.instruction("cbnz x0, __rt_scso4_sub_found");                       // branch when the checked value is nonzero or different
     // Not found → allocate a new sub-hash.
     emitter.instruction("mov x0, #4");                                          // initial capacity for the option sub-hash
     emitter.instruction("mov x1, #7");                                          // value tag = Mixed (per-option boxed values)
-    emitter.instruction("bl __rt_hash_new");
+    emitter.instruction("bl __rt_hash_new");                                    // call runtime helper
     emitter.instruction("str x0, [sp, #56]");                                   // save the new sub-hash
-    emitter.instruction("b __rt_scso4_have_sub");
+    emitter.instruction("b __rt_scso4_have_sub");                               // continue at target label
 
     emitter.label("__rt_scso4_sub_found");
     emitter.instruction("str x1, [sp, #56]");                                   // existing sub-hash pointer
@@ -121,9 +121,9 @@ pub fn emit_stream_context_set_option_4(emitter: &mut Emitter) {
     emitter.instruction("str x0, [x9]");                                        // publish any new top pointer
 
     emitter.instruction("mov x0, #1");                                          // PHP true
-    emitter.instruction("ldp x29, x30, [sp, #72]");
-    emitter.instruction("add sp, sp, #96");
-    emitter.instruction("ret");
+    emitter.instruction("ldp x29, x30, [sp, #72]");                             // restore frame pointer and return address
+    emitter.instruction("add sp, sp, #96");                                     // release runtime stack frame
+    emitter.instruction("ret");                                                 // return to caller
 }
 
 /// Emits the Linux x86_64 stream runtime helper for stream context set option 4.
@@ -141,8 +141,8 @@ fn emit_stream_context_set_option_4_linux_x86_64(emitter: &mut Emitter) {
     //   [rbp - 48] val_len
     //   [rbp - 56] top hash pointer
     //   [rbp - 64] sub hash pointer
-    emitter.instruction("push rbp");
-    emitter.instruction("mov rbp, rsp");
+    emitter.instruction("push rbp");                                            // save caller frame pointer
+    emitter.instruction("mov rbp, rsp");                                        // establish runtime frame pointer
     emitter.instruction("sub rsp, 80");                                         // 64 used + 16 alignment padding
     emitter.instruction("mov QWORD PTR [rbp - 8], rdi");                        // save wrapper_ptr
     emitter.instruction("mov QWORD PTR [rbp - 16], rsi");                       // save wrapper_len
@@ -153,14 +153,14 @@ fn emit_stream_context_set_option_4_linux_x86_64(emitter: &mut Emitter) {
 
     // -- ensure top-level hash exists --
     emitter.instruction("mov rax, QWORD PTR [rip + _stream_context_options]");  // current top hash (may be null)
-    emitter.instruction("test rax, rax");
-    emitter.instruction("jnz __rt_scso4_top_ok_x86");
+    emitter.instruction("test rax, rax");                                       // check whether the runtime value is zero
+    emitter.instruction("jnz __rt_scso4_top_ok_x86");                           // branch when the checked value is nonzero or different
     emitter.instruction("mov edi, 4");                                          // initial capacity
     emitter.instruction("mov esi, 7");                                          // value tag = Mixed
-    emitter.instruction("call __rt_hash_new");
-    emitter.instruction("mov QWORD PTR [rip + _stream_context_options], rax");
-    emitter.instruction("mov rdi, rax");
-    emitter.instruction("call __rt_incref");
+    emitter.instruction("call __rt_hash_new");                                  // call runtime helper
+    emitter.instruction("mov QWORD PTR [rip + _stream_context_options], rax");  // store runtime value
+    emitter.instruction("mov rdi, rax");                                        // prepare SysV call argument
+    emitter.instruction("call __rt_incref");                                    // call runtime helper
     emitter.label("__rt_scso4_top_ok_x86");
     emitter.instruction("mov QWORD PTR [rbp - 56], rax");                       // save top hash ptr
 
@@ -169,13 +169,13 @@ fn emit_stream_context_set_option_4_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov rsi, QWORD PTR [rbp - 8]");                        // wrapper_ptr
     emitter.instruction("mov rdx, QWORD PTR [rbp - 16]");                       // wrapper_len
     emitter.instruction("call __rt_hash_get");                                  // rax=found, rdi=value_lo, rsi=value_hi, rcx=tag (SysV mirror of x1/x2/x3 on ARM64)
-    emitter.instruction("test rax, rax");
-    emitter.instruction("jnz __rt_scso4_sub_found_x86");
-    emitter.instruction("mov edi, 4");
-    emitter.instruction("mov esi, 7");
-    emitter.instruction("call __rt_hash_new");
+    emitter.instruction("test rax, rax");                                       // check whether the runtime value is zero
+    emitter.instruction("jnz __rt_scso4_sub_found_x86");                        // branch when the checked value is nonzero or different
+    emitter.instruction("mov edi, 4");                                          // prepare SysV call argument
+    emitter.instruction("mov esi, 7");                                          // prepare SysV call argument
+    emitter.instruction("call __rt_hash_new");                                  // call runtime helper
     emitter.instruction("mov QWORD PTR [rbp - 64], rax");                       // new sub-hash
-    emitter.instruction("jmp __rt_scso4_have_sub_x86");
+    emitter.instruction("jmp __rt_scso4_have_sub_x86");                         // continue at target label
     emitter.label("__rt_scso4_sub_found_x86");
     emitter.instruction("mov QWORD PTR [rbp - 64], rdi");                       // existing sub-hash from hash_get's value_lo (rdi on x86_64)
     emitter.label("__rt_scso4_have_sub_x86");
@@ -188,23 +188,23 @@ fn emit_stream_context_set_option_4_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov r8, QWORD PTR [rbp - 48]");                        // val_len → value_hi
     emitter.instruction("mov r9, 1");                                           // value tag = string
     emitter.instruction("call __rt_hash_set");                                  // rax = possibly-grown sub-hash
-    emitter.instruction("mov QWORD PTR [rbp - 64], rax");
+    emitter.instruction("mov QWORD PTR [rbp - 64], rax");                       // store runtime value
 
     // -- re-insert sub-hash into top. Incref first to survive the
     //    overwrite-decref inside __rt_hash_set. --
     emitter.instruction("mov rdi, QWORD PTR [rbp - 64]");                       // sub-hash ptr → __rt_incref's first arg
-    emitter.instruction("call __rt_incref");
+    emitter.instruction("call __rt_incref");                                    // call runtime helper
     emitter.instruction("mov rdi, QWORD PTR [rbp - 56]");                       // top hash
-    emitter.instruction("mov rsi, QWORD PTR [rbp - 8]");
-    emitter.instruction("mov rdx, QWORD PTR [rbp - 16]");
+    emitter.instruction("mov rsi, QWORD PTR [rbp - 8]");                        // prepare SysV call argument
+    emitter.instruction("mov rdx, QWORD PTR [rbp - 16]");                       // prepare SysV call argument
     emitter.instruction("mov rcx, QWORD PTR [rbp - 64]");                       // updated sub-hash
-    emitter.instruction("xor r8, r8");
+    emitter.instruction("xor r8, r8");                                          // clear register value
     emitter.instruction("mov r9, 5");                                           // value tag = assoc array
     emitter.instruction("call __rt_hash_set");                                  // rax = updated top
-    emitter.instruction("mov QWORD PTR [rip + _stream_context_options], rax");
+    emitter.instruction("mov QWORD PTR [rip + _stream_context_options], rax");  // store runtime value
 
     emitter.instruction("mov eax, 1");                                          // PHP true
-    emitter.instruction("add rsp, 80");
-    emitter.instruction("pop rbp");
-    emitter.instruction("ret");
+    emitter.instruction("add rsp, 80");                                         // release runtime stack frame
+    emitter.instruction("pop rbp");                                             // restore caller frame pointer
+    emitter.instruction("ret");                                                 // return to caller
 }

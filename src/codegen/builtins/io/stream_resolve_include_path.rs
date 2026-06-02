@@ -42,11 +42,11 @@ pub fn emit(
             // Mixed(string)
             emitter.instruction("mov x0, #1");                                  // tag = string
             abi::emit_call_label(emitter, "__rt_mixed_from_value");
-            emitter.instruction(&format!("b {}", done));
+            emitter.instruction(&format!("b {}", done));                        // continue at target label
             emitter.label(&is_false);
             emitter.instruction("mov x0, #3");                                  // tag = bool
             emitter.instruction("mov x1, #0");                                  // value = false
-            emitter.instruction("mov x2, #0");
+            emitter.instruction("mov x2, #0");                                  // prepare AArch64 call argument
             abi::emit_call_label(emitter, "__rt_mixed_from_value");
             emitter.label(&done);
         }
@@ -54,17 +54,17 @@ pub fn emit(
             // String-result pair is in rax/rdx; realpath helper takes the
             // same pair as input on x86_64 too.
             abi::emit_call_label(emitter, "__rt_realpath");                     // rax/rdx = canonical or empty
-            emitter.instruction("test rdx, rdx");
-            emitter.instruction(&format!("jz {}", is_false));
+            emitter.instruction("test rdx, rdx");                               // check whether the runtime value is zero
+            emitter.instruction(&format!("jz {}", is_false));                   // branch when the checked value is zero or equal
             // Mixed(string): __rt_mixed_from_value takes (rax=tag, rdi=lo, rsi=hi).
             emitter.instruction("mov rdi, rax");                                // string ptr → payload lo
             emitter.instruction("mov rsi, rdx");                                // string len → payload hi
             emitter.instruction("mov rax, 1");                                  // tag = string
             abi::emit_call_label(emitter, "__rt_mixed_from_value");
-            emitter.instruction(&format!("jmp {}", done));
+            emitter.instruction(&format!("jmp {}", done));                      // continue at target label
             emitter.label(&is_false);
-            emitter.instruction("xor edi, edi");
-            emitter.instruction("xor esi, esi");
+            emitter.instruction("xor edi, edi");                                // clear register value
+            emitter.instruction("xor esi, esi");                                // clear register value
             emitter.instruction("mov rax, 3");                                  // tag = bool, value 0 = false
             abi::emit_call_label(emitter, "__rt_mixed_from_value");
             emitter.label(&done);

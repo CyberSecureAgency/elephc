@@ -50,35 +50,35 @@ pub fn emit_get_string_context_option(emitter: &mut Emitter) {
     //   [sp, 48..64] padding
     //   [sp, 64] saved x29
     //   [sp, 72] saved x30
-    emitter.instruction("sub sp, sp, #80");
-    emitter.instruction("stp x29, x30, [sp, #64]");
-    emitter.instruction("mov x29, sp");
-    emitter.instruction("str x0, [sp, #0]");
-    emitter.instruction("str x1, [sp, #8]");
-    emitter.instruction("str x2, [sp, #16]");
-    emitter.instruction("str x3, [sp, #24]");
-    emitter.instruction("str x4, [sp, #32]");
-    emitter.instruction("str x5, [sp, #40]");
+    emitter.instruction("sub sp, sp, #80");                                     // allocate runtime stack frame
+    emitter.instruction("stp x29, x30, [sp, #64]");                             // save frame pointer and return address
+    emitter.instruction("mov x29, sp");                                         // establish runtime frame pointer
+    emitter.instruction("str x0, [sp, #0]");                                    // store runtime value
+    emitter.instruction("str x1, [sp, #8]");                                    // store runtime value
+    emitter.instruction("str x2, [sp, #16]");                                   // store runtime value
+    emitter.instruction("str x3, [sp, #24]");                                   // store runtime value
+    emitter.instruction("str x4, [sp, #32]");                                   // store runtime value
+    emitter.instruction("str x5, [sp, #40]");                                   // store runtime value
 
     // -- load top-level options hash; bail when null --
     abi::emit_symbol_address(emitter, "x9", "_stream_context_options");
-    emitter.instruction("ldr x0, [x9]");
-    emitter.instruction("cbz x0, __rt_gsco_miss");
+    emitter.instruction("ldr x0, [x9]");                                        // load runtime value
+    emitter.instruction("cbz x0, __rt_gsco_miss");                              // branch when the checked value is zero or equal
 
     // -- hash_get(top, wrapper) → value_lo = sub-hash on hit --
     emitter.instruction("ldr x1, [sp, #0]");                                    // wrapper_ptr
     emitter.instruction("ldr x2, [sp, #8]");                                    // wrapper_len
     emitter.instruction("bl __rt_hash_get");                                    // x0=found, x1=value_lo
-    emitter.instruction("cbz x0, __rt_gsco_miss");
+    emitter.instruction("cbz x0, __rt_gsco_miss");                              // branch when the checked value is zero or equal
 
     // -- hash_get(sub, option) → value_lo=str ptr, x2=str len, x3=tag --
     emitter.instruction("mov x0, x1");                                          // sub-hash → first arg
     emitter.instruction("ldr x1, [sp, #16]");                                   // opt_ptr
     emitter.instruction("ldr x2, [sp, #24]");                                   // opt_len
     emitter.instruction("bl __rt_hash_get");                                    // x0=found, x1=lo, x2=hi, x3=tag
-    emitter.instruction("cbz x0, __rt_gsco_miss");
+    emitter.instruction("cbz x0, __rt_gsco_miss");                              // branch when the checked value is zero or equal
     emitter.instruction("cmp x3, #1");                                          // require string tag
-    emitter.instruction("b.ne __rt_gsco_miss");
+    emitter.instruction("b.ne __rt_gsco_miss");                                 // branch when the checked value is nonzero or different
 
     // -- write (ptr, len) through the caller's output addresses --
     emitter.instruction("ldr x9, [sp, #32]");                                   // out_ptr_addr
@@ -86,15 +86,15 @@ pub fn emit_get_string_context_option(emitter: &mut Emitter) {
     emitter.instruction("ldr x9, [sp, #40]");                                   // out_len_addr
     emitter.instruction("str x2, [x9]");                                        // *out_len = value_hi
 
-    emitter.instruction("mov x0, #1");
-    emitter.instruction("b __rt_gsco_done");
+    emitter.instruction("mov x0, #1");                                          // prepare AArch64 call argument
+    emitter.instruction("b __rt_gsco_done");                                    // continue at target label
 
     emitter.label("__rt_gsco_miss");
-    emitter.instruction("mov x0, #0");
+    emitter.instruction("mov x0, #0");                                          // prepare AArch64 call argument
     emitter.label("__rt_gsco_done");
-    emitter.instruction("ldp x29, x30, [sp, #64]");
-    emitter.instruction("add sp, sp, #80");
-    emitter.instruction("ret");
+    emitter.instruction("ldp x29, x30, [sp, #64]");                             // restore frame pointer and return address
+    emitter.instruction("add sp, sp, #80");                                     // release runtime stack frame
+    emitter.instruction("ret");                                                 // return to caller
 }
 
 /// Emits the Linux x86_64 stream runtime helper for get string context option.
@@ -110,36 +110,36 @@ fn emit_get_string_context_option_linux_x86_64(emitter: &mut Emitter) {
     //   [rbp - 32] opt_len
     //   [rbp - 40] out_ptr_addr
     //   [rbp - 48] out_len_addr
-    emitter.instruction("push rbp");
-    emitter.instruction("mov rbp, rsp");
-    emitter.instruction("sub rsp, 48");
-    emitter.instruction("mov QWORD PTR [rbp - 8], rdi");
-    emitter.instruction("mov QWORD PTR [rbp - 16], rsi");
-    emitter.instruction("mov QWORD PTR [rbp - 24], rdx");
-    emitter.instruction("mov QWORD PTR [rbp - 32], rcx");
-    emitter.instruction("mov QWORD PTR [rbp - 40], r8");
-    emitter.instruction("mov QWORD PTR [rbp - 48], r9");
+    emitter.instruction("push rbp");                                            // save caller frame pointer
+    emitter.instruction("mov rbp, rsp");                                        // establish runtime frame pointer
+    emitter.instruction("sub rsp, 48");                                         // allocate runtime stack frame
+    emitter.instruction("mov QWORD PTR [rbp - 8], rdi");                        // store runtime value
+    emitter.instruction("mov QWORD PTR [rbp - 16], rsi");                       // store runtime value
+    emitter.instruction("mov QWORD PTR [rbp - 24], rdx");                       // store runtime value
+    emitter.instruction("mov QWORD PTR [rbp - 32], rcx");                       // store runtime value
+    emitter.instruction("mov QWORD PTR [rbp - 40], r8");                        // store runtime value
+    emitter.instruction("mov QWORD PTR [rbp - 48], r9");                        // store runtime value
 
     // -- load top-level options hash --
-    emitter.instruction("mov rdi, QWORD PTR [rip + _stream_context_options]");
-    emitter.instruction("test rdi, rdi");
-    emitter.instruction("jz __rt_gsco_miss_x86");
+    emitter.instruction("mov rdi, QWORD PTR [rip + _stream_context_options]");  // prepare SysV call argument
+    emitter.instruction("test rdi, rdi");                                       // check whether the runtime value is zero
+    emitter.instruction("jz __rt_gsco_miss_x86");                               // branch when the checked value is zero or equal
 
     // hash_get(top, wrapper)
     emitter.instruction("mov rsi, QWORD PTR [rbp - 8]");                        // wrapper_ptr
     emitter.instruction("mov rdx, QWORD PTR [rbp - 16]");                       // wrapper_len
     emitter.instruction("call __rt_hash_get");                                  // rax=found, rdi=value_lo, rsi=hi, rcx=tag
-    emitter.instruction("test rax, rax");
-    emitter.instruction("jz __rt_gsco_miss_x86");
+    emitter.instruction("test rax, rax");                                       // check whether the runtime value is zero
+    emitter.instruction("jz __rt_gsco_miss_x86");                               // branch when the checked value is zero or equal
 
     // hash_get(sub, option) — sub-hash already in rdi
     emitter.instruction("mov rsi, QWORD PTR [rbp - 24]");                       // opt_ptr
     emitter.instruction("mov rdx, QWORD PTR [rbp - 32]");                       // opt_len
     emitter.instruction("call __rt_hash_get");                                  // rax=found, rdi=lo, rsi=hi, rcx=tag
-    emitter.instruction("test rax, rax");
-    emitter.instruction("jz __rt_gsco_miss_x86");
-    emitter.instruction("cmp rcx, 1");
-    emitter.instruction("jne __rt_gsco_miss_x86");
+    emitter.instruction("test rax, rax");                                       // check whether the runtime value is zero
+    emitter.instruction("jz __rt_gsco_miss_x86");                               // branch when the checked value is zero or equal
+    emitter.instruction("cmp rcx, 1");                                          // compare runtime values for the next branch
+    emitter.instruction("jne __rt_gsco_miss_x86");                              // branch when the checked value is nonzero or different
 
     // -- write through output addresses --
     emitter.instruction("mov r10, QWORD PTR [rbp - 40]");                       // out_ptr_addr
@@ -147,13 +147,13 @@ fn emit_get_string_context_option_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov r10, QWORD PTR [rbp - 48]");                       // out_len_addr
     emitter.instruction("mov QWORD PTR [r10], rsi");                            // *out_len = value_hi
 
-    emitter.instruction("mov eax, 1");
-    emitter.instruction("jmp __rt_gsco_done_x86");
+    emitter.instruction("mov eax, 1");                                          // prepare runtime result value
+    emitter.instruction("jmp __rt_gsco_done_x86");                              // continue at target label
 
     emitter.label("__rt_gsco_miss_x86");
-    emitter.instruction("xor eax, eax");
+    emitter.instruction("xor eax, eax");                                        // clear register value
     emitter.label("__rt_gsco_done_x86");
-    emitter.instruction("add rsp, 48");
-    emitter.instruction("pop rbp");
-    emitter.instruction("ret");
+    emitter.instruction("add rsp, 48");                                         // release runtime stack frame
+    emitter.instruction("pop rbp");                                             // restore caller frame pointer
+    emitter.instruction("ret");                                                 // return to caller
 }

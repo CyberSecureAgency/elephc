@@ -56,12 +56,12 @@ pub fn emit(
             }
             Arch::X86_64 => {
                 let store_done = ctx.next_label("scso_store_done_x86");
-                emitter.instruction("test rax, rax");
+                emitter.instruction("test rax, rax");                           // check whether the runtime value is zero
                 emitter.instruction(&format!("jz {}", store_done));             // null options → leave the slot unchanged
-                emitter.instruction("lea r9, [rip + _stream_context_options]");
+                emitter.instruction("lea r9, [rip + _stream_context_options]"); // load runtime data address
                 emitter.instruction("mov QWORD PTR [r9], rax");                 // overwrite the persisted options
                 emitter.instruction("mov rdi, rax");                            // incref's first arg
-                emitter.instruction("call __rt_incref");
+                emitter.instruction("call __rt_incref");                        // call runtime helper
                 emitter.label(&store_done);
                 emitter.instruction("mov eax, 1");                              // PHP true
             }
@@ -101,8 +101,8 @@ pub fn emit(
             emit_expr(arg, emitter, ctx, data);
         }
         match emitter.target.arch {
-            Arch::AArch64 => emitter.instruction("mov x0, #1"),
-            Arch::X86_64 => emitter.instruction("mov eax, 1"),
+            Arch::AArch64 => emitter.instruction("mov x0, #1"),                 // prepare AArch64 call argument
+            Arch::X86_64 => emitter.instruction("mov eax, 1"),                  // prepare runtime result value
         }
     }
     Some(PhpType::Bool)

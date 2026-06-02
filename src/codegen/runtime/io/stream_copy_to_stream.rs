@@ -41,11 +41,11 @@ pub fn emit_stream_copy_to_stream(emitter: &mut Emitter) {
     if emitter.platform.needs_cmp_before_error_branch() {
         emitter.instruction("cmp x0, #0");                                      // Linux: a negative read result means failure
     }
-    emitter.instruction(
+    emitter.instruction(                                                        // continue only when the read syscall succeeded
         &emitter
             .platform
             .branch_on_syscall_success("__rt_stream_copy_to_stream_read_ok"),
-    ); // continue only when the read syscall succeeded
+    );
     emitter.instruction("b __rt_stream_copy_to_stream_done");                   // stop copying after a read failure
     emitter.label("__rt_stream_copy_to_stream_read_ok");
     emitter.instruction("cbz x0, __rt_stream_copy_to_stream_done");             // a zero-byte read means EOF

@@ -310,10 +310,10 @@ fn emit_stream_socket_get_name_linux_x86_64(emitter: &mut Emitter) {
 
     // -- dispatch on the address-family byte (Linux: low byte of sa_family) --
     let family_addr_disp: i64 = -128 + family_off_in_buffer as i64;
-    emitter.instruction(&format!(
+    emitter.instruction(&format!(                                               // read the address-family discriminator
         "movzx eax, BYTE PTR [rbp - {}]",
         -family_addr_disp
-    ));                                                                         // read the address-family discriminator
+    ));
     let af_inet6 = Platform::Linux.af_inet6();
     emitter.instruction("cmp eax, 2");                                          // AF_INET = 2 on Linux
     emitter.instruction("je __rt_ssgn_inet_x86");                               // IPv4 path: A.B.C.D:port formatting
@@ -384,10 +384,10 @@ fn emit_stream_socket_get_name_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("add rax, QWORD PTR [rbp - 176]");                      // plus the port string length
     emitter.instruction("add rax, 1");                                          // plus the ':' separator
     emitter.instruction("call __rt_heap_alloc");                                // allocate the buffer, rax = pointer
-    emitter.instruction(&format!(
+    emitter.instruction(&format!(                                               // owned-string heap-kind word with the x86_64 heap marker
         "mov r10, 0x{:x}",
         (X86_64_HEAP_MAGIC_HI32 << 32) | 1
-    ));                                                                         // owned-string heap-kind word with the x86_64 heap marker
+    ));
     emitter.instruction("mov QWORD PTR [rax - 8], r10");                        // stamp the buffer as an owned string
 
     // -- copy the address bytes into the buffer --
@@ -457,10 +457,10 @@ fn emit_stream_socket_get_name_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov rax, 1");                                          // empty path: alloc one byte so the heap header is valid
     emitter.label("__rt_ssgn_unix_alloc_x86");
     emitter.instruction("call __rt_heap_alloc");                                // rax = persisted-string buffer pointer
-    emitter.instruction(&format!(
+    emitter.instruction(&format!(                                               // owned-string heap-kind word with the x86_64 heap marker
         "mov r10, 0x{:x}",
         (X86_64_HEAP_MAGIC_HI32 << 32) | 1
-    ));                                                                         // owned-string heap-kind word with the x86_64 heap marker
+    ));
     emitter.instruction("mov QWORD PTR [rax - 8], r10");                        // stamp the buffer as an owned string
 
     // -- copy sun_path into the heap string --
@@ -485,10 +485,10 @@ fn emit_stream_socket_get_name_linux_x86_64(emitter: &mut Emitter) {
     // -- unbound Unix socket: return an empty heap-allocated string --
     emitter.instruction("mov rax, 1");                                          // alloc one byte so the heap header is well-formed
     emitter.instruction("call __rt_heap_alloc");                                // rax = single-byte buffer
-    emitter.instruction(&format!(
+    emitter.instruction(&format!(                                               // owned-string heap-kind word with the x86_64 heap marker
         "mov r10, 0x{:x}",
         (X86_64_HEAP_MAGIC_HI32 << 32) | 1
-    ));                                                                         // owned-string heap-kind word with the x86_64 heap marker
+    ));
     emitter.instruction("mov QWORD PTR [rax - 8], r10");                        // stamp the buffer as an owned string
     emitter.instruction("xor edx, edx");                                        // result length = 0 (empty string)
     emitter.instruction("add rsp, 208");                                        // release the frame

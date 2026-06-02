@@ -50,7 +50,7 @@ pub fn emit(
                 abi::emit_symbol_address(emitter, "x9", "_stream_context_options");
                 emitter.instruction("str x0, [x9]");                            // _stream_context_options = options hash
                 emitter.instruction("bl __rt_incref");                          // retain the hash so the global slot owns it
-                emitter.instruction(&format!("b {}", store_done));
+                emitter.instruction(&format!("b {}", store_done));              // continue at target label
                 emitter.label(&store_zero);
                 abi::emit_symbol_address(emitter, "x9", "_stream_context_options");
                 emitter.instruction("str xzr, [x9]");                           // clear the slot when no options were passed
@@ -60,15 +60,15 @@ pub fn emit(
                 // Unique labels: see the AArch64 note above.
                 let store_zero = ctx.next_label("scc_store_zero_x86");
                 let store_done = ctx.next_label("scc_store_done_x86");
-                emitter.instruction("test rax, rax");
+                emitter.instruction("test rax, rax");                           // check whether the runtime value is zero
                 emitter.instruction(&format!("jz {}", store_zero));             // null options pointer → clear the slot
-                emitter.instruction("lea r9, [rip + _stream_context_options]");
+                emitter.instruction("lea r9, [rip + _stream_context_options]"); // load runtime data address
                 emitter.instruction("mov QWORD PTR [r9], rax");                 // _stream_context_options = options hash
                 emitter.instruction("mov rdi, rax");                            // incref's SysV arg
                 emitter.instruction("call __rt_incref");                        // retain the hash
-                emitter.instruction(&format!("jmp {}", store_done));
+                emitter.instruction(&format!("jmp {}", store_done));            // continue at target label
                 emitter.label(&store_zero);
-                emitter.instruction("lea r9, [rip + _stream_context_options]");
+                emitter.instruction("lea r9, [rip + _stream_context_options]"); // load runtime data address
                 emitter.instruction("mov QWORD PTR [r9], 0");                   // clear the slot
                 emitter.label(&store_done);
             }

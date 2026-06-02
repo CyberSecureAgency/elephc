@@ -46,7 +46,7 @@ pub fn emit_stream_filter_register(emitter: &mut Emitter) {
     abi::emit_symbol_address(emitter, "x4", "_user_filter_registry");
     emitter.instruction("mov x5, #0");                                          // filter slot index
     emitter.label("__rt_sfr_scan");
-    emitter.instruction(&format!("cmp x5, #{}", USER_FILTER_REGISTRATIONS_CAP));// is the filter registry full?
+    emitter.instruction(&format!("cmp x5, #{}", USER_FILTER_REGISTRATIONS_CAP)); // is the filter registry full?
     emitter.instruction("b.ge __rt_sfr_full");                                  // no empty slot remains
     emitter.instruction("add x6, x4, x5, lsl #5");                              // slot base = table + index * 32
     emitter.instruction("ldr x7, [x6]");                                        // load the slot's filter-name pointer
@@ -123,7 +123,7 @@ pub fn emit_resolve_user_filter_id(emitter: &mut Emitter) {
     abi::emit_symbol_address(emitter, "x4", "_user_filter_registry");
     emitter.instruction("mov x5, #0");                                          // filter slot index
     emitter.label("__rt_rufi_scan");
-    emitter.instruction(&format!("cmp x5, #{}", USER_FILTER_REGISTRATIONS_CAP));// scanned every registry slot?
+    emitter.instruction(&format!("cmp x5, #{}", USER_FILTER_REGISTRATIONS_CAP)); // scanned every registry slot?
     emitter.instruction("b.ge __rt_rufi_miss");                                 // no match found
     emitter.instruction("add x6, x4, x5, lsl #5");                              // slot base = table + index * 32
     emitter.instruction("ldr x7, [x6]");                                        // stored filter-name pointer
@@ -225,7 +225,7 @@ pub fn emit_stream_filter_attach_user(emitter: &mut Emitter) {
     // it back to zero and frees the object.
     emitter.instruction("ldr x0, [sp, #24]");                                   // reload obj pointer for decref
     emitter.instruction("bl __rt_decref_any");                                  // release the rejected instance
-    emitter.instruction("b __rt_sfau_fail");
+    emitter.instruction("b __rt_sfau_fail");                                    // continue at target label
     emitter.label("__rt_sfau_oncreate_skip");
     emitter.instruction("ldr x0, [sp, #24]");                                   // reload obj — onCreate's return value (or absence) replaced it
 
@@ -306,20 +306,20 @@ fn emit_stream_filter_attach_user_linux_x86_64(emitter: &mut Emitter) {
 
     // -- onCreate() lifecycle hook (vtable slot 1) — see ARM64 path. --
     emitter.instruction("mov r10, QWORD PTR [rax]");                            // class_id at the head of the obj
-    emitter.instruction("lea r11, [rip + _user_filter_vtable_ptrs]");
+    emitter.instruction("lea r11, [rip + _user_filter_vtable_ptrs]");           // load runtime data address
     emitter.instruction("mov r11, QWORD PTR [r11 + r10 * 8]");                  // per-class user-filter vtable
     emitter.instruction("mov r11, QWORD PTR [r11 + 8]");                        // slot 1 = onCreate
-    emitter.instruction("test r11, r11");
+    emitter.instruction("test r11, r11");                                       // check whether the runtime value is zero
     emitter.instruction("jz __rt_sfau_oncreate_skip_x86");                      // method absent → skip the hook
     emitter.instruction("mov rdi, rax");                                        // $this in SysV first arg
     emitter.instruction("call r11");                                            // call onCreate($this) → rax = bool
-    emitter.instruction("test rax, rax");
+    emitter.instruction("test rax, rax");                                       // check whether the runtime value is zero
     emitter.instruction("jnz __rt_sfau_oncreate_skip_x86");                     // truthy result → proceed
     // onCreate returned false → release the obj and bail without
     // touching any registry state.
     emitter.instruction("mov rdi, QWORD PTR [rbp - 32]");                       // reload obj pointer
-    emitter.instruction("call __rt_decref_any");
-    emitter.instruction("jmp __rt_sfau_fail_x86");
+    emitter.instruction("call __rt_decref_any");                                // call runtime helper
+    emitter.instruction("jmp __rt_sfau_fail_x86");                              // continue at target label
     emitter.label("__rt_sfau_oncreate_skip_x86");
     emitter.instruction("mov rax, QWORD PTR [rbp - 32]");                       // reload obj — onCreate call replaced it
 
@@ -335,7 +335,7 @@ fn emit_stream_filter_attach_user_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov r10, rdi");                                        // fd
     emitter.instruction("add r10, r10");                                        // fd*2 — read slot
     emitter.instruction("mov QWORD PTR [r9 + r10 * 8], rax");                   // _user_filter_instances[fd*2] = obj
-    emitter.instruction("lea r11, [rip + _stream_read_filters]");
+    emitter.instruction("lea r11, [rip + _stream_read_filters]");               // load runtime data address
     emitter.instruction("mov BYTE PTR [r11 + rdi], dl");                        // _stream_read_filters[fd] = id (low 8 bits)
     emitter.label("__rt_sfau_skip_read_x86");
 
@@ -346,7 +346,7 @@ fn emit_stream_filter_attach_user_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("add r10, r10");                                        // fd*2
     emitter.instruction("add r10, 1");                                          // fd*2 + 1 — write slot
     emitter.instruction("mov QWORD PTR [r9 + r10 * 8], rax");                   // _user_filter_instances[fd*2 + 1] = obj
-    emitter.instruction("lea r11, [rip + _stream_write_filters]");
+    emitter.instruction("lea r11, [rip + _stream_write_filters]");              // load runtime data address
     emitter.instruction("mov BYTE PTR [r11 + rdi], dl");                        // _stream_write_filters[fd] = id (low 8 bits)
     emitter.label("__rt_sfau_skip_write_x86");
 
@@ -453,25 +453,25 @@ fn emit_apply_user_stream_filter_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov r9, rdi");                                         // fd
     emitter.instruction("add r9, r9");                                          // fd*2
     emitter.instruction("add r9, rcx");                                         // fd*2 + dir
-    emitter.instruction("lea r10, [rip + _user_filter_instances]");
+    emitter.instruction("lea r10, [rip + _user_filter_instances]");             // load runtime data address
     emitter.instruction("mov rdi, QWORD PTR [r10 + r9 * 8]");                   // obj = instances[slot] (loaded into the method's $this register)
     emitter.instruction("test rdi, rdi");                                       // any instance attached?
     emitter.instruction("jz __rt_aufs_passthrough_x86");                        // no instance → pass the buffer through unchanged
 
     // -- look up the filter() method pointer in the class's user-filter vtable --
     emitter.instruction("mov r11, QWORD PTR [rdi]");                            // class_id at the head of the obj
-    emitter.instruction("lea r10, [rip + _user_filter_vtable_ptrs]");
+    emitter.instruction("lea r10, [rip + _user_filter_vtable_ptrs]");           // load runtime data address
     emitter.instruction("mov r10, QWORD PTR [r10 + r11 * 8]");                  // per-class user-filter vtable
     emitter.instruction("mov r8, QWORD PTR [r10]");                             // slot 0 = filter() method pointer
     emitter.instruction("test r8, r8");                                         // class did not implement filter()?
     emitter.instruction("jz __rt_aufs_passthrough_x86");                        // pass through if so
     // -- slot 3 (arity flag): non-zero means PHP-canonical 4-arg brigade dispatch.
     emitter.instruction("mov r9, QWORD PTR [r10 + 24]");                        // slot 3 = brigade arity flag
-    emitter.instruction("test r9, r9");
+    emitter.instruction("test r9, r9");                                         // check whether the runtime value is zero
     emitter.instruction("jz __rt_aufs_simple_x");                               // 0 → fall through to existing simple-string path
     emitter.instruction("mov rcx, r8");                                         // method_ptr → SysV 4th arg of brigade_invoke
     // brigade_invoke takes (rdi=$this, rsi=buf, rdx=len, rcx=method); rdi/rsi/rdx already hold the right values.
-    emitter.instruction("pop rbp");
+    emitter.instruction("pop rbp");                                             // restore caller frame pointer
     emitter.instruction("jmp __rt_user_filter_brigade_invoke");                 // tail-call into the brigade dispatcher
 
     emitter.label("__rt_aufs_simple_x");
@@ -481,7 +481,7 @@ fn emit_apply_user_stream_filter_linux_x86_64(emitter: &mut Emitter) {
     //    the method's prologue typically rewinds _concat_off). --
     emitter.instruction("push r10");                                            // save filter method ptr across the copy loop
     emitter.instruction("push rdi");                                            // save $this across the copy loop
-    emitter.instruction("lea r10, [rip + _stream_filter_buf]");
+    emitter.instruction("lea r10, [rip + _stream_filter_buf]");                 // load runtime data address
     emitter.instruction("xor r9, r9");                                          // byte copy index
     emitter.label("__rt_aufs_copy_x86");
     emitter.instruction("cmp r9, rdx");                                         // copied every byte?
@@ -572,9 +572,9 @@ pub fn emit_user_filter_release_fd(emitter: &mut Emitter) {
     emitter.label_global("__rt_user_filter_release_fd");
 
     // Frame: 32 bytes — saved fd + x29/x30.
-    emitter.instruction("sub sp, sp, #32");
-    emitter.instruction("stp x29, x30, [sp, #16]");
-    emitter.instruction("mov x29, sp");
+    emitter.instruction("sub sp, sp, #32");                                     // allocate runtime stack frame
+    emitter.instruction("stp x29, x30, [sp, #16]");                             // save frame pointer and return address
+    emitter.instruction("mov x29, sp");                                         // establish runtime frame pointer
     emitter.instruction("str x0, [sp, #0]");                                    // save fd across the onClose calls
 
     for dir in 0..2usize {
@@ -599,19 +599,19 @@ pub fn emit_user_filter_release_fd(emitter: &mut Emitter) {
         emitter.label(&no_method);
         // Clear the instance slot now that onClose has run (or was absent).
         emitter.instruction("ldr x0, [sp, #0]");                                // reload fd (clobbered by the call)
-        emitter.instruction("add x10, x0, x0");
+        emitter.instruction("add x10, x0, x0");                                 // advance runtime pointer or counter
         if dir == 1 {
-            emitter.instruction("add x10, x10, #1");
+            emitter.instruction("add x10, x10, #1");                            // advance runtime pointer or counter
         }
         abi::emit_symbol_address(emitter, "x9", "_user_filter_instances");
-        emitter.instruction("str xzr, [x9, x10, lsl #3]");
+        emitter.instruction("str xzr, [x9, x10, lsl #3]");                      // store runtime value
         emitter.label(&skip);
     }
 
     emitter.instruction("ldr x0, [sp, #0]");                                    // restore caller's x0 = fd
-    emitter.instruction("ldp x29, x30, [sp, #16]");
-    emitter.instruction("add sp, sp, #32");
-    emitter.instruction("ret");
+    emitter.instruction("ldp x29, x30, [sp, #16]");                             // restore frame pointer and return address
+    emitter.instruction("add sp, sp, #32");                                     // release runtime stack frame
+    emitter.instruction("ret");                                                 // return to caller
 }
 
 /// Emits the Linux x86_64 stream runtime helper for user filter release fd.
@@ -620,47 +620,47 @@ fn emit_user_filter_release_fd_linux_x86_64(emitter: &mut Emitter) {
     emitter.comment("--- runtime: user_filter_release_fd ---");
     emitter.label_global("__rt_user_filter_release_fd");
 
-    emitter.instruction("push rbp");
-    emitter.instruction("mov rbp, rsp");
-    emitter.instruction("sub rsp, 16");
+    emitter.instruction("push rbp");                                            // save caller frame pointer
+    emitter.instruction("mov rbp, rsp");                                        // establish runtime frame pointer
+    emitter.instruction("sub rsp, 16");                                         // allocate runtime stack frame
     emitter.instruction("mov QWORD PTR [rbp - 8], rdi");                        // save fd
 
     for dir in 0..2usize {
         let skip = format!("__rt_ufrf_dir{}_skip_x86", dir);
         let no_method = format!("__rt_ufrf_dir{}_no_method_x86", dir);
         emitter.instruction("mov rdi, QWORD PTR [rbp - 8]");                    // fd
-        emitter.instruction("mov r10, rdi");
+        emitter.instruction("mov r10, rdi");                                    // move runtime value between registers
         emitter.instruction("add r10, r10");                                    // fd*2
         if dir == 1 {
-            emitter.instruction("add r10, 1");
+            emitter.instruction("add r10, 1");                                  // advance runtime pointer or counter
         }
-        emitter.instruction("lea r9, [rip + _user_filter_instances]");
+        emitter.instruction("lea r9, [rip + _user_filter_instances]");          // load runtime data address
         emitter.instruction("mov r11, QWORD PTR [r9 + r10 * 8]");               // obj
-        emitter.instruction("test r11, r11");
-        emitter.instruction(&format!("jz {}", skip));
+        emitter.instruction("test r11, r11");                                   // check whether the runtime value is zero
+        emitter.instruction(&format!("jz {}", skip));                           // branch when the checked value is zero or equal
         emitter.instruction("mov r12, QWORD PTR [r11]");                        // class_id
-        emitter.instruction("lea r13, [rip + _user_filter_vtable_ptrs]");
+        emitter.instruction("lea r13, [rip + _user_filter_vtable_ptrs]");       // load runtime data address
         emitter.instruction("mov r13, QWORD PTR [r13 + r12 * 8]");              // vtable
         emitter.instruction("mov r14, QWORD PTR [r13 + 16]");                   // slot 2 = onClose
-        emitter.instruction("test r14, r14");
-        emitter.instruction(&format!("jz {}", no_method));
+        emitter.instruction("test r14, r14");                                   // check whether the runtime value is zero
+        emitter.instruction(&format!("jz {}", no_method));                      // branch when the checked value is zero or equal
         emitter.instruction("mov rdi, r11");                                    // $this
-        emitter.instruction("call r14");
+        emitter.instruction("call r14");                                        // call external helper
         emitter.label(&no_method);
         // Clear the slot.
-        emitter.instruction("mov rdi, QWORD PTR [rbp - 8]");
-        emitter.instruction("mov r10, rdi");
-        emitter.instruction("add r10, r10");
+        emitter.instruction("mov rdi, QWORD PTR [rbp - 8]");                    // prepare SysV call argument
+        emitter.instruction("mov r10, rdi");                                    // move runtime value between registers
+        emitter.instruction("add r10, r10");                                    // advance runtime pointer or counter
         if dir == 1 {
-            emitter.instruction("add r10, 1");
+            emitter.instruction("add r10, 1");                                  // advance runtime pointer or counter
         }
-        emitter.instruction("lea r9, [rip + _user_filter_instances]");
-        emitter.instruction("mov QWORD PTR [r9 + r10 * 8], 0");
+        emitter.instruction("lea r9, [rip + _user_filter_instances]");          // load runtime data address
+        emitter.instruction("mov QWORD PTR [r9 + r10 * 8], 0");                 // store runtime value
         emitter.label(&skip);
     }
 
     emitter.instruction("mov rax, QWORD PTR [rbp - 8]");                        // preserve fd
-    emitter.instruction("add rsp, 16");
-    emitter.instruction("pop rbp");
-    emitter.instruction("ret");
+    emitter.instruction("add rsp, 16");                                         // release runtime stack frame
+    emitter.instruction("pop rbp");                                             // restore caller frame pointer
+    emitter.instruction("ret");                                                 // return to caller
 }

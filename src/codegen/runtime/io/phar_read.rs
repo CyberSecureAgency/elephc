@@ -55,30 +55,30 @@ pub fn emit_phar_read(emitter: &mut Emitter) {
     emitter.instruction("b.gt __rt_phar_read_fail");                            // no ".phar/" boundary → not selectable
     emitter.instruction("ldrb w11, [x0, x9]");                                  // url[i]
     emitter.instruction("cmp w11, #0x2e");                                      // '.'
-    emitter.instruction("b.ne __rt_phar_read_split_next");
-    emitter.instruction("add x12, x9, #1");
+    emitter.instruction("b.ne __rt_phar_read_split_next");                      // branch when the checked value is nonzero or different
+    emitter.instruction("add x12, x9, #1");                                     // advance runtime pointer or counter
     emitter.instruction("ldrb w11, [x0, x12]");                                 // url[i+1]
     emitter.instruction("cmp w11, #0x70");                                      // 'p'
-    emitter.instruction("b.ne __rt_phar_read_split_next");
-    emitter.instruction("add x12, x9, #2");
+    emitter.instruction("b.ne __rt_phar_read_split_next");                      // branch when the checked value is nonzero or different
+    emitter.instruction("add x12, x9, #2");                                     // advance runtime pointer or counter
     emitter.instruction("ldrb w11, [x0, x12]");                                 // url[i+2]
     emitter.instruction("cmp w11, #0x68");                                      // 'h'
-    emitter.instruction("b.ne __rt_phar_read_split_next");
-    emitter.instruction("add x12, x9, #3");
+    emitter.instruction("b.ne __rt_phar_read_split_next");                      // branch when the checked value is nonzero or different
+    emitter.instruction("add x12, x9, #3");                                     // advance runtime pointer or counter
     emitter.instruction("ldrb w11, [x0, x12]");                                 // url[i+3]
     emitter.instruction("cmp w11, #0x61");                                      // 'a'
-    emitter.instruction("b.ne __rt_phar_read_split_next");
-    emitter.instruction("add x12, x9, #4");
+    emitter.instruction("b.ne __rt_phar_read_split_next");                      // branch when the checked value is nonzero or different
+    emitter.instruction("add x12, x9, #4");                                     // advance runtime pointer or counter
     emitter.instruction("ldrb w11, [x0, x12]");                                 // url[i+4]
     emitter.instruction("cmp w11, #0x72");                                      // 'r'
-    emitter.instruction("b.ne __rt_phar_read_split_next");
-    emitter.instruction("add x12, x9, #5");
+    emitter.instruction("b.ne __rt_phar_read_split_next");                      // branch when the checked value is nonzero or different
+    emitter.instruction("add x12, x9, #5");                                     // advance runtime pointer or counter
     emitter.instruction("ldrb w11, [x0, x12]");                                 // url[i+5]
     emitter.instruction("cmp w11, #0x2f");                                      // '/'
     emitter.instruction("b.eq __rt_phar_read_split_found");                     // ".phar/" matched at i
     emitter.label("__rt_phar_read_split_next");
     emitter.instruction("add x9, x9, #1");                                      // advance the scan index
-    emitter.instruction("b __rt_phar_read_split_loop");
+    emitter.instruction("b __rt_phar_read_split_loop");                         // continue at target label
     emitter.label("__rt_phar_read_split_found");
     // entry ptr = url + i + 6 ; entry len = url_len - (i + 6)
     emitter.instruction("add x23, x0, x9");                                     // url + i
@@ -111,13 +111,13 @@ pub fn emit_phar_read(emitter: &mut Emitter) {
     emitter.instruction("add x12, x9, x11");                                    // i + j
     emitter.instruction("ldrb w13, [x19, x12]");                                // buffer byte
     emitter.instruction("ldrb w14, [x15, x11]");                                // terminator byte
-    emitter.instruction("cmp w13, w14");
+    emitter.instruction("cmp w13, w14");                                        // compare runtime values for the next branch
     emitter.instruction("b.ne __rt_phar_read_halt_next");                       // mismatch at this position
     emitter.instruction("add x11, x11, #1");                                    // next compare byte
-    emitter.instruction("b __rt_phar_read_halt_cmp");
+    emitter.instruction("b __rt_phar_read_halt_cmp");                           // continue at target label
     emitter.label("__rt_phar_read_halt_next");
     emitter.instruction("add x9, x9, #1");                                      // advance the scan index
-    emitter.instruction("b __rt_phar_read_halt_scan");
+    emitter.instruction("b __rt_phar_read_halt_scan");                          // continue at target label
     emitter.label("__rt_phar_read_halt_found");
     emitter.instruction("add x9, x9, #18");                                     // p = i + 18 (first byte past the terminator)
 
@@ -150,12 +150,12 @@ pub fn emit_phar_read(emitter: &mut Emitter) {
     emitter.instruction("cbz x11, __rt_phar_read_fail");                        // no more files → entry not found
     emitter.instruction("add x13, x9, #4");                                     // q + 4
     emitter.instruction("cmp x13, x20");                                        // bounds: name_len field within N?
-    emitter.instruction("b.gt __rt_phar_read_fail");
+    emitter.instruction("b.gt __rt_phar_read_fail");                            // branch when comparison is above target
     emitter.instruction("ldr w13, [x19, x9]");                                  // name_len
     emitter.instruction("add x9, x9, #4");                                      // q now at the name bytes
     emitter.instruction("add x14, x9, x13");                                    // q + name_len
     emitter.instruction("cmp x14, x20");                                        // bounds: name bytes within N?
-    emitter.instruction("b.gt __rt_phar_read_fail");
+    emitter.instruction("b.gt __rt_phar_read_fail");                            // branch when comparison is above target
     emitter.instruction("cmp x13, x24");                                        // name_len == requested entry len?
     emitter.instruction("b.ne __rt_phar_read_entry_mismatch");                  // lengths differ → not this entry
     emitter.instruction("mov x14, #0");                                         // compare index k = 0
@@ -166,10 +166,10 @@ pub fn emit_phar_read(emitter: &mut Emitter) {
     emitter.instruction("ldrb w0, [x19, x15]");                                 // archive name byte
     emitter.instruction("add x15, x23, x14");                                   // entry name + k
     emitter.instruction("ldrb w1, [x15]");                                      // requested name byte
-    emitter.instruction("cmp w0, w1");
+    emitter.instruction("cmp w0, w1");                                          // compare runtime values for the next branch
     emitter.instruction("b.ne __rt_phar_read_entry_mismatch");                  // byte mismatch → not this entry
     emitter.instruction("add x14, x14, #1");                                    // next name byte
-    emitter.instruction("b __rt_phar_read_name_cmp");
+    emitter.instruction("b __rt_phar_read_name_cmp");                           // continue at target label
     emitter.label("__rt_phar_read_entry_mismatch");
     emitter.instruction("add x9, x9, x13");                                     // q += name_len (now at uncompressed)
     emitter.instruction("add x14, x9, #8");                                     // &compressed = q + 8
@@ -180,7 +180,7 @@ pub fn emit_phar_read(emitter: &mut Emitter) {
     emitter.instruction("add x9, x9, #4");                                      // q += 4
     emitter.instruction("add x9, x9, x13");                                     // q += entry meta_len
     emitter.instruction("sub x11, x11, #1");                                    // num_files--
-    emitter.instruction("b __rt_phar_read_entry_loop");
+    emitter.instruction("b __rt_phar_read_entry_loop");                         // continue at target label
 
     emitter.label("__rt_phar_read_name_match");
     // q at name start, x13 = name_len, x10 = data_section, x12 = data_offset.
@@ -190,12 +190,12 @@ pub fn emit_phar_read(emitter: &mut Emitter) {
     emitter.instruction("add x14, x10, x12");                                   // data_section + data_offset
     emitter.instruction("add x14, x14, x15");                                   // + content length (end offset)
     emitter.instruction("cmp x14, x20");                                        // bounds: content within N?
-    emitter.instruction("b.gt __rt_phar_read_fail");
+    emitter.instruction("b.gt __rt_phar_read_fail");                            // branch when comparison is above target
     emitter.instruction("add x0, x19, x10");                                    // buffer + data_section
     emitter.instruction("add x0, x0, x12");                                     // + data_offset = content ptr
     emitter.instruction("mov x1, x15");                                         // content length
     emitter.instruction("bl __rt_data_stream");                                 // materialize a readable fd over the entry; x0 = fd
-    emitter.instruction("b __rt_phar_read_done");
+    emitter.instruction("b __rt_phar_read_done");                               // continue at target label
 
     emitter.label("__rt_phar_read_fail");
     emitter.instruction("mov x0, #-1");                                         // -1 → PHP false (missing archive/entry)
@@ -212,28 +212,28 @@ pub fn emit_phar_read(emitter: &mut Emitter) {
     emitter.comment("--- runtime: fopen_maybe_phar ---");
     emitter.label_global("__rt_fopen_maybe_phar");
     emitter.instruction("cmp x2, #7");                                          // filename at least "phar://" long?
-    emitter.instruction("b.lt __rt_fopen_maybe_phar_plain");
+    emitter.instruction("b.lt __rt_fopen_maybe_phar_plain");                    // branch when comparison is below target
     emitter.instruction("ldrb w9, [x1, #0]");                                   // 'p'
-    emitter.instruction("cmp w9, #0x70");
-    emitter.instruction("b.ne __rt_fopen_maybe_phar_plain");
+    emitter.instruction("cmp w9, #0x70");                                       // compare runtime values for the next branch
+    emitter.instruction("b.ne __rt_fopen_maybe_phar_plain");                    // branch when the checked value is nonzero or different
     emitter.instruction("ldrb w9, [x1, #1]");                                   // 'h'
-    emitter.instruction("cmp w9, #0x68");
-    emitter.instruction("b.ne __rt_fopen_maybe_phar_plain");
+    emitter.instruction("cmp w9, #0x68");                                       // compare runtime values for the next branch
+    emitter.instruction("b.ne __rt_fopen_maybe_phar_plain");                    // branch when the checked value is nonzero or different
     emitter.instruction("ldrb w9, [x1, #2]");                                   // 'a'
-    emitter.instruction("cmp w9, #0x61");
-    emitter.instruction("b.ne __rt_fopen_maybe_phar_plain");
+    emitter.instruction("cmp w9, #0x61");                                       // compare runtime values for the next branch
+    emitter.instruction("b.ne __rt_fopen_maybe_phar_plain");                    // branch when the checked value is nonzero or different
     emitter.instruction("ldrb w9, [x1, #3]");                                   // 'r'
-    emitter.instruction("cmp w9, #0x72");
-    emitter.instruction("b.ne __rt_fopen_maybe_phar_plain");
+    emitter.instruction("cmp w9, #0x72");                                       // compare runtime values for the next branch
+    emitter.instruction("b.ne __rt_fopen_maybe_phar_plain");                    // branch when the checked value is nonzero or different
     emitter.instruction("ldrb w9, [x1, #4]");                                   // ':'
-    emitter.instruction("cmp w9, #0x3a");
-    emitter.instruction("b.ne __rt_fopen_maybe_phar_plain");
+    emitter.instruction("cmp w9, #0x3a");                                       // compare runtime values for the next branch
+    emitter.instruction("b.ne __rt_fopen_maybe_phar_plain");                    // branch when the checked value is nonzero or different
     emitter.instruction("ldrb w9, [x1, #5]");                                   // '/'
-    emitter.instruction("cmp w9, #0x2f");
-    emitter.instruction("b.ne __rt_fopen_maybe_phar_plain");
+    emitter.instruction("cmp w9, #0x2f");                                       // compare runtime values for the next branch
+    emitter.instruction("b.ne __rt_fopen_maybe_phar_plain");                    // branch when the checked value is nonzero or different
     emitter.instruction("ldrb w9, [x1, #6]");                                   // '/'
-    emitter.instruction("cmp w9, #0x2f");
-    emitter.instruction("b.ne __rt_fopen_maybe_phar_plain");
+    emitter.instruction("cmp w9, #0x2f");                                       // compare runtime values for the next branch
+    emitter.instruction("b.ne __rt_fopen_maybe_phar_plain");                    // branch when the checked value is nonzero or different
     emitter.instruction("cbz x4, __rt_fopen_maybe_phar_plain");                 // empty mode → not a read open
     emitter.instruction("ldrb w9, [x3, #0]");                                   // mode[0]
     emitter.instruction("cmp w9, #0x72");                                       // 'r' (read)?
@@ -249,28 +249,28 @@ pub fn emit_phar_read(emitter: &mut Emitter) {
     emitter.comment("--- runtime: file_get_contents_maybe_phar ---");
     emitter.label_global("__rt_file_get_contents_maybe_phar");
     emitter.instruction("cmp x2, #7");                                          // at least "phar://" long?
-    emitter.instruction("b.lt __rt_fgc_phar_plain");
+    emitter.instruction("b.lt __rt_fgc_phar_plain");                            // branch when comparison is below target
     emitter.instruction("ldrb w9, [x1, #0]");                                   // 'p'
-    emitter.instruction("cmp w9, #0x70");
-    emitter.instruction("b.ne __rt_fgc_phar_plain");
+    emitter.instruction("cmp w9, #0x70");                                       // compare runtime values for the next branch
+    emitter.instruction("b.ne __rt_fgc_phar_plain");                            // branch when the checked value is nonzero or different
     emitter.instruction("ldrb w9, [x1, #1]");                                   // 'h'
-    emitter.instruction("cmp w9, #0x68");
-    emitter.instruction("b.ne __rt_fgc_phar_plain");
+    emitter.instruction("cmp w9, #0x68");                                       // compare runtime values for the next branch
+    emitter.instruction("b.ne __rt_fgc_phar_plain");                            // branch when the checked value is nonzero or different
     emitter.instruction("ldrb w9, [x1, #2]");                                   // 'a'
-    emitter.instruction("cmp w9, #0x61");
-    emitter.instruction("b.ne __rt_fgc_phar_plain");
+    emitter.instruction("cmp w9, #0x61");                                       // compare runtime values for the next branch
+    emitter.instruction("b.ne __rt_fgc_phar_plain");                            // branch when the checked value is nonzero or different
     emitter.instruction("ldrb w9, [x1, #3]");                                   // 'r'
-    emitter.instruction("cmp w9, #0x72");
-    emitter.instruction("b.ne __rt_fgc_phar_plain");
+    emitter.instruction("cmp w9, #0x72");                                       // compare runtime values for the next branch
+    emitter.instruction("b.ne __rt_fgc_phar_plain");                            // branch when the checked value is nonzero or different
     emitter.instruction("ldrb w9, [x1, #4]");                                   // ':'
-    emitter.instruction("cmp w9, #0x3a");
-    emitter.instruction("b.ne __rt_fgc_phar_plain");
+    emitter.instruction("cmp w9, #0x3a");                                       // compare runtime values for the next branch
+    emitter.instruction("b.ne __rt_fgc_phar_plain");                            // branch when the checked value is nonzero or different
     emitter.instruction("ldrb w9, [x1, #5]");                                   // '/'
-    emitter.instruction("cmp w9, #0x2f");
-    emitter.instruction("b.ne __rt_fgc_phar_plain");
+    emitter.instruction("cmp w9, #0x2f");                                       // compare runtime values for the next branch
+    emitter.instruction("b.ne __rt_fgc_phar_plain");                            // branch when the checked value is nonzero or different
     emitter.instruction("ldrb w9, [x1, #6]");                                   // '/'
-    emitter.instruction("cmp w9, #0x2f");
-    emitter.instruction("b.ne __rt_fgc_phar_plain");
+    emitter.instruction("cmp w9, #0x2f");                                       // compare runtime values for the next branch
+    emitter.instruction("b.ne __rt_fgc_phar_plain");                            // branch when the checked value is nonzero or different
     // phar:// read at run time: open the entry, slurp the fd, close it.
     emitter.instruction("sub sp, sp, #48");                                     // frame: [0]=fd [8]=str ptr [16]=str len [32]=x29 [40]=x30
     emitter.instruction("stp x29, x30, [sp, #32]");                             // save frame pointer and return address
@@ -291,7 +291,7 @@ pub fn emit_phar_read(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the entry contents string
     emitter.label("__rt_fgc_phar_fail");
     emitter.instruction("mov x1, #0");                                          // null string ptr → file_get_contents boxes false
-    emitter.instruction("mov x2, #0");
+    emitter.instruction("mov x2, #0");                                          // prepare AArch64 call argument
     emitter.instruction("ldp x29, x30, [sp, #32]");                             // restore frame pointer and return address
     emitter.instruction("add sp, sp, #48");                                     // release the helper frame
     emitter.instruction("ret");                                                 // return the failure (boxed false)
@@ -324,25 +324,25 @@ fn emit_phar_read_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("cmp r9, rsi");                                         // does ".phar/" fit before the URL end?
     emitter.instruction("jg __rt_phar_read_fail_x86");                          // no ".phar/" boundary → fail
     emitter.instruction("cmp BYTE PTR [rdi + r8], 0x2e");                       // '.'
-    emitter.instruction("jne __rt_phar_read_split_next_x86");
-    emitter.instruction("lea r9, [r8 + 1]");
+    emitter.instruction("jne __rt_phar_read_split_next_x86");                   // branch when the checked value is nonzero or different
+    emitter.instruction("lea r9, [r8 + 1]");                                    // load runtime data address
     emitter.instruction("cmp BYTE PTR [rdi + r9], 0x70");                       // 'p'
-    emitter.instruction("jne __rt_phar_read_split_next_x86");
-    emitter.instruction("lea r9, [r8 + 2]");
+    emitter.instruction("jne __rt_phar_read_split_next_x86");                   // branch when the checked value is nonzero or different
+    emitter.instruction("lea r9, [r8 + 2]");                                    // load runtime data address
     emitter.instruction("cmp BYTE PTR [rdi + r9], 0x68");                       // 'h'
-    emitter.instruction("jne __rt_phar_read_split_next_x86");
-    emitter.instruction("lea r9, [r8 + 3]");
+    emitter.instruction("jne __rt_phar_read_split_next_x86");                   // branch when the checked value is nonzero or different
+    emitter.instruction("lea r9, [r8 + 3]");                                    // load runtime data address
     emitter.instruction("cmp BYTE PTR [rdi + r9], 0x61");                       // 'a'
-    emitter.instruction("jne __rt_phar_read_split_next_x86");
-    emitter.instruction("lea r9, [r8 + 4]");
+    emitter.instruction("jne __rt_phar_read_split_next_x86");                   // branch when the checked value is nonzero or different
+    emitter.instruction("lea r9, [r8 + 4]");                                    // load runtime data address
     emitter.instruction("cmp BYTE PTR [rdi + r9], 0x72");                       // 'r'
-    emitter.instruction("jne __rt_phar_read_split_next_x86");
-    emitter.instruction("lea r9, [r8 + 5]");
+    emitter.instruction("jne __rt_phar_read_split_next_x86");                   // branch when the checked value is nonzero or different
+    emitter.instruction("lea r9, [r8 + 5]");                                    // load runtime data address
     emitter.instruction("cmp BYTE PTR [rdi + r9], 0x2f");                       // '/'
     emitter.instruction("je __rt_phar_read_split_found_x86");                   // ".phar/" matched at i
     emitter.label("__rt_phar_read_split_next_x86");
     emitter.instruction("inc r8");                                              // advance the scan index
-    emitter.instruction("jmp __rt_phar_read_split_loop_x86");
+    emitter.instruction("jmp __rt_phar_read_split_loop_x86");                   // continue at target label
     emitter.label("__rt_phar_read_split_found_x86");
     // entry ptr = url + i + 6 ; entry len = url_len - (i + 6)
     emitter.instruction("lea r14, [rdi + r8 + 6]");                             // entry name ptr = url + i + 6
@@ -375,13 +375,13 @@ fn emit_phar_read_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("lea r9, [r8 + r10]");                                  // i + j
     emitter.instruction("movzx eax, BYTE PTR [r12 + r9]");                      // buffer byte
     emitter.instruction("movzx ecx, BYTE PTR [rbx + r10]");                     // terminator byte
-    emitter.instruction("cmp al, cl");
+    emitter.instruction("cmp al, cl");                                          // compare runtime values for the next branch
     emitter.instruction("jne __rt_phar_read_halt_next_x86");                    // mismatch
     emitter.instruction("inc r10");                                             // next compare byte
-    emitter.instruction("jmp __rt_phar_read_halt_cmp_x86");
+    emitter.instruction("jmp __rt_phar_read_halt_cmp_x86");                     // continue at target label
     emitter.label("__rt_phar_read_halt_next_x86");
     emitter.instruction("inc r8");                                              // advance the scan index
-    emitter.instruction("jmp __rt_phar_read_halt_scan_x86");
+    emitter.instruction("jmp __rt_phar_read_halt_scan_x86");                    // continue at target label
     emitter.label("__rt_phar_read_halt_found_x86");
     emitter.instruction("add r8, 18");                                          // p = i + 18
 
@@ -416,14 +416,14 @@ fn emit_phar_read_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("jz __rt_phar_read_fail_x86");                          // entry not found
     emitter.instruction("lea rax, [r8 + 4]");                                   // q + 4
     emitter.instruction("cmp rax, r13");                                        // bounds: name_len field within N?
-    emitter.instruction("jg __rt_phar_read_fail_x86");
+    emitter.instruction("jg __rt_phar_read_fail_x86");                          // branch when comparison is above target
     emitter.instruction("mov r9d, DWORD PTR [r12 + r8]");                       // name_len (r9, per iteration)
     emitter.instruction("add r8, 4");                                           // q now at the name bytes
     emitter.instruction("lea rax, [r8 + r9]");                                  // q + name_len
     emitter.instruction("cmp rax, r13");                                        // bounds: name bytes within N?
-    emitter.instruction("jg __rt_phar_read_fail_x86");
+    emitter.instruction("jg __rt_phar_read_fail_x86");                          // branch when comparison is above target
     emitter.instruction("cmp r9, r15");                                         // name_len == requested entry len?
-    emitter.instruction("jne __rt_phar_read_entry_mismatch_x86");
+    emitter.instruction("jne __rt_phar_read_entry_mismatch_x86");               // branch when the checked value is nonzero or different
     emitter.instruction("xor rax, rax");                                        // compare index k = 0
     emitter.label("__rt_phar_read_name_cmp_x86");
     emitter.instruction("cmp rax, r9");                                         // compared every name byte?
@@ -432,10 +432,10 @@ fn emit_phar_read_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("movzx edx, BYTE PTR [r12 + rcx]");                     // archive name byte (dl)
     emitter.instruction("lea rcx, [r14 + rax]");                                // entry name + k
     emitter.instruction("movzx ecx, BYTE PTR [rcx]");                           // requested name byte (cl)
-    emitter.instruction("cmp dl, cl");
-    emitter.instruction("jne __rt_phar_read_entry_mismatch_x86");
+    emitter.instruction("cmp dl, cl");                                          // compare runtime values for the next branch
+    emitter.instruction("jne __rt_phar_read_entry_mismatch_x86");               // branch when the checked value is nonzero or different
     emitter.instruction("inc rax");                                             // next name byte
-    emitter.instruction("jmp __rt_phar_read_name_cmp_x86");
+    emitter.instruction("jmp __rt_phar_read_name_cmp_x86");                     // continue at target label
     emitter.label("__rt_phar_read_entry_mismatch_x86");
     emitter.instruction("add r8, r9");                                          // q += name_len (now at uncompressed)
     emitter.instruction("lea rax, [r8 + 8]");                                   // &compressed = q + 8
@@ -446,7 +446,7 @@ fn emit_phar_read_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("add r8, 4");                                           // q += 4
     emitter.instruction("add r8, rax");                                         // q += entry meta_len
     emitter.instruction("dec r11");                                             // num_files--
-    emitter.instruction("jmp __rt_phar_read_entry_loop_x86");
+    emitter.instruction("jmp __rt_phar_read_entry_loop_x86");                   // continue at target label
 
     emitter.label("__rt_phar_read_name_match_x86");
     // q at name start, r9 = name_len, rbx = data_section, r10 = data_offset.
@@ -458,11 +458,11 @@ fn emit_phar_read_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov rdx, rcx");                                        // end offset = data_section + data_offset ...
     emitter.instruction("add rdx, rax");                                        // ... + content length
     emitter.instruction("cmp rdx, r13");                                        // bounds: content within N?
-    emitter.instruction("jg __rt_phar_read_fail_x86");
+    emitter.instruction("jg __rt_phar_read_fail_x86");                          // branch when comparison is above target
     emitter.instruction("lea rdi, [r12 + rcx]");                                // content ptr = buffer + data_section + data_offset
     emitter.instruction("mov rsi, rax");                                        // content length
     emitter.instruction("call __rt_data_stream");                               // materialize a readable fd; rax = fd
-    emitter.instruction("jmp __rt_phar_read_done_x86");
+    emitter.instruction("jmp __rt_phar_read_done_x86");                         // continue at target label
 
     emitter.label("__rt_phar_read_fail_x86");
     emitter.instruction("mov rax, -1");                                         // -1 → PHP false
@@ -481,23 +481,23 @@ fn emit_phar_read_linux_x86_64(emitter: &mut Emitter) {
     emitter.comment("--- runtime: fopen_maybe_phar ---");
     emitter.label_global("__rt_fopen_maybe_phar");
     emitter.instruction("cmp rdx, 7");                                          // filename at least "phar://" long?
-    emitter.instruction("jl __rt_fopen_maybe_phar_plain_x86");
+    emitter.instruction("jl __rt_fopen_maybe_phar_plain_x86");                  // branch when comparison is below target
     emitter.instruction("cmp BYTE PTR [rax + 0], 0x70");                        // 'p'
-    emitter.instruction("jne __rt_fopen_maybe_phar_plain_x86");
+    emitter.instruction("jne __rt_fopen_maybe_phar_plain_x86");                 // branch when the checked value is nonzero or different
     emitter.instruction("cmp BYTE PTR [rax + 1], 0x68");                        // 'h'
-    emitter.instruction("jne __rt_fopen_maybe_phar_plain_x86");
+    emitter.instruction("jne __rt_fopen_maybe_phar_plain_x86");                 // branch when the checked value is nonzero or different
     emitter.instruction("cmp BYTE PTR [rax + 2], 0x61");                        // 'a'
-    emitter.instruction("jne __rt_fopen_maybe_phar_plain_x86");
+    emitter.instruction("jne __rt_fopen_maybe_phar_plain_x86");                 // branch when the checked value is nonzero or different
     emitter.instruction("cmp BYTE PTR [rax + 3], 0x72");                        // 'r'
-    emitter.instruction("jne __rt_fopen_maybe_phar_plain_x86");
+    emitter.instruction("jne __rt_fopen_maybe_phar_plain_x86");                 // branch when the checked value is nonzero or different
     emitter.instruction("cmp BYTE PTR [rax + 4], 0x3a");                        // ':'
-    emitter.instruction("jne __rt_fopen_maybe_phar_plain_x86");
+    emitter.instruction("jne __rt_fopen_maybe_phar_plain_x86");                 // branch when the checked value is nonzero or different
     emitter.instruction("cmp BYTE PTR [rax + 5], 0x2f");                        // '/'
-    emitter.instruction("jne __rt_fopen_maybe_phar_plain_x86");
+    emitter.instruction("jne __rt_fopen_maybe_phar_plain_x86");                 // branch when the checked value is nonzero or different
     emitter.instruction("cmp BYTE PTR [rax + 6], 0x2f");                        // '/'
-    emitter.instruction("jne __rt_fopen_maybe_phar_plain_x86");
+    emitter.instruction("jne __rt_fopen_maybe_phar_plain_x86");                 // branch when the checked value is nonzero or different
     emitter.instruction("test rsi, rsi");                                       // empty mode → not a read open
-    emitter.instruction("jz __rt_fopen_maybe_phar_plain_x86");
+    emitter.instruction("jz __rt_fopen_maybe_phar_plain_x86");                  // branch when the checked value is zero or equal
     emitter.instruction("cmp BYTE PTR [rdi + 0], 0x72");                        // mode[0] == 'r'?
     emitter.instruction("jne __rt_fopen_maybe_phar_plain_x86");                 // write/append stay literal-only
     emitter.instruction("mov rdi, rax");                                        // url ptr → __rt_phar_read_entry arg0
@@ -511,21 +511,21 @@ fn emit_phar_read_linux_x86_64(emitter: &mut Emitter) {
     emitter.comment("--- runtime: file_get_contents_maybe_phar ---");
     emitter.label_global("__rt_file_get_contents_maybe_phar");
     emitter.instruction("cmp rdx, 7");                                          // at least "phar://" long?
-    emitter.instruction("jl __rt_fgc_phar_plain_x86");
+    emitter.instruction("jl __rt_fgc_phar_plain_x86");                          // branch when comparison is below target
     emitter.instruction("cmp BYTE PTR [rax + 0], 0x70");                        // 'p'
-    emitter.instruction("jne __rt_fgc_phar_plain_x86");
+    emitter.instruction("jne __rt_fgc_phar_plain_x86");                         // branch when the checked value is nonzero or different
     emitter.instruction("cmp BYTE PTR [rax + 1], 0x68");                        // 'h'
-    emitter.instruction("jne __rt_fgc_phar_plain_x86");
+    emitter.instruction("jne __rt_fgc_phar_plain_x86");                         // branch when the checked value is nonzero or different
     emitter.instruction("cmp BYTE PTR [rax + 2], 0x61");                        // 'a'
-    emitter.instruction("jne __rt_fgc_phar_plain_x86");
+    emitter.instruction("jne __rt_fgc_phar_plain_x86");                         // branch when the checked value is nonzero or different
     emitter.instruction("cmp BYTE PTR [rax + 3], 0x72");                        // 'r'
-    emitter.instruction("jne __rt_fgc_phar_plain_x86");
+    emitter.instruction("jne __rt_fgc_phar_plain_x86");                         // branch when the checked value is nonzero or different
     emitter.instruction("cmp BYTE PTR [rax + 4], 0x3a");                        // ':'
-    emitter.instruction("jne __rt_fgc_phar_plain_x86");
+    emitter.instruction("jne __rt_fgc_phar_plain_x86");                         // branch when the checked value is nonzero or different
     emitter.instruction("cmp BYTE PTR [rax + 5], 0x2f");                        // '/'
-    emitter.instruction("jne __rt_fgc_phar_plain_x86");
+    emitter.instruction("jne __rt_fgc_phar_plain_x86");                         // branch when the checked value is nonzero or different
     emitter.instruction("cmp BYTE PTR [rax + 6], 0x2f");                        // '/'
-    emitter.instruction("jne __rt_fgc_phar_plain_x86");
+    emitter.instruction("jne __rt_fgc_phar_plain_x86");                         // branch when the checked value is nonzero or different
     // phar:// read at run time: open the entry, slurp the fd, close it.
     emitter.instruction("push rbp");                                            // preserve the caller frame pointer
     emitter.instruction("mov rbp, rsp");                                        // establish the helper frame pointer
@@ -549,7 +549,7 @@ fn emit_phar_read_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the entry contents string
     emitter.label("__rt_fgc_phar_fail_x86");
     emitter.instruction("xor eax, eax");                                        // null string ptr → file_get_contents boxes false
-    emitter.instruction("xor edx, edx");
+    emitter.instruction("xor edx, edx");                                        // clear register value
     emitter.instruction("add rsp, 32");                                         // release the helper frame
     emitter.instruction("pop rbp");                                             // restore the caller frame pointer
     emitter.instruction("ret");                                                 // return the failure (boxed false)

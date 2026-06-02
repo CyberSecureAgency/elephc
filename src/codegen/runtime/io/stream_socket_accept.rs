@@ -284,10 +284,10 @@ fn emit_stream_socket_accept_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("cmp r10, 2");                                          // is there at least a family-byte's worth of data?
     emitter.instruction("jl __rt_ssa_empty_peer_x86");                          // no peer info: empty $peer_name
     let family_addr_disp = -144 + family_off;
-    emitter.instruction(&format!(
+    emitter.instruction(&format!(                                               // load the address-family discriminator
         "movzx r11d, BYTE PTR [rbp - {}]",
         -family_addr_disp
-    ));                                                                         // load the address-family discriminator
+    ));
     let af_inet6_linux = Platform::Linux.af_inet6();
     emitter.instruction("cmp r11d, 2");                                         // AF_INET = 2 on Linux
     emitter.instruction("je __rt_ssa_peer_inet_x86");                           // IPv4 peer: format A.B.C.D:port

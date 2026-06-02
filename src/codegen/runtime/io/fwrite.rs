@@ -144,9 +144,9 @@ pub fn emit_fwrite(emitter: &mut Emitter) {
     emitter.instruction("cbz x14, __rt_fwrite_syscall");                        // no TLS attached → write syscall
     emitter.instruction("mov x0, x14");                                         // handle as first arg
     abi::emit_symbol_address(emitter, "x9", "_elephc_tls_write_fn");
-    emitter.instruction("ldr x9, [x9]");
+    emitter.instruction("ldr x9, [x9]");                                        // load runtime value
     emitter.instruction("blr x9");                                              // x0 = bytes written or -1
-    emitter.instruction("b __rt_fwrite_return");
+    emitter.instruction("b __rt_fwrite_return");                                // continue at target label
     emitter.label("__rt_fwrite_syscall");
     emitter.syscall(4);
     emitter.label("__rt_fwrite_return");
@@ -263,14 +263,14 @@ fn emit_fwrite_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov rsi, QWORD PTR [rbp - 16]");                       // payload pointer (original or filtered)
     emitter.instruction("mov rdx, QWORD PTR [rbp - 24]");                       // payload length
     // -- TLS dispatch (Phase 11 B3) --
-    emitter.instruction("lea r10, [rip + _tls_sessions]");
+    emitter.instruction("lea r10, [rip + _tls_sessions]");                      // load runtime data address
     emitter.instruction("mov r11, QWORD PTR [r10 + rdi * 8]");                  // _tls_sessions[fd] handle
-    emitter.instruction("test r11, r11");
+    emitter.instruction("test r11, r11");                                       // check whether the runtime value is zero
     emitter.instruction("jz __rt_fwrite_syscall_x86");                          // plain TCP → libc write
     emitter.instruction("mov rdi, r11");                                        // handle as first arg
-    emitter.instruction("mov r9, QWORD PTR [rip + _elephc_tls_write_fn]");
+    emitter.instruction("mov r9, QWORD PTR [rip + _elephc_tls_write_fn]");      // prepare SysV call argument
     emitter.instruction("call r9");                                             // rax = bytes written or -1
-    emitter.instruction("jmp __rt_fwrite_return_x86");
+    emitter.instruction("jmp __rt_fwrite_return_x86");                          // continue at target label
     emitter.label("__rt_fwrite_syscall_x86");
     emitter.instruction("call write");                                          // write the payload through libc write()
     emitter.label("__rt_fwrite_return_x86");

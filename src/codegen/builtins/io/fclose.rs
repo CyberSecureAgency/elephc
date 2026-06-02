@@ -107,7 +107,7 @@ pub fn emit(
     emitter.label(&done);
     match emitter.target.arch {
         Arch::AArch64 => emitter.instruction(&format!("b {}", after_dispatch)), // skip the user-wrapper close path on the normal-fd success/failure
-        Arch::X86_64 => emitter.instruction(&format!("jmp {}", after_dispatch)),// skip the user-wrapper close path on the normal-fd success/failure
+        Arch::X86_64 => emitter.instruction(&format!("jmp {}", after_dispatch)), // skip the user-wrapper close path on the normal-fd success/failure
     }
 
     // -- user-wrapper dispatch: call __rt_user_wrapper_fclose with fd --
@@ -165,7 +165,7 @@ fn emit_tls_close_on_close(emitter: &mut Emitter, ctx: &mut Context) {
             abi::emit_push_reg(emitter, "x0");                                  // preserve fd across the close call
             emitter.instruction("mov x0, x10");                                 // handle as the close helper's first arg
             abi::emit_symbol_address(emitter, "x9", "_elephc_tls_close_fn");
-            emitter.instruction("ldr x9, [x9]");
+            emitter.instruction("ldr x9, [x9]");                                // load runtime value
             emitter.instruction("blr x9");                                      // send close_notify, drop the session
             abi::emit_pop_reg(emitter, "x0");                                   // restore fd
             abi::emit_symbol_address(emitter, "x9", "_tls_sessions");
@@ -173,16 +173,16 @@ fn emit_tls_close_on_close(emitter: &mut Emitter, ctx: &mut Context) {
             emitter.label(&skip);
         }
         Arch::X86_64 => {
-            emitter.instruction("lea r9, [rip + _tls_sessions]");
+            emitter.instruction("lea r9, [rip + _tls_sessions]");               // load runtime data address
             emitter.instruction("mov r10, QWORD PTR [r9 + rax*8]");             // _tls_sessions[fd] handle
-            emitter.instruction("test r10, r10");
+            emitter.instruction("test r10, r10");                               // check whether the runtime value is zero
             emitter.instruction(&format!("je {}", skip));                       // no TLS attached → skip
             abi::emit_push_reg(emitter, "rax");                                 // preserve fd across the close call
             emitter.instruction("mov rdi, r10");                                // handle as first arg
-            emitter.instruction("mov r9, QWORD PTR [rip + _elephc_tls_close_fn]");
-            emitter.instruction("call r9");
+            emitter.instruction("mov r9, QWORD PTR [rip + _elephc_tls_close_fn]"); // prepare SysV call argument
+            emitter.instruction("call r9");                                     // call selected function pointer
             abi::emit_pop_reg(emitter, "rax");                                  // restore fd
-            emitter.instruction("lea r9, [rip + _tls_sessions]");
+            emitter.instruction("lea r9, [rip + _tls_sessions]");               // load runtime data address
             emitter.instruction("mov QWORD PTR [r9 + rax*8], 0");               // clear the slot
             emitter.label(&skip);
         }

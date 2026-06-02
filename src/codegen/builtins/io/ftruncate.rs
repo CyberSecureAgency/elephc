@@ -83,7 +83,7 @@ pub fn emit(
     // (x1 / rsi). ARM64 already holds fd in x0 and size in x1; x86_64 left fd in
     // rax (the size is already in rsi), so move the fd into rdi first.
     if emitter.target.arch == Arch::X86_64 {
-        emitter.instruction("mov rdi, rax");                                   // synthetic fd → wrapper-lookup first-arg register
+        emitter.instruction("mov rdi, rax");                                    // synthetic fd → wrapper-lookup first-arg register
     }
     abi::emit_call_label(emitter, "__rt_user_wrapper_ftruncate");               // call the wrapper's stream_truncate($new_size)
     emitter.label(&done_label);

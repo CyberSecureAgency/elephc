@@ -223,10 +223,10 @@ pub(super) fn emit_x86_64(emitter: &mut Emitter, ctx: &mut Context) {
     emitter.instruction("mov QWORD PTR [rsp + 152], r9");                       // save the output buffer capacity
     emitter.instruction("mov rax, r9");                                         // buffer size into the allocator argument
     emitter.instruction("call __rt_heap_alloc");                                // allocate the decompressed-data buffer
-    emitter.instruction(&format!(
+    emitter.instruction(&format!(                                               // owned-string heap-kind word with the x86_64 heap marker
         "mov r10, 0x{:x}",
         (X86_64_HEAP_MAGIC_HI32 << 32) | 1
-    )); // owned-string heap-kind word with the x86_64 heap marker
+    ));
     emitter.instruction("mov QWORD PTR [rax - 8], r10");                        // stamp the buffer as an owned string
     emitter.instruction("mov QWORD PTR [rsp + 128], rax");                      // save the decompressed buffer pointer
 

@@ -96,8 +96,8 @@ pub(crate) fn emit_array_literal(
                 emitter.instruction(&format!("str d0, [x9, #{}]", 24 + i * 8)); // store float element at data offset
             }
             PhpType::Str => {
-                emitter.instruction(&format!("str x1, [x9, #{}]", 24 + i * 16)); //store string pointer at data offset
-                emitter.instruction(&format!("str x2, [x9, #{}]", 24 + i * 16 + 8)); //store string length right after pointer
+                emitter.instruction(&format!("str x1, [x9, #{}]", 24 + i * 16)); // store string pointer at data offset
+                emitter.instruction(&format!("str x2, [x9, #{}]", 24 + i * 16 + 8)); // store string length right after pointer
             }
             PhpType::Mixed | PhpType::Array(_) | PhpType::AssocArray { .. } | PhpType::Object(_) => {
                 emitter.instruction(&format!("str x0, [x9, #{}]", 24 + i * 8)); // store array/object pointer at data offset

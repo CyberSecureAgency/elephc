@@ -250,7 +250,7 @@ fn emit_attach_user(
             emitter.instruction("mov x2, #0");                                  // resource mixed payloads have no high word
             emitter.instruction("mov x0, #9");                                  // runtime tag 9 = resource
             abi::emit_call_label(emitter, "__rt_mixed_from_value");             // re-box the stream as the filter resource (value_lo = fd)
-            emitter.instruction(&format!("b {}", done_label));
+            emitter.instruction(&format!("b {}", done_label));                  // continue at target label
             emitter.label(&fail_label);
             abi::emit_release_temporary_stack(emitter, 16);                     // drop the saved descriptor on the failure path too
             emitter.instruction("mov x1, #0");                                  // bool payload = 0
@@ -260,14 +260,14 @@ fn emit_attach_user(
             emitter.label(&done_label);
         }
         Arch::X86_64 => {
-            emitter.instruction("test rax, rax");
+            emitter.instruction("test rax, rax");                               // check whether the runtime value is zero
             emitter.instruction(&format!("jz {}", fail_label));                 // PHP false on unknown filter
             emitter.instruction("mov rdi, QWORD PTR [rsp]");                    // peek descriptor for resource payload
             abi::emit_release_temporary_stack(emitter, 16);                     // drop the saved descriptor
             emitter.instruction("xor esi, esi");                                // resource mixed payloads have no high word
             emitter.instruction("mov eax, 9");                                  // runtime tag 9 = resource
             abi::emit_call_label(emitter, "__rt_mixed_from_value");             // re-box the stream as the filter resource (value_lo = fd)
-            emitter.instruction(&format!("jmp {}", done_label));
+            emitter.instruction(&format!("jmp {}", done_label));                // continue at target label
             emitter.label(&fail_label);
             abi::emit_release_temporary_stack(emitter, 16);                     // drop the saved descriptor
             emitter.instruction("xor edi, edi");                                // bool payload = 0

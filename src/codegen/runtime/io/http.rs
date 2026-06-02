@@ -61,8 +61,8 @@ pub fn emit_http(emitter: &mut Emitter) {
     emitter.instruction("ldr x0, [sp, #48]");                                   // reload original addr ptr
     emitter.instruction("ldr x1, [sp, #56]");                                   // reload original addr len
     abi::emit_symbol_address(emitter, "x9", "_http_active_proxy_len");
-    emitter.instruction("ldr x10, [x9]");
-    emitter.instruction("cbz x10, __rt_http_open_no_proxy_aarch64");
+    emitter.instruction("ldr x10, [x9]");                                       // load runtime value
+    emitter.instruction("cbz x10, __rt_http_open_no_proxy_aarch64");            // branch when the checked value is zero or equal
     abi::emit_symbol_address(emitter, "x9", "_http_active_proxy_ptr");
     emitter.instruction("ldr x0, [x9]");                                        // proxy addr ptr
     emitter.instruction("mov x1, x10");                                         // proxy addr len
@@ -86,12 +86,12 @@ pub fn emit_http(emitter: &mut Emitter) {
     // -- if [http][timeout] was set (seconds > 0), apply SO_RCVTIMEO so
     //    slow servers don't hang the read loop forever. --
     abi::emit_symbol_address(emitter, "x9", "_http_active_timeout_seconds");
-    emitter.instruction("ldr x10, [x9]");
-    emitter.instruction("cbz x10, __rt_http_open_skip_timeout_aarch64");
+    emitter.instruction("ldr x10, [x9]");                                       // load runtime value
+    emitter.instruction("cbz x10, __rt_http_open_skip_timeout_aarch64");        // branch when the checked value is zero or equal
     emitter.instruction("ldr x0, [sp, #0]");                                    // fd
     emitter.instruction("mov x1, x10");                                         // tv_sec
     emitter.instruction("mov x2, #0");                                          // tv_usec
-    emitter.instruction("bl __rt_stream_set_timeout");
+    emitter.instruction("bl __rt_stream_set_timeout");                          // call runtime helper
     emitter.label("__rt_http_open_skip_timeout_aarch64");
 
     // -- send the HTTP request --
@@ -125,45 +125,45 @@ pub fn emit_http(emitter: &mut Emitter) {
     // -- parse the HTTP status line ("HTTP/1.x SSS …\r\n"). --
     emitter.instruction("ldr x5, [sp, #24]");                                   // response length
     emitter.instruction("cmp x5, #12");                                         // need at least 12 bytes
-    emitter.instruction("b.lt __rt_http_open_status_ok_aarch64");
+    emitter.instruction("b.lt __rt_http_open_status_ok_aarch64");               // branch when comparison is below target
     abi::emit_symbol_address(emitter, "x4", "_http_resp_buf");
     emitter.instruction("ldrb w6, [x4, #9]");                                   // status hundreds
-    emitter.instruction("sub w6, w6, #48");
+    emitter.instruction("sub w6, w6, #48");                                     // reduce runtime pointer or counter
     emitter.instruction("ldrb w7, [x4, #10]");                                  // tens
-    emitter.instruction("sub w7, w7, #48");
+    emitter.instruction("sub w7, w7, #48");                                     // reduce runtime pointer or counter
     emitter.instruction("ldrb w8, [x4, #11]");                                  // units
-    emitter.instruction("sub w8, w8, #48");
-    emitter.instruction("mov w9, #100");
-    emitter.instruction("mul w6, w6, w9");
-    emitter.instruction("mov w9, #10");
-    emitter.instruction("madd w6, w7, w9, w6");
+    emitter.instruction("sub w8, w8, #48");                                     // reduce runtime pointer or counter
+    emitter.instruction("mov w9, #100");                                        // move runtime value between registers
+    emitter.instruction("mul w6, w6, w9");                                      // compute scaled runtime value
+    emitter.instruction("mov w9, #10");                                         // move runtime value between registers
+    emitter.instruction("madd w6, w7, w9, w6");                                 // compute scaled runtime value
     emitter.instruction("add w6, w6, w8");                                      // status code in w6
 
     // -- follow_location: 3xx with max_redirects > 0 → find Location,
     //    rebuild request with original host + new path, loop back. --
-    emitter.instruction("cmp w6, #300");
-    emitter.instruction("b.lt __rt_http_open_check_err_aarch64");
-    emitter.instruction("cmp w6, #400");
-    emitter.instruction("b.ge __rt_http_open_check_err_aarch64");
+    emitter.instruction("cmp w6, #300");                                        // compare runtime values for the next branch
+    emitter.instruction("b.lt __rt_http_open_check_err_aarch64");               // branch when comparison is below target
+    emitter.instruction("cmp w6, #400");                                        // compare runtime values for the next branch
+    emitter.instruction("b.ge __rt_http_open_check_err_aarch64");               // branch when comparison is at least target
     abi::emit_symbol_address(emitter, "x9", "_http_active_max_redirects");
-    emitter.instruction("ldr x10, [x9]");
+    emitter.instruction("ldr x10, [x9]");                                       // load runtime value
     emitter.instruction("cbz x10, __rt_http_open_check_err_aarch64");           // no remaining hops → no redirect
     // Scan for "Location:" / "location:" via case-folded byte compare.
     // Loop: for i in 0 .. resp_len-9: if bytes[i..i+9] match "location:" (lower),
     // skip optional ws, copy until '\r' to _http_redirect_path_buf.
     emitter.instruction("mov x11, #0");                                         // i
     emitter.label("__rt_http_open_loc_scan_aarch64");
-    emitter.instruction("add x12, x11, #9");
-    emitter.instruction("cmp x12, x5");
+    emitter.instruction("add x12, x11, #9");                                    // advance runtime pointer or counter
+    emitter.instruction("cmp x12, x5");                                         // compare runtime values for the next branch
     emitter.instruction("b.gt __rt_http_open_check_err_aarch64");               // ran past end → no Location found
     // Compare bytes[i] | 0x20 with 'l', etc. (case-fold uppercase to lowercase).
     let cmp_lc = |emitter: &mut Emitter, ofs: u32, ch: u32| {
         emitter.instruction(&format!("ldrb w13, [x4, x11]"));                   // load base byte
         emitter.instruction(&format!("add x14, x11, #{}", ofs));                // i + ofs
-        emitter.instruction(&format!("ldrb w13, [x4, x14]"));
+        emitter.instruction(&format!("ldrb w13, [x4, x14]"));                   // load runtime value
         emitter.instruction("orr w13, w13, #0x20");                             // to lowercase
-        emitter.instruction(&format!("cmp w13, #{}", ch));
-        emitter.instruction("b.ne __rt_http_open_loc_next_aarch64");
+        emitter.instruction(&format!("cmp w13, #{}", ch));                      // compare runtime values for the next branch
+        emitter.instruction("b.ne __rt_http_open_loc_next_aarch64");            // branch when the checked value is nonzero or different
     };
     cmp_lc(emitter, 0, 0x6c);                                                   // 'l'
     cmp_lc(emitter, 1, 0x6f);                                                   // 'o'
@@ -174,46 +174,46 @@ pub fn emit_http(emitter: &mut Emitter) {
     cmp_lc(emitter, 6, 0x6f);                                                   // 'o'
     cmp_lc(emitter, 7, 0x6e);                                                   // 'n'
     // 8th char must be ':' (no case-fold).
-    emitter.instruction("add x14, x11, #8");
-    emitter.instruction("ldrb w13, [x4, x14]");
+    emitter.instruction("add x14, x11, #8");                                    // advance runtime pointer or counter
+    emitter.instruction("ldrb w13, [x4, x14]");                                 // load runtime value
     emitter.instruction("cmp w13, #58");                                        // ':'
-    emitter.instruction("b.ne __rt_http_open_loc_next_aarch64");
+    emitter.instruction("b.ne __rt_http_open_loc_next_aarch64");                // branch when the checked value is nonzero or different
     // Match: skip "Location:" + any leading ws. value starts at i+9 (skip ws).
-    emitter.instruction("add x12, x11, #9");
+    emitter.instruction("add x12, x11, #9");                                    // advance runtime pointer or counter
     emitter.label("__rt_http_open_loc_skip_ws_aarch64");
-    emitter.instruction("cmp x12, x5");
+    emitter.instruction("cmp x12, x5");                                         // compare runtime values for the next branch
     emitter.instruction("b.ge __rt_http_open_check_err_aarch64");               // ran past end → bail
-    emitter.instruction("ldrb w13, [x4, x12]");
+    emitter.instruction("ldrb w13, [x4, x12]");                                 // load runtime value
     emitter.instruction("cmp w13, #32");                                        // space
-    emitter.instruction("b.eq __rt_http_open_loc_advance_ws_aarch64");
+    emitter.instruction("b.eq __rt_http_open_loc_advance_ws_aarch64");          // branch when the checked value is zero or equal
     emitter.instruction("cmp w13, #9");                                         // tab
-    emitter.instruction("b.ne __rt_http_open_loc_copy_aarch64");
+    emitter.instruction("b.ne __rt_http_open_loc_copy_aarch64");                // branch when the checked value is nonzero or different
     emitter.label("__rt_http_open_loc_advance_ws_aarch64");
-    emitter.instruction("add x12, x12, #1");
-    emitter.instruction("b __rt_http_open_loc_skip_ws_aarch64");
+    emitter.instruction("add x12, x12, #1");                                    // advance runtime pointer or counter
+    emitter.instruction("b __rt_http_open_loc_skip_ws_aarch64");                // continue at target label
     emitter.label("__rt_http_open_loc_copy_aarch64");
     // Copy bytes[x12..] until '\r' or '\n' into _http_redirect_path_buf,
     // capped at 2047 bytes.
     abi::emit_symbol_address(emitter, "x15", "_http_redirect_path_buf");
     emitter.instruction("mov x16, #0");                                         // write index
     emitter.label("__rt_http_open_loc_copy_loop_aarch64");
-    emitter.instruction("cmp x12, x5");
-    emitter.instruction("b.ge __rt_http_open_loc_copy_done_aarch64");
-    emitter.instruction("cmp x16, #2047");
-    emitter.instruction("b.ge __rt_http_open_loc_copy_done_aarch64");
-    emitter.instruction("ldrb w13, [x4, x12]");
+    emitter.instruction("cmp x12, x5");                                         // compare runtime values for the next branch
+    emitter.instruction("b.ge __rt_http_open_loc_copy_done_aarch64");           // branch when comparison is at least target
+    emitter.instruction("cmp x16, #2047");                                      // compare runtime values for the next branch
+    emitter.instruction("b.ge __rt_http_open_loc_copy_done_aarch64");           // branch when comparison is at least target
+    emitter.instruction("ldrb w13, [x4, x12]");                                 // load runtime value
     emitter.instruction("cmp w13, #13");                                        // '\r'
-    emitter.instruction("b.eq __rt_http_open_loc_copy_done_aarch64");
+    emitter.instruction("b.eq __rt_http_open_loc_copy_done_aarch64");           // branch when the checked value is zero or equal
     emitter.instruction("cmp w13, #10");                                        // '\n'
-    emitter.instruction("b.eq __rt_http_open_loc_copy_done_aarch64");
-    emitter.instruction("strb w13, [x15, x16]");
-    emitter.instruction("add x12, x12, #1");
-    emitter.instruction("add x16, x16, #1");
-    emitter.instruction("b __rt_http_open_loc_copy_loop_aarch64");
+    emitter.instruction("b.eq __rt_http_open_loc_copy_done_aarch64");           // branch when the checked value is zero or equal
+    emitter.instruction("strb w13, [x15, x16]");                                // store runtime value
+    emitter.instruction("add x12, x12, #1");                                    // advance runtime pointer or counter
+    emitter.instruction("add x16, x16, #1");                                    // advance runtime pointer or counter
+    emitter.instruction("b __rt_http_open_loc_copy_loop_aarch64");              // continue at target label
     emitter.label("__rt_http_open_loc_copy_done_aarch64");
     // Store length.
     abi::emit_symbol_address(emitter, "x9", "_http_redirect_path_len");
-    emitter.instruction("str x16, [x9]");
+    emitter.instruction("str x16, [x9]");                                       // store runtime value
     emitter.instruction("cbz x16, __rt_http_open_check_err_aarch64");           // empty → bail
     // Two redirect shapes are accepted: a relative path starting with '/' (use
     // as-is) or an absolute "http://host[:port]/path" URL whose host:port
@@ -226,129 +226,129 @@ pub fn emit_http(emitter: &mut Emitter) {
     emitter.instruction("b.eq __rt_http_open_loc_abs_done_aarch64");            // relative path → already canonical
     // Try "http://" prefix (case-insensitive ASCII).
     emitter.instruction("cmp x16, #7");                                         // buffer must hold at least the 7-byte prefix
-    emitter.instruction("b.lt __rt_http_open_check_err_aarch64");
+    emitter.instruction("b.lt __rt_http_open_check_err_aarch64");               // branch when comparison is below target
     emitter.instruction("orr w13, w13, #0x20");                                 // fold 'H' → 'h'
     emitter.instruction("cmp w13, #0x68");                                      // 'h'
-    emitter.instruction("b.ne __rt_http_open_check_err_aarch64");
-    emitter.instruction("ldrb w13, [x15, #1]");
-    emitter.instruction("orr w13, w13, #0x20");
+    emitter.instruction("b.ne __rt_http_open_check_err_aarch64");               // branch when the checked value is nonzero or different
+    emitter.instruction("ldrb w13, [x15, #1]");                                 // load runtime value
+    emitter.instruction("orr w13, w13, #0x20");                                 // combine runtime bit flags
     emitter.instruction("cmp w13, #0x74");                                      // 't'
-    emitter.instruction("b.ne __rt_http_open_check_err_aarch64");
-    emitter.instruction("ldrb w13, [x15, #2]");
-    emitter.instruction("orr w13, w13, #0x20");
+    emitter.instruction("b.ne __rt_http_open_check_err_aarch64");               // branch when the checked value is nonzero or different
+    emitter.instruction("ldrb w13, [x15, #2]");                                 // load runtime value
+    emitter.instruction("orr w13, w13, #0x20");                                 // combine runtime bit flags
     emitter.instruction("cmp w13, #0x74");                                      // 't'
-    emitter.instruction("b.ne __rt_http_open_check_err_aarch64");
-    emitter.instruction("ldrb w13, [x15, #3]");
-    emitter.instruction("orr w13, w13, #0x20");
+    emitter.instruction("b.ne __rt_http_open_check_err_aarch64");               // branch when the checked value is nonzero or different
+    emitter.instruction("ldrb w13, [x15, #3]");                                 // load runtime value
+    emitter.instruction("orr w13, w13, #0x20");                                 // combine runtime bit flags
     emitter.instruction("cmp w13, #0x70");                                      // 'p'
-    emitter.instruction("b.ne __rt_http_open_check_err_aarch64");
-    emitter.instruction("ldrb w13, [x15, #4]");
+    emitter.instruction("b.ne __rt_http_open_check_err_aarch64");               // branch when the checked value is nonzero or different
+    emitter.instruction("ldrb w13, [x15, #4]");                                 // load runtime value
     emitter.instruction("cmp w13, #58");                                        // ':'
-    emitter.instruction("b.ne __rt_http_open_check_err_aarch64");
-    emitter.instruction("ldrb w13, [x15, #5]");
+    emitter.instruction("b.ne __rt_http_open_check_err_aarch64");               // branch when the checked value is nonzero or different
+    emitter.instruction("ldrb w13, [x15, #5]");                                 // load runtime value
     emitter.instruction("cmp w13, #47");                                        // '/'
-    emitter.instruction("b.ne __rt_http_open_check_err_aarch64");
-    emitter.instruction("ldrb w13, [x15, #6]");
+    emitter.instruction("b.ne __rt_http_open_check_err_aarch64");               // branch when the checked value is nonzero or different
+    emitter.instruction("ldrb w13, [x15, #6]");                                 // load runtime value
     emitter.instruction("cmp w13, #47");                                        // '/'
-    emitter.instruction("b.ne __rt_http_open_check_err_aarch64");
+    emitter.instruction("b.ne __rt_http_open_check_err_aarch64");               // branch when the checked value is nonzero or different
     // "http://" matched. Compare host bytes against the active host:port.
     abi::emit_symbol_address(emitter, "x9", "_http_active_host_len");
     emitter.instruction("ldr x11, [x9]");                                       // x11 = active host length (with port if any)
     emitter.instruction("add x12, x11, #7");                                    // 7 + host_len = minimum required buffer length
-    emitter.instruction("cmp x16, x12");
+    emitter.instruction("cmp x16, x12");                                        // compare runtime values for the next branch
     emitter.instruction("b.lt __rt_http_open_check_err_aarch64");               // buffer too short to contain a same-host URL
     abi::emit_symbol_address(emitter, "x9", "_http_active_host_ptr");
     emitter.instruction("ldr x14, [x9]");                                       // x14 = active host ptr
     emitter.instruction("mov x12, #0");                                         // host compare index
     emitter.label("__rt_http_open_loc_host_cmp_aarch64");
-    emitter.instruction("cmp x12, x11");
-    emitter.instruction("b.ge __rt_http_open_loc_host_ok_aarch64");
+    emitter.instruction("cmp x12, x11");                                        // compare runtime values for the next branch
+    emitter.instruction("b.ge __rt_http_open_loc_host_ok_aarch64");             // branch when comparison is at least target
     emitter.instruction("add x9, x12, #7");                                     // buffer offset = 7 + i
     emitter.instruction("ldrb w13, [x15, x9]");                                 // redirect buf byte
     emitter.instruction("ldrb w8, [x14, x12]");                                 // active host byte
-    emitter.instruction("cmp w13, w8");
+    emitter.instruction("cmp w13, w8");                                         // compare runtime values for the next branch
     emitter.instruction("b.ne __rt_http_open_check_err_aarch64");               // host differs → don't follow cross-host
-    emitter.instruction("add x12, x12, #1");
-    emitter.instruction("b __rt_http_open_loc_host_cmp_aarch64");
+    emitter.instruction("add x12, x12, #1");                                    // advance runtime pointer or counter
+    emitter.instruction("b __rt_http_open_loc_host_cmp_aarch64");               // continue at target label
     emitter.label("__rt_http_open_loc_host_ok_aarch64");
     // The active host stored by http_build_request omits the URL port, so the
     // byte after the matched host bytes may be ':' (port) or '/' (path). Skip
     // an optional ":NNN" port literal — any non-digit, non-'/' delimiter here
     // is a host mismatch (e.g. host suffix like .example.com).
     emitter.instruction("add x12, x11, #7");                                    // index of byte right after the matched host
-    emitter.instruction("cmp x12, x16");
+    emitter.instruction("cmp x12, x16");                                        // compare runtime values for the next branch
     emitter.instruction("b.eq __rt_http_open_loc_no_path_aarch64");             // bare host with no port nor path
-    emitter.instruction("ldrb w13, [x15, x12]");
+    emitter.instruction("ldrb w13, [x15, x12]");                                // load runtime value
     emitter.instruction("cmp w13, #47");                                        // '/'
-    emitter.instruction("b.eq __rt_http_open_loc_have_path_aarch64");
+    emitter.instruction("b.eq __rt_http_open_loc_have_path_aarch64");           // branch when the checked value is zero or equal
     emitter.instruction("cmp w13, #58");                                        // ':'
     emitter.instruction("b.ne __rt_http_open_check_err_aarch64");               // not ':' or '/' → host suffix mismatch
     emitter.instruction("add x12, x12, #1");                                    // skip past ':'
     emitter.label("__rt_http_open_loc_skip_port_aarch64");
-    emitter.instruction("cmp x12, x16");
+    emitter.instruction("cmp x12, x16");                                        // compare runtime values for the next branch
     emitter.instruction("b.ge __rt_http_open_loc_no_path_aarch64");             // port with no path → use "/"
-    emitter.instruction("ldrb w13, [x15, x12]");
+    emitter.instruction("ldrb w13, [x15, x12]");                                // load runtime value
     emitter.instruction("cmp w13, #47");                                        // '/'
-    emitter.instruction("b.eq __rt_http_open_loc_have_path_aarch64");
+    emitter.instruction("b.eq __rt_http_open_loc_have_path_aarch64");           // branch when the checked value is zero or equal
     emitter.instruction("cmp w13, #48");                                        // '0'
     emitter.instruction("b.lt __rt_http_open_check_err_aarch64");               // non-digit in port → reject
     emitter.instruction("cmp w13, #57");                                        // '9'
-    emitter.instruction("b.gt __rt_http_open_check_err_aarch64");
-    emitter.instruction("add x12, x12, #1");
-    emitter.instruction("b __rt_http_open_loc_skip_port_aarch64");
+    emitter.instruction("b.gt __rt_http_open_check_err_aarch64");               // branch when comparison is above target
+    emitter.instruction("add x12, x12, #1");                                    // advance runtime pointer or counter
+    emitter.instruction("b __rt_http_open_loc_skip_port_aarch64");              // continue at target label
     emitter.label("__rt_http_open_loc_have_path_aarch64");
     // Memmove buf[path_start..len] left to buf[0..].
     emitter.instruction("sub x9, x16, x12");                                    // new length = old length - path_start
     emitter.instruction("mov x10, #0");                                         // write index
     emitter.label("__rt_http_open_loc_shift_aarch64");
-    emitter.instruction("cmp x10, x9");
-    emitter.instruction("b.ge __rt_http_open_loc_shift_done_aarch64");
-    emitter.instruction("add x8, x12, x10");
+    emitter.instruction("cmp x10, x9");                                         // compare runtime values for the next branch
+    emitter.instruction("b.ge __rt_http_open_loc_shift_done_aarch64");          // branch when comparison is at least target
+    emitter.instruction("add x8, x12, x10");                                    // advance runtime pointer or counter
     emitter.instruction("ldrb w13, [x15, x8]");                                 // src byte at path_start + i
     emitter.instruction("strb w13, [x15, x10]");                                // dst byte at i
-    emitter.instruction("add x10, x10, #1");
-    emitter.instruction("b __rt_http_open_loc_shift_aarch64");
+    emitter.instruction("add x10, x10, #1");                                    // advance runtime pointer or counter
+    emitter.instruction("b __rt_http_open_loc_shift_aarch64");                  // continue at target label
     emitter.label("__rt_http_open_loc_shift_done_aarch64");
     emitter.instruction("mov x16, x9");                                         // commit new buffer length
-    emitter.instruction("b __rt_http_open_loc_abs_done_aarch64");
+    emitter.instruction("b __rt_http_open_loc_abs_done_aarch64");               // continue at target label
     emitter.label("__rt_http_open_loc_no_path_aarch64");
     // Absolute URL with no explicit path → treat as "/".
     emitter.instruction("mov w13, #47");                                        // '/'
-    emitter.instruction("strb w13, [x15]");
-    emitter.instruction("mov x16, #1");
+    emitter.instruction("strb w13, [x15]");                                     // store runtime value
+    emitter.instruction("mov x16, #1");                                         // move runtime value between registers
     emitter.label("__rt_http_open_loc_abs_done_aarch64");
     // Persist the (possibly-rewritten) redirect path length so the rebuild
     // request below sees the path-only length, not the absolute-URL length.
     abi::emit_symbol_address(emitter, "x9", "_http_redirect_path_len");
-    emitter.instruction("str x16, [x9]");
+    emitter.instruction("str x16, [x9]");                                       // store runtime value
     // Decrement max_redirects.
     abi::emit_symbol_address(emitter, "x9", "_http_active_max_redirects");
-    emitter.instruction("ldr x10, [x9]");
-    emitter.instruction("sub x10, x10, #1");
-    emitter.instruction("str x10, [x9]");
+    emitter.instruction("ldr x10, [x9]");                                       // load runtime value
+    emitter.instruction("sub x10, x10, #1");                                    // reduce runtime pointer or counter
+    emitter.instruction("str x10, [x9]");                                       // store runtime value
     // Rebuild request with original host + new path.
     abi::emit_symbol_address(emitter, "x9", "_http_active_host_ptr");
-    emitter.instruction("ldr x0, [x9]");
+    emitter.instruction("ldr x0, [x9]");                                        // load runtime value
     abi::emit_symbol_address(emitter, "x9", "_http_active_host_len");
-    emitter.instruction("ldr x1, [x9]");
+    emitter.instruction("ldr x1, [x9]");                                        // load runtime value
     abi::emit_symbol_address(emitter, "x2", "_http_redirect_path_buf");
     abi::emit_symbol_address(emitter, "x9", "_http_redirect_path_len");
-    emitter.instruction("ldr x3, [x9]");
+    emitter.instruction("ldr x3, [x9]");                                        // load runtime value
     emitter.instruction("bl __rt_http_build_request");                          // returns new req_len in x0
     abi::emit_symbol_address(emitter, "x9", "_http_req_scratch");
     emitter.instruction("str x9, [sp, #8]");                                    // request_ptr = _http_req_scratch
     emitter.instruction("str x0, [sp, #16]");                                   // request_len = new length
     emitter.instruction("b __rt_http_open_loop_top_aarch64");                   // loop back: reconnect, send, read
     emitter.label("__rt_http_open_loc_next_aarch64");
-    emitter.instruction("add x11, x11, #1");
-    emitter.instruction("b __rt_http_open_loc_scan_aarch64");
+    emitter.instruction("add x11, x11, #1");                                    // advance runtime pointer or counter
+    emitter.instruction("b __rt_http_open_loc_scan_aarch64");                   // continue at target label
 
     // -- check status >= 400 for ignore_errors handling. --
     emitter.label("__rt_http_open_check_err_aarch64");
-    emitter.instruction("cmp w6, #400");
-    emitter.instruction("b.lt __rt_http_open_status_ok_aarch64");
+    emitter.instruction("cmp w6, #400");                                        // compare runtime values for the next branch
+    emitter.instruction("b.lt __rt_http_open_status_ok_aarch64");               // branch when comparison is below target
     abi::emit_symbol_address(emitter, "x9", "_http_active_ignore_errors");
-    emitter.instruction("ldr x10, [x9]");
+    emitter.instruction("ldr x10, [x9]");                                       // load runtime value
     emitter.instruction("cbnz x10, __rt_http_open_status_ok_aarch64");          // ignore_errors=1 → keep going
     emitter.instruction("b __rt_http_open_fail");                               // strict mode: report fopen failure
     emitter.label("__rt_http_open_status_ok_aarch64");
@@ -465,11 +465,11 @@ fn emit_http_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov rsi, QWORD PTR [rbp - 64]");                       // reload addr len
 
     // -- if [http][proxy] is set, override the connect target with proxy --
-    emitter.instruction("mov r10, QWORD PTR [rip + _http_active_proxy_len]");
-    emitter.instruction("test r10, r10");
-    emitter.instruction("jz __rt_http_open_no_proxy_x");
-    emitter.instruction("mov rdi, QWORD PTR [rip + _http_active_proxy_ptr]");
-    emitter.instruction("mov rsi, r10");
+    emitter.instruction("mov r10, QWORD PTR [rip + _http_active_proxy_len]");   // move runtime value between registers
+    emitter.instruction("test r10, r10");                                       // check whether the runtime value is zero
+    emitter.instruction("jz __rt_http_open_no_proxy_x");                        // branch when the checked value is zero or equal
+    emitter.instruction("mov rdi, QWORD PTR [rip + _http_active_proxy_ptr]");   // prepare SysV call argument
+    emitter.instruction("mov rsi, r10");                                        // prepare SysV call argument
     emitter.label("__rt_http_open_no_proxy_x");
     // -- connect the TCP socket (rdi/rsi hold the address — possibly proxy-overridden) --
     emitter.instruction("call __rt_stream_socket_client");                      // connect to the HTTP server, rax = fd
@@ -488,13 +488,13 @@ fn emit_http_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov rax, QWORD PTR [rbp - 8]");                        // restore fd into rax (the shim clobbered it; the send relies on it)
 
     // -- if [http][timeout] was set (seconds > 0), apply SO_RCVTIMEO --
-    emitter.instruction("mov r9, QWORD PTR [rip + _http_active_timeout_seconds]");
-    emitter.instruction("test r9, r9");
-    emitter.instruction("jz __rt_http_open_skip_timeout_x");
-    emitter.instruction("mov rdi, QWORD PTR [rbp - 8]");
+    emitter.instruction("mov r9, QWORD PTR [rip + _http_active_timeout_seconds]"); // prepare SysV call argument
+    emitter.instruction("test r9, r9");                                         // check whether the runtime value is zero
+    emitter.instruction("jz __rt_http_open_skip_timeout_x");                    // branch when the checked value is zero or equal
+    emitter.instruction("mov rdi, QWORD PTR [rbp - 8]");                        // prepare SysV call argument
     emitter.instruction("mov rsi, r9");                                         // tv_sec
     emitter.instruction("xor edx, edx");                                        // tv_usec = 0
-    emitter.instruction("call __rt_stream_set_timeout");
+    emitter.instruction("call __rt_stream_set_timeout");                        // call runtime helper
     emitter.label("__rt_http_open_skip_timeout_x");
 
     // -- send the HTTP request --
@@ -528,40 +528,40 @@ fn emit_http_linux_x86_64(emitter: &mut Emitter) {
 
     // -- HTTP status parse. --
     emitter.instruction("mov r10, QWORD PTR [rbp - 32]");                       // response length
-    emitter.instruction("cmp r10, 12");
-    emitter.instruction("jl __rt_http_open_status_ok_x");
-    emitter.instruction("lea r8, [rip + _http_resp_buf]");
+    emitter.instruction("cmp r10, 12");                                         // compare runtime values for the next branch
+    emitter.instruction("jl __rt_http_open_status_ok_x");                       // branch when comparison is below target
+    emitter.instruction("lea r8, [rip + _http_resp_buf]");                      // load runtime data address
     emitter.instruction("movzx eax, BYTE PTR [r8 + 9]");                        // hundreds
-    emitter.instruction("sub eax, 48");
+    emitter.instruction("sub eax, 48");                                         // reduce runtime pointer or counter
     emitter.instruction("movzx r9d, BYTE PTR [r8 + 10]");                       // tens
-    emitter.instruction("sub r9d, 48");
+    emitter.instruction("sub r9d, 48");                                         // reduce runtime pointer or counter
     emitter.instruction("movzx r11d, BYTE PTR [r8 + 11]");                      // units
-    emitter.instruction("sub r11d, 48");
-    emitter.instruction("imul eax, eax, 100");
-    emitter.instruction("imul r9d, r9d, 10");
-    emitter.instruction("add eax, r9d");
+    emitter.instruction("sub r11d, 48");                                        // reduce runtime pointer or counter
+    emitter.instruction("imul eax, eax, 100");                                  // compute scaled runtime value
+    emitter.instruction("imul r9d, r9d, 10");                                   // compute scaled runtime value
+    emitter.instruction("add eax, r9d");                                        // advance runtime pointer or counter
     emitter.instruction("add eax, r11d");                                       // status in eax
 
     // -- follow_location: 3xx + max_redirects > 0 → rebuild, reconnect --
-    emitter.instruction("cmp eax, 300");
-    emitter.instruction("jl __rt_http_open_check_err_x");
-    emitter.instruction("cmp eax, 400");
-    emitter.instruction("jge __rt_http_open_check_err_x");
-    emitter.instruction("mov r9, QWORD PTR [rip + _http_active_max_redirects]");
-    emitter.instruction("test r9, r9");
-    emitter.instruction("jz __rt_http_open_check_err_x");
+    emitter.instruction("cmp eax, 300");                                        // compare runtime values for the next branch
+    emitter.instruction("jl __rt_http_open_check_err_x");                       // branch when comparison is below target
+    emitter.instruction("cmp eax, 400");                                        // compare runtime values for the next branch
+    emitter.instruction("jge __rt_http_open_check_err_x");                      // branch when comparison is at least target
+    emitter.instruction("mov r9, QWORD PTR [rip + _http_active_max_redirects]"); // prepare SysV call argument
+    emitter.instruction("test r9, r9");                                         // check whether the runtime value is zero
+    emitter.instruction("jz __rt_http_open_check_err_x");                       // branch when the checked value is zero or equal
     // Scan for case-folded "location:" header — same pattern as ARM64.
     emitter.instruction("xor r11, r11");                                        // i
     emitter.label("__rt_http_open_loc_scan_x");
-    emitter.instruction("lea rcx, [r11 + 9]");
-    emitter.instruction("cmp rcx, r10");
-    emitter.instruction("jg __rt_http_open_check_err_x");
+    emitter.instruction("lea rcx, [r11 + 9]");                                  // load runtime data address
+    emitter.instruction("cmp rcx, r10");                                        // compare runtime values for the next branch
+    emitter.instruction("jg __rt_http_open_check_err_x");                       // branch when comparison is above target
     let cmp_lc_x = |emitter: &mut Emitter, ofs: u32, ch: u32| {
-        emitter.instruction(&format!("lea rcx, [r11 + {}]", ofs));
-        emitter.instruction("movzx edx, BYTE PTR [r8 + rcx]");
-        emitter.instruction("or dl, 0x20");
-        emitter.instruction(&format!("cmp dl, {}", ch));
-        emitter.instruction("jne __rt_http_open_loc_next_x");
+        emitter.instruction(&format!("lea rcx, [r11 + {}]", ofs));              // load runtime data address
+        emitter.instruction("movzx edx, BYTE PTR [r8 + rcx]");                  // load runtime value
+        emitter.instruction("or dl, 0x20");                                     // combine runtime bit flags
+        emitter.instruction(&format!("cmp dl, {}", ch));                        // compare runtime values for the next branch
+        emitter.instruction("jne __rt_http_open_loc_next_x");                   // branch when the checked value is nonzero or different
     };
     cmp_lc_x(emitter, 0, 0x6c);                                                 // 'l'
     cmp_lc_x(emitter, 1, 0x6f);                                                 // 'o'
@@ -571,44 +571,44 @@ fn emit_http_linux_x86_64(emitter: &mut Emitter) {
     cmp_lc_x(emitter, 5, 0x69);                                                 // 'i'
     cmp_lc_x(emitter, 6, 0x6f);                                                 // 'o'
     cmp_lc_x(emitter, 7, 0x6e);                                                 // 'n'
-    emitter.instruction("lea rcx, [r11 + 8]");
-    emitter.instruction("movzx edx, BYTE PTR [r8 + rcx]");
+    emitter.instruction("lea rcx, [r11 + 8]");                                  // load runtime data address
+    emitter.instruction("movzx edx, BYTE PTR [r8 + rcx]");                      // load runtime value
     emitter.instruction("cmp dl, 58");                                          // ':'
-    emitter.instruction("jne __rt_http_open_loc_next_x");
+    emitter.instruction("jne __rt_http_open_loc_next_x");                       // branch when the checked value is nonzero or different
     // Skip optional ws after the colon.
-    emitter.instruction("lea rcx, [r11 + 9]");
+    emitter.instruction("lea rcx, [r11 + 9]");                                  // load runtime data address
     emitter.label("__rt_http_open_loc_skip_ws_x");
-    emitter.instruction("cmp rcx, r10");
-    emitter.instruction("jge __rt_http_open_check_err_x");
-    emitter.instruction("movzx edx, BYTE PTR [r8 + rcx]");
-    emitter.instruction("cmp dl, 32");
-    emitter.instruction("je __rt_http_open_loc_adv_ws_x");
-    emitter.instruction("cmp dl, 9");
-    emitter.instruction("jne __rt_http_open_loc_copy_x");
+    emitter.instruction("cmp rcx, r10");                                        // compare runtime values for the next branch
+    emitter.instruction("jge __rt_http_open_check_err_x");                      // branch when comparison is at least target
+    emitter.instruction("movzx edx, BYTE PTR [r8 + rcx]");                      // load runtime value
+    emitter.instruction("cmp dl, 32");                                          // compare runtime values for the next branch
+    emitter.instruction("je __rt_http_open_loc_adv_ws_x");                      // branch when the checked value is zero or equal
+    emitter.instruction("cmp dl, 9");                                           // compare runtime values for the next branch
+    emitter.instruction("jne __rt_http_open_loc_copy_x");                       // branch when the checked value is nonzero or different
     emitter.label("__rt_http_open_loc_adv_ws_x");
-    emitter.instruction("inc rcx");
-    emitter.instruction("jmp __rt_http_open_loc_skip_ws_x");
+    emitter.instruction("inc rcx");                                             // advance runtime pointer or counter
+    emitter.instruction("jmp __rt_http_open_loc_skip_ws_x");                    // continue at target label
     emitter.label("__rt_http_open_loc_copy_x");
-    emitter.instruction("lea r12, [rip + _http_redirect_path_buf]");
+    emitter.instruction("lea r12, [rip + _http_redirect_path_buf]");            // load runtime data address
     emitter.instruction("xor r13, r13");                                        // write index
     emitter.label("__rt_http_open_loc_copy_loop_x");
-    emitter.instruction("cmp rcx, r10");
-    emitter.instruction("jge __rt_http_open_loc_copy_done_x");
-    emitter.instruction("cmp r13, 2047");
-    emitter.instruction("jge __rt_http_open_loc_copy_done_x");
-    emitter.instruction("movzx edx, BYTE PTR [r8 + rcx]");
-    emitter.instruction("cmp dl, 13");
-    emitter.instruction("je __rt_http_open_loc_copy_done_x");
-    emitter.instruction("cmp dl, 10");
-    emitter.instruction("je __rt_http_open_loc_copy_done_x");
-    emitter.instruction("mov BYTE PTR [r12 + r13], dl");
-    emitter.instruction("inc rcx");
-    emitter.instruction("inc r13");
-    emitter.instruction("jmp __rt_http_open_loc_copy_loop_x");
+    emitter.instruction("cmp rcx, r10");                                        // compare runtime values for the next branch
+    emitter.instruction("jge __rt_http_open_loc_copy_done_x");                  // branch when comparison is at least target
+    emitter.instruction("cmp r13, 2047");                                       // compare runtime values for the next branch
+    emitter.instruction("jge __rt_http_open_loc_copy_done_x");                  // branch when comparison is at least target
+    emitter.instruction("movzx edx, BYTE PTR [r8 + rcx]");                      // load runtime value
+    emitter.instruction("cmp dl, 13");                                          // compare runtime values for the next branch
+    emitter.instruction("je __rt_http_open_loc_copy_done_x");                   // branch when the checked value is zero or equal
+    emitter.instruction("cmp dl, 10");                                          // compare runtime values for the next branch
+    emitter.instruction("je __rt_http_open_loc_copy_done_x");                   // branch when the checked value is zero or equal
+    emitter.instruction("mov BYTE PTR [r12 + r13], dl");                        // store runtime value
+    emitter.instruction("inc rcx");                                             // advance runtime pointer or counter
+    emitter.instruction("inc r13");                                             // advance runtime pointer or counter
+    emitter.instruction("jmp __rt_http_open_loc_copy_loop_x");                  // continue at target label
     emitter.label("__rt_http_open_loc_copy_done_x");
-    emitter.instruction("mov QWORD PTR [rip + _http_redirect_path_len], r13");
-    emitter.instruction("test r13, r13");
-    emitter.instruction("jz __rt_http_open_check_err_x");
+    emitter.instruction("mov QWORD PTR [rip + _http_redirect_path_len], r13");  // store runtime value
+    emitter.instruction("test r13, r13");                                       // check whether the runtime value is zero
+    emitter.instruction("jz __rt_http_open_check_err_x");                       // branch when the checked value is zero or equal
     // Two redirect shapes are accepted: a relative path starting with '/' (use
     // as-is) or an absolute "http://host[:port]/path" URL whose host:port
     // matches the active host (rewrite buffer to just the path). Cross-host
@@ -617,121 +617,121 @@ fn emit_http_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("cmp dl, 47");                                          // '/'
     emitter.instruction("je __rt_http_open_loc_abs_done_x");                    // relative → already canonical
     emitter.instruction("cmp r13, 7");                                          // need at least "http://"
-    emitter.instruction("jl __rt_http_open_check_err_x");
+    emitter.instruction("jl __rt_http_open_check_err_x");                       // branch when comparison is below target
     emitter.instruction("or dl, 0x20");                                         // fold 'H' → 'h'
     emitter.instruction("cmp dl, 0x68");                                        // 'h'
-    emitter.instruction("jne __rt_http_open_check_err_x");
-    emitter.instruction("movzx edx, BYTE PTR [r12 + 1]");
-    emitter.instruction("or dl, 0x20");
+    emitter.instruction("jne __rt_http_open_check_err_x");                      // branch when the checked value is nonzero or different
+    emitter.instruction("movzx edx, BYTE PTR [r12 + 1]");                       // load runtime value
+    emitter.instruction("or dl, 0x20");                                         // combine runtime bit flags
     emitter.instruction("cmp dl, 0x74");                                        // 't'
-    emitter.instruction("jne __rt_http_open_check_err_x");
-    emitter.instruction("movzx edx, BYTE PTR [r12 + 2]");
-    emitter.instruction("or dl, 0x20");
+    emitter.instruction("jne __rt_http_open_check_err_x");                      // branch when the checked value is nonzero or different
+    emitter.instruction("movzx edx, BYTE PTR [r12 + 2]");                       // load runtime value
+    emitter.instruction("or dl, 0x20");                                         // combine runtime bit flags
     emitter.instruction("cmp dl, 0x74");                                        // 't'
-    emitter.instruction("jne __rt_http_open_check_err_x");
-    emitter.instruction("movzx edx, BYTE PTR [r12 + 3]");
-    emitter.instruction("or dl, 0x20");
+    emitter.instruction("jne __rt_http_open_check_err_x");                      // branch when the checked value is nonzero or different
+    emitter.instruction("movzx edx, BYTE PTR [r12 + 3]");                       // load runtime value
+    emitter.instruction("or dl, 0x20");                                         // combine runtime bit flags
     emitter.instruction("cmp dl, 0x70");                                        // 'p'
-    emitter.instruction("jne __rt_http_open_check_err_x");
-    emitter.instruction("movzx edx, BYTE PTR [r12 + 4]");
+    emitter.instruction("jne __rt_http_open_check_err_x");                      // branch when the checked value is nonzero or different
+    emitter.instruction("movzx edx, BYTE PTR [r12 + 4]");                       // load runtime value
     emitter.instruction("cmp dl, 58");                                          // ':'
-    emitter.instruction("jne __rt_http_open_check_err_x");
-    emitter.instruction("movzx edx, BYTE PTR [r12 + 5]");
+    emitter.instruction("jne __rt_http_open_check_err_x");                      // branch when the checked value is nonzero or different
+    emitter.instruction("movzx edx, BYTE PTR [r12 + 5]");                       // load runtime value
     emitter.instruction("cmp dl, 47");                                          // '/'
-    emitter.instruction("jne __rt_http_open_check_err_x");
-    emitter.instruction("movzx edx, BYTE PTR [r12 + 6]");
+    emitter.instruction("jne __rt_http_open_check_err_x");                      // branch when the checked value is nonzero or different
+    emitter.instruction("movzx edx, BYTE PTR [r12 + 6]");                       // load runtime value
     emitter.instruction("cmp dl, 47");                                          // '/'
-    emitter.instruction("jne __rt_http_open_check_err_x");
+    emitter.instruction("jne __rt_http_open_check_err_x");                      // branch when the checked value is nonzero or different
     // "http://" matched. Compare host bytes against the active host:port.
     emitter.instruction("mov r9, QWORD PTR [rip + _http_active_host_len]");     // r9 = active host length
-    emitter.instruction("mov rax, r9");
+    emitter.instruction("mov rax, r9");                                         // prepare runtime result value
     emitter.instruction("add rax, 7");                                          // 7 + host_len = required min length
-    emitter.instruction("cmp r13, rax");
+    emitter.instruction("cmp r13, rax");                                        // compare runtime values for the next branch
     emitter.instruction("jl __rt_http_open_check_err_x");                       // buffer too short for same-host URL
     emitter.instruction("mov r14, QWORD PTR [rip + _http_active_host_ptr]");    // r14 = active host ptr
     emitter.instruction("xor rcx, rcx");                                        // host compare index
     emitter.label("__rt_http_open_loc_host_cmp_x");
-    emitter.instruction("cmp rcx, r9");
-    emitter.instruction("jge __rt_http_open_loc_host_ok_x");
+    emitter.instruction("cmp rcx, r9");                                         // compare runtime values for the next branch
+    emitter.instruction("jge __rt_http_open_loc_host_ok_x");                    // branch when comparison is at least target
     emitter.instruction("lea rax, [rcx + 7]");                                  // buf offset = 7 + i
     emitter.instruction("movzx edx, BYTE PTR [r12 + rax]");                     // redirect buf byte
     emitter.instruction("movzx eax, BYTE PTR [r14 + rcx]");                     // active host byte
-    emitter.instruction("cmp dl, al");
+    emitter.instruction("cmp dl, al");                                          // compare runtime values for the next branch
     emitter.instruction("jne __rt_http_open_check_err_x");                      // host differs → don't follow cross-host
-    emitter.instruction("inc rcx");
-    emitter.instruction("jmp __rt_http_open_loc_host_cmp_x");
+    emitter.instruction("inc rcx");                                             // advance runtime pointer or counter
+    emitter.instruction("jmp __rt_http_open_loc_host_cmp_x");                   // continue at target label
     emitter.label("__rt_http_open_loc_host_ok_x");
     // The active host stored by http_build_request omits the URL port, so the
     // byte after the matched host bytes may be ':' (port) or '/' (path). Skip
     // an optional ":NNN" port literal — any non-digit, non-'/' delimiter here
     // is a host mismatch.
-    emitter.instruction("mov rax, r9");
+    emitter.instruction("mov rax, r9");                                         // prepare runtime result value
     emitter.instruction("add rax, 7");                                          // index right after the matched host
-    emitter.instruction("cmp rax, r13");
+    emitter.instruction("cmp rax, r13");                                        // compare runtime values for the next branch
     emitter.instruction("je __rt_http_open_loc_no_path_x");                     // bare host with no port nor path
-    emitter.instruction("movzx edx, BYTE PTR [r12 + rax]");
+    emitter.instruction("movzx edx, BYTE PTR [r12 + rax]");                     // load runtime value
     emitter.instruction("cmp dl, 47");                                          // '/'
-    emitter.instruction("je __rt_http_open_loc_have_path_x");
+    emitter.instruction("je __rt_http_open_loc_have_path_x");                   // branch when the checked value is zero or equal
     emitter.instruction("cmp dl, 58");                                          // ':'
     emitter.instruction("jne __rt_http_open_check_err_x");                      // host suffix mismatch
     emitter.instruction("inc rax");                                             // skip past ':'
     emitter.label("__rt_http_open_loc_skip_port_x");
-    emitter.instruction("cmp rax, r13");
-    emitter.instruction("jge __rt_http_open_loc_no_path_x");
-    emitter.instruction("movzx edx, BYTE PTR [r12 + rax]");
+    emitter.instruction("cmp rax, r13");                                        // compare runtime values for the next branch
+    emitter.instruction("jge __rt_http_open_loc_no_path_x");                    // branch when comparison is at least target
+    emitter.instruction("movzx edx, BYTE PTR [r12 + rax]");                     // load runtime value
     emitter.instruction("cmp dl, 47");                                          // '/'
-    emitter.instruction("je __rt_http_open_loc_have_path_x");
+    emitter.instruction("je __rt_http_open_loc_have_path_x");                   // branch when the checked value is zero or equal
     emitter.instruction("cmp dl, 48");                                          // '0'
-    emitter.instruction("jl __rt_http_open_check_err_x");
+    emitter.instruction("jl __rt_http_open_check_err_x");                       // branch when comparison is below target
     emitter.instruction("cmp dl, 57");                                          // '9'
-    emitter.instruction("jg __rt_http_open_check_err_x");
-    emitter.instruction("inc rax");
-    emitter.instruction("jmp __rt_http_open_loc_skip_port_x");
+    emitter.instruction("jg __rt_http_open_check_err_x");                       // branch when comparison is above target
+    emitter.instruction("inc rax");                                             // advance runtime pointer or counter
+    emitter.instruction("jmp __rt_http_open_loc_skip_port_x");                  // continue at target label
     emitter.label("__rt_http_open_loc_have_path_x");
     // Memmove buf[path_start..len] left to buf[0..].
-    emitter.instruction("mov r9, r13");
+    emitter.instruction("mov r9, r13");                                         // prepare SysV call argument
     emitter.instruction("sub r9, rax");                                         // new length = old - path_start
     emitter.instruction("xor rcx, rcx");                                        // write index
     emitter.label("__rt_http_open_loc_shift_x");
-    emitter.instruction("cmp rcx, r9");
-    emitter.instruction("jge __rt_http_open_loc_shift_done_x");
-    emitter.instruction("lea r8, [rax + rcx]");
+    emitter.instruction("cmp rcx, r9");                                         // compare runtime values for the next branch
+    emitter.instruction("jge __rt_http_open_loc_shift_done_x");                 // branch when comparison is at least target
+    emitter.instruction("lea r8, [rax + rcx]");                                 // load runtime data address
     emitter.instruction("movzx edx, BYTE PTR [r12 + r8]");                      // src
     emitter.instruction("mov BYTE PTR [r12 + rcx], dl");                        // dst
-    emitter.instruction("inc rcx");
-    emitter.instruction("jmp __rt_http_open_loc_shift_x");
+    emitter.instruction("inc rcx");                                             // advance runtime pointer or counter
+    emitter.instruction("jmp __rt_http_open_loc_shift_x");                      // continue at target label
     emitter.label("__rt_http_open_loc_shift_done_x");
     emitter.instruction("mov r13, r9");                                         // commit new length
-    emitter.instruction("jmp __rt_http_open_loc_abs_done_x");
+    emitter.instruction("jmp __rt_http_open_loc_abs_done_x");                   // continue at target label
     emitter.label("__rt_http_open_loc_no_path_x");
     emitter.instruction("mov BYTE PTR [r12], 47");                              // '/'
-    emitter.instruction("mov r13, 1");
+    emitter.instruction("mov r13, 1");                                          // move runtime value between registers
     emitter.label("__rt_http_open_loc_abs_done_x");
     emitter.instruction("mov QWORD PTR [rip + _http_redirect_path_len], r13");  // persist rewritten length
     // Decrement max_redirects.
-    emitter.instruction("dec QWORD PTR [rip + _http_active_max_redirects]");
+    emitter.instruction("dec QWORD PTR [rip + _http_active_max_redirects]");    // reduce runtime pointer or counter
     // Rebuild request: __rt_http_build_request(host, host_len, redirect_buf, redirect_len).
-    emitter.instruction("mov rdi, QWORD PTR [rip + _http_active_host_ptr]");
-    emitter.instruction("mov rsi, QWORD PTR [rip + _http_active_host_len]");
-    emitter.instruction("lea rdx, [rip + _http_redirect_path_buf]");
-    emitter.instruction("mov rcx, QWORD PTR [rip + _http_redirect_path_len]");
+    emitter.instruction("mov rdi, QWORD PTR [rip + _http_active_host_ptr]");    // prepare SysV call argument
+    emitter.instruction("mov rsi, QWORD PTR [rip + _http_active_host_len]");    // prepare SysV call argument
+    emitter.instruction("lea rdx, [rip + _http_redirect_path_buf]");            // load runtime data address
+    emitter.instruction("mov rcx, QWORD PTR [rip + _http_redirect_path_len]");  // prepare SysV call argument
     emitter.instruction("call __rt_http_build_request");                        // returns new req len in rax
-    emitter.instruction("lea r9, [rip + _http_req_scratch]");
-    emitter.instruction("mov QWORD PTR [rbp - 16], r9");
-    emitter.instruction("mov QWORD PTR [rbp - 24], rax");
-    emitter.instruction("jmp __rt_http_open_loop_top_x");
+    emitter.instruction("lea r9, [rip + _http_req_scratch]");                   // load runtime data address
+    emitter.instruction("mov QWORD PTR [rbp - 16], r9");                        // store runtime value
+    emitter.instruction("mov QWORD PTR [rbp - 24], rax");                       // store runtime value
+    emitter.instruction("jmp __rt_http_open_loop_top_x");                       // continue at target label
     emitter.label("__rt_http_open_loc_next_x");
-    emitter.instruction("inc r11");
-    emitter.instruction("jmp __rt_http_open_loc_scan_x");
+    emitter.instruction("inc r11");                                             // advance runtime pointer or counter
+    emitter.instruction("jmp __rt_http_open_loc_scan_x");                       // continue at target label
 
     // -- check status >= 400 for ignore_errors --
     emitter.label("__rt_http_open_check_err_x");
-    emitter.instruction("cmp eax, 400");
-    emitter.instruction("jl __rt_http_open_status_ok_x");
-    emitter.instruction("mov r9, QWORD PTR [rip + _http_active_ignore_errors]");
-    emitter.instruction("test r9, r9");
-    emitter.instruction("jnz __rt_http_open_status_ok_x");
-    emitter.instruction("jmp __rt_http_open_fail_x86");
+    emitter.instruction("cmp eax, 400");                                        // compare runtime values for the next branch
+    emitter.instruction("jl __rt_http_open_status_ok_x");                       // branch when comparison is below target
+    emitter.instruction("mov r9, QWORD PTR [rip + _http_active_ignore_errors]"); // prepare SysV call argument
+    emitter.instruction("test r9, r9");                                         // check whether the runtime value is zero
+    emitter.instruction("jnz __rt_http_open_status_ok_x");                      // branch when the checked value is nonzero or different
+    emitter.instruction("jmp __rt_http_open_fail_x86");                         // continue at target label
     emitter.label("__rt_http_open_status_ok_x");
 
     // -- scan for the CRLFCRLF that separates headers from the body --

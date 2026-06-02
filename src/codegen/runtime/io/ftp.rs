@@ -52,7 +52,7 @@ pub fn emit_ftp(emitter: &mut Emitter) {
     abi::emit_symbol_address(emitter, "x9", "_elephc_tls_write_fn");
     emitter.instruction("ldr x9, [x9]");                                        // load the elephc_tls_write entry pointer
     emitter.instruction("blr x9");                                              // send the command through TLS
-    emitter.instruction("b __rt_ftp_sr_read_phase");
+    emitter.instruction("b __rt_ftp_sr_read_phase");                            // continue at target label
     emitter.label("__rt_ftp_sr_plain_write");
     emitter.syscall(4);                                                         // plain write syscall
 
@@ -60,7 +60,7 @@ pub fn emit_ftp(emitter: &mut Emitter) {
     emitter.label("__rt_ftp_sr_read_phase");
     emitter.instruction("ldr x0, [sp, #0]");                                    // reload control fd
     abi::emit_symbol_address(emitter, "x13", "_tls_sessions");
-    emitter.instruction("ldr x14, [x13, x0, lsl #3]");
+    emitter.instruction("ldr x14, [x13, x0, lsl #3]");                          // load runtime value
     emitter.instruction("cbz x14, __rt_ftp_sr_plain_read");                     // no TLS → plain read syscall
     emitter.instruction("mov x0, x14");                                         // TLS handle as first arg
     abi::emit_symbol_address(emitter, "x1", "_ftp_resp_buf");
@@ -68,7 +68,7 @@ pub fn emit_ftp(emitter: &mut Emitter) {
     abi::emit_symbol_address(emitter, "x9", "_elephc_tls_read_fn");
     emitter.instruction("ldr x9, [x9]");                                        // load the elephc_tls_read entry pointer
     emitter.instruction("blr x9");                                              // read the reply through TLS
-    emitter.instruction("b __rt_ftp_sr_done");
+    emitter.instruction("b __rt_ftp_sr_done");                                  // continue at target label
     emitter.label("__rt_ftp_sr_plain_read");
     abi::emit_symbol_address(emitter, "x1", "_ftp_resp_buf");
     emitter.instruction("mov x2, #4096");                                       // response buffer capacity
@@ -218,25 +218,25 @@ pub fn emit_ftp(emitter: &mut Emitter) {
 
     // -- ftps://: AUTH TLS handshake + control-channel TLS attach --
     abi::emit_symbol_address(emitter, "x9", "_ftp_use_tls");
-    emitter.instruction("ldr x10, [x9]");
+    emitter.instruction("ldr x10, [x9]");                                       // load runtime value
     emitter.instruction("cbz x10, __rt_ftp_open_skip_auth_tls");                // plain ftp:// → skip the TLS upgrade
     // Send "AUTH TLS\r\n" via plain syscall (control is still cleartext).
     emitter.instruction("ldr x0, [sp, #0]");                                    // control fd
     abi::emit_symbol_address(emitter, "x1", "_ftp_auth_tls_cmd");
     emitter.instruction("mov x2, #10");                                         // strlen("AUTH TLS\\r\\n")
     emitter.syscall(4);                                                         // write
-    emitter.instruction("ldr x0, [sp, #0]");
+    emitter.instruction("ldr x0, [sp, #0]");                                    // load runtime value
     abi::emit_symbol_address(emitter, "x1", "_ftp_resp_buf");
-    emitter.instruction("mov x2, #4096");
+    emitter.instruction("mov x2, #4096");                                       // prepare AArch64 call argument
     emitter.syscall(3);                                                         // read AUTH TLS reply (expect 234)
     // Promote the control fd to TLS via elephc_tls_attach_fd; store the
     // returned handle in _tls_sessions[fd] so __rt_ftp_send_recv routes
     // subsequent USER/PASS/PBSZ/PROT/PASV through elephc-tls.
     emitter.instruction("ldr x0, [sp, #0]");                                    // fd → first arg
     abi::emit_symbol_address(emitter, "x9", "_elephc_tls_attach_fd_fn");
-    emitter.instruction("ldr x9, [x9]");
+    emitter.instruction("ldr x9, [x9]");                                        // load runtime value
     emitter.instruction("blr x9");                                              // x0 = TLS handle or -1
-    emitter.instruction("cmp x0, #0");
+    emitter.instruction("cmp x0, #0");                                          // compare runtime values for the next branch
     emitter.instruction("b.lt __rt_ftp_open_fail");                             // TLS handshake failed
     emitter.instruction("ldr x10, [sp, #0]");                                   // fd
     abi::emit_symbol_address(emitter, "x11", "_tls_sessions");
@@ -260,13 +260,13 @@ pub fn emit_ftp(emitter: &mut Emitter) {
 
     // -- ftps://: PBSZ 0 + PROT P to enable encrypted data channel --
     abi::emit_symbol_address(emitter, "x9", "_ftp_use_tls");
-    emitter.instruction("ldr x10, [x9]");
+    emitter.instruction("ldr x10, [x9]");                                       // load runtime value
     emitter.instruction("cbz x10, __rt_ftp_open_skip_prot");                    // plain ftp:// → no PROT
-    emitter.instruction("ldr x0, [sp, #0]");
+    emitter.instruction("ldr x0, [sp, #0]");                                    // load runtime value
     abi::emit_symbol_address(emitter, "x1", "_ftp_pbsz_cmd");
     emitter.instruction("mov x2, #8");                                          // strlen("PBSZ 0\\r\\n")
     emitter.instruction("bl __rt_ftp_send_recv");                               // negotiate protection buffer size = 0
-    emitter.instruction("ldr x0, [sp, #0]");
+    emitter.instruction("ldr x0, [sp, #0]");                                    // load runtime value
     abi::emit_symbol_address(emitter, "x1", "_ftp_prot_p_cmd");
     emitter.instruction("mov x2, #8");                                          // strlen("PROT P\\r\\n")
     emitter.instruction("bl __rt_ftp_send_recv");                               // request private (encrypted) data channel
@@ -289,13 +289,13 @@ pub fn emit_ftp(emitter: &mut Emitter) {
 
     // -- ftps://: TLS-wrap the data fd so fread() routes through TLS --
     abi::emit_symbol_address(emitter, "x9", "_ftp_use_tls");
-    emitter.instruction("ldr x10, [x9]");
+    emitter.instruction("ldr x10, [x9]");                                       // load runtime value
     emitter.instruction("cbz x10, __rt_ftp_open_skip_data_tls");                // plain ftp:// → no data-channel TLS
     emitter.instruction("ldr x0, [sp, #24]");                                   // data fd → first arg
     abi::emit_symbol_address(emitter, "x9", "_elephc_tls_attach_fd_fn");
-    emitter.instruction("ldr x9, [x9]");
+    emitter.instruction("ldr x9, [x9]");                                        // load runtime value
     emitter.instruction("blr x9");                                              // x0 = TLS handle or -1
-    emitter.instruction("cmp x0, #0");
+    emitter.instruction("cmp x0, #0");                                          // compare runtime values for the next branch
     emitter.instruction("b.lt __rt_ftp_open_fail");                             // data-channel TLS handshake failed
     emitter.instruction("ldr x10, [sp, #24]");                                  // data fd
     abi::emit_symbol_address(emitter, "x11", "_tls_sessions");
@@ -317,7 +317,7 @@ pub fn emit_ftp(emitter: &mut Emitter) {
     emitter.instruction("add x4, sp, #0");                                      // out_ptr_addr
     emitter.instruction("add x5, sp, #8");                                      // out_len_addr
     emitter.instruction("bl __rt_get_string_context_option");                   // x0 = 1 hit / 0 miss
-    emitter.instruction("cbz x0, __rt_ftp_open_skip_rest");
+    emitter.instruction("cbz x0, __rt_ftp_open_skip_rest");                     // branch when the checked value is zero or equal
     // Build "REST <N>\r\n" in _ftp_cmd_scratch.
     abi::emit_symbol_address(emitter, "x9", "_ftp_cmd_scratch");
     abi::emit_symbol_address(emitter, "x10", "_ftp_rest_prefix");
@@ -327,9 +327,9 @@ pub fn emit_ftp(emitter: &mut Emitter) {
     emitter.instruction("ldr x11, [sp, #8]");                                   // resume_pos_len
     emitter.instruction("bl __rt_http_build_copy_aarch64");                     // x9 += resume_pos_len
     emitter.instruction("mov w13, #13");                                        // ASCII '\r'
-    emitter.instruction("strb w13, [x9]");
+    emitter.instruction("strb w13, [x9]");                                      // store runtime value
     emitter.instruction("mov w13, #10");                                        // ASCII '\n'
-    emitter.instruction("strb w13, [x9, #1]");
+    emitter.instruction("strb w13, [x9, #1]");                                  // store runtime value
     emitter.instruction("add x9, x9, #2");                                      // advance past CRLF
     abi::emit_symbol_address(emitter, "x10", "_ftp_cmd_scratch");
     emitter.instruction("sub x2, x9, x10");                                     // total length = end - base
@@ -346,7 +346,7 @@ pub fn emit_ftp(emitter: &mut Emitter) {
 
     // Reset _ftp_use_tls so a subsequent plain ftp:// open is not contaminated.
     abi::emit_symbol_address(emitter, "x9", "_ftp_use_tls");
-    emitter.instruction("str xzr, [x9]");
+    emitter.instruction("str xzr, [x9]");                                       // store runtime value
     emitter.instruction("ldr x0, [sp, #24]");                                   // return the readable data descriptor
     emitter.instruction("ldp x29, x30, [sp, #32]");                             // restore frame pointer and return address
     emitter.instruction("add sp, sp, #48");                                     // release the frame
@@ -375,30 +375,30 @@ fn emit_ftp_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov QWORD PTR [rbp - 24], rdx");                       // save command length (call write may clobber rdx)
 
     // -- write phase: TLS-aware dispatch --
-    emitter.instruction("lea r10, [rip + _tls_sessions]");
+    emitter.instruction("lea r10, [rip + _tls_sessions]");                      // load runtime data address
     emitter.instruction("mov r11, QWORD PTR [r10 + rdi * 8]");                  // _tls_sessions[fd] handle (0 = plain TCP)
-    emitter.instruction("test r11, r11");
-    emitter.instruction("jz __rt_ftp_sr_plain_write_x");
+    emitter.instruction("test r11, r11");                                       // check whether the runtime value is zero
+    emitter.instruction("jz __rt_ftp_sr_plain_write_x");                        // branch when the checked value is zero or equal
     emitter.instruction("mov rdi, r11");                                        // TLS handle as first arg
-    emitter.instruction("mov r9, QWORD PTR [rip + _elephc_tls_write_fn]");
+    emitter.instruction("mov r9, QWORD PTR [rip + _elephc_tls_write_fn]");      // prepare SysV call argument
     emitter.instruction("call r9");                                             // send the command through TLS
-    emitter.instruction("jmp __rt_ftp_sr_read_phase_x");
+    emitter.instruction("jmp __rt_ftp_sr_read_phase_x");                        // continue at target label
     emitter.label("__rt_ftp_sr_plain_write_x");
     emitter.instruction("call write");                                          // send the command on the control socket
 
     // -- read phase: TLS-aware dispatch into _ftp_resp_buf --
     emitter.label("__rt_ftp_sr_read_phase_x");
     emitter.instruction("mov rdi, QWORD PTR [rbp - 8]");                        // reload control fd
-    emitter.instruction("lea r10, [rip + _tls_sessions]");
+    emitter.instruction("lea r10, [rip + _tls_sessions]");                      // load runtime data address
     emitter.instruction("mov r11, QWORD PTR [r10 + rdi * 8]");                  // _tls_sessions[fd] handle
-    emitter.instruction("test r11, r11");
-    emitter.instruction("jz __rt_ftp_sr_plain_read_x");
+    emitter.instruction("test r11, r11");                                       // check whether the runtime value is zero
+    emitter.instruction("jz __rt_ftp_sr_plain_read_x");                         // branch when the checked value is zero or equal
     emitter.instruction("mov rdi, r11");                                        // TLS handle
-    emitter.instruction("lea rsi, [rip + _ftp_resp_buf]");
-    emitter.instruction("mov rdx, 4096");
-    emitter.instruction("mov r9, QWORD PTR [rip + _elephc_tls_read_fn]");
+    emitter.instruction("lea rsi, [rip + _ftp_resp_buf]");                      // load runtime data address
+    emitter.instruction("mov rdx, 4096");                                       // prepare SysV call argument
+    emitter.instruction("mov r9, QWORD PTR [rip + _elephc_tls_read_fn]");       // prepare SysV call argument
     emitter.instruction("call r9");                                             // read the reply through TLS
-    emitter.instruction("jmp __rt_ftp_sr_done_x");
+    emitter.instruction("jmp __rt_ftp_sr_done_x");                              // continue at target label
     emitter.label("__rt_ftp_sr_plain_read_x");
     emitter.instruction("lea rsi, [rip + _ftp_resp_buf]");                      // response buffer pointer
     emitter.instruction("mov rdx, 4096");                                       // response buffer capacity
@@ -542,24 +542,24 @@ fn emit_ftp_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("call read");                                           // drain the server greeting
 
     // -- ftps://: AUTH TLS handshake + control-channel TLS attach --
-    emitter.instruction("mov rax, QWORD PTR [rip + _ftp_use_tls]");
-    emitter.instruction("test rax, rax");
-    emitter.instruction("jz __rt_ftp_open_skip_auth_tls_x");
+    emitter.instruction("mov rax, QWORD PTR [rip + _ftp_use_tls]");             // prepare runtime result value
+    emitter.instruction("test rax, rax");                                       // check whether the runtime value is zero
+    emitter.instruction("jz __rt_ftp_open_skip_auth_tls_x");                    // branch when the checked value is zero or equal
     emitter.instruction("mov rdi, QWORD PTR [rbp - 8]");                        // ctrl fd
-    emitter.instruction("lea rsi, [rip + _ftp_auth_tls_cmd]");
+    emitter.instruction("lea rsi, [rip + _ftp_auth_tls_cmd]");                  // load runtime data address
     emitter.instruction("mov rdx, 10");                                         // strlen("AUTH TLS\\r\\n")
     emitter.instruction("call write");                                          // plain write (control still cleartext)
-    emitter.instruction("mov rdi, QWORD PTR [rbp - 8]");
-    emitter.instruction("lea rsi, [rip + _ftp_resp_buf]");
-    emitter.instruction("mov rdx, 4096");
+    emitter.instruction("mov rdi, QWORD PTR [rbp - 8]");                        // prepare SysV call argument
+    emitter.instruction("lea rsi, [rip + _ftp_resp_buf]");                      // load runtime data address
+    emitter.instruction("mov rdx, 4096");                                       // prepare SysV call argument
     emitter.instruction("call read");                                           // expect 234
     emitter.instruction("mov rdi, QWORD PTR [rbp - 8]");                        // fd → first arg
-    emitter.instruction("mov r9, QWORD PTR [rip + _elephc_tls_attach_fd_fn]");
+    emitter.instruction("mov r9, QWORD PTR [rip + _elephc_tls_attach_fd_fn]");  // prepare SysV call argument
     emitter.instruction("call r9");                                             // rax = TLS handle or -1
-    emitter.instruction("cmp rax, 0");
+    emitter.instruction("cmp rax, 0");                                          // compare runtime values for the next branch
     emitter.instruction("jl __rt_ftp_open_fail_x86");                           // TLS handshake failed
     emitter.instruction("mov rcx, QWORD PTR [rbp - 8]");                        // fd
-    emitter.instruction("lea r10, [rip + _tls_sessions]");
+    emitter.instruction("lea r10, [rip + _tls_sessions]");                      // load runtime data address
     emitter.instruction("mov QWORD PTR [r10 + rcx * 8], rax");                  // _tls_sessions[fd] = handle
     emitter.label("__rt_ftp_open_skip_auth_tls_x");
 
@@ -579,17 +579,17 @@ fn emit_ftp_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("call __rt_ftp_send_recv");                             // switch to binary transfers
 
     // -- ftps://: PBSZ 0 + PROT P to enable encrypted data channel --
-    emitter.instruction("mov rax, QWORD PTR [rip + _ftp_use_tls]");
-    emitter.instruction("test rax, rax");
-    emitter.instruction("jz __rt_ftp_open_skip_prot_x");
-    emitter.instruction("mov rdi, QWORD PTR [rbp - 8]");
-    emitter.instruction("lea rsi, [rip + _ftp_pbsz_cmd]");
+    emitter.instruction("mov rax, QWORD PTR [rip + _ftp_use_tls]");             // prepare runtime result value
+    emitter.instruction("test rax, rax");                                       // check whether the runtime value is zero
+    emitter.instruction("jz __rt_ftp_open_skip_prot_x");                        // branch when the checked value is zero or equal
+    emitter.instruction("mov rdi, QWORD PTR [rbp - 8]");                        // prepare SysV call argument
+    emitter.instruction("lea rsi, [rip + _ftp_pbsz_cmd]");                      // load runtime data address
     emitter.instruction("mov rdx, 8");                                          // strlen("PBSZ 0\\r\\n")
-    emitter.instruction("call __rt_ftp_send_recv");
-    emitter.instruction("mov rdi, QWORD PTR [rbp - 8]");
-    emitter.instruction("lea rsi, [rip + _ftp_prot_p_cmd]");
+    emitter.instruction("call __rt_ftp_send_recv");                             // call runtime helper
+    emitter.instruction("mov rdi, QWORD PTR [rbp - 8]");                        // prepare SysV call argument
+    emitter.instruction("lea rsi, [rip + _ftp_prot_p_cmd]");                    // load runtime data address
     emitter.instruction("mov rdx, 8");                                          // strlen("PROT P\\r\\n")
-    emitter.instruction("call __rt_ftp_send_recv");
+    emitter.instruction("call __rt_ftp_send_recv");                             // call runtime helper
     emitter.label("__rt_ftp_open_skip_prot_x");
 
     emitter.instruction("mov rdi, QWORD PTR [rbp - 8]");                        // control descriptor for the PASV command
@@ -608,16 +608,16 @@ fn emit_ftp_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov QWORD PTR [rbp - 32], rax");                       // save the data descriptor
 
     // -- ftps://: TLS-wrap the data fd so fread() routes through TLS --
-    emitter.instruction("mov rax, QWORD PTR [rip + _ftp_use_tls]");
-    emitter.instruction("test rax, rax");
-    emitter.instruction("jz __rt_ftp_open_skip_data_tls_x");
+    emitter.instruction("mov rax, QWORD PTR [rip + _ftp_use_tls]");             // prepare runtime result value
+    emitter.instruction("test rax, rax");                                       // check whether the runtime value is zero
+    emitter.instruction("jz __rt_ftp_open_skip_data_tls_x");                    // branch when the checked value is zero or equal
     emitter.instruction("mov rdi, QWORD PTR [rbp - 32]");                       // data fd → first arg
-    emitter.instruction("mov r9, QWORD PTR [rip + _elephc_tls_attach_fd_fn]");
+    emitter.instruction("mov r9, QWORD PTR [rip + _elephc_tls_attach_fd_fn]");  // prepare SysV call argument
     emitter.instruction("call r9");                                             // rax = TLS handle or -1
-    emitter.instruction("cmp rax, 0");
+    emitter.instruction("cmp rax, 0");                                          // compare runtime values for the next branch
     emitter.instruction("jl __rt_ftp_open_fail_x86");                           // data-channel TLS handshake failed
     emitter.instruction("mov rcx, QWORD PTR [rbp - 32]");                       // data fd
-    emitter.instruction("lea r10, [rip + _tls_sessions]");
+    emitter.instruction("lea r10, [rip + _tls_sessions]");                      // load runtime data address
     emitter.instruction("mov QWORD PTR [r10 + rcx * 8], rax");                  // _tls_sessions[data_fd] = handle
     emitter.label("__rt_ftp_open_skip_data_tls_x");
 
@@ -625,15 +625,15 @@ fn emit_ftp_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("sub rsp, 16");                                         // spill space for the (ptr, len) lookup output
     emitter.instruction("mov QWORD PTR [rsp + 0], 0");                          // resume_pos_ptr default null
     emitter.instruction("mov QWORD PTR [rsp + 8], 0");                          // resume_pos_len default 0
-    emitter.instruction("lea rdi, [rip + _ftp_key_str]");
+    emitter.instruction("lea rdi, [rip + _ftp_key_str]");                       // load runtime data address
     emitter.instruction("mov rsi, 3");                                          // strlen("ftp")
-    emitter.instruction("lea rdx, [rip + _ftp_resume_pos_key_str]");
+    emitter.instruction("lea rdx, [rip + _ftp_resume_pos_key_str]");            // load runtime data address
     emitter.instruction("mov rcx, 10");                                         // strlen("resume_pos")
     emitter.instruction("lea r8, [rsp + 0]");                                   // out_ptr_addr
     emitter.instruction("lea r9, [rsp + 8]");                                   // out_len_addr
     emitter.instruction("call __rt_get_string_context_option");                 // rax = 1 hit / 0 miss
-    emitter.instruction("test rax, rax");
-    emitter.instruction("jz __rt_ftp_open_skip_rest_x86");
+    emitter.instruction("test rax, rax");                                       // check whether the runtime value is zero
+    emitter.instruction("jz __rt_ftp_open_skip_rest_x86");                      // branch when the checked value is zero or equal
     // Build "REST <N>\r\n" in _ftp_cmd_scratch using the generic byte-copy helper.
     emitter.instruction("lea rdi, [rip + _ftp_cmd_scratch]");                   // write ptr
     emitter.instruction("lea rsi, [rip + _ftp_rest_prefix]");                   // src
@@ -661,7 +661,7 @@ fn emit_ftp_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("call __rt_ftp_send_recv");                             // start the file transfer
 
     // Reset _ftp_use_tls so a subsequent plain ftp:// open is not contaminated.
-    emitter.instruction("mov QWORD PTR [rip + _ftp_use_tls], 0");
+    emitter.instruction("mov QWORD PTR [rip + _ftp_use_tls], 0");               // store runtime value
     emitter.instruction("mov rax, QWORD PTR [rbp - 32]");                       // return the readable data descriptor
     emitter.instruction("add rsp, 48");                                         // release the frame
     emitter.instruction("pop rbp");                                             // restore the caller frame pointer

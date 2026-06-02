@@ -178,10 +178,10 @@ fn emit_stream_socket_recvfrom_linux_x86_64(emitter: &mut Emitter) {
     // -- allocate an owned heap buffer for the payload --
     emitter.instruction("mov rax, rsi");                                        // allocation size = requested length
     emitter.instruction("call __rt_heap_alloc");                                // allocate the buffer, rax = pointer
-    emitter.instruction(&format!(
+    emitter.instruction(&format!(                                               // owned-string heap-kind word with the x86_64 heap marker
         "mov r10, 0x{:x}",
         (X86_64_HEAP_MAGIC_HI32 << 32) | 1
-    ));                                                                         // owned-string heap-kind word with the x86_64 heap marker
+    ));
     emitter.instruction("mov QWORD PTR [rax - 8], r10");                        // stamp the buffer as an owned string
     emitter.instruction("mov QWORD PTR [rbp - 32], rax");                       // save the buffer pointer
 
@@ -210,10 +210,10 @@ fn emit_stream_socket_recvfrom_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("cmp r10, 2");                                          // is there at least a family-byte's worth of data?
     emitter.instruction("jl __rt_ssr_empty_addr_x86");                          // connected/no-peer recvfrom: empty $address
     let family_addr_disp = -160 + family_off;
-    emitter.instruction(&format!(
+    emitter.instruction(&format!(                                               // load the address-family discriminator
         "movzx r11d, BYTE PTR [rbp - {}]",
         -family_addr_disp
-    ));                                                                         // load the address-family discriminator
+    ));
     let af_inet6 = Platform::Linux.af_inet6();
     emitter.instruction("cmp r11d, 2");                                         // AF_INET = 2 on Linux
     emitter.instruction("je __rt_ssr_inet_x86");                                // IPv4 peer: format A.B.C.D:port
@@ -246,10 +246,10 @@ fn emit_stream_socket_recvfrom_linux_x86_64(emitter: &mut Emitter) {
     emitter.label("__rt_ssr_empty_addr_x86");
     emitter.instruction("mov rax, 1");                                          // alloc one byte so the heap header is well-formed
     emitter.instruction("call __rt_heap_alloc");                                // rax = single-byte buffer
-    emitter.instruction(&format!(
+    emitter.instruction(&format!(                                               // owned-string heap-kind word with the x86_64 heap marker
         "mov r10, 0x{:x}",
         (X86_64_HEAP_MAGIC_HI32 << 32) | 1
-    ));                                                                         // owned-string heap-kind word with the x86_64 heap marker
+    ));
     emitter.instruction("mov QWORD PTR [rax - 8], r10");                        // stamp the buffer as an owned string
     emitter.instruction("xor edx, edx");                                        // empty address length
 

@@ -84,8 +84,8 @@ pub fn emit(
     // rax and operation in rdx (the libc `__rt_flock` convention), so move both
     // into the wrapper-call registers first.
     if emitter.target.arch == Arch::X86_64 {
-        emitter.instruction("mov rdi, rax");                                   // synthetic fd → wrapper-lookup first-arg register
-        emitter.instruction("mov rsi, rdx");                                   // lock operation → wrapper-call second-arg register
+        emitter.instruction("mov rdi, rax");                                    // synthetic fd → wrapper-lookup first-arg register
+        emitter.instruction("mov rsi, rdx");                                    // lock operation → wrapper-call second-arg register
     }
     abi::emit_call_label(emitter, "__rt_user_wrapper_flock");                   // call the wrapper's stream_lock($operation)
     emitter.label(&done_label);

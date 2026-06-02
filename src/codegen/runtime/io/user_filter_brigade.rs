@@ -94,23 +94,23 @@ fn emit_user_filter_brigade_invoke_aarch64(emitter: &mut Emitter) {
     emitter.instruction("mov x3, x0");                                          // value → 4th stdclass_set arg
     emitter.instruction("ldr x0, [sp, #64]");                                   // bucket obj
     abi::emit_symbol_address(emitter, "x1", "_brigade_data_key");
-    emitter.instruction("mov x2, #4");
+    emitter.instruction("mov x2, #4");                                          // prepare AArch64 call argument
     abi::emit_call_label(emitter, "__rt_stdclass_set");
 
     // bucket->datalen = Mixed(int buf_len).
     emitter.instruction("ldr x1, [sp, #16]");                                   // buf_len → int payload
-    emitter.instruction("mov x2, #0");
+    emitter.instruction("mov x2, #0");                                          // prepare AArch64 call argument
     emitter.instruction("mov x0, #0");                                          // tag = 0 (int)
     abi::emit_call_label(emitter, "__rt_mixed_from_value");
-    emitter.instruction("mov x3, x0");
+    emitter.instruction("mov x3, x0");                                          // prepare AArch64 call argument
     emitter.instruction("ldr x0, [sp, #64]");                                   // bucket obj
     abi::emit_symbol_address(emitter, "x1", "_brigade_datalen_key");
-    emitter.instruction("mov x2, #7");
+    emitter.instruction("mov x2, #7");                                          // prepare AArch64 call argument
     abi::emit_call_label(emitter, "__rt_stdclass_set");
 
     // -- Box the bucket as Mixed(obj) --
     emitter.instruction("ldr x1, [sp, #64]");                                   // bucket obj → payload lo
-    emitter.instruction("mov x2, #0");
+    emitter.instruction("mov x2, #0");                                          // prepare AArch64 call argument
     emitter.instruction("mov x0, #6");                                          // tag = 6 (object)
     abi::emit_call_label(emitter, "__rt_mixed_from_value");                     // x0 = mixed(bucket)
     emitter.instruction("str x0, [sp, #72]");                                   // save mixed_bucket
@@ -120,28 +120,28 @@ fn emit_user_filter_brigade_invoke_aarch64(emitter: &mut Emitter) {
     emitter.instruction("mov x1, #8");                                          // 8-byte slots (Mixed pointer)
     abi::emit_call_label(emitter, "__rt_array_new");                            // x0 = empty array
     // Stamp value_type = 7 (boxed Mixed) on the packed kind word.
-    emitter.instruction("ldr x10, [x0, #-8]");
+    emitter.instruction("ldr x10, [x0, #-8]");                                  // load runtime value
     emitter.instruction("mov x12, #0x80ff");                                    // preserve low byte + COW bit
-    emitter.instruction("and x10, x10, x12");
+    emitter.instruction("and x10, x10, x12");                                   // mask runtime value
     emitter.instruction("mov x11, #7");                                         // value_type = boxed Mixed
-    emitter.instruction("lsl x11, x11, #8");
-    emitter.instruction("orr x10, x10, x11");
-    emitter.instruction("str x10, [x0, #-8]");
+    emitter.instruction("lsl x11, x11, #8");                                    // shift runtime value
+    emitter.instruction("orr x10, x10, x11");                                   // combine runtime bit flags
+    emitter.instruction("str x10, [x0, #-8]");                                  // store runtime value
     // Push the boxed bucket onto the array.
     emitter.instruction("ldr x1, [sp, #72]");                                   // mixed_bucket
     abi::emit_call_label(emitter, "__rt_array_push_int");                       // x0 = updated array
     // Box the array as Mixed(indexed-array).
-    emitter.instruction("mov x1, x0");
-    emitter.instruction("mov x2, #0");
+    emitter.instruction("mov x1, x0");                                          // prepare AArch64 call argument
+    emitter.instruction("mov x2, #0");                                          // prepare AArch64 call argument
     emitter.instruction("mov x0, #4");                                          // tag = 4 (indexed array)
     abi::emit_call_label(emitter, "__rt_mixed_from_value");                     // x0 = mixed(_buckets array)
     emitter.instruction("str x0, [sp, #80]");                                   // save mixed_buckets_array
 
     // -- in_brigade->_buckets = mixed_buckets_array --
-    emitter.instruction("mov x3, x0");
+    emitter.instruction("mov x3, x0");                                          // prepare AArch64 call argument
     emitter.instruction("ldr x0, [sp, #32]");                                   // in_brigade
     abi::emit_symbol_address(emitter, "x1", "_brigade_buckets_key");
-    emitter.instruction("mov x2, #8");
+    emitter.instruction("mov x2, #8");                                          // prepare AArch64 call argument
     abi::emit_call_label(emitter, "__rt_stdclass_set");
 
     // -- Create output brigade stdClass --
@@ -149,16 +149,16 @@ fn emit_user_filter_brigade_invoke_aarch64(emitter: &mut Emitter) {
     emitter.instruction("str x0, [sp, #40]");                                   // save out_brigade
 
     // -- Create consumed Mixed(int=0) --
-    emitter.instruction("mov x1, #0");
-    emitter.instruction("mov x2, #0");
+    emitter.instruction("mov x1, #0");                                          // prepare AArch64 call argument
+    emitter.instruction("mov x2, #0");                                          // prepare AArch64 call argument
     emitter.instruction("mov x0, #0");                                          // tag = int
     abi::emit_call_label(emitter, "__rt_mixed_from_value");
     emitter.instruction("str x0, [sp, #48]");                                   // save consumed mixed cell
 
     // -- Create closing Mixed(int=0) --
-    emitter.instruction("mov x1, #0");
-    emitter.instruction("mov x2, #0");
-    emitter.instruction("mov x0, #0");
+    emitter.instruction("mov x1, #0");                                          // prepare AArch64 call argument
+    emitter.instruction("mov x2, #0");                                          // prepare AArch64 call argument
+    emitter.instruction("mov x0, #0");                                          // prepare AArch64 call argument
     abi::emit_call_label(emitter, "__rt_mixed_from_value");
     emitter.instruction("str x0, [sp, #56]");                                   // save closing mixed cell
 
@@ -179,16 +179,16 @@ fn emit_user_filter_brigade_invoke_aarch64(emitter: &mut Emitter) {
     // -- Walk out_brigade._buckets and concatenate the data fields --
     emitter.instruction("ldr x0, [sp, #40]");                                   // out_brigade obj
     abi::emit_symbol_address(emitter, "x1", "_brigade_buckets_key");
-    emitter.instruction("mov x2, #8");
+    emitter.instruction("mov x2, #8");                                          // prepare AArch64 call argument
     abi::emit_call_label(emitter, "__rt_stdclass_get");                         // x0 = Mixed*
     emitter.instruction("cbz x0, __rt_ufbi_empty");                             // no _buckets → empty output
     emitter.instruction("ldr x9, [x0]");                                        // tag
-    emitter.instruction("cmp x9, #4");
-    emitter.instruction("b.ne __rt_ufbi_empty");
+    emitter.instruction("cmp x9, #4");                                          // compare runtime values for the next branch
+    emitter.instruction("b.ne __rt_ufbi_empty");                                // branch when the checked value is nonzero or different
     emitter.instruction("ldr x9, [x0, #8]");                                    // array ptr
-    emitter.instruction("cbz x9, __rt_ufbi_empty");
+    emitter.instruction("cbz x9, __rt_ufbi_empty");                             // branch when the checked value is zero or equal
     emitter.instruction("ldr x10, [x9]");                                       // length
-    emitter.instruction("cbz x10, __rt_ufbi_empty");
+    emitter.instruction("cbz x10, __rt_ufbi_empty");                            // branch when the checked value is zero or equal
 
     // Concatenate loop. x9=array, x10=length, x12=base (_stream_filter_buf),
     // x13=write offset.
@@ -197,16 +197,16 @@ fn emit_user_filter_brigade_invoke_aarch64(emitter: &mut Emitter) {
     emitter.instruction("mov x14, #0");                                         // bucket index
 
     emitter.label("__rt_ufbi_walk_loop");
-    emitter.instruction("cmp x14, x10");
-    emitter.instruction("b.ge __rt_ufbi_walk_done");
+    emitter.instruction("cmp x14, x10");                                        // compare runtime values for the next branch
+    emitter.instruction("b.ge __rt_ufbi_walk_done");                            // branch when comparison is at least target
     emitter.instruction("add x15, x9, #24");                                    // first payload slot
     emitter.instruction("ldr x0, [x15, x14, lsl #3]");                          // x0 = mixed(bucket) ptr
-    emitter.instruction("cbz x0, __rt_ufbi_walk_next");
-    emitter.instruction("ldr x16, [x0]");
+    emitter.instruction("cbz x0, __rt_ufbi_walk_next");                         // branch when the checked value is zero or equal
+    emitter.instruction("ldr x16, [x0]");                                       // load runtime value
     emitter.instruction("cmp x16, #6");                                         // tag = obj?
-    emitter.instruction("b.ne __rt_ufbi_walk_next");
+    emitter.instruction("b.ne __rt_ufbi_walk_next");                            // branch when the checked value is nonzero or different
     emitter.instruction("ldr x0, [x0, #8]");                                    // bucket obj
-    emitter.instruction("cbz x0, __rt_ufbi_walk_next");
+    emitter.instruction("cbz x0, __rt_ufbi_walk_next");                         // branch when the checked value is zero or equal
 
     // Save walk state across the stdclass_get call (x0-x18 are caller-saved).
     // Use non-overlapping 16-byte slots: 88..104, 104..120 (the previous
@@ -217,16 +217,16 @@ fn emit_user_filter_brigade_invoke_aarch64(emitter: &mut Emitter) {
     emitter.instruction("stp x12, x13, [sp, #104]");                            // [104..120] = buf base + write cursor (non-overlapping)
     emitter.instruction("str x14, [sp, #80]");                                  // [80..88] = bucket index (slot reused — was scratch earlier)
     abi::emit_symbol_address(emitter, "x1", "_brigade_data_key");
-    emitter.instruction("mov x2, #4");
+    emitter.instruction("mov x2, #4");                                          // prepare AArch64 call argument
     abi::emit_call_label(emitter, "__rt_stdclass_get");                         // x0 = Mixed*
     emitter.instruction("ldp x9, x10, [sp, #88]");                              // restore array + length
     emitter.instruction("ldp x12, x13, [sp, #104]");                            // restore buf base + write cursor
     emitter.instruction("ldr x14, [sp, #80]");                                  // restore bucket index
 
-    emitter.instruction("cbz x0, __rt_ufbi_walk_next");
-    emitter.instruction("ldr x16, [x0]");
+    emitter.instruction("cbz x0, __rt_ufbi_walk_next");                         // branch when the checked value is zero or equal
+    emitter.instruction("ldr x16, [x0]");                                       // load runtime value
     emitter.instruction("cmp x16, #1");                                         // tag = string?
-    emitter.instruction("b.ne __rt_ufbi_walk_next");
+    emitter.instruction("b.ne __rt_ufbi_walk_next");                            // branch when the checked value is nonzero or different
     emitter.instruction("ldr x17, [x0, #8]");                                   // string ptr
     // x18 is the "platform register" on Apple AArch64 — reserved for the OS
     // (TLS pointer) and clobbered by the kernel at arbitrary points. We
@@ -235,32 +235,32 @@ fn emit_user_filter_brigade_invoke_aarch64(emitter: &mut Emitter) {
     emitter.instruction("ldr x26, [x0, #16]");                                  // string len
     emitter.instruction("mov x25, #0");                                         // copy index
     emitter.label("__rt_ufbi_copy_byte");
-    emitter.instruction("cmp x25, x26");
-    emitter.instruction("b.hs __rt_ufbi_copy_done");
-    emitter.instruction("ldrb w19, [x17, x25]");
-    emitter.instruction("strb w19, [x12, x13]");
-    emitter.instruction("add x13, x13, #1");
-    emitter.instruction("add x25, x25, #1");
-    emitter.instruction("b __rt_ufbi_copy_byte");
+    emitter.instruction("cmp x25, x26");                                        // compare runtime values for the next branch
+    emitter.instruction("b.hs __rt_ufbi_copy_done");                            // stop copying once the source string length is reached
+    emitter.instruction("ldrb w19, [x17, x25]");                                // load runtime value
+    emitter.instruction("strb w19, [x12, x13]");                                // store runtime value
+    emitter.instruction("add x13, x13, #1");                                    // advance runtime pointer or counter
+    emitter.instruction("add x25, x25, #1");                                    // advance runtime pointer or counter
+    emitter.instruction("b __rt_ufbi_copy_byte");                               // continue at target label
     emitter.label("__rt_ufbi_copy_done");
 
     emitter.label("__rt_ufbi_walk_next");
-    emitter.instruction("add x14, x14, #1");
-    emitter.instruction("b __rt_ufbi_walk_loop");
+    emitter.instruction("add x14, x14, #1");                                    // advance runtime pointer or counter
+    emitter.instruction("b __rt_ufbi_walk_loop");                               // continue at target label
 
     emitter.label("__rt_ufbi_walk_done");
     emitter.instruction("mov x1, x12");                                         // result ptr (filter buf base)
     emitter.instruction("mov x2, x13");                                         // result len
-    emitter.instruction("ldp x29, x30, [sp, #112]");
-    emitter.instruction("add sp, sp, #128");
-    emitter.instruction("ret");
+    emitter.instruction("ldp x29, x30, [sp, #112]");                            // restore frame pointer and return address
+    emitter.instruction("add sp, sp, #128");                                    // release runtime stack frame
+    emitter.instruction("ret");                                                 // return to caller
 
     emitter.label("__rt_ufbi_empty");
     abi::emit_symbol_address(emitter, "x1", "_stream_filter_buf");
-    emitter.instruction("mov x2, #0");
-    emitter.instruction("ldp x29, x30, [sp, #112]");
-    emitter.instruction("add sp, sp, #128");
-    emitter.instruction("ret");
+    emitter.instruction("mov x2, #0");                                          // prepare AArch64 call argument
+    emitter.instruction("ldp x29, x30, [sp, #112]");                            // restore frame pointer and return address
+    emitter.instruction("add sp, sp, #128");                                    // release runtime stack frame
+    emitter.instruction("ret");                                                 // return to caller
 }
 
 /// Emits the Linux x86_64 stream runtime helper for user filter brigade invoke.
@@ -282,8 +282,8 @@ fn emit_user_filter_brigade_invoke_linux_x86_64(emitter: &mut Emitter) {
     //   [rbp -  80] mixed_bucket    / later mixed_out
     //   [rbp -  88] mixed_buckets_array
     //   [rbp - 112] walk-state save slots
-    emitter.instruction("push rbp");
-    emitter.instruction("mov rbp, rsp");
+    emitter.instruction("push rbp");                                            // save caller frame pointer
+    emitter.instruction("mov rbp, rsp");                                        // establish runtime frame pointer
     emitter.instruction("sub rsp, 128");                                        // local frame (16-byte aligned: prior call pushed ret, push rbp → 0-mod-16; -128 stays 0-mod-16)
     emitter.instruction("mov QWORD PTR [rbp - 8], rdi");                        // $this
     emitter.instruction("mov QWORD PTR [rbp - 16], rsi");                       // buf_ptr
@@ -292,7 +292,7 @@ fn emit_user_filter_brigade_invoke_linux_x86_64(emitter: &mut Emitter) {
 
     // -- Create input brigade --
     abi::emit_call_label(emitter, "__rt_stdclass_new");
-    emitter.instruction("mov QWORD PTR [rbp - 40], rax");
+    emitter.instruction("mov QWORD PTR [rbp - 40], rax");                       // store runtime value
 
     // -- Create bucket --
     abi::emit_call_label(emitter, "__rt_stdclass_new");
@@ -306,52 +306,52 @@ fn emit_user_filter_brigade_invoke_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov rcx, rax");                                        // mixed_str → 4th arg
     emitter.instruction("mov rdi, QWORD PTR [rbp - 72]");                       // bucket obj
     abi::emit_symbol_address(emitter, "rsi", "_brigade_data_key");
-    emitter.instruction("mov rdx, 4");
+    emitter.instruction("mov rdx, 4");                                          // prepare SysV call argument
     abi::emit_call_label(emitter, "__rt_stdclass_set");
 
     // bucket->datalen = Mixed(int=len)
     emitter.instruction("mov rdi, QWORD PTR [rbp - 24]");                       // buf_len → int payload
-    emitter.instruction("xor esi, esi");
+    emitter.instruction("xor esi, esi");                                        // clear register value
     emitter.instruction("mov rax, 0");                                          // tag int
     abi::emit_call_label(emitter, "__rt_mixed_from_value");
-    emitter.instruction("mov rcx, rax");
-    emitter.instruction("mov rdi, QWORD PTR [rbp - 72]");
+    emitter.instruction("mov rcx, rax");                                        // prepare SysV call argument
+    emitter.instruction("mov rdi, QWORD PTR [rbp - 72]");                       // prepare SysV call argument
     abi::emit_symbol_address(emitter, "rsi", "_brigade_datalen_key");
-    emitter.instruction("mov rdx, 7");
+    emitter.instruction("mov rdx, 7");                                          // prepare SysV call argument
     abi::emit_call_label(emitter, "__rt_stdclass_set");
 
     // -- Box bucket as Mixed(obj) --
-    emitter.instruction("mov rdi, QWORD PTR [rbp - 72]");
-    emitter.instruction("xor esi, esi");
+    emitter.instruction("mov rdi, QWORD PTR [rbp - 72]");                       // prepare SysV call argument
+    emitter.instruction("xor esi, esi");                                        // clear register value
     emitter.instruction("mov rax, 6");                                          // tag obj
     abi::emit_call_label(emitter, "__rt_mixed_from_value");
     emitter.instruction("mov QWORD PTR [rbp - 80], rax");                       // mixed_bucket
 
     // -- Allocate _buckets array, push bucket, box as Mixed(indexed-array) --
-    emitter.instruction("mov rdi, 4");
-    emitter.instruction("mov rsi, 8");
+    emitter.instruction("mov rdi, 4");                                          // prepare SysV call argument
+    emitter.instruction("mov rsi, 8");                                          // prepare SysV call argument
     abi::emit_call_label(emitter, "__rt_array_new");
-    emitter.instruction("mov r10, QWORD PTR [rax - 8]");
-    emitter.instruction("mov r11, 0xffffffff000080ff");
-    emitter.instruction("and r10, r11");
-    emitter.instruction("mov r11, 7");
-    emitter.instruction("shl r11, 8");
-    emitter.instruction("or r10, r11");
-    emitter.instruction("mov QWORD PTR [rax - 8], r10");
-    emitter.instruction("mov rdi, rax");
+    emitter.instruction("mov r10, QWORD PTR [rax - 8]");                        // move runtime value between registers
+    emitter.instruction("mov r11, 0xffffffff000080ff");                         // move runtime value between registers
+    emitter.instruction("and r10, r11");                                        // mask runtime value
+    emitter.instruction("mov r11, 7");                                          // move runtime value between registers
+    emitter.instruction("shl r11, 8");                                          // shift runtime value
+    emitter.instruction("or r10, r11");                                         // combine runtime bit flags
+    emitter.instruction("mov QWORD PTR [rax - 8], r10");                        // store runtime value
+    emitter.instruction("mov rdi, rax");                                        // prepare SysV call argument
     emitter.instruction("mov rsi, QWORD PTR [rbp - 80]");                       // mixed_bucket
     abi::emit_call_label(emitter, "__rt_array_push_int");
-    emitter.instruction("mov rdi, rax");
-    emitter.instruction("xor esi, esi");
+    emitter.instruction("mov rdi, rax");                                        // prepare SysV call argument
+    emitter.instruction("xor esi, esi");                                        // clear register value
     emitter.instruction("mov rax, 4");                                          // tag indexed-array
     abi::emit_call_label(emitter, "__rt_mixed_from_value");
     emitter.instruction("mov QWORD PTR [rbp - 88], rax");                       // mixed_buckets_array
 
     // -- in_brigade->_buckets = mixed_buckets_array --
-    emitter.instruction("mov rcx, rax");
+    emitter.instruction("mov rcx, rax");                                        // prepare SysV call argument
     emitter.instruction("mov rdi, QWORD PTR [rbp - 40]");                       // in_brigade
     abi::emit_symbol_address(emitter, "rsi", "_brigade_buckets_key");
-    emitter.instruction("mov rdx, 8");
+    emitter.instruction("mov rdx, 8");                                          // prepare SysV call argument
     abi::emit_call_label(emitter, "__rt_stdclass_set");
 
     // -- Create output brigade --
@@ -359,18 +359,18 @@ fn emit_user_filter_brigade_invoke_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov QWORD PTR [rbp - 48], rax");                       // out_brigade
 
     // -- consumed Mixed(int=0) --
-    emitter.instruction("xor edi, edi");
-    emitter.instruction("xor esi, esi");
-    emitter.instruction("mov rax, 0");
+    emitter.instruction("xor edi, edi");                                        // clear register value
+    emitter.instruction("xor esi, esi");                                        // clear register value
+    emitter.instruction("mov rax, 0");                                          // prepare runtime result value
     abi::emit_call_label(emitter, "__rt_mixed_from_value");
-    emitter.instruction("mov QWORD PTR [rbp - 56], rax");
+    emitter.instruction("mov QWORD PTR [rbp - 56], rax");                       // store runtime value
 
     // -- closing Mixed(int=0) --
-    emitter.instruction("xor edi, edi");
-    emitter.instruction("xor esi, esi");
-    emitter.instruction("mov rax, 0");
+    emitter.instruction("xor edi, edi");                                        // clear register value
+    emitter.instruction("xor esi, esi");                                        // clear register value
+    emitter.instruction("mov rax, 0");                                          // prepare runtime result value
     abi::emit_call_label(emitter, "__rt_mixed_from_value");
-    emitter.instruction("mov QWORD PTR [rbp - 64], rax");
+    emitter.instruction("mov QWORD PTR [rbp - 64], rax");                       // store runtime value
 
     // -- Call filter($this, $in, $out, $consumed, $closing) --
     // Pass raw obj pointers for $in/$out (the user method's params are
@@ -382,89 +382,89 @@ fn emit_user_filter_brigade_invoke_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov rcx, QWORD PTR [rbp - 56]");                       // consumed mixed
     emitter.instruction("mov r8, QWORD PTR [rbp - 64]");                        // closing mixed
     emitter.instruction("mov r11, QWORD PTR [rbp - 32]");                       // method ptr
-    emitter.instruction("call r11");
+    emitter.instruction("call r11");                                            // call selected function pointer
 
     // -- Walk out_brigade._buckets, concatenate data --
-    emitter.instruction("mov rdi, QWORD PTR [rbp - 48]");
+    emitter.instruction("mov rdi, QWORD PTR [rbp - 48]");                       // prepare SysV call argument
     abi::emit_symbol_address(emitter, "rsi", "_brigade_buckets_key");
-    emitter.instruction("mov rdx, 8");
+    emitter.instruction("mov rdx, 8");                                          // prepare SysV call argument
     abi::emit_call_label(emitter, "__rt_stdclass_get");
-    emitter.instruction("test rax, rax");
-    emitter.instruction("jz __rt_ufbi_empty_x");
-    emitter.instruction("mov r10, QWORD PTR [rax]");
-    emitter.instruction("cmp r10, 4");
-    emitter.instruction("jne __rt_ufbi_empty_x");
+    emitter.instruction("test rax, rax");                                       // check whether the runtime value is zero
+    emitter.instruction("jz __rt_ufbi_empty_x");                                // branch when the checked value is zero or equal
+    emitter.instruction("mov r10, QWORD PTR [rax]");                            // move runtime value between registers
+    emitter.instruction("cmp r10, 4");                                          // compare runtime values for the next branch
+    emitter.instruction("jne __rt_ufbi_empty_x");                               // branch when the checked value is nonzero or different
     emitter.instruction("mov r10, QWORD PTR [rax + 8]");                        // array
-    emitter.instruction("test r10, r10");
-    emitter.instruction("jz __rt_ufbi_empty_x");
+    emitter.instruction("test r10, r10");                                       // check whether the runtime value is zero
+    emitter.instruction("jz __rt_ufbi_empty_x");                                // branch when the checked value is zero or equal
     emitter.instruction("mov r11, QWORD PTR [r10]");                            // length
-    emitter.instruction("test r11, r11");
-    emitter.instruction("jz __rt_ufbi_empty_x");
+    emitter.instruction("test r11, r11");                                       // check whether the runtime value is zero
+    emitter.instruction("jz __rt_ufbi_empty_x");                                // branch when the checked value is zero or equal
 
     // Use r12 = array base, r13 = length, r14 = bucket index, r15 = write cursor.
     emitter.instruction("mov QWORD PTR [rbp - 96], r12");                       // save callee-saved regs
-    emitter.instruction("mov QWORD PTR [rbp - 104], r13");
-    emitter.instruction("mov QWORD PTR [rbp - 112], r14");
-    emitter.instruction("mov QWORD PTR [rbp - 120], r15");
+    emitter.instruction("mov QWORD PTR [rbp - 104], r13");                      // store runtime value
+    emitter.instruction("mov QWORD PTR [rbp - 112], r14");                      // store runtime value
+    emitter.instruction("mov QWORD PTR [rbp - 120], r15");                      // store runtime value
     emitter.instruction("lea r12, [r10 + 24]");                                 // first payload slot
     emitter.instruction("mov r13, r11");                                        // length
     emitter.instruction("xor r14, r14");                                        // bucket index
     emitter.instruction("xor r15, r15");                                        // write cursor
 
     emitter.label("__rt_ufbi_walk_loop_x");
-    emitter.instruction("cmp r14, r13");
-    emitter.instruction("jge __rt_ufbi_walk_done_x");
+    emitter.instruction("cmp r14, r13");                                        // compare runtime values for the next branch
+    emitter.instruction("jge __rt_ufbi_walk_done_x");                           // branch when comparison is at least target
     emitter.instruction("mov rdi, QWORD PTR [r12 + r14 * 8]");                  // Mixed(bucket)
-    emitter.instruction("test rdi, rdi");
-    emitter.instruction("jz __rt_ufbi_walk_next_x");
-    emitter.instruction("mov r10, QWORD PTR [rdi]");
+    emitter.instruction("test rdi, rdi");                                       // check whether the runtime value is zero
+    emitter.instruction("jz __rt_ufbi_walk_next_x");                            // branch when the checked value is zero or equal
+    emitter.instruction("mov r10, QWORD PTR [rdi]");                            // move runtime value between registers
     emitter.instruction("cmp r10, 6");                                          // tag = obj?
-    emitter.instruction("jne __rt_ufbi_walk_next_x");
+    emitter.instruction("jne __rt_ufbi_walk_next_x");                           // branch when the checked value is nonzero or different
     emitter.instruction("mov rdi, QWORD PTR [rdi + 8]");                        // bucket obj
-    emitter.instruction("test rdi, rdi");
-    emitter.instruction("jz __rt_ufbi_walk_next_x");
+    emitter.instruction("test rdi, rdi");                                       // check whether the runtime value is zero
+    emitter.instruction("jz __rt_ufbi_walk_next_x");                            // branch when the checked value is zero or equal
     abi::emit_symbol_address(emitter, "rsi", "_brigade_data_key");
-    emitter.instruction("mov rdx, 4");
+    emitter.instruction("mov rdx, 4");                                          // prepare SysV call argument
     abi::emit_call_label(emitter, "__rt_stdclass_get");
-    emitter.instruction("test rax, rax");
-    emitter.instruction("jz __rt_ufbi_walk_next_x");
-    emitter.instruction("mov r10, QWORD PTR [rax]");
+    emitter.instruction("test rax, rax");                                       // check whether the runtime value is zero
+    emitter.instruction("jz __rt_ufbi_walk_next_x");                            // branch when the checked value is zero or equal
+    emitter.instruction("mov r10, QWORD PTR [rax]");                            // move runtime value between registers
     emitter.instruction("cmp r10, 1");                                          // string?
-    emitter.instruction("jne __rt_ufbi_walk_next_x");
+    emitter.instruction("jne __rt_ufbi_walk_next_x");                           // branch when the checked value is nonzero or different
     emitter.instruction("mov r10, QWORD PTR [rax + 8]");                        // str ptr
     emitter.instruction("mov r11, QWORD PTR [rax + 16]");                       // str len
-    emitter.instruction("lea r8, [rip + _stream_filter_buf]");
+    emitter.instruction("lea r8, [rip + _stream_filter_buf]");                  // load runtime data address
 
-    emitter.instruction("xor r9, r9");
+    emitter.instruction("xor r9, r9");                                          // clear register value
     emitter.label("__rt_ufbi_copy_byte_x");
-    emitter.instruction("cmp r9, r11");
-    emitter.instruction("jge __rt_ufbi_copy_done_x");
-    emitter.instruction("movzx eax, BYTE PTR [r10 + r9]");
-    emitter.instruction("mov BYTE PTR [r8 + r15], al");
-    emitter.instruction("inc r15");
-    emitter.instruction("inc r9");
-    emitter.instruction("jmp __rt_ufbi_copy_byte_x");
+    emitter.instruction("cmp r9, r11");                                         // compare runtime values for the next branch
+    emitter.instruction("jge __rt_ufbi_copy_done_x");                           // branch when comparison is at least target
+    emitter.instruction("movzx eax, BYTE PTR [r10 + r9]");                      // load runtime value
+    emitter.instruction("mov BYTE PTR [r8 + r15], al");                         // store runtime value
+    emitter.instruction("inc r15");                                             // advance runtime pointer or counter
+    emitter.instruction("inc r9");                                              // advance runtime pointer or counter
+    emitter.instruction("jmp __rt_ufbi_copy_byte_x");                           // continue at target label
     emitter.label("__rt_ufbi_copy_done_x");
 
     emitter.label("__rt_ufbi_walk_next_x");
-    emitter.instruction("inc r14");
-    emitter.instruction("jmp __rt_ufbi_walk_loop_x");
+    emitter.instruction("inc r14");                                             // advance runtime pointer or counter
+    emitter.instruction("jmp __rt_ufbi_walk_loop_x");                           // continue at target label
 
     emitter.label("__rt_ufbi_walk_done_x");
-    emitter.instruction("lea rax, [rip + _stream_filter_buf]");
+    emitter.instruction("lea rax, [rip + _stream_filter_buf]");                 // load runtime data address
     emitter.instruction("mov rdx, r15");                                        // result len
     emitter.instruction("mov r12, QWORD PTR [rbp - 96]");                       // restore callee-saved regs
-    emitter.instruction("mov r13, QWORD PTR [rbp - 104]");
-    emitter.instruction("mov r14, QWORD PTR [rbp - 112]");
-    emitter.instruction("mov r15, QWORD PTR [rbp - 120]");
-    emitter.instruction("mov rsp, rbp");
-    emitter.instruction("pop rbp");
-    emitter.instruction("ret");
+    emitter.instruction("mov r13, QWORD PTR [rbp - 104]");                      // move runtime value between registers
+    emitter.instruction("mov r14, QWORD PTR [rbp - 112]");                      // move runtime value between registers
+    emitter.instruction("mov r15, QWORD PTR [rbp - 120]");                      // move runtime value between registers
+    emitter.instruction("mov rsp, rbp");                                        // move runtime value between registers
+    emitter.instruction("pop rbp");                                             // restore caller frame pointer
+    emitter.instruction("ret");                                                 // return to caller
 
     emitter.label("__rt_ufbi_empty_x");
-    emitter.instruction("lea rax, [rip + _stream_filter_buf]");
-    emitter.instruction("xor edx, edx");
-    emitter.instruction("mov rsp, rbp");
-    emitter.instruction("pop rbp");
-    emitter.instruction("ret");
+    emitter.instruction("lea rax, [rip + _stream_filter_buf]");                 // load runtime data address
+    emitter.instruction("xor edx, edx");                                        // clear register value
+    emitter.instruction("mov rsp, rbp");                                        // move runtime value between registers
+    emitter.instruction("pop rbp");                                             // restore caller frame pointer
+    emitter.instruction("ret");                                                 // return to caller
 }

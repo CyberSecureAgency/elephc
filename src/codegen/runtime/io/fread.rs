@@ -164,16 +164,16 @@ fn emit_fread_linux_x86_64(emitter: &mut Emitter) {
     // -- TLS dispatch: route through elephc_tls_read when fd has an
     //    attached session (Phase 11 B3). --
     emitter.instruction("mov r10, QWORD PTR [rbp - 8]");                        // reload fd for the TLS table lookup
-    emitter.instruction("lea r11, [rip + _tls_sessions]");
+    emitter.instruction("lea r11, [rip + _tls_sessions]");                      // load runtime data address
     emitter.instruction("mov r12, QWORD PTR [r11 + r10 * 8]");                  // _tls_sessions[fd] handle (0 = plain TCP)
-    emitter.instruction("test r12, r12");
+    emitter.instruction("test r12, r12");                                       // check whether the runtime value is zero
     emitter.instruction("jz __rt_fread_do_syscall_x86");                        // no TLS attached → use libc read
     emitter.instruction("mov rdi, r12");                                        // handle as first arg
     emitter.instruction("mov rsi, QWORD PTR [rbp - 24]");                       // buf ptr
     emitter.instruction("mov rdx, QWORD PTR [rbp - 16]");                       // len
-    emitter.instruction("mov r9, QWORD PTR [rip + _elephc_tls_read_fn]");
+    emitter.instruction("mov r9, QWORD PTR [rip + _elephc_tls_read_fn]");       // prepare SysV call argument
     emitter.instruction("call r9");                                             // rax = bytes read (>=0) or -1
-    emitter.instruction("jmp __rt_fread_after_io_x86");
+    emitter.instruction("jmp __rt_fread_after_io_x86");                         // continue at target label
     emitter.label("__rt_fread_do_syscall_x86");
     emitter.instruction("mov rdi, QWORD PTR [rbp - 8]");                        // pass the file descriptor as the first libc read() argument
     emitter.instruction("mov rsi, QWORD PTR [rbp - 24]");                       // pass the concat-buffer write pointer as the second libc read() argument

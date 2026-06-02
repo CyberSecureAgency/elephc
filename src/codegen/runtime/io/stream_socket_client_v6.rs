@@ -181,7 +181,7 @@ pub fn emit_stream_socket_client_v6(emitter: &mut Emitter) {
     emitter.label("__rt_sscv6_connect_ok");
     emitter.instruction("ldr x0, [sp, #32]");                                   // return the connected descriptor
     emitter.instruction("ldp x29, x30, [sp, #0]");                              // restore frame pointer and return address
-    emitter.instruction("add sp, sp, #128");// release the frame
+    emitter.instruction("add sp, sp, #128");                                    // release the frame
     emitter.instruction("ret");                                                 // return the connected socket
 
     emitter.label("__rt_sscv6_fail_close");
@@ -191,7 +191,7 @@ pub fn emit_stream_socket_client_v6(emitter: &mut Emitter) {
     emitter.label("__rt_sscv6_fail");
     emitter.instruction("mov x0, #-1");                                         // -1 reports a failed IPv6 connect
     emitter.instruction("ldp x29, x30, [sp, #0]");                              // restore frame pointer and return address
-    emitter.instruction("add sp, sp, #128");// release the frame
+    emitter.instruction("add sp, sp, #128");                                    // release the frame
     emitter.instruction("ret");                                                 // return the failure result
 }
 
@@ -263,7 +263,7 @@ fn emit_stream_socket_client_v6_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov rsi, QWORD PTR [rbp - 112]");                      // reload literal len
     emitter.instruction("lea rdx, [rbp - 56]");                                 // out buffer = sin6_addr scratch
     emitter.instruction("call __rt_resolve_host_v6");                           // getaddrinfo with AF_INET6 hint
-    emitter.instruction("test rax, rax");
+    emitter.instruction("test rax, rax");                                       // check whether the runtime value is zero
     emitter.instruction("jz __rt_sscv6_fail_x86");                              // pton and DNS both rejected → bail
     emitter.label("__rt_sscv6_addr_ok_x86");
 
@@ -335,7 +335,7 @@ fn emit_stream_socket_client_v6_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("js __rt_sscv6_fail_close_x86");                        // connect() failed
 
     emitter.instruction("mov rax, QWORD PTR [rbp - 24]");                       // return the connected descriptor
-    emitter.instruction("add rsp, 112");// release the frame
+    emitter.instruction("add rsp, 112");                                        // release the frame
     emitter.instruction("pop rbp");                                             // restore the caller frame pointer
     emitter.instruction("ret");                                                 // return the connected socket
 
@@ -346,7 +346,7 @@ fn emit_stream_socket_client_v6_linux_x86_64(emitter: &mut Emitter) {
 
     emitter.label("__rt_sscv6_fail_x86");
     emitter.instruction("mov rax, -1");                                         // -1 reports a failed IPv6 connect
-    emitter.instruction("add rsp, 112");// release the frame
+    emitter.instruction("add rsp, 112");                                        // release the frame
     emitter.instruction("pop rbp");                                             // restore the caller frame pointer
     emitter.instruction("ret");                                                 // return the failure result
 }

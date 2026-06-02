@@ -84,10 +84,10 @@ pub fn emit(
             emitter.instruction("mov QWORD PTR [rsp + 16], r9");                // seed destLen with the buffer capacity
             emitter.instruction("mov rax, r9");                                 // buffer size into the allocator argument
             emitter.instruction("call __rt_heap_alloc");                        // allocate the decompressed-data buffer
-            emitter.instruction(&format!(
+            emitter.instruction(&format!(                                       // owned-string heap-kind word with the x86_64 heap marker
                 "mov r10, 0x{:x}",
                 (X86_64_HEAP_MAGIC_HI32 << 32) | 1
-            )); // owned-string heap-kind word with the x86_64 heap marker
+            ));
             emitter.instruction("mov QWORD PTR [rax - 8], r10");                // stamp the buffer as an owned string
             emitter.instruction("mov QWORD PTR [rsp + 24], rax");               // save the destination buffer pointer
             emitter.instruction("mov rdi, rax");                                // destination buffer pointer
@@ -143,10 +143,10 @@ fn box_string_or_false(emitter: &mut Emitter, ctx: &mut Context) {
             abi::emit_push_reg_pair(emitter, "rax", "rdx"); // preserve the string payload across the allocation
             emitter.instruction("mov rax, 24");                                 // mixed cells store a tag plus two payload words
             abi::emit_call_label(emitter, "__rt_heap_alloc");
-            emitter.instruction(&format!(
+            emitter.instruction(&format!(                                       // mixed-cell heap-kind word with the x86_64 heap marker
                 "mov r10, 0x{:x}",
                 (X86_64_HEAP_MAGIC_HI32 << 32) | 5
-            )); // mixed-cell heap-kind word with the x86_64 heap marker
+            ));
             emitter.instruction("mov QWORD PTR [rax - 8], r10");                // stamp the allocation as a mixed cell
             emitter.instruction("mov r10, 1");                                  // runtime tag 1 = string
             emitter.instruction("mov QWORD PTR [rax], r10");                    // store the string tag

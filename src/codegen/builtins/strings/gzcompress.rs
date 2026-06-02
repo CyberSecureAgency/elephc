@@ -85,10 +85,10 @@ pub fn emit(
             emitter.instruction("call compressBound");                          // rax = worst-case compressed size
             emitter.instruction("mov QWORD PTR [rsp + 24], rax");               // seed destLen with the buffer capacity
             emitter.instruction("call __rt_heap_alloc");                        // allocate the compressed-data buffer
-            emitter.instruction(&format!(
+            emitter.instruction(&format!(                                       // owned-string heap-kind word with the x86_64 heap marker
                 "mov r10, 0x{:x}",
                 (X86_64_HEAP_MAGIC_HI32 << 32) | 1
-            )); // owned-string heap-kind word with the x86_64 heap marker
+            ));
             emitter.instruction("mov QWORD PTR [rax - 8], r10");                // stamp the buffer as an owned string
             emitter.instruction("mov QWORD PTR [rsp + 32], rax");               // save the destination buffer pointer
             emitter.instruction("mov rdi, rax");                                // destination buffer pointer

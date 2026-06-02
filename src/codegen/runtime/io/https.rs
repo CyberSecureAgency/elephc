@@ -68,7 +68,7 @@ pub fn emit_https(emitter: &mut Emitter) {
     emitter.instruction("ldr x4, [sp, #8]");                                    // cafile path len → connect arg 4
     abi::emit_symbol_address(emitter, "x9", "_elephc_tls_connect_cafile_fn");
     emitter.instruction("ldr x9, [x9]");                                        // cafile connect variant address
-    emitter.instruction("b __rt_https_open_have_fn_aarch64");
+    emitter.instruction("b __rt_https_open_have_fn_aarch64");                   // continue at target label
     emitter.label("__rt_https_open_no_cafile_aarch64");
     // ssl.capath lookup — a directory of CA certificates (checked after cafile)
     emitter.instruction("str xzr, [sp, #0]");                                   // reset out ptr
@@ -85,7 +85,7 @@ pub fn emit_https(emitter: &mut Emitter) {
     emitter.instruction("ldr x4, [sp, #8]");                                    // capath dir len → connect arg 4
     abi::emit_symbol_address(emitter, "x9", "_elephc_tls_connect_capath_fn");
     emitter.instruction("ldr x9, [x9]");                                        // capath connect variant address
-    emitter.instruction("b __rt_https_open_have_fn_aarch64");
+    emitter.instruction("b __rt_https_open_have_fn_aarch64");                   // continue at target label
     emitter.label("__rt_https_open_no_capath_aarch64");
     // ssl.verify_peer = "0" / ssl.allow_self_signed / ssl.verify_peer_name = "0"
     //   → insecure variant (encrypted, peer identity relaxed); else secure default
@@ -146,13 +146,13 @@ pub fn emit_https(emitter: &mut Emitter) {
     emitter.instruction("ldr x4, [sp, #8]");                                    // peer_name len → connect arg 4
     abi::emit_symbol_address(emitter, "x9", "_elephc_tls_connect_peer_name_fn");
     emitter.instruction("ldr x9, [x9]");                                        // peer_name connect variant address
-    emitter.instruction("b __rt_https_open_have_fn_aarch64");
+    emitter.instruction("b __rt_https_open_have_fn_aarch64");                   // continue at target label
     emitter.label("__rt_https_open_insecure_aarch64");
     abi::emit_symbol_address(emitter, "x9", "_elephc_tls_connect_insecure_fn");
     emitter.instruction("ldr x9, [x9]");                                        // insecure variant address
     emitter.instruction("mov x3, #0");                                          // no cafile/capath/peer_name path
     emitter.instruction("mov x4, #0");                                          // no cafile/capath/peer_name path
-    emitter.instruction("b __rt_https_open_have_fn_aarch64");
+    emitter.instruction("b __rt_https_open_have_fn_aarch64");                   // continue at target label
     emitter.label("__rt_https_open_secure_aarch64");
     abi::emit_symbol_address(emitter, "x9", "_elephc_tls_connect_fn");
     emitter.instruction("ldr x9, [x9]");                                        // secure variant address
@@ -288,47 +288,47 @@ fn emit_https_linux_x86_64(emitter: &mut Emitter) {
     //    variants ignore them, so one call site serves all three.
     emitter.instruction("mov QWORD PTR [rbp - 80], 0");                         // string-lookup out ptr default
     emitter.instruction("mov QWORD PTR [rbp - 88], 0");                         // string-lookup out len default
-    emitter.instruction("lea rdi, [rip + _ssl_key_str]");
+    emitter.instruction("lea rdi, [rip + _ssl_key_str]");                       // load runtime data address
     emitter.instruction("mov rsi, 3");                                          // strlen("ssl")
-    emitter.instruction("lea rdx, [rip + _ssl_cafile_key_str]");
+    emitter.instruction("lea rdx, [rip + _ssl_cafile_key_str]");                // load runtime data address
     emitter.instruction("mov rcx, 6");                                          // strlen("cafile")
     emitter.instruction("lea r8, [rbp - 80]");                                  // out_ptr_addr
     emitter.instruction("lea r9, [rbp - 88]");                                  // out_len_addr
     emitter.instruction("call __rt_get_string_context_option");                 // rax = 1 on hit
-    emitter.instruction("test rax, rax");
+    emitter.instruction("test rax, rax");                                       // check whether the runtime value is zero
     emitter.instruction("jz __rt_https_open_no_cafile_x");                      // no cafile → verify_peer dispatch
     emitter.instruction("mov r9, QWORD PTR [rip + _elephc_tls_connect_cafile_fn]"); // cafile connect variant
     emitter.instruction("mov rcx, QWORD PTR [rbp - 80]");                       // cafile path ptr → connect arg rcx
     emitter.instruction("mov r8, QWORD PTR [rbp - 88]");                        // cafile path len → connect arg r8
-    emitter.instruction("jmp __rt_https_open_have_fn_x");
+    emitter.instruction("jmp __rt_https_open_have_fn_x");                       // continue at target label
     emitter.label("__rt_https_open_no_cafile_x");
     // ssl.capath lookup — a directory of CA certificates (checked after cafile)
     emitter.instruction("mov QWORD PTR [rbp - 80], 0");                         // reset out ptr
     emitter.instruction("mov QWORD PTR [rbp - 88], 0");                         // reset out len
-    emitter.instruction("lea rdi, [rip + _ssl_key_str]");
+    emitter.instruction("lea rdi, [rip + _ssl_key_str]");                       // load runtime data address
     emitter.instruction("mov rsi, 3");                                          // strlen("ssl")
-    emitter.instruction("lea rdx, [rip + _ssl_capath_key_str]");
+    emitter.instruction("lea rdx, [rip + _ssl_capath_key_str]");                // load runtime data address
     emitter.instruction("mov rcx, 6");                                          // strlen("capath")
     emitter.instruction("lea r8, [rbp - 80]");                                  // out_ptr_addr
     emitter.instruction("lea r9, [rbp - 88]");                                  // out_len_addr
     emitter.instruction("call __rt_get_string_context_option");                 // rax = 1 on hit
-    emitter.instruction("test rax, rax");
+    emitter.instruction("test rax, rax");                                       // check whether the runtime value is zero
     emitter.instruction("jz __rt_https_open_no_capath_x");                      // no capath → verify_peer dispatch
     emitter.instruction("mov r9, QWORD PTR [rip + _elephc_tls_connect_capath_fn]"); // capath connect variant
     emitter.instruction("mov rcx, QWORD PTR [rbp - 80]");                       // capath dir ptr → connect arg rcx
     emitter.instruction("mov r8, QWORD PTR [rbp - 88]");                        // capath dir len → connect arg r8
-    emitter.instruction("jmp __rt_https_open_have_fn_x");
+    emitter.instruction("jmp __rt_https_open_have_fn_x");                       // continue at target label
     emitter.label("__rt_https_open_no_capath_x");
     emitter.instruction("mov QWORD PTR [rbp - 80], 0");                         // reset out ptr
     emitter.instruction("mov QWORD PTR [rbp - 88], 0");                         // reset out len
-    emitter.instruction("lea rdi, [rip + _ssl_key_str]");
+    emitter.instruction("lea rdi, [rip + _ssl_key_str]");                       // load runtime data address
     emitter.instruction("mov rsi, 3");                                          // strlen("ssl")
-    emitter.instruction("lea rdx, [rip + _ssl_verify_peer_key_str]");
+    emitter.instruction("lea rdx, [rip + _ssl_verify_peer_key_str]");           // load runtime data address
     emitter.instruction("mov rcx, 11");                                         // strlen("verify_peer")
     emitter.instruction("lea r8, [rbp - 80]");                                  // out_ptr_addr
     emitter.instruction("lea r9, [rbp - 88]");                                  // out_len_addr
     emitter.instruction("call __rt_get_string_context_option");                 // rax = 1 on hit
-    emitter.instruction("test rax, rax");
+    emitter.instruction("test rax, rax");                                       // check whether the runtime value is zero
     emitter.instruction("jz __rt_https_open_self_signed_x");                    // verify_peer miss → check allow_self_signed
     emitter.instruction("mov rcx, QWORD PTR [rbp - 80]");                       // verify_peer ptr
     emitter.instruction("movzx eax, BYTE PTR [rcx]");                           // first byte of value
@@ -338,26 +338,26 @@ fn emit_https_linux_x86_64(emitter: &mut Emitter) {
     emitter.label("__rt_https_open_self_signed_x");
     emitter.instruction("mov QWORD PTR [rbp - 80], 0");                         // reset out ptr
     emitter.instruction("mov QWORD PTR [rbp - 88], 0");                         // reset out len
-    emitter.instruction("lea rdi, [rip + _ssl_key_str]");
+    emitter.instruction("lea rdi, [rip + _ssl_key_str]");                       // load runtime data address
     emitter.instruction("mov rsi, 3");                                          // strlen("ssl")
-    emitter.instruction("lea rdx, [rip + _ssl_allow_self_signed_key_str]");
+    emitter.instruction("lea rdx, [rip + _ssl_allow_self_signed_key_str]");     // load runtime data address
     emitter.instruction("mov rcx, 17");                                         // strlen("allow_self_signed")
     emitter.instruction("lea r8, [rbp - 80]");                                  // out_ptr_addr
     emitter.instruction("lea r9, [rbp - 88]");                                  // out_len_addr
     emitter.instruction("call __rt_get_string_context_option");                 // rax = 1 on hit
-    emitter.instruction("test rax, rax");
+    emitter.instruction("test rax, rax");                                       // check whether the runtime value is zero
     emitter.instruction("jnz __rt_https_open_insecure_x");                      // present → relaxed (insecure) variant
     // ssl.verify_peer_name = "0" → relaxed peer verification
     emitter.instruction("mov QWORD PTR [rbp - 80], 0");                         // reset out ptr
     emitter.instruction("mov QWORD PTR [rbp - 88], 0");                         // reset out len
-    emitter.instruction("lea rdi, [rip + _ssl_key_str]");
+    emitter.instruction("lea rdi, [rip + _ssl_key_str]");                       // load runtime data address
     emitter.instruction("mov rsi, 3");                                          // strlen("ssl")
-    emitter.instruction("lea rdx, [rip + _ssl_verify_peer_name_key_str]");
+    emitter.instruction("lea rdx, [rip + _ssl_verify_peer_name_key_str]");      // load runtime data address
     emitter.instruction("mov rcx, 16");                                         // strlen("verify_peer_name")
     emitter.instruction("lea r8, [rbp - 80]");                                  // out_ptr_addr
     emitter.instruction("lea r9, [rbp - 88]");                                  // out_len_addr
     emitter.instruction("call __rt_get_string_context_option");                 // rax = 1 on hit
-    emitter.instruction("test rax, rax");
+    emitter.instruction("test rax, rax");                                       // check whether the runtime value is zero
     emitter.instruction("jz __rt_https_open_peer_name_x");                      // miss → check peer_name
     emitter.instruction("mov rcx, QWORD PTR [rbp - 80]");                       // verify_peer_name ptr
     emitter.instruction("movzx eax, BYTE PTR [rcx]");                           // first byte of value
@@ -367,14 +367,14 @@ fn emit_https_linux_x86_64(emitter: &mut Emitter) {
     emitter.label("__rt_https_open_peer_name_x");
     emitter.instruction("mov QWORD PTR [rbp - 80], 0");                         // reset out ptr
     emitter.instruction("mov QWORD PTR [rbp - 88], 0");                         // reset out len
-    emitter.instruction("lea rdi, [rip + _ssl_key_str]");
+    emitter.instruction("lea rdi, [rip + _ssl_key_str]");                       // load runtime data address
     emitter.instruction("mov rsi, 3");                                          // strlen("ssl")
-    emitter.instruction("lea rdx, [rip + _ssl_peer_name_key_str]");
+    emitter.instruction("lea rdx, [rip + _ssl_peer_name_key_str]");             // load runtime data address
     emitter.instruction("mov rcx, 9");                                          // strlen("peer_name")
     emitter.instruction("lea r8, [rbp - 80]");                                  // out_ptr_addr
     emitter.instruction("lea r9, [rbp - 88]");                                  // out_len_addr
     emitter.instruction("call __rt_get_string_context_option");                 // rax = 1 on hit
-    emitter.instruction("test rax, rax");
+    emitter.instruction("test rax, rax");                                       // check whether the runtime value is zero
     emitter.instruction("jz __rt_https_open_secure_x");                         // no peer_name → secure default
     emitter.instruction("mov r9, QWORD PTR [rip + _elephc_tls_connect_peer_name_fn]"); // peer_name connect variant
     emitter.instruction("mov rcx, QWORD PTR [rbp - 80]");                       // peer_name ptr → connect arg rcx
@@ -384,7 +384,7 @@ fn emit_https_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov r9, QWORD PTR [rip + _elephc_tls_connect_insecure_fn]"); // relaxed (insecure) variant
     emitter.instruction("xor ecx, ecx");                                        // no cafile/capath/peer_name path
     emitter.instruction("xor r8d, r8d");                                        // no cafile/capath/peer_name path
-    emitter.instruction("jmp __rt_https_open_have_fn_x");
+    emitter.instruction("jmp __rt_https_open_have_fn_x");                       // continue at target label
     emitter.label("__rt_https_open_secure_x");
     emitter.instruction("mov r9, QWORD PTR [rip + _elephc_tls_connect_fn]");    // secure default variant
     emitter.instruction("xor ecx, ecx");                                        // no cafile/capath/peer_name path

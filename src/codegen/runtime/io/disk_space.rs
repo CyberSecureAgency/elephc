@@ -88,23 +88,23 @@ fn emit_disk_space_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("test rax, rax");                                       // did statfs fail?
     emitter.instruction("js __rt_disk_space_fail_x86");                         // a negative result means failure
 
-    emitter.instruction(&format!(
+    emitter.instruction(&format!(                                               // load the fundamental block size
         "mov ecx, DWORD PTR [rbp - {}]",
         buf_top - plat.statfs_bsize_offset()
-    )); // load the fundamental block size
+    ));
     emitter.instruction("mov rdx, QWORD PTR [rbp - 8]");                        // reload the requested mode
     emitter.instruction("test rdx, rdx");                                       // mode 0 selects available blocks
     emitter.instruction("jz __rt_disk_space_avail_x86");                        // branch to the available-blocks path
-    emitter.instruction(&format!(
+    emitter.instruction(&format!(                                               // mode 1: total block count
         "mov r8, QWORD PTR [rbp - {}]",
         buf_top - plat.statfs_blocks_offset()
-    )); // mode 1: total block count
+    ));
     emitter.instruction("jmp __rt_disk_space_count_x86");                       // proceed to the multiplication
     emitter.label("__rt_disk_space_avail_x86");
-    emitter.instruction(&format!(
+    emitter.instruction(&format!(                                               // available block count
         "mov r8, QWORD PTR [rbp - {}]",
         buf_top - plat.statfs_bavail_offset()
-    )); // available block count
+    ));
     emitter.label("__rt_disk_space_count_x86");
     emitter.instruction("mov rax, rcx");                                        // block size into the multiply accumulator
     emitter.instruction("imul rax, r8");                                        // bytes = block size * block count

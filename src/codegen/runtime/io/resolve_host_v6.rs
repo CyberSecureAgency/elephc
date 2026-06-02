@@ -95,9 +95,9 @@ pub fn emit_resolve_host_v6(emitter: &mut Emitter) {
     emitter.bl_c("freeaddrinfo");                                               // libc releases the returned list
 
     emitter.instruction("mov x0, #1");                                          // success
-    emitter.instruction("ldp x29, x30, [sp, #72]");
-    emitter.instruction("add sp, sp, #96");
-    emitter.instruction("ret");
+    emitter.instruction("ldp x29, x30, [sp, #72]");                             // restore frame pointer and return address
+    emitter.instruction("add sp, sp, #96");                                     // release runtime stack frame
+    emitter.instruction("ret");                                                 // return to caller
 
     emitter.label("__rt_rhv6_free_fail");
     emitter.instruction("ldr x0, [sp, #48]");                                   // res
@@ -105,9 +105,9 @@ pub fn emit_resolve_host_v6(emitter: &mut Emitter) {
     // fall through
     emitter.label("__rt_rhv6_fail");
     emitter.instruction("mov x0, #0");                                          // failure
-    emitter.instruction("ldp x29, x30, [sp, #72]");
-    emitter.instruction("add sp, sp, #96");
-    emitter.instruction("ret");
+    emitter.instruction("ldp x29, x30, [sp, #72]");                             // restore frame pointer and return address
+    emitter.instruction("add sp, sp, #96");                                     // release runtime stack frame
+    emitter.instruction("ret");                                                 // return to caller
 }
 
 /// Emits the Linux x86_64 stream runtime helper for resolve host v6.
@@ -124,18 +124,18 @@ fn emit_resolve_host_v6_linux_x86_64(emitter: &mut Emitter) {
     //   [rbp - 56]  out pointer (struct addrinfo *res)
     //   [rbp - 64]  caller out buffer
     //   [rbp - 72]  c_str pointer
-    emitter.instruction("push rbp");
-    emitter.instruction("mov rbp, rsp");
+    emitter.instruction("push rbp");                                            // save caller frame pointer
+    emitter.instruction("mov rbp, rsp");                                        // establish runtime frame pointer
     emitter.instruction("sub rsp, 80");                                         // 48 hints + 24 scratch + 8 padding = 80 (16-aligned)
     emitter.instruction("mov QWORD PTR [rbp - 64], rdx");                       // save caller's out buffer pointer
 
     // Zero the hints struct.
-    emitter.instruction("mov QWORD PTR [rbp - 48], 0");
-    emitter.instruction("mov QWORD PTR [rbp - 40], 0");
-    emitter.instruction("mov QWORD PTR [rbp - 32], 0");
-    emitter.instruction("mov QWORD PTR [rbp - 24], 0");
-    emitter.instruction("mov QWORD PTR [rbp - 16], 0");
-    emitter.instruction("mov QWORD PTR [rbp - 8], 0");
+    emitter.instruction("mov QWORD PTR [rbp - 48], 0");                         // store runtime value
+    emitter.instruction("mov QWORD PTR [rbp - 40], 0");                         // store runtime value
+    emitter.instruction("mov QWORD PTR [rbp - 32], 0");                         // store runtime value
+    emitter.instruction("mov QWORD PTR [rbp - 24], 0");                         // store runtime value
+    emitter.instruction("mov QWORD PTR [rbp - 16], 0");                         // store runtime value
+    emitter.instruction("mov QWORD PTR [rbp - 8], 0");                          // store runtime value
     emitter.instruction(&format!("mov DWORD PTR [rbp - 44], {}", af_inet6));    // ai_family at hints+4 (rbp-48+4 = rbp-44)
 
     // -- null-terminate the host slice --
@@ -149,39 +149,39 @@ fn emit_resolve_host_v6_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("xor esi, esi");                                        // arg 2: service = NULL
     emitter.instruction("lea rdx, [rbp - 48]");                                 // arg 3: &hints
     emitter.instruction("lea rcx, [rbp - 56]");                                 // arg 4: &res
-    emitter.instruction("call getaddrinfo");
-    emitter.instruction("test rax, rax");
+    emitter.instruction("call getaddrinfo");                                    // call external helper
+    emitter.instruction("test rax, rax");                                       // check whether the runtime value is zero
     emitter.instruction("jnz __rt_rhv6_fail_x86");                              // non-zero return = error
 
     // -- copy res->ai_addr->sin6_addr (16 bytes) into the caller's out buffer --
     emitter.instruction("mov r9, QWORD PTR [rbp - 56]");                        // first addrinfo
-    emitter.instruction("test r9, r9");
-    emitter.instruction("jz __rt_rhv6_fail_x86");
+    emitter.instruction("test r9, r9");                                         // check whether the runtime value is zero
+    emitter.instruction("jz __rt_rhv6_fail_x86");                               // branch when the checked value is zero or equal
     emitter.instruction(&format!("mov r10, QWORD PTR [r9 + {}]", addr_off));    // ai_addr
-    emitter.instruction("test r10, r10");
-    emitter.instruction("jz __rt_rhv6_free_fail_x86");
+    emitter.instruction("test r10, r10");                                       // check whether the runtime value is zero
+    emitter.instruction("jz __rt_rhv6_free_fail_x86");                          // branch when the checked value is zero or equal
     emitter.instruction("mov r11, QWORD PTR [rbp - 64]");                       // caller out buffer
     emitter.instruction("mov r12, QWORD PTR [r10 + 8]");                        // sin6_addr[0..8]
-    emitter.instruction("mov QWORD PTR [r11], r12");
+    emitter.instruction("mov QWORD PTR [r11], r12");                            // store runtime value
     emitter.instruction("mov r12, QWORD PTR [r10 + 16]");                       // sin6_addr[8..16]
-    emitter.instruction("mov QWORD PTR [r11 + 8], r12");
+    emitter.instruction("mov QWORD PTR [r11 + 8], r12");                        // store runtime value
 
     // -- freeaddrinfo(res) --
-    emitter.instruction("mov rdi, QWORD PTR [rbp - 56]");
-    emitter.instruction("call freeaddrinfo");
+    emitter.instruction("mov rdi, QWORD PTR [rbp - 56]");                       // prepare SysV call argument
+    emitter.instruction("call freeaddrinfo");                                   // call external helper
 
     emitter.instruction("mov eax, 1");                                          // success
-    emitter.instruction("add rsp, 80");
-    emitter.instruction("pop rbp");
-    emitter.instruction("ret");
+    emitter.instruction("add rsp, 80");                                         // release runtime stack frame
+    emitter.instruction("pop rbp");                                             // restore caller frame pointer
+    emitter.instruction("ret");                                                 // return to caller
 
     emitter.label("__rt_rhv6_free_fail_x86");
-    emitter.instruction("mov rdi, QWORD PTR [rbp - 56]");
-    emitter.instruction("call freeaddrinfo");
+    emitter.instruction("mov rdi, QWORD PTR [rbp - 56]");                       // prepare SysV call argument
+    emitter.instruction("call freeaddrinfo");                                   // call external helper
     // fall through
     emitter.label("__rt_rhv6_fail_x86");
     emitter.instruction("xor eax, eax");                                        // failure
-    emitter.instruction("add rsp, 80");
-    emitter.instruction("pop rbp");
-    emitter.instruction("ret");
+    emitter.instruction("add rsp, 80");                                         // release runtime stack frame
+    emitter.instruction("pop rbp");                                             // restore caller frame pointer
+    emitter.instruction("ret");                                                 // return to caller
 }

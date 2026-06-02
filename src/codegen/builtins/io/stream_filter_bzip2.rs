@@ -406,10 +406,10 @@ fn emit_compress_x86_64(
     emitter.instruction("mov QWORD PTR [rbp - 8], rax");                        // save the file descriptor across the calls
     emitter.instruction(&format!("mov rax, {}", BZ_STREAM_SIZE));               // request a bz_stream-sized heap block
     emitter.instruction("call __rt_heap_alloc");                                // allocate the bz_stream struct, rax = payload
-    emitter.instruction(&format!(
+    emitter.instruction(&format!(                                               // owned-heap kind word with the x86_64 heap marker
         "mov r10, 0x{:x}",
         (X86_64_HEAP_MAGIC_HI32 << 32) | 1
-    )); // owned-heap kind word with the x86_64 heap marker
+    ));
     emitter.instruction("mov QWORD PTR [rax - 8], r10");                        // stamp the bz_stream block as owned heap state
     emitter.instruction("mov QWORD PTR [rbp - 16], rax");                       // save the bz_stream pointer
 

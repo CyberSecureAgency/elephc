@@ -84,7 +84,7 @@ pub fn emit_new(
             abi::emit_release_temporary_stack(emitter, 16);                     // drop the original ptr/len pair
             // Box as Mixed object so the caller can pass it through Mixed pipelines.
             emitter.instruction("mov x1, x0");                                  // bucket ptr
-            emitter.instruction("mov x2, #0");
+            emitter.instruction("mov x2, #0");                                  // prepare AArch64 call argument
             emitter.instruction("mov x0, #6");                                  // tag = object
             abi::emit_call_label(emitter, "__rt_mixed_from_value");
         }
@@ -103,7 +103,7 @@ pub fn emit_new(
             emitter.instruction("mov rdi, rax");                                // bucket → 1st arg
             let (data_sym, data_len) = data.add_string(b"data");
             abi::emit_symbol_address(emitter, "rsi", &data_sym);
-            emitter.instruction(&format!("mov rdx, {}", data_len));
+            emitter.instruction(&format!("mov rdx, {}", data_len));             // prepare SysV call argument
             abi::emit_call_label(emitter, "__rt_stdclass_set");
             emitter.instruction("mov rdi, QWORD PTR [rsp + 24]");               // string len → int payload
             emitter.instruction("xor esi, esi");                                // high word
@@ -114,11 +114,11 @@ pub fn emit_new(
             abi::emit_push_reg(emitter, "rdi");
             let (datalen_sym, datalen_len) = data.add_string(b"datalen");
             abi::emit_symbol_address(emitter, "rsi", &datalen_sym);
-            emitter.instruction(&format!("mov rdx, {}", datalen_len));
+            emitter.instruction(&format!("mov rdx, {}", datalen_len));          // prepare SysV call argument
             abi::emit_call_label(emitter, "__rt_stdclass_set");
             abi::emit_pop_reg(emitter, "rdi");                                  // bucket
             abi::emit_release_temporary_stack(emitter, 16);                     // drop saved ptr/len pair
-            emitter.instruction("xor esi, esi");
+            emitter.instruction("xor esi, esi");                                // clear register value
             emitter.instruction("mov rax, 6");                                  // tag = object
             abi::emit_call_label(emitter, "__rt_mixed_from_value");
         }
@@ -156,70 +156,70 @@ pub fn emit_make_writeable(
         Arch::AArch64 => {
             // x0 = Mixed cell ptr (when Mixed) or raw obj ptr (when Object).
             if arg_is_mixed {
-                emitter.instruction(&format!("cbz x0, {}", return_null));        // null Mixed → no brigade
-                emitter.instruction("ldr x9, [x0]");                             // tag
-                emitter.instruction("cmp x9, #6");                               // tag==6 (object)?
-                emitter.instruction(&format!("b.ne {}", return_null));
-                emitter.instruction("ldr x0, [x0, #8]");                         // unbox: obj ptr
+                emitter.instruction(&format!("cbz x0, {}", return_null));       // null Mixed → no brigade
+                emitter.instruction("ldr x9, [x0]");                            // tag
+                emitter.instruction("cmp x9, #6");                              // tag==6 (object)?
+                emitter.instruction(&format!("b.ne {}", return_null));          // branch when the checked value is nonzero or different
+                emitter.instruction("ldr x0, [x0, #8]");                        // unbox: obj ptr
             }
-            emitter.instruction(&format!("cbz x0, {}", return_null));
+            emitter.instruction(&format!("cbz x0, {}", return_null));           // branch when the checked value is zero or equal
             // x0 = brigade obj; look up _buckets.
             abi::emit_symbol_address(emitter, "x1", &buckets_sym);
-            emitter.instruction(&format!("mov x2, #{}", buckets_len));
+            emitter.instruction(&format!("mov x2, #{}", buckets_len));          // prepare AArch64 call argument
             abi::emit_call_label(emitter, "__rt_stdclass_get");                  // x0 = Mixed*
-            emitter.instruction(&format!("cbz x0, {}", return_null));
-            emitter.instruction("ldr x9, [x0]");                                 // Mixed tag
-            emitter.instruction("cmp x9, #4");                                   // tag==4 (indexed array)?
-            emitter.instruction(&format!("b.ne {}", return_null));
-            emitter.instruction("ldr x9, [x0, #8]");                             // array ptr from Mixed payload_lo
-            emitter.instruction(&format!("cbz x9, {}", return_null));
-            emitter.instruction("ldr x10, [x9]");                                // length
-            emitter.instruction(&format!("cbz x10, {}", return_null));
-            emitter.instruction("mov x0, x9");                                   // array ptr → x0
+            emitter.instruction(&format!("cbz x0, {}", return_null));           // branch when the checked value is zero or equal
+            emitter.instruction("ldr x9, [x0]");                                // Mixed tag
+            emitter.instruction("cmp x9, #4");                                  // tag==4 (indexed array)?
+            emitter.instruction(&format!("b.ne {}", return_null));              // branch when the checked value is nonzero or different
+            emitter.instruction("ldr x9, [x0, #8]");                            // array ptr from Mixed payload_lo
+            emitter.instruction(&format!("cbz x9, {}", return_null));           // branch when the checked value is zero or equal
+            emitter.instruction("ldr x10, [x9]");                               // length
+            emitter.instruction(&format!("cbz x10, {}", return_null));          // branch when the checked value is zero or equal
+            emitter.instruction("mov x0, x9");                                  // array ptr → x0
             abi::emit_call_label(emitter, "__rt_array_shift");                   // x0 = popped Mixed* (the bucket)
-            emitter.instruction(&format!("b {}", done));
+            emitter.instruction(&format!("b {}", done));                        // continue at target label
             emitter.label(&return_null);
-            emitter.instruction("mov x0, #8");                                   // tag = null
-            emitter.instruction("mov x1, #0");
-            emitter.instruction("mov x2, #0");
+            emitter.instruction("mov x0, #8");                                  // tag = null
+            emitter.instruction("mov x1, #0");                                  // prepare AArch64 call argument
+            emitter.instruction("mov x2, #0");                                  // prepare AArch64 call argument
             abi::emit_call_label(emitter, "__rt_mixed_from_value");
             emitter.label(&done);
         }
         Arch::X86_64 => {
             if arg_is_mixed {
-                emitter.instruction("test rax, rax");                            // null Mixed?
-                emitter.instruction(&format!("jz {}", return_null));
-                emitter.instruction("mov r10, QWORD PTR [rax]");                 // tag
-                emitter.instruction("cmp r10, 6");                               // object?
-                emitter.instruction(&format!("jne {}", return_null));
-                emitter.instruction("mov rax, QWORD PTR [rax + 8]");             // unbox: obj ptr
+                emitter.instruction("test rax, rax");                           // null Mixed?
+                emitter.instruction(&format!("jz {}", return_null));            // branch when the checked value is zero or equal
+                emitter.instruction("mov r10, QWORD PTR [rax]");                // tag
+                emitter.instruction("cmp r10, 6");                              // object?
+                emitter.instruction(&format!("jne {}", return_null));           // branch when the checked value is nonzero or different
+                emitter.instruction("mov rax, QWORD PTR [rax + 8]");            // unbox: obj ptr
             }
-            emitter.instruction("test rax, rax");
-            emitter.instruction(&format!("jz {}", return_null));
+            emitter.instruction("test rax, rax");                               // check whether the runtime value is zero
+            emitter.instruction(&format!("jz {}", return_null));                // branch when the checked value is zero or equal
             // SysV: stdclass_get(rdi=obj, rsi=name_ptr, rdx=name_len).
-            emitter.instruction("mov rdi, rax");
+            emitter.instruction("mov rdi, rax");                                // prepare SysV call argument
             abi::emit_symbol_address(emitter, "rsi", &buckets_sym);
-            emitter.instruction(&format!("mov rdx, {}", buckets_len));
+            emitter.instruction(&format!("mov rdx, {}", buckets_len));          // prepare SysV call argument
             abi::emit_call_label(emitter, "__rt_stdclass_get");                  // rax = Mixed*
-            emitter.instruction("test rax, rax");
-            emitter.instruction(&format!("jz {}", return_null));
-            emitter.instruction("mov r10, QWORD PTR [rax]");                     // Mixed tag
-            emitter.instruction("cmp r10, 4");                                   // indexed array?
-            emitter.instruction(&format!("jne {}", return_null));
-            emitter.instruction("mov r10, QWORD PTR [rax + 8]");                 // array ptr from Mixed payload_lo
-            emitter.instruction("test r10, r10");
-            emitter.instruction(&format!("jz {}", return_null));
-            emitter.instruction("mov r11, QWORD PTR [r10]");                     // length
-            emitter.instruction("test r11, r11");
-            emitter.instruction(&format!("jz {}", return_null));
+            emitter.instruction("test rax, rax");                               // check whether the runtime value is zero
+            emitter.instruction(&format!("jz {}", return_null));                // branch when the checked value is zero or equal
+            emitter.instruction("mov r10, QWORD PTR [rax]");                    // Mixed tag
+            emitter.instruction("cmp r10, 4");                                  // indexed array?
+            emitter.instruction(&format!("jne {}", return_null));               // branch when the checked value is nonzero or different
+            emitter.instruction("mov r10, QWORD PTR [rax + 8]");                // array ptr from Mixed payload_lo
+            emitter.instruction("test r10, r10");                               // check whether the runtime value is zero
+            emitter.instruction(&format!("jz {}", return_null));                // branch when the checked value is zero or equal
+            emitter.instruction("mov r11, QWORD PTR [r10]");                    // length
+            emitter.instruction("test r11, r11");                               // check whether the runtime value is zero
+            emitter.instruction(&format!("jz {}", return_null));                // branch when the checked value is zero or equal
             // SysV: array_shift(rdi=array).
-            emitter.instruction("mov rdi, r10");
+            emitter.instruction("mov rdi, r10");                                // prepare SysV call argument
             abi::emit_call_label(emitter, "__rt_array_shift");                   // rax = popped Mixed* (the bucket)
-            emitter.instruction(&format!("jmp {}", done));
+            emitter.instruction(&format!("jmp {}", done));                      // continue at target label
             emitter.label(&return_null);
-            emitter.instruction("mov rax, 8");                                   // tag = null
-            emitter.instruction("xor edi, edi");
-            emitter.instruction("xor esi, esi");
+            emitter.instruction("mov rax, 8");                                  // tag = null
+            emitter.instruction("xor edi, edi");                                // clear register value
+            emitter.instruction("xor esi, esi");                                // clear register value
             abi::emit_call_label(emitter, "__rt_mixed_from_value");
             emitter.label(&done);
         }
@@ -259,49 +259,49 @@ pub fn emit_append_or_prepend(
     match emitter.target.arch {
         Arch::AArch64 => {
             if brigade_is_mixed {
-                emitter.instruction(&format!("cbz x0, {}", done));
-                emitter.instruction("ldr x9, [x0]");
-                emitter.instruction("cmp x9, #6");
-                emitter.instruction(&format!("b.ne {}", done));
-                emitter.instruction("ldr x0, [x0, #8]");
+                emitter.instruction(&format!("cbz x0, {}", done));              // branch when the checked value is zero or equal
+                emitter.instruction("ldr x9, [x0]");                            // load runtime value
+                emitter.instruction("cmp x9, #6");                              // compare runtime values for the next branch
+                emitter.instruction(&format!("b.ne {}", done));                 // branch when the checked value is nonzero or different
+                emitter.instruction("ldr x0, [x0, #8]");                        // load runtime value
             }
-            emitter.instruction(&format!("cbz x0, {}", done));
+            emitter.instruction(&format!("cbz x0, {}", done));                  // branch when the checked value is zero or equal
             // Save brigade obj on a temp stack slot for use after evaluating $bucket.
             abi::emit_push_reg(emitter, "x0");
             // Evaluate $bucket — Mixed cell ptr in x0.
             emit_expr(&args[1], emitter, ctx, data);
             abi::emit_push_reg(emitter, "x0");                                   // save bucket Mixed*
             // Reload brigade and look up _buckets.
-            emitter.instruction("ldr x0, [sp, #16]");                            // brigade obj (peek)
+            emitter.instruction("ldr x0, [sp, #16]");                           // brigade obj (peek)
             abi::emit_symbol_address(emitter, "x1", &buckets_sym);
-            emitter.instruction(&format!("mov x2, #{}", buckets_len));
+            emitter.instruction(&format!("mov x2, #{}", buckets_len));          // prepare AArch64 call argument
             abi::emit_call_label(emitter, "__rt_stdclass_get");                  // x0 = Mixed*
             // Either it's a Mixed(indexed-array) we can push into, or we need a fresh one.
-            emitter.instruction(&format!("cbz x0, {}", push));                   // null Mixed → make new
-            emitter.instruction("ldr x9, [x0]");
-            emitter.instruction("cmp x9, #4");                                   // indexed array?
-            emitter.instruction(&format!("b.ne {}", push));                      // wrong tag → make new
-            emitter.instruction("ldr x9, [x0, #8]");                             // array ptr from Mixed
-            emitter.instruction(&format!("cbz x9, {}", push));                   // null array → make new
-            emitter.instruction("mov x0, x9");                                   // array ptr ready for push_int
-            emitter.instruction(&format!("b {}", skip_init));
+            emitter.instruction(&format!("cbz x0, {}", push));                  // null Mixed → make new
+            emitter.instruction("ldr x9, [x0]");                                // load runtime value
+            emitter.instruction("cmp x9, #4");                                  // indexed array?
+            emitter.instruction(&format!("b.ne {}", push));                     // wrong tag → make new
+            emitter.instruction("ldr x9, [x0, #8]");                            // array ptr from Mixed
+            emitter.instruction(&format!("cbz x9, {}", push));                  // null array → make new
+            emitter.instruction("mov x0, x9");                                  // array ptr ready for push_int
+            emitter.instruction(&format!("b {}", skip_init));                   // continue at target label
 
             emitter.label(&push);
             // Allocate a fresh empty indexed array (capacity 4, stride 8 = Mixed pointer slots).
-            emitter.instruction("mov x0, #4");
-            emitter.instruction("mov x1, #8");
+            emitter.instruction("mov x0, #4");                                  // prepare AArch64 call argument
+            emitter.instruction("mov x1, #8");                                  // prepare AArch64 call argument
             abi::emit_call_label(emitter, "__rt_array_new");                     // x0 = new array
             // Stamp value_type tag = 7 (boxed Mixed) so dispatchers route correctly.
             // Mask 0x80ff matches the existing AArch64 stamp helper convention:
             // preserve the kind byte + COW bit, clear the rest before OR'ing the
             // new value_type tag in.
-            emitter.instruction("ldr x10, [x0, #-8]");                           // packed kind word
-            emitter.instruction("mov x12, #0x80ff");                             // mask: low byte (kind) + COW bit
-            emitter.instruction("and x10, x10, x12");                            // keep persistent metadata
-            emitter.instruction("mov x11, #7");                                  // value_type = boxed Mixed
-            emitter.instruction("lsl x11, x11, #8");                             // place in byte lane
-            emitter.instruction("orr x10, x10, x11");
-            emitter.instruction("str x10, [x0, #-8]");
+            emitter.instruction("ldr x10, [x0, #-8]");                          // packed kind word
+            emitter.instruction("mov x12, #0x80ff");                            // mask: low byte (kind) + COW bit
+            emitter.instruction("and x10, x10, x12");                           // keep persistent metadata
+            emitter.instruction("mov x11, #7");                                 // value_type = boxed Mixed
+            emitter.instruction("lsl x11, x11, #8");                            // place in byte lane
+            emitter.instruction("orr x10, x10, x11");                           // combine runtime bit flags
+            emitter.instruction("str x10, [x0, #-8]");                          // store runtime value
 
             emitter.label(&skip_init);
             // Push the bucket Mixed* into the array. We also incref so the
@@ -310,23 +310,23 @@ pub fn emit_append_or_prepend(
             // — when the method returns, $b's slot is decref'd, and without
             // the extra owner the array would dangle).
             abi::emit_push_reg(emitter, "x0");                                   // save array across incref
-            emitter.instruction("ldr x0, [sp, #16]");                            // peek bucket Mixed*
+            emitter.instruction("ldr x0, [sp, #16]");                           // peek bucket Mixed*
             abi::emit_call_label(emitter, "__rt_incref");
             abi::emit_pop_reg(emitter, "x0");                                    // restore array
-            emitter.instruction("ldr x1, [sp, #0]");                             // bucket Mixed*
+            emitter.instruction("ldr x1, [sp, #0]");                            // bucket Mixed*
             abi::emit_call_label(emitter, "__rt_array_push_int");                // x0 = updated array
             // We always write the (re-boxed) Mixed back so the brigade sees the right pointer.
-            emitter.instruction("mov x3, x0");                                   // array ptr → boxing low payload arg
-            emitter.instruction("mov x0, #4");                                   // tag = indexed array
-            emitter.instruction("mov x1, x3");                                   // payload lo
-            emitter.instruction("mov x2, #0");                                   // payload hi
+            emitter.instruction("mov x3, x0");                                  // array ptr → boxing low payload arg
+            emitter.instruction("mov x0, #4");                                  // tag = indexed array
+            emitter.instruction("mov x1, x3");                                  // payload lo
+            emitter.instruction("mov x2, #0");                                  // payload hi
             abi::emit_call_label(emitter, "__rt_mixed_from_value");              // x0 = fresh Mixed cell wrapping the array
             // stdclass_set(brigade, "_buckets", 8, mixed_array).
             emitter.label(&writeback);
-            emitter.instruction("mov x3, x0");                                   // mixed* → 4th arg
-            emitter.instruction("ldr x0, [sp, #16]");                            // brigade obj
+            emitter.instruction("mov x3, x0");                                  // mixed* → 4th arg
+            emitter.instruction("ldr x0, [sp, #16]");                           // brigade obj
             abi::emit_symbol_address(emitter, "x1", &buckets_sym);
-            emitter.instruction(&format!("mov x2, #{}", buckets_len));
+            emitter.instruction(&format!("mov x2, #{}", buckets_len));          // prepare AArch64 call argument
             abi::emit_call_label(emitter, "__rt_stdclass_set");
             // Pop the saved (bucket Mixed*, brigade obj) pair.
             abi::emit_release_temporary_stack(emitter, 32);
@@ -334,66 +334,66 @@ pub fn emit_append_or_prepend(
         }
         Arch::X86_64 => {
             if brigade_is_mixed {
-                emitter.instruction("test rax, rax");
-                emitter.instruction(&format!("jz {}", done));
-                emitter.instruction("mov r10, QWORD PTR [rax]");
-                emitter.instruction("cmp r10, 6");
-                emitter.instruction(&format!("jne {}", done));
-                emitter.instruction("mov rax, QWORD PTR [rax + 8]");
+                emitter.instruction("test rax, rax");                           // check whether the runtime value is zero
+                emitter.instruction(&format!("jz {}", done));                   // branch when the checked value is zero or equal
+                emitter.instruction("mov r10, QWORD PTR [rax]");                // move runtime value between registers
+                emitter.instruction("cmp r10, 6");                              // compare runtime values for the next branch
+                emitter.instruction(&format!("jne {}", done));                  // branch when the checked value is nonzero or different
+                emitter.instruction("mov rax, QWORD PTR [rax + 8]");            // prepare runtime result value
             }
-            emitter.instruction("test rax, rax");
-            emitter.instruction(&format!("jz {}", done));
+            emitter.instruction("test rax, rax");                               // check whether the runtime value is zero
+            emitter.instruction(&format!("jz {}", done));                       // branch when the checked value is zero or equal
             abi::emit_push_reg(emitter, "rax");                                  // save brigade obj
             emit_expr(&args[1], emitter, ctx, data);
             abi::emit_push_reg(emitter, "rax");                                  // save bucket Mixed*
-            emitter.instruction("mov rdi, QWORD PTR [rsp + 16]");                // brigade obj
+            emitter.instruction("mov rdi, QWORD PTR [rsp + 16]");               // brigade obj
             abi::emit_symbol_address(emitter, "rsi", &buckets_sym);
-            emitter.instruction(&format!("mov rdx, {}", buckets_len));
+            emitter.instruction(&format!("mov rdx, {}", buckets_len));          // prepare SysV call argument
             abi::emit_call_label(emitter, "__rt_stdclass_get");                  // rax = Mixed*
-            emitter.instruction("test rax, rax");
-            emitter.instruction(&format!("jz {}", push));
-            emitter.instruction("mov r10, QWORD PTR [rax]");
-            emitter.instruction("cmp r10, 4");
-            emitter.instruction(&format!("jne {}", push));
-            emitter.instruction("mov r10, QWORD PTR [rax + 8]");
-            emitter.instruction("test r10, r10");
-            emitter.instruction(&format!("jz {}", push));
-            emitter.instruction("mov rax, r10");                                 // array ptr
-            emitter.instruction(&format!("jmp {}", skip_init));
+            emitter.instruction("test rax, rax");                               // check whether the runtime value is zero
+            emitter.instruction(&format!("jz {}", push));                       // branch when the checked value is zero or equal
+            emitter.instruction("mov r10, QWORD PTR [rax]");                    // move runtime value between registers
+            emitter.instruction("cmp r10, 4");                                  // compare runtime values for the next branch
+            emitter.instruction(&format!("jne {}", push));                      // branch when the checked value is nonzero or different
+            emitter.instruction("mov r10, QWORD PTR [rax + 8]");                // move runtime value between registers
+            emitter.instruction("test r10, r10");                               // check whether the runtime value is zero
+            emitter.instruction(&format!("jz {}", push));                       // branch when the checked value is zero or equal
+            emitter.instruction("mov rax, r10");                                // array ptr
+            emitter.instruction(&format!("jmp {}", skip_init));                 // continue at target label
 
             emitter.label(&push);
-            emitter.instruction("mov rdi, 4");
-            emitter.instruction("mov rsi, 8");
+            emitter.instruction("mov rdi, 4");                                  // prepare SysV call argument
+            emitter.instruction("mov rsi, 8");                                  // prepare SysV call argument
             abi::emit_call_label(emitter, "__rt_array_new");                     // rax = new array
             // Stamp value_type=7. Mask matches the existing x86_64 stamp helper:
             // preserve the high-dword magic marker plus low-byte kind + COW.
-            emitter.instruction("mov r10, QWORD PTR [rax - 8]");
-            emitter.instruction("mov r11, 0xffffffff000080ff");
-            emitter.instruction("and r10, r11");
-            emitter.instruction("mov r11, 7");
-            emitter.instruction("shl r11, 8");
-            emitter.instruction("or r10, r11");
-            emitter.instruction("mov QWORD PTR [rax - 8], r10");
+            emitter.instruction("mov r10, QWORD PTR [rax - 8]");                // move runtime value between registers
+            emitter.instruction("mov r11, 0xffffffff000080ff");                 // move runtime value between registers
+            emitter.instruction("and r10, r11");                                // mask runtime value
+            emitter.instruction("mov r11, 7");                                  // move runtime value between registers
+            emitter.instruction("shl r11, 8");                                  // shift runtime value
+            emitter.instruction("or r10, r11");                                 // combine runtime bit flags
+            emitter.instruction("mov QWORD PTR [rax - 8], r10");                // store runtime value
 
             emitter.label(&skip_init);
             // Incref the bucket Mixed* so it survives caller's end-of-scope decref.
             abi::emit_push_reg(emitter, "rax");                                  // save array across incref
-            emitter.instruction("mov rax, QWORD PTR [rsp + 16]");                // peek bucket Mixed*
+            emitter.instruction("mov rax, QWORD PTR [rsp + 16]");               // peek bucket Mixed*
             abi::emit_call_label(emitter, "__rt_incref");
             abi::emit_pop_reg(emitter, "rax");                                   // restore array
-            emitter.instruction("mov rdi, rax");                                 // array → SysV first arg of push_int
-            emitter.instruction("mov rsi, QWORD PTR [rsp]");                     // bucket Mixed* → SysV second arg
+            emitter.instruction("mov rdi, rax");                                // array → SysV first arg of push_int
+            emitter.instruction("mov rsi, QWORD PTR [rsp]");                    // bucket Mixed* → SysV second arg
             abi::emit_call_label(emitter, "__rt_array_push_int");                // rax = updated array
 
-            emitter.instruction("mov rdi, rax");
-            emitter.instruction("xor esi, esi");
-            emitter.instruction("mov rax, 4");                                   // tag = indexed array
+            emitter.instruction("mov rdi, rax");                                // prepare SysV call argument
+            emitter.instruction("xor esi, esi");                                // clear register value
+            emitter.instruction("mov rax, 4");                                  // tag = indexed array
             abi::emit_call_label(emitter, "__rt_mixed_from_value");              // rax = fresh Mixed* wrapping array
             emitter.label(&writeback);
-            emitter.instruction("mov rcx, rax");                                 // value mixed → 4th SysV arg
-            emitter.instruction("mov rdi, QWORD PTR [rsp + 16]");                // brigade obj → 1st
+            emitter.instruction("mov rcx, rax");                                // value mixed → 4th SysV arg
+            emitter.instruction("mov rdi, QWORD PTR [rsp + 16]");               // brigade obj → 1st
             abi::emit_symbol_address(emitter, "rsi", &buckets_sym);
-            emitter.instruction(&format!("mov rdx, {}", buckets_len));
+            emitter.instruction(&format!("mov rdx, {}", buckets_len));          // prepare SysV call argument
             abi::emit_call_label(emitter, "__rt_stdclass_set");
             abi::emit_release_temporary_stack(emitter, 32);
             emitter.label(&done);

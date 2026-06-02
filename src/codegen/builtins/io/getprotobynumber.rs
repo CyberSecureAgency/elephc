@@ -70,10 +70,10 @@ fn box_string_or_false(emitter: &mut Emitter, ctx: &mut Context) {
             abi::emit_push_reg_pair(emitter, "rax", "rdx"); // preserve the string payload across the allocation
             emitter.instruction("mov rax, 24");                                 // mixed cells store a tag plus two payload words
             abi::emit_call_label(emitter, "__rt_heap_alloc");
-            emitter.instruction(&format!(
+            emitter.instruction(&format!(                                       // mixed-cell heap-kind word with the x86_64 heap marker
                 "mov r10, 0x{:x}",
                 (X86_64_HEAP_MAGIC_HI32 << 32) | 5
-            )); // mixed-cell heap-kind word with the x86_64 heap marker
+            ));
             emitter.instruction("mov QWORD PTR [rax - 8], r10");                // stamp the allocation as a mixed cell
             emitter.instruction("mov r10, 1");                                  // runtime tag 1 = string
             emitter.instruction("mov QWORD PTR [rax], r10");                    // store the string tag

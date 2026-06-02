@@ -51,11 +51,11 @@ pub fn emit_stream_get_contents(emitter: &mut Emitter) {
     if emitter.platform.needs_cmp_before_error_branch() {
         emitter.instruction("cmp x0, #0");                                      // Linux: a negative read result means failure
     }
-    emitter.instruction(
+    emitter.instruction(                                                        // continue only when the read syscall succeeded
         &emitter
             .platform
             .branch_on_syscall_success("__rt_stream_get_contents_read_ok"),
-    ); // continue only when the read syscall succeeded
+    );
     emitter.instruction("b __rt_stream_get_contents_done");                     // stop reading after a read failure
     emitter.label("__rt_stream_get_contents_read_ok");
     emitter.instruction("cbz x0, __rt_stream_get_contents_done");               // a zero-byte read means EOF

@@ -200,10 +200,10 @@ fn emit_format_sockaddr_in_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("add rax, QWORD PTR [rbp - 48]");                       // plus the port string length
     emitter.instruction("add rax, 1");                                          // plus the ':' separator
     emitter.instruction("call __rt_heap_alloc");                                // allocate the buffer, rax = pointer
-    emitter.instruction(&format!(
+    emitter.instruction(&format!(                                               // owned-string heap-kind word with the x86_64 heap marker
         "mov r10, 0x{:x}",
         (X86_64_HEAP_MAGIC_HI32 << 32) | 1
-    )); // owned-string heap-kind word with the x86_64 heap marker
+    ));
     emitter.instruction("mov QWORD PTR [rax - 8], r10");                        // stamp the buffer as an owned string
 
     // -- copy the address bytes into the buffer --
@@ -645,10 +645,10 @@ fn emit_format_sockaddr_unix_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov QWORD PTR [rbp - 16], rcx");                       // save the sun_path length across the alloc
     emitter.instruction("mov rax, rcx");                                        // alloc size = sun_path length
     emitter.instruction("call __rt_heap_alloc");                                // rax = persisted-string buffer pointer
-    emitter.instruction(&format!(
+    emitter.instruction(&format!(                                               // owned-string heap-kind word with the x86_64 heap marker
         "mov r10, 0x{:x}",
         (X86_64_HEAP_MAGIC_HI32 << 32) | 1
-    ));                                                                         // owned-string heap-kind word with the x86_64 heap marker
+    ));
     emitter.instruction("mov QWORD PTR [rax - 8], r10");                        // stamp the buffer as an owned string
 
     // -- copy sun_path into the heap string --
@@ -673,10 +673,10 @@ fn emit_format_sockaddr_unix_linux_x86_64(emitter: &mut Emitter) {
     // -- unbound Unix socket: return an empty heap-allocated string --
     emitter.instruction("mov rax, 1");                                          // alloc one byte so the heap header is well-formed
     emitter.instruction("call __rt_heap_alloc");                                // rax = single-byte buffer
-    emitter.instruction(&format!(
+    emitter.instruction(&format!(                                               // owned-string heap-kind word with the x86_64 heap marker
         "mov r10, 0x{:x}",
         (X86_64_HEAP_MAGIC_HI32 << 32) | 1
-    ));                                                                         // owned-string heap-kind word with the x86_64 heap marker
+    ));
     emitter.instruction("mov QWORD PTR [rax - 8], r10");                        // stamp the buffer as an owned string
     emitter.instruction("xor edx, edx");                                        // result length = 0 (empty string)
     emitter.instruction("add rsp, 32");                                         // release the scratch slots

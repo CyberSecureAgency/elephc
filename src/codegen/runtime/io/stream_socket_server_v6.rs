@@ -292,7 +292,7 @@ fn emit_stream_socket_server_v6_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov rsi, QWORD PTR [rbp - 120]");                      // reload literal len
     emitter.instruction("lea rdx, [rbp - 56]");                                 // out buffer = sin6_addr scratch
     emitter.instruction("call __rt_resolve_host_v6");                           // getaddrinfo with AF_INET6 hint
-    emitter.instruction("test rax, rax");
+    emitter.instruction("test rax, rax");                                       // check whether the runtime value is zero
     emitter.instruction("jz __rt_sssv6_fail_x86");                              // pton and DNS both rejected → bail
     emitter.label("__rt_sssv6_addr_ok_x86");
 

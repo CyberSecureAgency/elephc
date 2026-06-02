@@ -155,11 +155,11 @@ fn emit_to_array_loaded_iterator_object(
     data: &mut DataSection,
 ) {
     let receiver_reg = abi::nested_call_reg(emitter);
-    emitter.instruction(&format!(
+    emitter.instruction(&format!(                                               // preserve iterator receiver while allocating iterator_to_array()'s result
         "mov {}, {}",
         receiver_reg,
         abi::int_result_reg(emitter)
-    )); // preserve iterator receiver while allocating iterator_to_array()'s result
+    ));
     if preserve_keys {
         iterator_common::emit_new_mixed_hash(emitter);
     } else {
@@ -265,11 +265,11 @@ fn emit_to_array_loaded_traversable_object(
     data: &mut DataSection,
 ) {
     let receiver_reg = abi::nested_call_reg(emitter);
-    emitter.instruction(&format!(
+    emitter.instruction(&format!(                                               // preserve Traversable receiver while allocating iterator_to_array()'s result
         "mov {}, {}",
         receiver_reg,
         abi::int_result_reg(emitter)
-    )); // preserve Traversable receiver while allocating iterator_to_array()'s result
+    ));
     if preserve_keys {
         iterator_common::emit_new_mixed_hash(emitter);
     } else {

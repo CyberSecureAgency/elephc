@@ -41,7 +41,7 @@ pub fn emit(
             emitter.instruction("ldr x0, [x9]");                                // load the persisted hash pointer
             emitter.instruction(&format!("cbz x0, {}", empty_label));           // no context yet → return an empty hash
             emitter.instruction("bl __rt_incref");                              // hand the caller a retained reference
-            emitter.instruction(&format!("b {}", done_label));
+            emitter.instruction(&format!("b {}", done_label));                  // continue at target label
             emitter.label(&empty_label);
             emitter.instruction("mov x0, #1");                                  // initial capacity for the empty fallback hash
             emitter.instruction("mov x1, #7");                                  // value type tag = Mixed
@@ -49,13 +49,13 @@ pub fn emit(
             emitter.label(&done_label);
         }
         Arch::X86_64 => {
-            emitter.instruction("lea r9, [rip + _stream_context_options]");
+            emitter.instruction("lea r9, [rip + _stream_context_options]");     // load runtime data address
             emitter.instruction("mov rax, QWORD PTR [r9]");                     // load the persisted hash pointer
-            emitter.instruction("test rax, rax");
+            emitter.instruction("test rax, rax");                               // check whether the runtime value is zero
             emitter.instruction(&format!("jz {}", empty_label));                // empty fallback when no context exists
             emitter.instruction("mov rdi, rax");                                // incref's SysV arg
             emitter.instruction("call __rt_incref");                            // hand the caller a retained reference
-            emitter.instruction(&format!("jmp {}", done_label));
+            emitter.instruction(&format!("jmp {}", done_label));                // continue at target label
             emitter.label(&empty_label);
             emitter.instruction("mov edi, 1");                                  // initial capacity
             emitter.instruction("mov esi, 7");                                  // value type tag = Mixed

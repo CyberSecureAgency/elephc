@@ -362,10 +362,10 @@ fn emit_x86_64(
     emitter.instruction("mov QWORD PTR [rbp - 8], rax");                        // save the file descriptor across the calls
     emitter.instruction(&format!("mov rax, {}", Z_STREAM_SIZE));                // request a z_stream-sized heap block
     emitter.instruction("call __rt_heap_alloc");                                // allocate the z_stream struct, rax = payload
-    emitter.instruction(&format!(
+    emitter.instruction(&format!(                                               // owned-heap kind word with the x86_64 heap marker
         "mov r10, 0x{:x}",
         (X86_64_HEAP_MAGIC_HI32 << 32) | 1
-    )); // owned-heap kind word with the x86_64 heap marker
+    ));
     emitter.instruction("mov QWORD PTR [rax - 8], r10");                        // stamp the z_stream block as owned heap state
     emitter.instruction("mov QWORD PTR [rbp - 16], rax");                       // save the z_stream pointer
 
@@ -391,7 +391,7 @@ fn emit_x86_64(
     emitter.instruction("sub rsp, 16");                                         // reserve the two stack arguments (kept 16-aligned)
     emitter.instruction("lea rax, [rip + _zlib_version]");                      // the zlib version string
     emitter.instruction("mov QWORD PTR [rsp + 0], rax");                        // stack arg 6 = version
-    emitter.instruction(&format!("mov QWORD PTR [rsp + 8], {}", Z_STREAM_SIZE));// stack arg 7 = sizeof(z_stream)
+    emitter.instruction(&format!("mov QWORD PTR [rsp + 8], {}", Z_STREAM_SIZE)); // stack arg 7 = sizeof(z_stream)
     emitter.instruction("call deflateInit2_");                                  // initialize a raw-deflate zlib stream
     emitter.instruction("add rsp, 16");                                         // release the stack-argument space
 

@@ -45,11 +45,11 @@ pub fn emit(
                     match emitter.target.arch {
                         Arch::AArch64 => {
                             abi::emit_symbol_address(emitter, "x1", &sym);
-                            emitter.instruction(&format!("mov x2, #{}", len)); // embedded entry length → string-result length register
+                            emitter.instruction(&format!("mov x2, #{}", len));  // embedded entry length → string-result length register
                         }
                         Arch::X86_64 => {
                             abi::emit_symbol_address(emitter, "rax", &sym);
-                            emitter.instruction(&format!("mov rdx, {}", len)); // embedded entry length → string-result length register
+                            emitter.instruction(&format!("mov rdx, {}", len));  // embedded entry length → string-result length register
                         }
                     }
                 }
