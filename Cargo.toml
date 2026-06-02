@@ -10,6 +10,15 @@ readme = "README.md"
 keywords = ["php", "compiler", "aot", "native", "codegen"]
 categories = ["compilers", "command-line-utilities"]
 
+# The bridge staticlibs are default workspace members so plain `cargo build` /
+# `cargo test` materialize libelephc_tls.a (https:// wrapper) and
+# libelephc_sqlite.a (PDO/SQLite) into target/<profile>/, where linker.rs locates
+# them for programs that use those features.
+[workspace]
+members = [".", "crates/elephc-tls", "crates/elephc-sqlite"]
+default-members = [".", "crates/elephc-tls", "crates/elephc-sqlite"]
+resolver = "2"
+
 [[bin]]
 name = "elephc"
 path = "src/main.rs"
@@ -33,11 +42,3 @@ elephc-tls = { path = "crates/elephc-tls" }
 # with the same encoder the compiler decodes, guaranteeing a version-stable
 # round-trip without shelling out to php.
 flate2 = "1"
-
-# Phase 4b: the elephc-tls staticlib carries the rustls-backed TLS surface
-# for the https:// wrapper. It is a default workspace member so `cargo build`
-# materializes libelephc_tls.a for normal dev builds and packaging.
-[workspace]
-members = [".", "crates/elephc-tls"]
-default-members = [".", "crates/elephc-tls"]
-resolver = "2"

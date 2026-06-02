@@ -27,6 +27,7 @@ mod include_paths;
 mod magic_constants;
 mod strings;
 mod io;
+mod pdo;
 mod arrays;
 mod callables;
 mod system;

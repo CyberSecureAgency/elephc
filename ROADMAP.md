@@ -601,6 +601,25 @@ none are needed for typical stream usage.
 - [ ] **Misc lower-level gaps** — true non-blocking semantics (beyond the
   `O_NONBLOCK` fcntl), `realpath_cache_*`, and `lchown`/`lchgrp`.
 
+### Database access — PDO (SQLite)
+
+PDO database access, backed by a statically-bundled SQLite via the
+`crates/elephc-sqlite` bridge staticlib (C ABI, no system database dependency).
+The `PDO` / `PDOStatement` / `PDOException` classes are implemented as an
+elephc-PHP prelude that calls the bridge through `extern "elephc_sqlite"`, so the
+feature compiles through the normal class/extern/exception pipeline with no
+bespoke intrinsics or hand-written assembly. The prelude is injected only when a
+program references PDO, so non-PDO binaries never link the bridge.
+
+- [x] `crates/elephc-sqlite` bridge staticlib over bundled SQLite (`libsqlite3-sys`), C-ABI handle tables for connections/statements, `-1` sentinels, unit-tested in-memory round-trips
+- [x] `PDO::__construct` (`sqlite:` / `sqlite::memory:` DSN, `PDOException` on failure), `exec`, `query`, `prepare`, `lastInsertId`, `beginTransaction` / `commit` / `rollBack`, `errorCode`, `errorInfo`
+- [x] `PDOStatement::execute` (positional `?` and named `:name` binds with int/float/string/null/bool typing), `fetch`, `fetchAll`, `fetchColumn`, `rowCount`, `columnCount`
+- [x] Fetch modes `FETCH_ASSOC`, `FETCH_NUM`, `FETCH_BOTH`, `FETCH_OBJ`; `PARAM_*` / `ATTR_ERRMODE` / `ERRMODE_*` constants; `ERRMODE_EXCEPTION` default
+- [ ] MySQL (`pdo_mysql`) and PostgreSQL (`pdo_pgsql`) drivers — additional bridge entry points behind the same prelude
+- [ ] `bindParam` / `bindValue`, `FETCH_CLASS` / `FETCH_INTO` / `setFetchMode`, `quote`, full `getAttribute` / `setAttribute`, persistent connections
+- [ ] Dynamic property assignment so `FETCH_OBJ` materializes a stdClass directly instead of via a JSON round-trip
+- [ ] Binary/BLOB values with embedded NUL bytes (the text bridge path is NUL-terminated)
+
 ## v0.24.x — EIR introduction and register allocation
 
 Introduce a domain-specific intermediate representation (EIR) between the

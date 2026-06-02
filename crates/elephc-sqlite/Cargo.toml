@@ -1,0 +1,19 @@
+[package]
+name = "elephc-sqlite"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "SQLite bridge staticlib for the elephc PHP-to-native compiler's PDO support"
+
+# Built as both a C-callable staticlib (linked into compiled PHP programs that
+# use PDO) and an rlib (so the bridge can be unit-tested from Rust via
+# `cargo test -p elephc-sqlite`). Mirrors crates/elephc-tls.
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+# `bundled` compiles the SQLite amalgamation into the staticlib, so compiled
+# PHP binaries stay standalone (no system -lsqlite3 runtime dependency). Cost:
+# a C compile of sqlite at crate build time (cc is already required to build
+# elephc's runtime objects).
+libsqlite3-sys = { version = "0.30", features = ["bundled"] }
