@@ -103,6 +103,19 @@ pub(super) fn lower_str_contains(ctx: &mut FunctionContext<'_>, inst: &Instructi
     store_if_result(ctx, inst)
 }
 
+/// Lowers `strpos()`/`strrpos()` and boxes position-or-false results as Mixed.
+pub(super) fn lower_string_position(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+    name: &str,
+    runtime_label: &str,
+) -> Result<()> {
+    load_binary_string_args(ctx, inst, name)?;
+    abi::emit_call_label(ctx.emitter, runtime_label);
+    box_search_result(ctx, name);
+    store_if_result(ctx, inst)
+}
+
 /// Lowers `ord()` by returning the first byte of a string or zero for empty input.
 pub(super) fn lower_ord(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     load_single_string_arg(ctx, inst, "ord")?;
@@ -302,6 +315,44 @@ fn expect_string_operand(
         index + 1,
         ty
     )))
+}
+
+/// Boxes a raw string-search position result into the Mixed pointer representation.
+fn box_search_result(ctx: &mut FunctionContext<'_>, label_prefix: &str) {
+    let found_label = ctx.next_label(&format!("{}_found", label_prefix));
+    let end_label = ctx.next_label(&format!("{}_done", label_prefix));
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction("cmp x0, #0");                              // distinguish a valid non-negative match offset from the not-found sentinel
+            ctx.emitter.instruction(&format!("b.ge {}", found_label));          // box a found offset as an integer result
+            ctx.emitter.instruction("mov x1, #0");                              // use zero as the false payload for the mixed bool box
+            ctx.emitter.instruction("mov x2, #0");                              // clear the unused high payload word for bool mixed boxes
+            ctx.emitter.instruction("mov x0, #3");                              // select runtime tag 3 for a boolean false mixed value
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_from_value");
+            ctx.emitter.instruction(&format!("b {}", end_label));               // skip integer boxing after producing the false result
+            ctx.emitter.label(&found_label);
+            ctx.emitter.instruction("mov x1, x0");                              // move the found offset into the mixed helper payload register
+            ctx.emitter.instruction("mov x2, #0");                              // clear the unused high payload word for integer mixed boxes
+            ctx.emitter.instruction("mov x0, #0");                              // select runtime tag 0 for an integer mixed value
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_from_value");
+            ctx.emitter.label(&end_label);
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("cmp rax, 0");                              // distinguish a valid non-negative match offset from the not-found sentinel
+            ctx.emitter.instruction(&format!("jge {}", found_label));           // box a found offset as an integer result
+            ctx.emitter.instruction("xor edi, edi");                            // use zero as the false payload for the mixed bool box
+            ctx.emitter.instruction("xor esi, esi");                            // clear the unused high payload word for bool mixed boxes
+            ctx.emitter.instruction("mov eax, 3");                              // select runtime tag 3 for a boolean false mixed value
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_from_value");
+            ctx.emitter.instruction(&format!("jmp {}", end_label));             // skip integer boxing after producing the false result
+            ctx.emitter.label(&found_label);
+            ctx.emitter.instruction("mov rdi, rax");                            // move the found offset into the mixed helper payload register
+            ctx.emitter.instruction("xor esi, esi");                            // clear the unused high payload word for integer mixed boxes
+            ctx.emitter.instruction("xor eax, eax");                            // select runtime tag 0 for an integer mixed value
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_from_value");
+            ctx.emitter.label(&end_label);
+        }
+    }
 }
 
 /// Emits target-aware first-byte ASCII case adjustment for `ucfirst()` and `lcfirst()`.

@@ -102,6 +102,8 @@ pub(super) fn lower_builtin_call(ctx: &mut FunctionContext<'_>, inst: &Instructi
             strings::lower_binary_string_runtime(ctx, inst, "strcasecmp", "__rt_strcasecmp")
         }
         "str_contains" => strings::lower_str_contains(ctx, inst),
+        "strpos" => strings::lower_string_position(ctx, inst, "strpos", "__rt_strpos"),
+        "strrpos" => strings::lower_string_position(ctx, inst, "strrpos", "__rt_strrpos"),
         "str_starts_with" => strings::lower_binary_string_runtime(
             ctx,
             inst,

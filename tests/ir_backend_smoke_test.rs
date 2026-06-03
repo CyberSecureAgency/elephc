@@ -291,6 +291,11 @@ fn ir_backend_handles_scalar_builtins() {
             "0:lt:0:101010",
         ),
         (
+            "string_position_mixed_results",
+            "<?php echo '['; echo strpos('Hello World', 'Hello'); echo ']'; echo ':'; echo strpos('Hello World', 'World'); echo ':'; echo '['; echo strpos('Hello', 'xyz'); echo ']'; echo ':'; echo strrpos('abcabc', 'bc'); echo ':'; echo '['; echo strrpos('abcabc', 'zz'); echo ']';",
+            "[0]:6:[]:4:[]",
+        ),
+        (
             "ord_chr_strings",
             "<?php echo ord('A'); echo ':'; echo ord(''); echo ':'; echo chr(65);",
             "65:0:A",

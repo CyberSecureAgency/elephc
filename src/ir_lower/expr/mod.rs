@@ -734,6 +734,7 @@ fn builtin_return_type_override(name: &str) -> Option<PhpType> {
         "define" | "defined" | "function_exists" | "is_callable" | "is_numeric" => {
             Some(PhpType::Bool)
         }
+        "strpos" | "strrpos" => Some(PhpType::Mixed),
         _ => None,
     }
 }
