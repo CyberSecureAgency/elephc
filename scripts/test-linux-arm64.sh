@@ -15,6 +15,12 @@ CONTAINER_NAME="elephc-test-linux-arm64-$$"
 TEST_THREADS="${ELEPHC_TEST_THREADS:-1}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+DOCKERFILE="$PROJECT_DIR/Dockerfile.test-linux-arm64"
+if command -v sha256sum >/dev/null 2>&1; then
+    DOCKERFILE_SHA="$(sha256sum "$DOCKERFILE" | awk '{print $1}')"
+else
+    DOCKERFILE_SHA="$(shasum -a 256 "$DOCKERFILE" | awk '{print $1}')"
+fi
 
 REBUILD=false
 TEST_ARGS=()
@@ -26,10 +32,16 @@ for arg in "$@"; do
     esac
 done
 
-# Build the image if it doesn't exist or --rebuild was passed
-if $REBUILD || ! docker image inspect "$IMAGE" &>/dev/null; then
+# Build the image if it doesn't exist, --rebuild was passed, or the Dockerfile changed.
+IMAGE_DOCKERFILE_SHA="$(docker image inspect -f '{{ index .Config.Labels "elephc.dockerfile-sha" }}' "$IMAGE" 2>/dev/null || true)"
+if $REBUILD || [ "$IMAGE_DOCKERFILE_SHA" != "$DOCKERFILE_SHA" ]; then
     echo "Building Docker image '$IMAGE' for $PLATFORM..."
-    docker build --platform "$PLATFORM" -t "$IMAGE" -f "$PROJECT_DIR/Dockerfile.test-linux-arm64" "$PROJECT_DIR"
+    docker build \
+        --platform "$PLATFORM" \
+        --label "elephc.dockerfile-sha=$DOCKERFILE_SHA" \
+        -t "$IMAGE" \
+        -f "$DOCKERFILE" \
+        "$PROJECT_DIR"
 fi
 
 cleanup() {
