@@ -109,6 +109,30 @@ pub(super) fn lower_hash(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> R
     store_if_result(ctx, inst)
 }
 
+/// Lowers `sprintf(format, values...)` by packing variadic records for `__rt_sprintf`.
+pub(super) fn lower_sprintf(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    if inst.operands.is_empty() {
+        return Err(CodegenIrError::invalid_module("sprintf expected at least 1 arg"));
+    }
+    for index in (1..inst.operands.len()).rev() {
+        let value = expect_operand(inst, index)?;
+        pack_sprintf_arg(ctx, value)?;
+    }
+    let format = expect_string_operand(ctx, inst, 0, "sprintf")?;
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.load_string_value_to_regs(format, "x1", "x2")?;
+            ctx.emitter.instruction(&format!("mov x0, #{}", inst.operands.len() - 1)); // pass the number of packed sprintf() variadic records
+        }
+        Arch::X86_64 => {
+            ctx.load_string_value_to_regs(format, "rax", "rdx")?;
+            abi::emit_load_int_immediate(ctx.emitter, "rdi", (inst.operands.len() - 1) as i64);
+        }
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_sprintf");
+    store_if_result(ctx, inst)
+}
+
 /// Lowers `str_contains()` through `strpos()` and converts found positions to bool.
 pub(super) fn lower_str_contains(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     load_binary_string_args(ctx, inst, "str_contains")?;
@@ -823,6 +847,85 @@ fn materialize_wordwrap_break_x86_64(
         let (label, len) = ctx.data.add_string(b"\n");
         abi::emit_symbol_address(ctx.emitter, "rcx", &label);
         abi::emit_load_int_immediate(ctx.emitter, "r8", len as i64);
+    }
+    Ok(())
+}
+
+/// Packs one sprintf variadic operand into the runtime's 16-byte tagged record.
+fn pack_sprintf_arg(ctx: &mut FunctionContext<'_>, value: ValueId) -> Result<()> {
+    let ty = ctx.load_value_to_result(value)?.codegen_repr();
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => pack_sprintf_arg_aarch64(ctx, &ty),
+        Arch::X86_64 => pack_sprintf_arg_x86_64(ctx, &ty),
+    }
+}
+
+/// Packs one AArch64 sprintf operand from result registers into `[value, tag]`.
+fn pack_sprintf_arg_aarch64(ctx: &mut FunctionContext<'_>, ty: &PhpType) -> Result<()> {
+    match ty {
+        PhpType::Int => {
+            ctx.emitter.instruction("str x0, [sp, #-16]!");                     // push the integer sprintf operand payload
+            ctx.emitter.instruction("str xzr, [sp, #8]");                       // tag this sprintf operand record as integer
+        }
+        PhpType::Float => {
+            ctx.emitter.instruction("fmov x0, d0");                             // move the float bits into an integer register for packing
+            ctx.emitter.instruction("str x0, [sp, #-16]!");                     // push the floating sprintf operand payload bits
+            ctx.emitter.instruction("mov x0, #2");                              // select runtime sprintf type tag 2 for floats
+            ctx.emitter.instruction("str x0, [sp, #8]");                        // store the floating sprintf operand tag
+        }
+        PhpType::Bool => {
+            ctx.emitter.instruction("str x0, [sp, #-16]!");                     // push the boolean sprintf operand payload
+            ctx.emitter.instruction("mov x0, #3");                              // select runtime sprintf type tag 3 for bools
+            ctx.emitter.instruction("str x0, [sp, #8]");                        // store the boolean sprintf operand tag
+        }
+        PhpType::Str => {
+            ctx.emitter.instruction("str x1, [sp, #-16]!");                     // push the string pointer sprintf operand payload
+            ctx.emitter.instruction("lsl x0, x2, #8");                          // shift the string length into the packed metadata word
+            ctx.emitter.instruction("orr x0, x0, #1");                          // mark the sprintf operand metadata as a string
+            ctx.emitter.instruction("str x0, [sp, #8]");                        // store the packed string length and type tag
+        }
+        other => {
+            return Err(CodegenIrError::unsupported(format!(
+                "sprintf argument PHP type {:?}",
+                other
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Packs one x86_64 sprintf operand from result registers into `[value, tag]`.
+fn pack_sprintf_arg_x86_64(ctx: &mut FunctionContext<'_>, ty: &PhpType) -> Result<()> {
+    match ty {
+        PhpType::Int => {
+            ctx.emitter.instruction("sub rsp, 16");                             // reserve one packed sprintf operand record
+            ctx.emitter.instruction("mov QWORD PTR [rsp], rax");                // store the integer sprintf operand payload
+            ctx.emitter.instruction("mov QWORD PTR [rsp + 8], 0");              // tag this sprintf operand record as integer
+        }
+        PhpType::Float => {
+            ctx.emitter.instruction("sub rsp, 16");                             // reserve one packed sprintf operand record
+            ctx.emitter.instruction("movsd QWORD PTR [rsp], xmm0");             // store the floating sprintf operand payload bits
+            ctx.emitter.instruction("mov QWORD PTR [rsp + 8], 2");              // tag this sprintf operand record as float
+        }
+        PhpType::Bool => {
+            ctx.emitter.instruction("sub rsp, 16");                             // reserve one packed sprintf operand record
+            ctx.emitter.instruction("mov QWORD PTR [rsp], rax");                // store the boolean sprintf operand payload
+            ctx.emitter.instruction("mov QWORD PTR [rsp + 8], 3");              // tag this sprintf operand record as bool
+        }
+        PhpType::Str => {
+            ctx.emitter.instruction("sub rsp, 16");                             // reserve one packed sprintf operand record
+            ctx.emitter.instruction("mov QWORD PTR [rsp], rax");                // store the string pointer sprintf operand payload
+            ctx.emitter.instruction("mov rcx, rdx");                            // copy the string length before packing metadata
+            ctx.emitter.instruction("shl rcx, 8");                              // shift the string length into the packed metadata word
+            ctx.emitter.instruction("or rcx, 1");                               // mark the sprintf operand metadata as a string
+            ctx.emitter.instruction("mov QWORD PTR [rsp + 8], rcx");            // store the packed string length and type tag
+        }
+        other => {
+            return Err(CodegenIrError::unsupported(format!(
+                "sprintf argument PHP type {:?}",
+                other
+            )));
+        }
     }
     Ok(())
 }
