@@ -110,6 +110,30 @@ fn ir_backend_handles_scalar_equality() {
     }
 }
 
+/// Verifies print output and scalar switch dispatch through the EIR backend.
+#[test]
+fn ir_backend_handles_print_and_switch() {
+    assert_eq!(
+        compile_and_run_ir_backend("print_expr", "<?php print \"p\"; echo print \"q\";"),
+        "pq1"
+    );
+
+    let switch_source = "<?php switch ($argc) { case 1: echo 1; break; case 2: echo 2; break; default: echo 9; }";
+    assert_eq!(compile_and_run_ir_backend("switch_case_one", switch_source), "1");
+    assert_eq!(
+        compile_and_run_ir_backend_with_args("switch_case_two", switch_source, &["extra"]),
+        "2"
+    );
+    assert_eq!(
+        compile_and_run_ir_backend_with_args(
+            "switch_default",
+            switch_source,
+            &["extra", "another"]
+        ),
+        "9"
+    );
+}
+
 /// Verifies direct user-defined function calls with scalar params and returns.
 #[test]
 fn ir_backend_calls_user_functions() {

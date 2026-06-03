@@ -71,6 +71,7 @@ pub(super) fn lower_instruction(ctx: &mut FunctionContext<'_>, inst_id: InstId) 
         Op::StrConcat => strings::lower_str_concat(ctx, &inst),
         Op::Call => lower_direct_call(ctx, &inst),
         Op::EchoValue => lower_echo_value(ctx, &inst),
+        Op::PrintValue => lower_print_value(ctx, &inst),
         Op::Nop => Ok(()),
         _ => Err(CodegenIrError::unsupported(format!("opcode {}", inst.op.name()))),
     }
@@ -208,6 +209,11 @@ fn lower_echo_value(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result
     let value = expect_operand(inst, 0)?;
     let ty = ctx.load_value_to_result(value)?;
     emit_loaded_value_to_stdout(ctx, &ty)
+}
+
+/// Lowers PHP `print` output for a previously computed SSA value.
+fn lower_print_value(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    lower_echo_value(ctx, inst)
 }
 
 /// Emits stdout output for the value currently loaded into result register(s).

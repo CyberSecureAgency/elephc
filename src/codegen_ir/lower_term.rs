@@ -8,7 +8,8 @@
 //! - The current increment supports process-entry `return` and explicit unsupported
 //!   diagnostics for branch/switch/throw paths that still need Phase 04 lowering.
 
-use crate::ir::{Terminator, ValueId};
+use crate::codegen::platform::Arch;
+use crate::ir::{SwitchCase, Terminator, ValueId};
 
 use crate::codegen::abi;
 
@@ -55,13 +56,53 @@ pub(super) fn lower_terminator(ctx: &mut FunctionContext<'_>, term: &Terminator)
             abi::emit_jump(ctx.emitter, &else_label);
             Ok(())
         }
-        Terminator::Switch { .. } => Err(CodegenIrError::unsupported("switch terminator")),
+        Terminator::Switch {
+            scrutinee,
+            cases,
+            default,
+            default_args,
+        } => {
+            ensure_no_block_args(default_args, "switch default")?;
+            lower_switch(ctx, *scrutinee, cases, *default)
+        }
         Terminator::Throw { .. } => Err(CodegenIrError::unsupported("throw terminator")),
         Terminator::Fatal { .. } => Err(CodegenIrError::unsupported("fatal terminator")),
         Terminator::GeneratorSuspend { .. } => {
             Err(CodegenIrError::unsupported("generator_suspend terminator"))
         }
     }
+}
+
+/// Lowers an integer switch by comparing the scrutinee against each case value in source order.
+fn lower_switch(
+    ctx: &mut FunctionContext<'_>,
+    scrutinee: ValueId,
+    cases: &[SwitchCase],
+    default: crate::ir::BlockId,
+) -> Result<()> {
+    for case in cases {
+        ensure_no_block_args(&case.args, "switch case")?;
+    }
+    ctx.load_value_to_result(scrutinee)?;
+    let result_reg = abi::int_result_reg(ctx.emitter);
+    let case_reg = abi::secondary_scratch_reg(ctx.emitter);
+    for case in cases {
+        let target_label = ctx.block_label_for_id(case.target)?;
+        abi::emit_load_int_immediate(ctx.emitter, case_reg, case.value);
+        match ctx.emitter.target.arch {
+            Arch::AArch64 => {
+                ctx.emitter.instruction(&format!("cmp {}, {}", result_reg, case_reg)); // compare switch scrutinee with the case value
+                ctx.emitter.instruction(&format!("b.eq {}", target_label));     // branch to the matching switch case
+            }
+            Arch::X86_64 => {
+                ctx.emitter.instruction(&format!("cmp {}, {}", result_reg, case_reg)); // compare switch scrutinee with the case value
+                ctx.emitter.instruction(&format!("je {}", target_label));       // branch to the matching switch case
+            }
+        }
+    }
+    let default_label = ctx.block_label_for_id(default)?;
+    abi::emit_jump(ctx.emitter, &default_label);
+    Ok(())
 }
 
 /// Emits a jump to the current user function's shared epilogue.
