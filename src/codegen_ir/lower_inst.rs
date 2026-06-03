@@ -99,9 +99,17 @@ pub(super) fn lower_instruction(ctx: &mut FunctionContext<'_>, inst_id: InstId) 
         Op::EchoValue => lower_echo_value(ctx, &inst),
         Op::PrintValue => lower_print_value(ctx, &inst),
         Op::ThrowException => lower_throw_exception(ctx, &inst),
+        Op::ErrorSuppressBegin => lower_runtime_void_call(ctx, "__rt_diag_push_suppression"),
+        Op::ErrorSuppressEnd => lower_runtime_void_call(ctx, "__rt_diag_pop_suppression"),
         Op::Nop => Ok(()),
         _ => Err(CodegenIrError::unsupported(format!("opcode {}", inst.op.name()))),
     }
+}
+
+/// Lowers a void EIR opcode that maps directly to one runtime helper call.
+fn lower_runtime_void_call(ctx: &mut FunctionContext<'_>, label: &str) -> Result<()> {
+    abi::emit_call_label(ctx.emitter, label);
+    Ok(())
 }
 
 /// Lowers expression-form `throw` through the same runtime path as throw terminators.

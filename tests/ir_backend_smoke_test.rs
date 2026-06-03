@@ -85,6 +85,7 @@ fn ir_backend_handles_scalar_ops_and_string_coercions() {
         ("concat_int", "<?php echo $argc . \"x\";", "1x"),
         ("concat_false", "<?php echo false . \"x\";", "x"),
         ("concat_null", "<?php echo null . \"x\";", "x"),
+        ("error_suppress_expr", "<?php echo @(\"ok\");", "ok"),
     ] {
         assert_eq!(compile_and_run_ir_backend(name, source), expected);
     }
