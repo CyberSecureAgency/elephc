@@ -42,6 +42,19 @@ pub(super) fn lower_array_reverse(ctx: &mut FunctionContext<'_>, inst: &Instruct
     store_if_result(ctx, inst)
 }
 
+/// Lowers `array_unique()` for indexed arrays with 8-byte payload slots.
+pub(super) fn lower_array_unique(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    super::ensure_arg_count(inst, "array_unique", 1)?;
+    let array = expect_operand(inst, 0)?;
+    require_eight_byte_indexed_array(ctx.value_php_type(array)?, "array_unique")?;
+    ctx.load_value_to_result(array)?;
+    if ctx.emitter.target.arch == Arch::X86_64 {
+        ctx.emitter.instruction("mov rdi, rax");                                // pass the source indexed-array pointer as the dedup helper argument
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_array_unique");
+    store_if_result(ctx, inst)
+}
+
 /// Lowers `array_rand()` for indexed arrays.
 pub(super) fn lower_array_rand(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     super::ensure_arg_count(inst, "array_rand", 1)?;
@@ -143,7 +156,12 @@ fn require_eight_byte_indexed_array(ty: PhpType, name: &str) -> Result<()> {
             let elem = elem.codegen_repr();
             if matches!(
                 elem,
-                PhpType::Int | PhpType::Bool | PhpType::Float | PhpType::Callable | PhpType::Void
+                PhpType::Int
+                    | PhpType::Bool
+                    | PhpType::Float
+                    | PhpType::Callable
+                    | PhpType::Void
+                    | PhpType::Never
             ) {
                 return Ok(());
             }

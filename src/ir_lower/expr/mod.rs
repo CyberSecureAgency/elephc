@@ -788,7 +788,7 @@ fn array_builtin_return_type(
     operands: &[crate::ir::ValueId],
 ) -> Option<PhpType> {
     match php_symbol_key(name.trim_start_matches('\\')).as_str() {
-        "array_reverse" => {
+        "array_reverse" | "array_unique" => {
             let array = operands.first()?;
             match ctx.builder.value_php_type(*array).codegen_repr() {
                 PhpType::Array(elem) => Some(PhpType::Array(elem)),
