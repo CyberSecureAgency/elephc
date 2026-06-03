@@ -6,6 +6,7 @@
 //!
 //! Key details:
 //! - Fatal terminators write their data-pool diagnostic to stderr and exit.
+//! - Unreachable terminators emit target-native trap instructions.
 //! - Throw and generator suspension remain explicit unsupported Phase 04 paths.
 
 use crate::codegen::platform::Arch;
@@ -33,7 +34,10 @@ pub(super) fn lower_terminator(ctx: &mut FunctionContext<'_>, term: &Terminator)
             jump_to_function_epilogue(ctx)?;
             Ok(())
         }
-        Terminator::Unreachable => Ok(()),
+        Terminator::Unreachable => {
+            lower_unreachable(ctx);
+            Ok(())
+        }
         Terminator::Br { target, args } => {
             ensure_no_block_args(args, "br")?;
             let label = ctx.block_label_for_id(*target)?;
@@ -69,6 +73,18 @@ pub(super) fn lower_terminator(ctx: &mut FunctionContext<'_>, term: &Terminator)
         Terminator::Fatal { message } => lower_fatal(ctx, *message),
         Terminator::GeneratorSuspend { .. } => {
             Err(CodegenIrError::unsupported("generator_suspend terminator"))
+        }
+    }
+}
+
+/// Emits a target-native trap for a block that should never execute.
+fn lower_unreachable(ctx: &mut FunctionContext<'_>) {
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction("udf #0");                                  // trap if an unreachable EIR block is entered
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("ud2");                                     // trap if an unreachable EIR block is entered
         }
     }
 }
@@ -150,4 +166,54 @@ fn ensure_no_block_args(args: &[ValueId], context: &str) -> Result<()> {
         "{} block arguments",
         context
     )))
+}
+
+#[cfg(test)]
+mod tests {
+    //! Purpose:
+    //! Unit tests for EIR terminator assembly lowering.
+    //!
+    //! Called from:
+    //! - `cargo test` through Rust's test harness.
+    //!
+    //! Key details:
+    //! - The tests construct tiny EIR modules directly so terminator opcodes can be isolated.
+
+    use crate::codegen::platform::{Arch, Platform, Target};
+    use crate::codegen_ir::generate_user_asm_from_ir;
+    use crate::ir::{Builder, Function, IrType, Module, Terminator};
+    use crate::types::PhpType;
+
+    /// Verifies ARM64 unreachable terminators lower to the Phase 04 trap opcode.
+    #[test]
+    fn unreachable_terminator_emits_aarch64_trap() {
+        let asm = generate_unreachable_main_asm(Target::new(Platform::Linux, Arch::AArch64));
+
+        assert!(asm.contains("udf #0"), "{asm}");
+    }
+
+    /// Verifies x86_64 unreachable terminators lower to the Phase 04 trap opcode.
+    #[test]
+    fn unreachable_terminator_emits_x86_64_trap() {
+        let asm = generate_unreachable_main_asm(Target::new(Platform::Linux, Arch::X86_64));
+
+        assert!(asm.contains("ud2"), "{asm}");
+    }
+
+    /// Builds a minimal EIR main function ending in `Unreachable` and returns its ASM.
+    fn generate_unreachable_main_asm(target: Target) -> String {
+        let mut module = Module::new(target);
+        let mut function = Function::new("main".to_string(), IrType::Void, PhpType::Void);
+        function.flags.is_main = true;
+        {
+            let mut builder = Builder::new(&mut function);
+            let entry = builder.create_named_block("entry", Vec::new());
+            builder.set_entry(entry);
+            builder.position_at_end(entry);
+            builder.terminate(Terminator::Unreachable);
+        }
+        module.add_function(function);
+
+        generate_user_asm_from_ir(&module, false, false).expect("unreachable module should lower")
+    }
 }
