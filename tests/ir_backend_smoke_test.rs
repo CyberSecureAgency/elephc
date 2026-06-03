@@ -248,6 +248,8 @@ fn ir_backend_handles_basic_indexed_arrays() {
     for (name, source, expected) in [
         ("array_count_ints", "<?php $a = [1, 2, 3]; echo count($a);", "3"),
         ("array_get_int", "<?php $a = [10, 20]; echo $a[1];", "20"),
+        ("array_get_float", "<?php $a = [1.5, 2.5]; echo $a[1];", "2.5"),
+        ("array_get_string", "<?php $a = [\"a\", \"b\"]; echo $a[1];", "b"),
         ("array_get_oob_null", "<?php $a = [10]; echo $a[9];", ""),
         ("array_get_negative_null", "<?php $a = [10]; echo $a[-1];", ""),
         ("array_count_strings", "<?php $a = [\"a\", \"b\"]; echo count($a);", "2"),

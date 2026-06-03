@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use crate::codegen::platform::Target;
 use crate::ir::print_module;
 
+mod arrays;
 mod corpus;
 mod exhaustive;
 mod ownership;

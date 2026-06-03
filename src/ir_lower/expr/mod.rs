@@ -775,11 +775,7 @@ fn lower_array_access(ctx: &mut LoweringContext<'_, '_>, array: &Expr, index: &E
         IrType::Str if index_value.ir_type == IrType::I64 => Op::StrCharAt,
         _ => Op::RuntimeCall,
     };
-    let result_type = if op == Op::StrCharAt {
-        PhpType::Str
-    } else {
-        fallback_expr_type(expr)
-    };
+    let result_type = array_access_result_type(ctx, array_value.value, op, expr);
     ctx.emit_value(
         op,
         vec![array_value.value, index_value.value],
@@ -788,6 +784,27 @@ fn lower_array_access(ctx: &mut LoweringContext<'_, '_>, array: &Expr, index: &E
         op.default_effects(),
         Some(expr.span),
     )
+}
+
+/// Returns the best PHP result type for a lowered array/string/hash access.
+fn array_access_result_type(
+    ctx: &LoweringContext<'_, '_>,
+    array: crate::ir::ValueId,
+    op: Op,
+    expr: &Expr,
+) -> PhpType {
+    match op {
+        Op::StrCharAt => PhpType::Str,
+        Op::ArrayGet => match ctx.builder.value_php_type(array).codegen_repr() {
+            PhpType::Array(elem_ty) => normalize_value_php_type(*elem_ty),
+            _ => fallback_expr_type(expr),
+        },
+        Op::HashGet => match ctx.builder.value_php_type(array).codegen_repr() {
+            PhpType::AssocArray { value, .. } => normalize_value_php_type(*value),
+            _ => fallback_expr_type(expr),
+        },
+        _ => fallback_expr_type(expr),
+    }
 }
 
 /// Lowers a ternary expression with lazy branch evaluation.
