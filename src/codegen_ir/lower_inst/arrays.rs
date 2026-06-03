@@ -234,6 +234,10 @@ fn emit_array_get_in_bounds_aarch64(
             abi::emit_load_from_address(ctx.emitter, ptr_reg, array_reg, 0);
             abi::emit_load_from_address(ctx.emitter, len_reg, array_reg, 8);
         }
+        other if other.is_refcounted() => {
+            ctx.emitter.instruction(&format!("add {}, {}, #24", array_reg, array_reg)); // skip the indexed-array header to reach pointer payloads
+            ctx.emitter.instruction(&format!("ldr {}, [{}, {}, lsl #3]", index_reg, array_reg, index_reg)); // load the selected refcounted indexed-array element
+        }
         other => {
             return Err(CodegenIrError::unsupported(format!(
                 "array_get element PHP type {:?}",
@@ -267,6 +271,10 @@ fn emit_array_get_in_bounds_x86_64(
             ctx.emitter.instruction(&format!("add {}, 24", array_reg));         // skip the indexed-array header before loading the string slot
             abi::emit_load_from_address(ctx.emitter, ptr_reg, array_reg, 0);
             abi::emit_load_from_address(ctx.emitter, len_reg, array_reg, 8);
+        }
+        other if other.is_refcounted() => {
+            ctx.emitter.instruction(&format!("lea {}, [{} + 24]", array_reg, array_reg)); // skip the indexed-array header to reach pointer payloads
+            ctx.emitter.instruction(&format!("mov {}, QWORD PTR [{} + {} * 8]", index_reg, array_reg, index_reg)); // load the selected refcounted indexed-array element
         }
         other => {
             return Err(CodegenIrError::unsupported(format!(
@@ -454,6 +462,9 @@ fn require_array_get_result(elem_ty: &PhpType, inst: &Instruction) -> Result<()>
     if matches!(elem_ty, PhpType::Int | PhpType::Bool | PhpType::Callable | PhpType::Float | PhpType::Str)
         && result_ty == *elem_ty
     {
+        return Ok(());
+    }
+    if elem_ty.is_refcounted() && result_ty == *elem_ty {
         return Ok(());
     }
     Err(CodegenIrError::unsupported(format!(

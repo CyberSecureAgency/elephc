@@ -551,6 +551,30 @@ fn ir_backend_handles_basic_indexed_arrays() {
     );
 }
 
+/// Verifies indexed arrays can read pointer-sized nested array elements.
+#[test]
+fn ir_backend_handles_nested_indexed_array_reads() {
+    for (name, source, expected) in [
+        (
+            "nested_indexed_literal_reads",
+            "<?php $a = [[1], [2]]; echo $a[0][0] . ':' . $a[1][0];",
+            "1:2",
+        ),
+        (
+            "nested_indexed_local_read",
+            "<?php $a = [[1], [2]]; $b = $a[1]; echo $b[0];",
+            "2",
+        ),
+        (
+            "nested_indexed_after_append",
+            "<?php $a = []; $a[] = [7]; echo $a[0][0];",
+            "7",
+        ),
+    ] {
+        assert_eq!(compile_and_run_ir_backend(name, source), expected);
+    }
+}
+
 /// Verifies simple positional list destructuring through indexed-array reads.
 #[test]
 fn ir_backend_handles_simple_list_unpack() {
