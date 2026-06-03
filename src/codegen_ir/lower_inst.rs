@@ -1,0 +1,167 @@
+//! Purpose:
+//! Lowers individual EIR instructions into target-aware assembly snippets.
+//! Starts with scalar constants and output needed for the first executable smoke test.
+//!
+//! Called from:
+//! - `crate::codegen_ir::block_emit`.
+//!
+//! Key details:
+//! - Results are written to fixed value-placement slots immediately after definition.
+//! - Unsupported opcodes fail explicitly instead of falling back to legacy AST codegen.
+
+use crate::codegen::abi;
+use crate::codegen::platform::Arch;
+use crate::ir::{Immediate, InstId, Instruction, Op, ValueId};
+use crate::types::PhpType;
+
+use super::context::FunctionContext;
+use super::{CodegenIrError, Result};
+
+/// Lowers one EIR instruction by opcode.
+pub(super) fn lower_instruction(ctx: &mut FunctionContext<'_>, inst_id: InstId) -> Result<()> {
+    let inst = ctx
+        .function
+        .instruction(inst_id)
+        .cloned()
+        .ok_or_else(|| CodegenIrError::missing_entry("instruction", inst_id.as_raw()))?;
+    match inst.op {
+        Op::ConstI64 => lower_const_i64(ctx, &inst),
+        Op::ConstBool => lower_const_bool(ctx, &inst),
+        Op::ConstNull => lower_const_null(ctx, &inst),
+        Op::ConstStr => lower_const_str(ctx, &inst),
+        Op::EchoValue => lower_echo_value(ctx, &inst),
+        _ => Err(CodegenIrError::unsupported(format!("opcode {}", inst.op.name()))),
+    }
+}
+
+/// Lowers an integer constant into the canonical integer result register and slot.
+fn lower_const_i64(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    let value = expect_i64(inst)?;
+    abi::emit_load_int_immediate(ctx.emitter, abi::int_result_reg(ctx.emitter), value);
+    store_if_result(ctx, inst)
+}
+
+/// Lowers a boolean constant into the canonical integer result register and slot.
+fn lower_const_bool(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    let value = i64::from(expect_bool(inst)?);
+    abi::emit_load_int_immediate(ctx.emitter, abi::int_result_reg(ctx.emitter), value);
+    store_if_result(ctx, inst)
+}
+
+/// Lowers a null constant to the runtime null sentinel and stores it in the result slot.
+fn lower_const_null(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    abi::emit_load_int_immediate(
+        ctx.emitter,
+        abi::int_result_reg(ctx.emitter),
+        0x7fff_ffff_ffff_fffe,
+    );
+    store_if_result(ctx, inst)
+}
+
+/// Lowers a string constant by materializing its data-section pointer and byte length.
+fn lower_const_str(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    let data_id = expect_data(inst)?;
+    let (label, len) = ctx.intern_string_data(data_id)?;
+    let (ptr_reg, len_reg) = abi::string_result_regs(ctx.emitter);
+    abi::emit_symbol_address(ctx.emitter, ptr_reg, &label);
+    abi::emit_load_int_immediate(ctx.emitter, len_reg, len as i64);
+    store_if_result(ctx, inst)
+}
+
+/// Lowers PHP echo output for a previously computed SSA value.
+fn lower_echo_value(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    let value = expect_operand(inst, 0)?;
+    let ty = ctx.load_value_to_result(value)?;
+    emit_loaded_value_to_stdout(ctx, &ty)
+}
+
+/// Emits stdout output for the value currently loaded into result register(s).
+fn emit_loaded_value_to_stdout(ctx: &mut FunctionContext<'_>, ty: &PhpType) -> Result<()> {
+    ctx.emitter.blank();
+    ctx.emitter.comment("echo");
+    match ty {
+        PhpType::Void | PhpType::Never => Ok(()),
+        PhpType::Bool => {
+            let skip_label = ctx.next_label("echo_skip_false");
+            abi::emit_branch_if_int_result_zero(ctx.emitter, &skip_label);
+            abi::emit_write_stdout(ctx.emitter, ty);
+            ctx.emitter.label(&skip_label);
+            Ok(())
+        }
+        PhpType::Int => {
+            let skip_label = ctx.next_label("echo_skip_null");
+            let sentinel_reg = abi::symbol_scratch_reg(ctx.emitter);
+            abi::emit_load_int_immediate(ctx.emitter, sentinel_reg, 0x7fff_ffff_ffff_fffe);
+            match ctx.emitter.target.arch {
+                Arch::AArch64 => {
+                    ctx.emitter.instruction(&format!("cmp {}, {}", abi::int_result_reg(ctx.emitter), sentinel_reg)); // compare integer value against the runtime null sentinel
+                    ctx.emitter.instruction(&format!("b.eq {}", skip_label));   // skip integer echo when the value represents null
+                }
+                Arch::X86_64 => {
+                    ctx.emitter.instruction(&format!("cmp {}, {}", abi::int_result_reg(ctx.emitter), sentinel_reg)); // compare integer value against the runtime null sentinel
+                    ctx.emitter.instruction(&format!("je {}", skip_label));     // skip integer echo when the value represents null
+                }
+            }
+            abi::emit_write_stdout(ctx.emitter, ty);
+            ctx.emitter.label(&skip_label);
+            Ok(())
+        }
+        PhpType::Float | PhpType::Str => {
+            abi::emit_write_stdout(ctx.emitter, ty);
+            Ok(())
+        }
+        _ => Err(CodegenIrError::unsupported(format!("echo for PHP type {:?}", ty))),
+    }
+}
+
+/// Stores the current result registers when an instruction has an SSA result.
+fn store_if_result(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    if let Some(result) = inst.result {
+        ctx.store_result_value(result)?;
+    }
+    Ok(())
+}
+
+/// Returns the integer immediate attached to a constant instruction.
+fn expect_i64(inst: &Instruction) -> Result<i64> {
+    match inst.immediate {
+        Some(Immediate::I64(value)) => Ok(value),
+        _ => Err(CodegenIrError::invalid_module(format!(
+            "{} missing i64 immediate",
+            inst.op.name()
+        ))),
+    }
+}
+
+/// Returns the boolean immediate attached to a constant instruction.
+fn expect_bool(inst: &Instruction) -> Result<bool> {
+    match inst.immediate {
+        Some(Immediate::Bool(value)) => Ok(value),
+        _ => Err(CodegenIrError::invalid_module(format!(
+            "{} missing bool immediate",
+            inst.op.name()
+        ))),
+    }
+}
+
+/// Returns the data-pool immediate attached to a data-backed instruction.
+fn expect_data(inst: &Instruction) -> Result<crate::ir::DataId> {
+    match inst.immediate {
+        Some(Immediate::Data(value)) => Ok(value),
+        _ => Err(CodegenIrError::invalid_module(format!(
+            "{} missing data immediate",
+            inst.op.name()
+        ))),
+    }
+}
+
+/// Returns the operand at `index` or reports a malformed instruction.
+fn expect_operand(inst: &Instruction, index: usize) -> Result<ValueId> {
+    inst.operands.get(index).copied().ok_or_else(|| {
+        CodegenIrError::invalid_module(format!(
+            "{} missing operand {}",
+            inst.op.name(),
+            index
+        ))
+    })
+}

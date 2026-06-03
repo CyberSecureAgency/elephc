@@ -8,7 +8,7 @@
 //! Key details:
 //! - Keeps frontend type metadata, runtime cache assumptions, and target-specific emission ordered before linking.
 
-mod abi;
+pub(crate) mod abi;
 mod builtins;
 pub(crate) mod callable_descriptor;
 pub(crate) mod callable_dispatch;
@@ -17,9 +17,9 @@ mod callables;
 mod class_methods;
 /// Codegen context module.
 pub mod context;
-mod data_section;
+pub(crate) mod data_section;
 mod driver_support;
-mod emit;
+pub(crate) mod emit;
 mod expr;
 mod ffi;
 mod fiber_sigs;
@@ -32,7 +32,7 @@ pub mod platform;
 mod prescan;
 mod program_usage;
 mod reflection;
-mod runtime;
+pub(crate) mod runtime;
 mod runtime_features;
 mod stmt;
 
