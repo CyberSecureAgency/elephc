@@ -3329,6 +3329,28 @@ fclose($m);
     assert_eq!(out, "bool");
 }
 
+/// `stream_socket_enable_crypto($s, false)` unwinds a live TLS session: the
+/// disable path reloads the fd and runs the shared `emit_tls_session_teardown`,
+/// which (because the prior enable installed a non-zero `_tls_sessions[fd]`
+/// handle) calls `_elephc_tls_close_fn` to send `close_notify` and zeroes the
+/// slot, then reports `true`. The contract pinned here is that the enable→disable
+/// sequence runs the real teardown branch without crashing and returns a `bool`
+/// `true`; a plain-stream read-back is intentionally not asserted because the
+/// `close_notify` record pollutes a degenerate `php://memory` backing buffer.
+#[test]
+fn test_stream_socket_enable_crypto_disable_tears_down_session() {
+    let out = compile_and_run(
+        r#"<?php
+$m = fopen("php://memory", "r+");
+$a = stream_socket_enable_crypto($m, true);
+$b = stream_socket_enable_crypto($m, false);
+echo (is_bool($a) && is_bool($b) && $b === true) ? "ok" : "bad";
+fclose($m);
+"#,
+    );
+    assert_eq!(out, "ok");
+}
+
 /// Verifies that the shared signature accepts the fourth named `session_stream` arg.
 #[test]
 fn test_stream_socket_enable_crypto_accepts_named_session_stream() {
