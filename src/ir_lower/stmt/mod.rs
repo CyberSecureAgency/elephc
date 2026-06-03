@@ -875,10 +875,10 @@ fn lower_function_variant_group(
     let label = format!("{}:{}", name, variants.join(","));
     let data = ctx.intern_string(&label);
     ctx.emit_void(
-        Op::FunctionVariantMark,
+        Op::FunctionVariantDispatch,
         Vec::new(),
         Some(Immediate::Data(data)),
-        Op::FunctionVariantMark.default_effects(),
+        Op::FunctionVariantDispatch.default_effects(),
         Some(span),
     );
 }

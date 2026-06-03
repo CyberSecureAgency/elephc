@@ -329,8 +329,8 @@ impl Op {
             | DataAddr | IAdd | ISub | IMul | IPow | INeg | IBitAnd | IBitOr | IBitXor
             | IBitNot | IShl | IShrA | FAdd | FSub | FMul | FDiv | FPow | FNeg | ICmp
             | FCmp | StrLen | IToF | FToI | BoolToStr | StrToI | StrToF | StrToNumber
-            | MixedTagOf | IsNull | IsTruthy | IsEmpty | PtrCast | PtrOffset | Move | Borrow
-            | Nop => E::PURE,
+            | MixedTagOf | IsNull | IsTruthy | IsEmpty | FunctionVariantDispatch | PtrCast
+            | PtrOffset | Move | Borrow | Nop => E::PURE,
             IDiv | ISDiv | ISMod | PtrCheckNonnull => E::MAY_FATAL,
             ConstEnumCase => E::ALLOC_HEAP,
             LoadLocal | LoadRefCell | LoadStaticLocal | ClosureCapture => E::READS_LOCAL,
@@ -364,8 +364,9 @@ impl Op {
             IterStart | IterCurrentKey | IterCurrentValue | IteratorMethodCall
             | SplRuntimeCall | DynamicObjectNew | DynamicPropGet | NullsafePropGet
             | NullsafeMethodCall | MethodLookup | MethodCall | StaticMethodCall
-            | InstanceOfDynamic | MixedNumericBinop | LooseEq | LooseNotEq | Spaceship
-            | FunctionVariantDispatch => E::READS_HEAP | E::MAY_DEOPT,
+            | InstanceOfDynamic | MixedNumericBinop | LooseEq | LooseNotEq | Spaceship => {
+                E::READS_HEAP | E::MAY_DEOPT
+            }
             IterNext | IterEnd | GeneratorYield | GeneratorYieldFrom | GeneratorReturn => {
                 E::READS_HEAP | E::WRITES_HEAP | E::MAY_DEOPT
             }

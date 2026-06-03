@@ -92,6 +92,12 @@ impl<'a> FunctionContext<'a> {
         })
     }
 
+    /// Returns the concrete function whose signature should be used for a PHP call target.
+    pub(super) fn callable_function_by_name(&self, name: &str) -> Option<&'a Function> {
+        self.function_by_name(name)
+            .or_else(|| super::function_variants::variant_callee_for_group(self.module, name))
+    }
+
     /// Returns a function value or a structured backend error.
     pub(super) fn value_php_type(&self, value: ValueId) -> Result<PhpType> {
         self.function

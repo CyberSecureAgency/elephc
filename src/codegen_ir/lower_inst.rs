@@ -16,6 +16,7 @@ use crate::names::function_symbol;
 use crate::types::PhpType;
 
 use super::context::FunctionContext;
+use super::function_variants;
 use super::{CodegenIrError, Result};
 
 mod arithmetic;
@@ -103,9 +104,25 @@ pub(super) fn lower_instruction(ctx: &mut FunctionContext<'_>, inst_id: InstId) 
         Op::ErrorSuppressEnd => lower_runtime_void_call(ctx, "__rt_diag_pop_suppression"),
         Op::IncludeOnceMark => lower_include_once_mark(ctx, &inst),
         Op::IncludeOnceGuard => lower_include_once_guard(ctx, &inst),
+        Op::FunctionVariantDispatch => Ok(()),
+        Op::FunctionVariantMark => lower_function_variant_mark(ctx, &inst),
         Op::Nop => Ok(()),
         _ => Err(CodegenIrError::unsupported(format!("opcode {}", inst.op.name()))),
     }
+}
+
+/// Lowers a concrete include-loaded function variant activation marker.
+fn lower_function_variant_mark(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    let data = expect_data(inst)?;
+    let label = ctx
+        .module
+        .data
+        .strings
+        .get(data.as_raw() as usize)
+        .ok_or_else(|| CodegenIrError::missing_entry("data string", data.as_raw()))?;
+    let parsed = function_variants::parse_variant_label(label)
+        .ok_or_else(|| CodegenIrError::invalid_module(format!("invalid function variant label '{}'", label)))?;
+    function_variants::emit_variant_mark(ctx.emitter, ctx.data, &parsed)
 }
 
 /// Lowers an include-once marker by setting its module-global guard symbol.
@@ -162,7 +179,7 @@ fn lower_throw_exception(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> R
 fn lower_direct_call(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     let function_name = ctx.function_name_data(expect_data(inst)?)?.to_string();
     let callee = ctx
-        .function_by_name(&function_name)
+        .callable_function_by_name(&function_name)
         .ok_or_else(|| CodegenIrError::unsupported(format!("call to unknown function {}", function_name)))?;
     if inst.operands.len() != callee.params.len() {
         return Err(CodegenIrError::unsupported(format!(

@@ -16,6 +16,7 @@ use crate::names::function_epilogue_symbol;
 
 use super::context::FunctionContext;
 use super::frame;
+use super::function_variants;
 use super::lower_inst;
 use super::lower_term;
 use super::{CodegenIrError, Result};
@@ -26,6 +27,7 @@ pub(super) fn emit_module(
     emitter: &mut Emitter,
     data: &mut DataSection,
 ) -> Result<()> {
+    function_variants::emit_dispatchers(module, emitter, data);
     for function in module.functions.iter().filter(|function| !is_main(function)) {
         emit_user_function(module, function, emitter, data)?;
     }

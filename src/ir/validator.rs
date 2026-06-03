@@ -273,7 +273,7 @@ fn validate_instruction_immediate(inst_id: InstId, inst: &Instruction) -> Result
         ConstF64 => require_immediate(inst_id, inst, "f64", |imm| matches!(imm, Imm::F64(_))),
         ConstBool => require_immediate(inst_id, inst, "bool", |imm| matches!(imm, Imm::Bool(_))),
         ConstStr | ConstClassName | DataAddr | Warn | IncludeOnceMark | IncludeOnceGuard
-        | FunctionVariantMark => {
+        | FunctionVariantMark | FunctionVariantDispatch => {
             require_immediate(inst_id, inst, "data id", |imm| matches!(imm, Imm::Data(_)))
         }
         LoadLocal | StoreLocal | LoadRefCell | StoreRefCell | LoadStaticLocal
@@ -337,7 +337,9 @@ fn validate_opcode_rules(function: &Function, inst_id: InstId, inst: &Instructio
         ConstF64 | ConstStr | ConstClassName | ConstEnumCase | DataAddr | ArrayNew | HashNew
         | ObjectNew | ClosureNew | FirstClassCallableNew | CallableArrayNew | BufferNew
         | GeneratorNew | ErrorSuppressBegin | ErrorSuppressEnd | IncludeOnceMark
-        | IncludeOnceGuard | FunctionVariantMark | Nop => check_count(inst_id, inst, 0, "0"),
+        | IncludeOnceGuard | FunctionVariantMark | FunctionVariantDispatch | Nop => {
+            check_count(inst_id, inst, 0, "0")
+        }
         IAdd | ISub | IMul | IDiv | ISDiv | ISMod | IPow | IBitAnd | IBitOr | IBitXor
         | IShl | IShrA => check_binary(function, inst_id, inst, IrType::I64, "I64"),
         FAdd | FSub | FMul | FDiv | FPow => check_binary(function, inst_id, inst, IrType::F64, "F64"),

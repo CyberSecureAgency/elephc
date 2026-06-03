@@ -644,8 +644,8 @@ than ordinary expression instructions.
 |---|---|---|---|
 | `IncludeOnceMark(label)` | none | `Void` | `writes_global` |
 | `IncludeOnceGuard(label)` | none | branch condition | `reads_global`, `writes_global` |
+| `FunctionVariantDispatch(group)` | none | `Void` | pure metadata for dispatcher emission |
 | `FunctionVariantMark(name, variant)` | none | `Void` | `writes_global` marker state |
-| `FunctionVariantDispatch(group)` | args | return type | variant effect summary |
 
 Plain `Include` should not reach EIR after resolver in normal operation. If it
 does, lowering must produce a compiler error, not silently emit incomplete IR.
@@ -988,6 +988,7 @@ instructions, but they must be represented in metadata or consumed by lowering.
 | `UseDecl` | Should be resolved by name resolver; residual statement is metadata/no-op. |
 | `FunctionDecl` | Emit/register separate `Function`; declaration statement itself is no-op at runtime. |
 | `FunctionVariantGroup` | Register include-variant dispatch metadata. |
+| `FunctionVariantDispatch` | Declare an include-loaded function variant group for dispatcher emission. |
 | `FunctionVariantMark` | Emit variant marker state. |
 | `Return` | Lower optional expression, perform cleanup, emit `Return`. |
 | `ConstDecl` | Record constant metadata; value expression retained for `ConstRef`. |

@@ -346,6 +346,54 @@ fn ir_backend_handles_include_once_guard() {
     assert_eq!(out, "piece");
 }
 
+/// Verifies require-once activates an include-loaded function variant before dispatch.
+#[test]
+fn ir_backend_handles_require_once_function_variant() {
+    let out = compile_and_run_ir_backend_files(
+        "require_once_function_variant",
+        &[
+            (
+                "main.php",
+                "<?php require_once 'lib.php'; require_once 'lib.php'; echo double(5);",
+            ),
+            ("lib.php", "<?php function double($n) { return $n * 2; }"),
+        ],
+        "main.php",
+        &[],
+    );
+    assert_eq!(out, "10");
+}
+
+/// Verifies function-variant dispatch fails until the include path activates the variant.
+#[test]
+fn ir_backend_requires_include_before_function_variant_dispatch() {
+    let run = compile_ir_backend_files_and_run(
+        "require_once_function_variant_unloaded",
+        &[
+            (
+                "main.php",
+                "<?php echo double(5); require_once 'lib.php';",
+            ),
+            ("lib.php", "<?php function double($n) { return $n * 2; }"),
+        ],
+        "main.php",
+        &[],
+    );
+    assert!(
+        !run.status.success(),
+        "IR backend unloaded function-variant fixture unexpectedly succeeded"
+    );
+    assert_eq!(
+        String::from_utf8(run.stdout).expect("fatal stdout should be utf8"),
+        ""
+    );
+    let stderr = String::from_utf8(run.stderr).expect("fatal stderr should be utf8");
+    assert!(
+        stderr.contains("Fatal error: Call to undefined function double()"),
+        "unexpected fatal stderr: {stderr}"
+    );
+}
+
 /// Compiles `source` with `--ir-backend`, runs the output binary, and returns stdout.
 fn compile_and_run_ir_backend(name: &str, source: &str) -> String {
     compile_and_run_ir_backend_with_args(name, source, &[])
