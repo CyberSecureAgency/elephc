@@ -620,3 +620,88 @@ echo count($arr) . "|" . $arr[2];
     );
     assert_eq!(out, "3|3.7");
 }
+
+/// Verifies an un-annotated method returning an array can be stored in a local and indexed.
+/// Regression: the initial type-checking pass mis-typed the method's return before method
+/// signatures stabilized, and the stale "Cannot index non-array" diagnostic survived because the
+/// erroring statement (`echo $r[0]`) structurally contained only an array access, not the method
+/// call. The final fixpoint pass types `$r` correctly, so the stale error must be suppressed.
+#[test]
+fn test_untyped_method_return_array_indexed_via_local() {
+    let out = compile_and_run(
+        r#"<?php
+class C {
+    private $row;
+    public function set() { $this->row = [10, 20, 30]; }
+    public function get() { return $this->row; }
+}
+$c = new C();
+$c->set();
+$r = $c->get();
+echo $r[0] . "," . $r[1] . "," . $r[2];
+"#,
+    );
+    assert_eq!(out, "10,20,30");
+}
+
+/// Verifies an un-annotated method returning an assoc array survives a local round-trip and keying.
+/// Regression companion to the indexed case: the result of a `mixed`-returning method stored in a
+/// local and keyed by string must not raise the stale "Cannot index non-array" diagnostic.
+#[test]
+fn test_untyped_method_return_assoc_indexed_via_local() {
+    let out = compile_and_run(
+        r#"<?php
+class C {
+    private $row;
+    public function fetch(): mixed { $a = []; $a["x"] = 10; $a["y"] = 20; return $a; }
+    public function load(): void { $this->row = $this->fetch(); }
+    public function current(): mixed { return $this->row; }
+}
+$c = new C();
+$c->load();
+$r = $c->current();
+echo $r["x"] . "," . $r["y"];
+"#,
+    );
+    assert_eq!(out, "10,20");
+}
+
+/// Verifies an `[]`-initialized property whose whole value is reassigned widens its element type.
+/// Regression: `private $row = [];` types the property as `Array(Never)`, and a later
+/// `$this->row = [10, 20, 30]` left the element type pinned at `Never`, so reading the returned
+/// array produced empty output. The first concrete array assignment must fix the element type.
+#[test]
+fn test_empty_array_init_property_reassigned_then_indexed() {
+    let out = compile_and_run(
+        r#"<?php
+class C {
+    private $row = [];
+    public function set() { $this->row = [10, 20, 30]; }
+    public function get() { return $this->row; }
+}
+$c = new C();
+$c->set();
+$r = $c->get();
+echo $r[0] . "," . $r[1] . "," . $r[2];
+"#,
+    );
+    assert_eq!(out, "10,20,30");
+}
+
+/// Verifies an `[]`-initialized property reassigned then indexed inside the same method.
+/// Regression: the stale `Array(Never)` element type made the method's return type collapse to
+/// `Never`, raising "A never-returning function must not implicitly return".
+#[test]
+fn test_empty_array_init_property_reassigned_indexed_in_method() {
+    let out = compile_and_run(
+        r#"<?php
+class C {
+    private $row = [];
+    public function go() { $this->row = [10, 20, 30]; return $this->row[0]; }
+}
+$c = new C();
+echo $c->go();
+"#,
+    );
+    assert_eq!(out, "10");
+}
