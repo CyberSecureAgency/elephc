@@ -62,6 +62,34 @@ fn ir_backend_runs_simple_while_loop() {
     assert_eq!(compile_and_run_ir_backend("while_loop", source), "012");
 }
 
+/// Verifies scalar EIR opcodes that are emitted for arithmetic, truthiness, and string coercion.
+#[test]
+fn ir_backend_handles_scalar_ops_and_string_coercions() {
+    for (name, source, expected) in [
+        ("idiv", "<?php echo 7 / 2;", "3.5"),
+        ("imod", "<?php echo 7 % 4;", "3"),
+        ("ineg", "<?php echo -$argc;", "-1"),
+        ("bitwise", "<?php echo 6 & 3; echo 4 | 1; echo 7 ^ 3;", "254"),
+        ("shifts", "<?php echo 1 << 3; echo -8 >> 1;", "8-4"),
+        (
+            "float_ops",
+            "<?php echo 1.5 + 2.0; echo 5.0 / 2.0; echo -1.5;",
+            "3.52.5-1.5",
+        ),
+        (
+            "truthy_strings",
+            "<?php if (\"0\") { echo 1; } else { echo 0; } if (\"hi\") { echo 2; }",
+            "02",
+        ),
+        ("null_coalesce", "<?php $x = null; echo $x ?? 5;", "5"),
+        ("concat_int", "<?php echo $argc . \"x\";", "1x"),
+        ("concat_false", "<?php echo false . \"x\";", "x"),
+        ("concat_null", "<?php echo null . \"x\";", "x"),
+    ] {
+        assert_eq!(compile_and_run_ir_backend(name, source), expected);
+    }
+}
+
 /// Verifies direct user-defined function calls with scalar params and returns.
 #[test]
 fn ir_backend_calls_user_functions() {

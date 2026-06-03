@@ -18,6 +18,11 @@ use crate::types::PhpType;
 use super::context::FunctionContext;
 use super::{CodegenIrError, Result};
 
+mod arithmetic;
+mod floats;
+mod predicates;
+mod strings;
+
 /// Lowers one EIR instruction by opcode.
 pub(super) fn lower_instruction(ctx: &mut FunctionContext<'_>, inst_id: InstId) -> Result<()> {
     let inst = ctx
@@ -27,16 +32,38 @@ pub(super) fn lower_instruction(ctx: &mut FunctionContext<'_>, inst_id: InstId) 
         .ok_or_else(|| CodegenIrError::missing_entry("instruction", inst_id.as_raw()))?;
     match inst.op {
         Op::ConstI64 => lower_const_i64(ctx, &inst),
-        Op::ConstF64 => lower_const_f64(ctx, &inst),
+        Op::ConstF64 => floats::lower_const_f64(ctx, &inst),
         Op::ConstBool => lower_const_bool(ctx, &inst),
         Op::ConstNull => lower_const_null(ctx, &inst),
-        Op::ConstStr => lower_const_str(ctx, &inst),
+        Op::ConstStr => strings::lower_const_str(ctx, &inst),
         Op::LoadLocal => lower_load_local(ctx, &inst),
         Op::StoreLocal => lower_store_local(ctx, &inst),
-        Op::IAdd => lower_int_binop(ctx, &inst, "add", "add"),
-        Op::ISub => lower_int_binop(ctx, &inst, "sub", "sub"),
-        Op::IMul => lower_int_binop(ctx, &inst, "mul", "imul"),
+        Op::IAdd => arithmetic::lower_int_binop(ctx, &inst, "add", "add"),
+        Op::ISub => arithmetic::lower_int_binop(ctx, &inst, "sub", "sub"),
+        Op::IMul => arithmetic::lower_int_binop(ctx, &inst, "mul", "imul"),
+        Op::IDiv => arithmetic::lower_int_div_to_float(ctx, &inst),
+        Op::ISMod => arithmetic::lower_int_mod(ctx, &inst),
+        Op::INeg => arithmetic::lower_int_unary(ctx, &inst, "neg", "neg"),
+        Op::IBitAnd => arithmetic::lower_int_binop(ctx, &inst, "and", "and"),
+        Op::IBitOr => arithmetic::lower_int_binop(ctx, &inst, "orr", "or"),
+        Op::IBitXor => arithmetic::lower_int_binop(ctx, &inst, "eor", "xor"),
+        Op::IBitNot => arithmetic::lower_int_unary(ctx, &inst, "mvn", "not"),
+        Op::IShl => arithmetic::lower_int_shift(ctx, &inst, "lsl", "shl"),
+        Op::IShrA => arithmetic::lower_int_shift(ctx, &inst, "asr", "sar"),
+        Op::FAdd => floats::lower_float_binop(ctx, &inst, "fadd", "addsd"),
+        Op::FSub => floats::lower_float_binop(ctx, &inst, "fsub", "subsd"),
+        Op::FMul => floats::lower_float_binop(ctx, &inst, "fmul", "mulsd"),
+        Op::FDiv => floats::lower_float_binop(ctx, &inst, "fdiv", "divsd"),
+        Op::FNeg => floats::lower_float_neg(ctx, &inst),
         Op::ICmp => lower_int_compare(ctx, &inst),
+        Op::FCmp => floats::lower_float_compare(ctx, &inst),
+        Op::IsNull => predicates::lower_is_null(ctx, &inst),
+        Op::IsTruthy => predicates::lower_is_truthy(ctx, &inst),
+        Op::IToF => floats::lower_int_to_float(ctx, &inst),
+        Op::FToI => floats::lower_float_to_int(ctx, &inst),
+        Op::IToStr => strings::lower_int_like_to_string(ctx, &inst),
+        Op::FToStr => strings::lower_float_to_string(ctx, &inst),
+        Op::StrConcat => strings::lower_str_concat(ctx, &inst),
         Op::Call => lower_direct_call(ctx, &inst),
         Op::EchoValue => lower_echo_value(ctx, &inst),
         Op::Nop => Ok(()),
@@ -110,23 +137,6 @@ fn materialize_direct_call_args(ctx: &mut FunctionContext<'_>, args: &[ValueId])
     Ok(())
 }
 
-/// Lowers a floating-point constant into the canonical float result register and slot.
-fn lower_const_f64(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
-    let value = expect_f64(inst)?;
-    let label = ctx.data.add_float(value);
-    let scratch = abi::symbol_scratch_reg(ctx.emitter);
-    abi::emit_symbol_address(ctx.emitter, scratch, &label);
-    match ctx.emitter.target.arch {
-        Arch::AArch64 => {
-            ctx.emitter.instruction(&format!("ldr {}, [{}]", abi::float_result_reg(ctx.emitter), scratch)); // load the 64-bit float literal through the symbol scratch register
-        }
-        Arch::X86_64 => {
-            ctx.emitter.instruction(&format!("movsd {}, QWORD PTR [{}]", abi::float_result_reg(ctx.emitter), scratch)); // load the 64-bit float literal through the symbol scratch register
-        }
-    }
-    store_if_result(ctx, inst)
-}
-
 /// Lowers a signed integer comparison into a boolean result value.
 fn lower_int_compare(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     let lhs = expect_operand(inst, 0)?;
@@ -145,30 +155,6 @@ fn lower_int_compare(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Resul
             ctx.emitter.instruction(&format!("cmp {}, {}", result_reg, rhs_reg)); // compare signed integer operands for the EIR predicate
             ctx.emitter.instruction(&format!("set{} al", x86_64_condition(predicate)?)); // materialize the predicate result in the low byte
             ctx.emitter.instruction(&format!("movzx {}, al", result_reg));      // widen the predicate byte into the integer result register
-        }
-    }
-    store_if_result(ctx, inst)
-}
-
-/// Lowers a two-operand integer arithmetic instruction.
-fn lower_int_binop(
-    ctx: &mut FunctionContext<'_>,
-    inst: &Instruction,
-    aarch64_mnemonic: &str,
-    x86_64_mnemonic: &str,
-) -> Result<()> {
-    let lhs = expect_operand(inst, 0)?;
-    let rhs = expect_operand(inst, 1)?;
-    let result_reg = abi::int_result_reg(ctx.emitter);
-    let rhs_reg = abi::secondary_scratch_reg(ctx.emitter);
-    require_integer_like(ctx.load_value_to_reg(lhs, result_reg)?, inst)?;
-    require_integer_like(ctx.load_value_to_reg(rhs, rhs_reg)?, inst)?;
-    match ctx.emitter.target.arch {
-        Arch::AArch64 => {
-            ctx.emitter.instruction(&format!("{} {}, {}, {}", aarch64_mnemonic, result_reg, result_reg, rhs_reg)); // compute the integer arithmetic result from both SSA operands
-        }
-        Arch::X86_64 => {
-            ctx.emitter.instruction(&format!("{} {}, {}", x86_64_mnemonic, result_reg, rhs_reg)); // update the integer result register with the arithmetic operand
         }
     }
     store_if_result(ctx, inst)
@@ -209,16 +195,6 @@ fn lower_const_null(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result
         abi::int_result_reg(ctx.emitter),
         0x7fff_ffff_ffff_fffe,
     );
-    store_if_result(ctx, inst)
-}
-
-/// Lowers a string constant by materializing its data-section pointer and byte length.
-fn lower_const_str(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
-    let data_id = expect_data(inst)?;
-    let (label, len) = ctx.intern_string_data(data_id)?;
-    let (ptr_reg, len_reg) = abi::string_result_regs(ctx.emitter);
-    abi::emit_symbol_address(ctx.emitter, ptr_reg, &label);
-    abi::emit_load_int_immediate(ctx.emitter, len_reg, len as i64);
     store_if_result(ctx, inst)
 }
 
@@ -300,9 +276,53 @@ fn x86_64_condition(predicate: CmpPredicate) -> Result<&'static str> {
     }
 }
 
+/// Returns the x86_64 floating-point setcc suffix for an EIR comparison predicate.
+fn x86_64_float_condition(predicate: CmpPredicate) -> Result<&'static str> {
+    match predicate {
+        CmpPredicate::Eq => Ok("e"),
+        CmpPredicate::Ne => Ok("ne"),
+        CmpPredicate::Slt | CmpPredicate::Olt => Ok("b"),
+        CmpPredicate::Sle | CmpPredicate::Ole => Ok("be"),
+        CmpPredicate::Sgt | CmpPredicate::Ogt => Ok("a"),
+        CmpPredicate::Sge | CmpPredicate::Oge => Ok("ae"),
+    }
+}
+
+/// Returns the secondary floating-point scratch register for the target.
+fn secondary_float_reg(arch: Arch) -> &'static str {
+    match arch {
+        Arch::AArch64 => "d1",
+        Arch::X86_64 => "xmm1",
+    }
+}
+
 /// Verifies that an arithmetic operand has a single-register integer-like representation.
 fn require_integer_like(ty: PhpType, inst: &Instruction) -> Result<()> {
     if matches!(ty, PhpType::Int | PhpType::Bool) {
+        return Ok(());
+    }
+    Err(CodegenIrError::unsupported(format!(
+        "{} for PHP type {:?}",
+        inst.op.name(),
+        ty
+    )))
+}
+
+/// Verifies that an operand has the floating-point representation expected by the opcode.
+fn require_float(ty: PhpType, inst: &Instruction) -> Result<()> {
+    if ty == PhpType::Float {
+        return Ok(());
+    }
+    Err(CodegenIrError::unsupported(format!(
+        "{} for PHP type {:?}",
+        inst.op.name(),
+        ty
+    )))
+}
+
+/// Verifies that an operand has the string-pair representation expected by the opcode.
+fn require_string(ty: PhpType, inst: &Instruction) -> Result<()> {
+    if ty == PhpType::Str {
         return Ok(());
     }
     Err(CodegenIrError::unsupported(format!(
