@@ -235,6 +235,28 @@ pub(super) fn lower_strstr(ctx: &mut FunctionContext<'_>, inst: &Instruction) ->
     store_if_result(ctx, inst)
 }
 
+/// Lowers `str_replace()`/`str_ireplace()` with three string operands.
+pub(super) fn lower_string_replace(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+    name: &str,
+    runtime_label: &str,
+) -> Result<()> {
+    if inst.operands.len() != 3 {
+        return Err(CodegenIrError::invalid_module(format!(
+            "{} expected 3 args, got {}",
+            name,
+            inst.operands.len()
+        )));
+    }
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => lower_string_replace_aarch64(ctx, inst, name)?,
+        Arch::X86_64 => lower_string_replace_x86_64(ctx, inst, name)?,
+    }
+    abi::emit_call_label(ctx.emitter, runtime_label);
+    store_if_result(ctx, inst)
+}
+
 /// Lowers `wordwrap(string, width?, break?, cut?)` through the shared runtime helper.
 pub(super) fn lower_wordwrap(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     if inst.operands.is_empty() || inst.operands.len() > 4 {
@@ -683,6 +705,48 @@ fn lower_hash_x86_64(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Resul
     ctx.load_string_value_to_regs(data, "rax", "rdx")?;
     ctx.emitter.instruction("mov rdi, rax");                                    // pass the data string pointer as the secondary hash argument
     ctx.emitter.instruction("mov rsi, rdx");                                    // pass the data string length as the secondary hash argument
+    abi::emit_pop_reg_pair(ctx.emitter, "rax", "rdx");
+    Ok(())
+}
+
+/// Materializes AArch64 `str_replace`-family runtime arguments.
+fn lower_string_replace_aarch64(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+    name: &str,
+) -> Result<()> {
+    let search = expect_string_operand(ctx, inst, 0, name)?;
+    let replacement = expect_string_operand(ctx, inst, 1, name)?;
+    let subject = expect_string_operand(ctx, inst, 2, name)?;
+    ctx.load_string_value_to_regs(search, "x1", "x2")?;
+    ctx.emitter.instruction("stp x1, x2, [sp, #-16]!");                         // preserve the search string while materializing replacement and subject
+    ctx.load_string_value_to_regs(replacement, "x1", "x2")?;
+    ctx.emitter.instruction("stp x1, x2, [sp, #-16]!");                         // preserve the replacement string while materializing the subject
+    ctx.load_string_value_to_regs(subject, "x1", "x2")?;
+    ctx.emitter.instruction("mov x5, x1");                                      // pass the subject string pointer as the third runtime string argument
+    ctx.emitter.instruction("mov x6, x2");                                      // pass the subject string length as the third runtime string argument
+    ctx.emitter.instruction("ldp x3, x4, [sp], #16");                           // restore replacement into the secondary runtime string argument
+    ctx.emitter.instruction("ldp x1, x2, [sp], #16");                           // restore search into the primary runtime string argument
+    Ok(())
+}
+
+/// Materializes x86_64 `str_replace`-family runtime arguments.
+fn lower_string_replace_x86_64(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+    name: &str,
+) -> Result<()> {
+    let search = expect_string_operand(ctx, inst, 0, name)?;
+    let replacement = expect_string_operand(ctx, inst, 1, name)?;
+    let subject = expect_string_operand(ctx, inst, 2, name)?;
+    ctx.load_string_value_to_regs(search, "rax", "rdx")?;
+    abi::emit_push_reg_pair(ctx.emitter, "rax", "rdx");
+    ctx.load_string_value_to_regs(replacement, "rax", "rdx")?;
+    abi::emit_push_reg_pair(ctx.emitter, "rax", "rdx");
+    ctx.load_string_value_to_regs(subject, "rax", "rdx")?;
+    ctx.emitter.instruction("mov rcx, rax");                                    // pass the subject string pointer as the third runtime string argument
+    ctx.emitter.instruction("mov r8, rdx");                                     // pass the subject string length as the third runtime string argument
+    abi::emit_pop_reg_pair(ctx.emitter, "rdi", "rsi");
     abi::emit_pop_reg_pair(ctx.emitter, "rax", "rdx");
     Ok(())
 }

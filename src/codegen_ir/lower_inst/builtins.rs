@@ -94,6 +94,10 @@ pub(super) fn lower_builtin_call(ctx: &mut FunctionContext<'_>, inst: &Instructi
         "str_repeat" => strings::lower_str_repeat(ctx, inst),
         "substr" => strings::lower_substr(ctx, inst),
         "strstr" => strings::lower_strstr(ctx, inst),
+        "str_replace" => strings::lower_string_replace(ctx, inst, "str_replace", "__rt_str_replace"),
+        "str_ireplace" => {
+            strings::lower_string_replace(ctx, inst, "str_ireplace", "__rt_str_ireplace")
+        }
         "ucfirst" => strings::lower_ucfirst(ctx, inst),
         "lcfirst" => strings::lower_lcfirst(ctx, inst),
         "ucwords" => strings::lower_unary_string_runtime(ctx, inst, "ucwords", "__rt_ucwords"),

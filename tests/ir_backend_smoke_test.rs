@@ -321,6 +321,11 @@ fn ir_backend_handles_scalar_builtins() {
             "ababab:[]:5",
         ),
         (
+            "replace_strings",
+            r#"<?php echo str_replace("World", "PHP", "Hello World"); echo ':'; echo str_replace("o", "0", "Hello World"); echo ':'; echo str_ireplace("WORLD", "PHP", "Hello World");"#,
+            "Hello PHP:Hell0 W0rld:Hello PHP",
+        ),
+        (
             "ucwords_strings",
             "<?php echo ucwords('hello world'); echo ':'; echo ucwords(\"two\\twords\");",
             "Hello World:Two\tWords",
