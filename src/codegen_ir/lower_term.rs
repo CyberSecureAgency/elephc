@@ -6,8 +6,9 @@
 //!
 //! Key details:
 //! - Fatal terminators write their data-pool diagnostic to stderr and exit.
+//! - Throw terminators publish `_exc_value` and enter the shared exception unwinder.
 //! - Unreachable terminators emit target-native trap instructions.
-//! - Throw and generator suspension remain explicit unsupported Phase 04 paths.
+//! - Generator suspension remains an explicit unsupported Phase 04 path.
 
 use crate::codegen::platform::Arch;
 use crate::ir::{BlockId, DataId, IrType, SwitchCase, Terminator, ValueId};
@@ -69,12 +70,26 @@ pub(super) fn lower_terminator(ctx: &mut FunctionContext<'_>, term: &Terminator)
             default,
             default_args,
         } => lower_switch(ctx, *scrutinee, cases, *default, default_args),
-        Terminator::Throw { .. } => Err(CodegenIrError::unsupported("throw terminator")),
+        Terminator::Throw { value } => lower_throw_value(ctx, *value),
         Terminator::Fatal { message } => lower_fatal(ctx, *message),
         Terminator::GeneratorSuspend { .. } => {
             Err(CodegenIrError::unsupported("generator_suspend terminator"))
         }
     }
+}
+
+/// Lowers a throw value by publishing it to the runtime exception slot and unwinding.
+pub(super) fn lower_throw_value(ctx: &mut FunctionContext<'_>, value: ValueId) -> Result<()> {
+    let ty = ctx.load_value_to_result(value)?;
+    if !matches!(ty.codegen_repr(), PhpType::Object(_)) {
+        return Err(CodegenIrError::unsupported(format!(
+            "throw for PHP type {:?}",
+            ty
+        )));
+    }
+    abi::emit_store_reg_to_symbol(ctx.emitter, abi::int_result_reg(ctx.emitter), "_exc_value", 0);
+    abi::emit_call_label(ctx.emitter, "__rt_throw_current");
+    Ok(())
 }
 
 /// Lowers an unconditional branch and copies any target block parameters.
@@ -320,7 +335,9 @@ mod tests {
 
     use crate::codegen::platform::{Arch, Platform, Target};
     use crate::codegen_ir::generate_user_asm_from_ir;
-    use crate::ir::{Builder, Function, IrType, Module, SwitchCase, Terminator};
+    use crate::ir::{
+        Builder, Function, IrHeapKind, IrType, Module, Op, Ownership, SwitchCase, Terminator,
+    };
     use crate::types::PhpType;
 
     /// Verifies ARM64 unreachable terminators lower to the Phase 04 trap opcode.
@@ -364,6 +381,24 @@ mod tests {
 
         assert!(asm.contains("_eir_switch_case_args_0:"), "{asm}");
         assert!(asm.contains("_eir_switch_default_args_1:"), "{asm}");
+    }
+
+    /// Verifies throw terminators publish `_exc_value` and call the exception unwinder.
+    #[test]
+    fn throw_terminator_enters_runtime_unwinder() {
+        let asm = generate_throw_terminator_main_asm(Target::new(Platform::Linux, Arch::X86_64));
+
+        assert!(asm.contains("mov QWORD PTR [rip + _exc_value], rax"), "{asm}");
+        assert!(asm.contains("call __rt_throw_current"), "{asm}");
+    }
+
+    /// Verifies expression-form throw opcodes share the throw terminator runtime path.
+    #[test]
+    fn throw_exception_opcode_enters_runtime_unwinder() {
+        let asm = generate_throw_exception_opcode_main_asm(Target::new(Platform::Linux, Arch::AArch64));
+
+        assert!(asm.contains("_exc_value"), "{asm}");
+        assert!(asm.contains("bl __rt_throw_current"), "{asm}");
     }
 
     /// Builds a minimal EIR main function ending in `Unreachable` and returns its ASM.
@@ -472,5 +507,61 @@ mod tests {
         module.add_function(function);
 
         generate_user_asm_from_ir(&module, false, false).expect("switch-arg module should lower")
+    }
+
+    /// Builds a minimal throw-terminator fixture with an object block parameter.
+    fn generate_throw_terminator_main_asm(target: Target) -> String {
+        let mut module = Module::new(target);
+        let mut function = Function::new("main".to_string(), IrType::Void, PhpType::Void);
+        function.flags.is_main = true;
+        {
+            let mut builder = Builder::new(&mut function);
+            let entry = builder.create_named_block(
+                "entry",
+                vec![(
+                    IrType::Heap(IrHeapKind::Object),
+                    PhpType::Object("Exception".to_string()),
+                )],
+            );
+            builder.set_entry(entry);
+            let thrown = builder.block_param(entry, 0);
+            builder.position_at_end(entry);
+            builder.terminate(Terminator::Throw { value: thrown });
+        }
+        module.add_function(function);
+
+        generate_user_asm_from_ir(&module, false, false).expect("throw terminator module should lower")
+    }
+
+    /// Builds a minimal throw-exception-opcode fixture with an object block parameter.
+    fn generate_throw_exception_opcode_main_asm(target: Target) -> String {
+        let mut module = Module::new(target);
+        let mut function = Function::new("main".to_string(), IrType::Void, PhpType::Void);
+        function.flags.is_main = true;
+        {
+            let mut builder = Builder::new(&mut function);
+            let entry = builder.create_named_block(
+                "entry",
+                vec![(
+                    IrType::Heap(IrHeapKind::Object),
+                    PhpType::Object("Exception".to_string()),
+                )],
+            );
+            builder.set_entry(entry);
+            let thrown = builder.block_param(entry, 0);
+            builder.position_at_end(entry);
+            let _ = builder.emit(
+                Op::ThrowException,
+                vec![thrown],
+                None,
+                IrType::Void,
+                PhpType::Void,
+                Ownership::NonHeap,
+            );
+            builder.terminate(Terminator::Unreachable);
+        }
+        module.add_function(function);
+
+        generate_user_asm_from_ir(&module, false, false).expect("throw opcode module should lower")
     }
 }

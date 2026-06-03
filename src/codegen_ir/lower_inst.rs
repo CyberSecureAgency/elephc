@@ -98,9 +98,16 @@ pub(super) fn lower_instruction(ctx: &mut FunctionContext<'_>, inst_id: InstId) 
         Op::Move | Op::Borrow => ownership::lower_forward(ctx, &inst),
         Op::EchoValue => lower_echo_value(ctx, &inst),
         Op::PrintValue => lower_print_value(ctx, &inst),
+        Op::ThrowException => lower_throw_exception(ctx, &inst),
         Op::Nop => Ok(()),
         _ => Err(CodegenIrError::unsupported(format!("opcode {}", inst.op.name()))),
     }
+}
+
+/// Lowers expression-form `throw` through the same runtime path as throw terminators.
+fn lower_throw_exception(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    let value = expect_operand(inst, 0)?;
+    super::lower_term::lower_throw_value(ctx, value)
 }
 
 /// Lowers a direct call to a module-local user function.
