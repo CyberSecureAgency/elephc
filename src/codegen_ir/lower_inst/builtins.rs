@@ -89,6 +89,21 @@ pub(super) fn lower_builtin_call(ctx: &mut FunctionContext<'_>, inst: &Instructi
         "lcfirst" => strings::lower_lcfirst(ctx, inst),
         "ord" => strings::lower_ord(ctx, inst),
         "chr" => strings::lower_chr(ctx, inst),
+        "addslashes" => strings::lower_unary_string_runtime(
+            ctx,
+            inst,
+            "addslashes",
+            "__rt_addslashes",
+        ),
+        "stripslashes" => strings::lower_unary_string_runtime(
+            ctx,
+            inst,
+            "stripslashes",
+            "__rt_stripslashes",
+        ),
+        "nl2br" => strings::lower_unary_string_runtime(ctx, inst, "nl2br", "__rt_nl2br"),
+        "bin2hex" => strings::lower_unary_string_runtime(ctx, inst, "bin2hex", "__rt_bin2hex"),
+        "hex2bin" => strings::lower_unary_string_runtime(ctx, inst, "hex2bin", "__rt_hex2bin"),
         _ => Err(CodegenIrError::unsupported(format!("builtin call {}", name))),
     }
 }

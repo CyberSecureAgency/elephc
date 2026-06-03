@@ -285,6 +285,12 @@ fn ir_backend_handles_scalar_builtins() {
             "<?php echo ord('A'); echo ':'; echo ord(''); echo ':'; echo chr(65);",
             "65:0:A",
         ),
+        (
+            "escape_and_hex_strings",
+            r#"<?php echo addslashes("He said \"hi\" and it's ok"); echo ':'; echo stripslashes("He said \\\"hi\\\""); echo ':'; echo nl2br("line1\nline2"); echo ':'; echo bin2hex("AB"); echo ':'; echo hex2bin("4142");"#,
+            r#"He said \"hi\" and it\'s ok:He said "hi":line1<br />
+line2:4142:AB"#,
+        ),
     ] {
         assert_eq!(compile_and_run_ir_backend(name, source), expected);
     }
