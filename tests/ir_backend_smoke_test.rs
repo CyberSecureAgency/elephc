@@ -582,6 +582,23 @@ echo "done";
     );
 }
 
+/// Verifies `gettype()` reports iterable array/hash payloads as PHP arrays.
+#[test]
+fn ir_backend_handles_iterable_gettype() {
+    let source = r#"<?php
+function describe(iterable $items): string {
+    return gettype($items);
+}
+echo describe(["a" => 1]);
+echo "|";
+echo describe([1, 2, 3]);
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("iterable_gettype", source),
+        "array|array"
+    );
+}
+
 /// Verifies string builtins that produce or consume indexed arrays through runtime helpers.
 #[test]
 fn ir_backend_handles_string_array_builtins() {

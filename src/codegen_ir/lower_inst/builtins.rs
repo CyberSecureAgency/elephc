@@ -303,14 +303,16 @@ fn static_gettype_name(ty: &PhpType) -> Option<&'static [u8]> {
         PhpType::Str => Some(b"string".as_slice()),
         PhpType::Bool => Some(b"boolean".as_slice()),
         PhpType::Void | PhpType::Never => Some(b"NULL".as_slice()),
-        PhpType::Array(_) | PhpType::AssocArray { .. } => Some(b"array".as_slice()),
+        PhpType::Array(_) | PhpType::AssocArray { .. } | PhpType::Iterable => {
+            Some(b"array".as_slice())
+        }
         PhpType::Callable => Some(b"callable".as_slice()),
         PhpType::Object(_) => Some(b"object".as_slice()),
         PhpType::Pointer(_) => Some(b"pointer".as_slice()),
         PhpType::Buffer(_) => Some(b"buffer".as_slice()),
         PhpType::Packed(_) => Some(b"packed".as_slice()),
         PhpType::Resource(_) => Some(b"resource".as_slice()),
-        PhpType::Iterable | PhpType::Mixed | PhpType::Union(_) => None,
+        PhpType::Mixed | PhpType::Union(_) => None,
     }
 }
 
