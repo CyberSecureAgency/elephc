@@ -697,6 +697,25 @@ fn ir_backend_handles_indexed_array_values() {
     );
 }
 
+/// Verifies associative `array_values()` returns a new insertion-ordered indexed array.
+#[test]
+fn ir_backend_handles_assoc_array_values() {
+    for (name, source, expected) in [
+        (
+            "array_values_assoc_int",
+            "<?php $m = ['a' => 10, 'b' => 20, 'c' => 30]; $v = array_values($m); echo count($v); echo ':'; echo $v[0] + $v[1] + $v[2]; $v[0] = 99; echo ':'; echo $m['a']; echo ':'; echo $v[0];",
+            "3:60:10:99",
+        ),
+        (
+            "array_values_assoc_string",
+            "<?php $m = ['a' => 'one', 'b' => 'two']; $v = array_values($m); echo count($v); echo ':'; echo $v[0] . ' ' . $v[1];",
+            "2:one two",
+        ),
+    ] {
+        assert_eq!(compile_and_run_ir_backend(name, source), expected);
+    }
+}
+
 /// Verifies indexed-array key existence delegates to the runtime bounds helper.
 #[test]
 fn ir_backend_handles_indexed_array_key_exists() {
