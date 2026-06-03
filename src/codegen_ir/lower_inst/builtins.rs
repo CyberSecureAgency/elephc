@@ -21,6 +21,7 @@ use super::{expect_data, expect_operand, predicates, store_if_result};
 use crate::codegen_ir::{CodegenIrError, Result};
 
 mod is_numeric;
+mod ctype;
 mod math;
 mod strings;
 
@@ -140,6 +141,10 @@ pub(super) fn lower_builtin_call(ctx: &mut FunctionContext<'_>, inst: &Instructi
             "base64_decode",
             "__rt_base64_decode",
         ),
+        "ctype_alpha" => ctype::lower_ctype_alpha(ctx, inst),
+        "ctype_digit" => ctype::lower_ctype_digit(ctx, inst),
+        "ctype_alnum" => ctype::lower_ctype_alnum(ctx, inst),
+        "ctype_space" => ctype::lower_ctype_space(ctx, inst),
         _ => Err(CodegenIrError::unsupported(format!("builtin call {}", name))),
     }
 }

@@ -296,6 +296,11 @@ line2:4142:AB"#,
             r#"<?php echo urlencode("hello world&foo=bar"); echo ':'; echo urldecode("hello+world%26foo%3Dbar"); echo ':'; echo rawurlencode("hello world"); echo ':'; echo rawurldecode("hello%20world"); echo ':'; echo base64_encode("Hello"); echo ':'; echo base64_decode("SGVsbG8=");"#,
             "hello+world%26foo%3Dbar:hello world&foo=bar:hello%20world:hello world:SGVsbG8=:Hello",
         ),
+        (
+            "ctype_strings",
+            "<?php echo ctype_alpha('Hello') ? '1' : '0'; echo ctype_alpha('Hello123') ? '1' : '0'; echo ctype_digit('12345') ? '1' : '0'; echo ctype_digit('123abc') ? '1' : '0'; echo ctype_alnum('Hello123') ? '1' : '0'; echo ctype_alnum('Hello 123') ? '1' : '0'; echo ctype_space(\" \\t\\n\") ? '1' : '0'; echo ctype_space('hello') ? '1' : '0';",
+            "10101010",
+        ),
     ] {
         assert_eq!(compile_and_run_ir_backend(name, source), expected);
     }
