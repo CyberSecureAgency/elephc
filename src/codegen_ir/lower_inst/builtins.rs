@@ -31,6 +31,7 @@ pub(super) fn lower_builtin_call(ctx: &mut FunctionContext<'_>, inst: &Instructi
         "floatval" => lower_floatval(ctx, inst),
         "boolval" => lower_boolval(ctx, inst),
         "function_exists" => lower_function_exists(ctx, inst),
+        "is_callable" => lower_is_callable(ctx, inst),
         "is_int" => lower_static_type_predicate(ctx, inst, "is_int", PhpType::Int),
         "is_float" => lower_static_type_predicate(ctx, inst, "is_float", PhpType::Float),
         "is_bool" => lower_static_type_predicate(ctx, inst, "is_bool", PhpType::Bool),
@@ -52,6 +53,34 @@ fn lower_function_exists(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> R
             || ctx.has_extern_function(&function_name)
             || canonical_builtin_function_name(function_name.trim_start_matches('\\')).is_some();
         emit_static_bool(ctx, exists);
+    }
+    store_if_result(ctx, inst)
+}
+
+/// Lowers `is_callable(value)` for static strings and concrete scalar types.
+fn lower_is_callable(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    ensure_arg_count(inst, "is_callable", 1)?;
+    let value = expect_operand(inst, 0)?;
+    match ctx.value_php_type(value)? {
+        PhpType::Callable => emit_static_bool(ctx, true),
+        PhpType::Str => {
+            let function_name = const_string_operand(ctx, value)?;
+            if function_name.contains("::") {
+                return Err(CodegenIrError::unsupported(
+                    "is_callable static-method string lookup",
+                ));
+            }
+            emit_static_bool(ctx, callable_name_exists(ctx, &function_name));
+        }
+        PhpType::Int | PhpType::Bool | PhpType::Float | PhpType::Void | PhpType::Never => {
+            emit_static_bool(ctx, false);
+        }
+        other => {
+            return Err(CodegenIrError::unsupported(format!(
+                "is_callable for PHP type {:?}",
+                other
+            )))
+        }
     }
     store_if_result(ctx, inst)
 }
@@ -241,6 +270,14 @@ fn emit_static_bool(ctx: &mut FunctionContext<'_>, value: bool) {
         abi::int_result_reg(ctx.emitter),
         i64::from(value),
     );
+}
+
+/// Returns true when a static callable name resolves to any known callable function.
+fn callable_name_exists(ctx: &FunctionContext<'_>, name: &str) -> bool {
+    ctx.function_variant_group_name(name).is_some()
+        || ctx.function_by_name(name).is_some()
+        || ctx.has_extern_function(name)
+        || canonical_builtin_function_name(name.trim_start_matches('\\')).is_some()
 }
 
 /// Returns a string literal value defined by a `ConstStr` instruction.

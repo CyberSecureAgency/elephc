@@ -413,6 +413,51 @@ fn ir_backend_handles_static_function_exists_checks() {
     );
 }
 
+/// Verifies is_callable() static string and scalar decisions match the legacy backend.
+#[test]
+fn ir_backend_handles_static_is_callable_checks() {
+    let source = "<?php function f() { return 1; } echo is_callable('f') ? 'yes' : 'no'; echo ':'; echo is_callable('strlen') ? 'yes' : 'no'; echo ':'; echo is_callable('missing') ? 'yes' : 'no'; echo ':'; echo is_callable(42) ? 'yes' : 'no';";
+    assert_eq!(
+        compile_and_run_ir_backend("is_callable_static_names", source),
+        "yes:yes:no:no"
+    );
+}
+
+/// Verifies is_callable() treats include-discovered string names as known callables.
+#[test]
+fn ir_backend_handles_is_callable_for_include_variants() {
+    let files = &[
+        (
+            "main.php",
+            r#"<?php
+if ($argc > 1) {
+    include 'lib.php';
+}
+echo is_callable('optional_callable') ? 'yes' : 'no';
+"#,
+        ),
+        ("lib.php", "<?php function optional_callable() { return 'loaded'; }"),
+    ];
+    assert_eq!(
+        compile_and_run_ir_backend_files(
+            "is_callable_include_variant_unloaded",
+            files,
+            "main.php",
+            &[],
+        ),
+        "yes"
+    );
+    assert_eq!(
+        compile_and_run_ir_backend_files(
+            "is_callable_include_variant_loaded",
+            files,
+            "main.php",
+            &["extra"],
+        ),
+        "yes"
+    );
+}
+
 /// Verifies function-variant dispatch fails until the include path activates the variant.
 #[test]
 fn ir_backend_requires_include_before_function_variant_dispatch() {
