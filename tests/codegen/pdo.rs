@@ -372,3 +372,56 @@ echo "rows=" . $n;
     );
     assert_eq!(out, "rows=0");
 }
+
+/// `PDO::quote()` wraps a string in single quotes and doubles embedded single
+/// quotes, matching the SQLite driver, and the quoted literal round-trips through
+/// a query.
+#[test]
+fn test_pdo_quote_and_round_trip() {
+    let out = compile_and_run(
+        r#"<?php
+$db = new PDO("sqlite::memory:");
+echo $db->quote("plain") . "|" . $db->quote("O'Brien") . "\n";
+$db->exec("CREATE TABLE t (name TEXT)");
+$name = "Tim O'Reilly";
+$db->exec("INSERT INTO t (name) VALUES (" . $db->quote($name) . ")");
+echo $db->query("SELECT name FROM t")->fetchColumn();
+"#,
+    );
+    assert_eq!(out, "'plain'|'O''Brien'\nTim O'Reilly");
+}
+
+/// `fetchAll(PDO::FETCH_COLUMN)` returns a flat array of the first column, and
+/// `fetch(PDO::FETCH_COLUMN)` returns one scalar.
+#[test]
+fn test_pdo_fetch_column_mode() {
+    let out = compile_and_run(
+        r#"<?php
+$db = new PDO("sqlite::memory:");
+$db->exec("CREATE TABLE t (id INTEGER, name TEXT)");
+$db->exec("INSERT INTO t VALUES (1, 'a'), (2, 'b'), (3, 'c')");
+$names = $db->query("SELECT name FROM t ORDER BY id")->fetchAll(PDO::FETCH_COLUMN);
+echo implode(",", $names) . ":" . $db->query("SELECT id FROM t ORDER BY id")->fetch(PDO::FETCH_COLUMN);
+"#,
+    );
+    assert_eq!(out, "a,b,c:1");
+}
+
+/// `foreach` honors `FETCH_COLUMN` with the column index set through
+/// `setFetchMode(PDO::FETCH_COLUMN, $col)`, yielding that column's scalar per row.
+#[test]
+fn test_pdo_foreach_fetch_column_index() {
+    let out = compile_and_run(
+        r#"<?php
+$db = new PDO("sqlite::memory:");
+$db->exec("CREATE TABLE t (id INTEGER, name TEXT)");
+$db->exec("INSERT INTO t VALUES (1, 'x'), (2, 'y'), (3, 'z')");
+$stmt = $db->query("SELECT id, name FROM t ORDER BY id");
+$stmt->setFetchMode(PDO::FETCH_COLUMN, 1);
+foreach ($stmt as $v) {
+    echo $v . ";";
+}
+"#,
+    );
+    assert_eq!(out, "x;y;z;");
+}

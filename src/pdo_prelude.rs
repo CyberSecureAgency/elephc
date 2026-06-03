@@ -70,6 +70,7 @@ class PDO {
     const FETCH_NUM = 3;
     const FETCH_BOTH = 4;
     const FETCH_OBJ = 5;
+    const FETCH_COLUMN = 7;
     const PARAM_NULL = 0;
     const PARAM_INT = 1;
     const PARAM_STR = 2;
@@ -137,6 +138,14 @@ class PDO {
         $_code = elephc_sqlite_errcode($this->conn);
         return [(string) $_code, $_code, elephc_sqlite_errmsg($this->conn)];
     }
+
+    public function quote(string $string, int $type = 2): string {
+        // SQLite string literal quoting: wrap in single quotes and double any
+        // embedded single quote. The type argument is accepted for PHP signature
+        // compatibility; only string quoting is supported (as in the SQLite driver).
+        $_unused = $type;
+        return "'" . str_replace("'", "''", $string) . "'";
+    }
 }
 
 class PDOStatement implements Iterator {
@@ -146,6 +155,7 @@ class PDOStatement implements Iterator {
     private array $boundParams;
     private array $boundValues;
     private array $boundTypes;
+    private int $fetchColumn;
     private $iterRow;
     private int $iterKey;
 
@@ -156,6 +166,7 @@ class PDOStatement implements Iterator {
         $this->boundParams = [];
         $this->boundValues = [];
         $this->boundTypes = [];
+        $this->fetchColumn = 0;
         // Initialized to null (not false) so the inferred property type widens to
         // Mixed when rewind()/next() assign a fetched row; a bool initializer would
         // pin the type to bool and coerce stored rows away. rewind() always runs
@@ -164,8 +175,13 @@ class PDOStatement implements Iterator {
         $this->iterKey = 0;
     }
 
-    public function setFetchMode(int $mode): bool {
+    public function setFetchMode(int $mode, $classOrColumn = null): bool {
+        // The optional second argument is the column index for FETCH_COLUMN (PHP
+        // requires it for that mode; other supported modes ignore it).
         $this->fetchMode = $mode;
+        if ($classOrColumn !== null) {
+            $this->fetchColumn = (int) $classOrColumn;
+        }
         return true;
     }
 
@@ -263,6 +279,12 @@ class PDOStatement implements Iterator {
             return false;
         }
         $_count = elephc_sqlite_column_count($this->stmt);
+        if ($mode == 7) {
+            // FETCH_COLUMN: yield a single column's value as a scalar instead of a
+            // row array. The column index defaults to 0 and is set via the second
+            // argument to setFetchMode(PDO::FETCH_COLUMN, $col).
+            return $this->columnValue($this->fetchColumn);
+        }
         if ($mode == 5) {
             // FETCH_OBJ: build the associative row, then round-trip through JSON
             // so json_decode yields a stdClass with one property per column.

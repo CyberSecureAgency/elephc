@@ -72,6 +72,14 @@ $stmt->execute();
 `bindParam()` binds the variable's *current* value (it does not defer a
 by-reference read to `execute()` time), so bind immediately before `execute()`.
 
+Prefer prepared statements over interpolation. When you must embed a string,
+`PDO::quote()` wraps it in single quotes and escapes embedded quotes:
+
+```php
+<?php
+$db->quote("O'Brien");  // 'O''Brien'
+```
+
 ## Fetching results
 
 ```php
@@ -85,6 +93,9 @@ $stmt->fetch(PDO::FETCH_OBJ);    // stdClass { id: 1, name: "Ada" }
 
 $all = $db->query("SELECT id FROM users")->fetchAll(PDO::FETCH_NUM);
 $one = $db->query("SELECT name FROM users")->fetchColumn();  // first column of next row
+
+// FETCH_COLUMN yields one column per row as a scalar:
+$ids = $db->query("SELECT id FROM users")->fetchAll(PDO::FETCH_COLUMN);  // [1, 2, …]
 ```
 
 `fetch()` returns `false` when the result set is exhausted. Column values are
@@ -141,12 +152,14 @@ try {
 
 ## Supported surface
 
-- **PDO**: `__construct`, `exec`, `query`, `prepare`, `lastInsertId`,
+- **PDO**: `__construct`, `exec`, `query`, `prepare`, `quote`, `lastInsertId`,
   `beginTransaction`, `commit`, `rollBack`, `errorCode`, `errorInfo`.
 - **PDOStatement**: `execute`, `bindValue`, `bindParam`, `setFetchMode`, `fetch`,
   `fetchAll`, `fetchColumn`, `rowCount`, `columnCount`; Traversable, so a statement
   can be walked with `foreach`.
-- **Fetch modes**: `FETCH_ASSOC`, `FETCH_NUM`, `FETCH_BOTH`, `FETCH_OBJ`.
+- **Fetch modes**: `FETCH_ASSOC`, `FETCH_NUM`, `FETCH_BOTH`, `FETCH_OBJ`,
+  `FETCH_COLUMN` (a single column as a scalar; the column index is the second
+  argument to `setFetchMode(PDO::FETCH_COLUMN, $col)`).
 - **Parameters**: positional `?` and named `:name`; `PARAM_INT` / `PARAM_STR` /
   `PARAM_NULL` / `PARAM_BOOL` constants.
 - **Constants**: the fetch-mode, parameter, and `ATTR_ERRMODE` / `ERRMODE_*`
