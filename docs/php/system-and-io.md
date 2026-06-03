@@ -1,6 +1,6 @@
 ---
 title: "System & I/O"
-description: "System functions, file I/O, date/time, JSON, and debugging utilities."
+description: "System functions, date/time, JSON, filesystem utilities, process execution, and debugging utilities."
 sidebar:
   order: 12
 ---
@@ -133,29 +133,12 @@ Regex functions and SPL regex iterators are documented in [Regex](regex.md),
 including the PCRE2 native library requirements for compiling programs that use
 them.
 
-## File I/O
+## Streams
 
-| Function | Signature | Description |
-|---|---|---|
-| `fopen()` | `fopen($filename, $mode): resource\|false` | Open file (modes: r, w, a, r+, w+, a+), or `false` on failure |
-| `fclose()` | `fclose(resource $handle): bool` | Close file handle |
-| `fread()` | `fread(resource $handle, $length): string` | Read up to $length bytes |
-| `fwrite()` | `fwrite(resource $handle, $data): int` | Write to file |
-| `fgets()` | `fgets(resource $handle): string` | Read a line |
-| `feof()` | `feof(resource $handle): bool` | End-of-file check |
-| `readline()` | `readline([$prompt]): string` | Read line from STDIN |
-| `fseek()` | `fseek(resource $handle, $offset [, $whence]): int` | Seek in file |
-| `ftell()` | `ftell(resource $handle): int` | Current position |
-| `rewind()` | `rewind(resource $handle): bool` | Seek to beginning |
-| `fgetcsv()` | `fgetcsv(resource $handle [, $sep]): array` | Read CSV line |
-| `fputcsv()` | `fputcsv(resource $handle, $fields [, $sep]): int` | Write CSV line |
-| `fgetc()` | `fgetc(resource $handle): string\|false` | Read one byte, or `false` at EOF/failure |
-| `readfile()` | `readfile($filename): int\|false` | Stream a file to stdout, return bytes copied, `-1` on read failure, or `false` on open failure |
-| `fpassthru()` | `fpassthru(resource $handle): int` | Stream remaining bytes of an open handle to stdout, returning `-1` on read failure |
-| `flock()` | `flock(resource $handle, int $op, &$would_block = null): bool` | Advisory lock. Combine `LOCK_SH` (1), `LOCK_EX` (2), or `LOCK_UN` (3) with the optional `LOCK_NB` (4) flag. `$would_block` is set to `0` or `1` when provided. |
-| `tmpfile()` | `tmpfile(): resource\|false` | Create a `/tmp/elephc-XXXXXX` temp file via `mkstemp`, immediately `unlink` the path so the file disappears when the descriptor closes. Returns a stream `resource` on success, or `false` on failure. |
-
-File handles are PHP `resource` values, not integers. `gettype(fopen(...))` returns `"resource"` on success and `"boolean"` on failure, `gettype(STDIN)` returns `"resource"`, and passing a plain `int` to stream functions is rejected. Failed `fopen()` calls, including invalid or empty modes, emit a suppressible runtime warning and return `false`; passing that `false` to stream functions is a fatal runtime TypeError with PHP-style "false given" wording, matching PHP's guard-before-use pattern.
+Stream resources, standard streams, wrappers (`php://`, `data://`, `phar://`,
+`http://`, `https://`, `ftp://`, `ftps://`, compression wrappers, and
+`glob://`), stream contexts, filters, sockets, TLS, process pipes, and user
+wrappers are documented in [Streams](streams.md).
 
 ## File system
 
@@ -171,12 +154,18 @@ File handles are PHP `resource` values, not integers. `gettype(fopen(...))` retu
 | `is_writable()` | `is_writable($filename): bool` | Is writable |
 | `filesize()` | `filesize($filename): int` | File size in bytes |
 | `filemtime()` | `filemtime($filename): int` | Modification time |
+| `disk_free_space()` | `disk_free_space($directory): float` | Free bytes of the filesystem holding `$directory`; `0.0` on failure |
+| `disk_total_space()` | `disk_total_space($directory): float` | Total bytes of the filesystem holding `$directory`; `0.0` on failure |
 | `copy()` | `copy($source, $dest): bool` | Copy file |
 | `rename()` | `rename($old, $new): bool` | Rename/move |
 | `unlink()` | `unlink($filename): bool` | Delete file |
 | `mkdir()` | `mkdir($pathname): bool` | Create directory |
 | `rmdir()` | `rmdir($pathname): bool` | Remove directory |
 | `scandir()` | `scandir($directory): array` | List files |
+| `opendir()` | `opendir($directory): resource\|false` | Open a directory stream for iteration with `readdir()`; returns a stream resource, or `false` on failure |
+| `readdir()` | `readdir($dir_handle): string\|false` | Read the next entry name from a directory handle (including `.` and `..`); returns `false` once every entry has been read |
+| `closedir()` | `closedir($dir_handle): void` | Close a directory handle opened by `opendir()` |
+| `rewinddir()` | `rewinddir($dir_handle): void` | Rewind a directory handle back to its first entry |
 | `glob()` | `glob($pattern): array` | Find matching files |
 | `getcwd()` | `getcwd(): string` | Current working directory |
 | `chdir()` | `chdir($directory): bool` | Change directory |
@@ -231,25 +220,33 @@ File handles are PHP `resource` values, not integers. `gettype(fopen(...))` retu
 
 | Function | Signature | Description |
 |---|---|---|
-| `touch()` | `touch($filename [, $mtime [, $atime]]): bool` | Set access/modification times. Creates the file with permissions `0666 & umask` if missing. With no `$mtime`, or `$mtime = null`, uses the current time; with no `$atime`, or `$atime = null`, defaults to `$mtime`. |
-| `chmod()` | `chmod($filename, $mode): bool` | Change file mode. |
-| `chown()` | `chown($filename, $user): bool` | Change owner by UID or user name. The group is left unchanged. |
-| `chgrp()` | `chgrp($filename, $group): bool` | Change group by GID or group name. The owner is left unchanged. |
+| `touch()` | `touch($filename [, $mtime [, $atime]]): bool` | Set access/modification times. Creates the file with permissions `0666 & umask` if missing. With no `$mtime`, or `$mtime = null`, uses the current time; with no `$atime`, or `$atime = null`, defaults to `$mtime`. On a registered `scheme://` path it dispatches to the wrapper's `stream_metadata($path, STREAM_META_TOUCH, [$mtime, $atime])` with a 2-element int array. |
+| `chmod()` | `chmod($filename, $mode): bool` | Change file mode. On a registered `scheme://` path it dispatches to the wrapper's `stream_metadata($path, STREAM_META_ACCESS, $mode)` and returns its `bool` result (false when the wrapper does not implement `stream_metadata`). |
+| `chown()` | `chown($filename, $user): bool` | Change owner by UID or user name. The group is left unchanged. On a registered `scheme://` path it dispatches to the wrapper's `stream_metadata($path, STREAM_META_OWNER, $uid)` (integer `$user`) or `stream_metadata($path, STREAM_META_OWNER_NAME, $name)` (string `$user`). |
+| `chgrp()` | `chgrp($filename, $group): bool` | Change group by GID or group name. The owner is left unchanged. On a registered `scheme://` path it dispatches to the wrapper's `stream_metadata($path, STREAM_META_GROUP, $gid)` (integer `$group`) or `stream_metadata($path, STREAM_META_GROUP_NAME, $name)` (string `$group`). |
 | `umask()` | `umask([$mask]): int` | Set the process umask and return the previous value. With no argument, returns the current umask without changing it (implemented by setting `umask(0)` and immediately restoring the original). |
-| `ftruncate()` | `ftruncate(resource $handle, $size): bool` | Truncate or extend an open file to `$size` bytes. |
-| `fflush()` | `fflush(resource $handle): bool` | Flush buffered output. Implemented as `fsync()` since elephc has no userspace stdio buffer. |
-| `fsync()` | `fsync(resource $handle): bool` | Flush data and metadata to durable storage. |
-| `fdatasync()` | `fdatasync(resource $handle): bool` | Flush data only. On macOS (which lacks a `fdatasync` libc entry point) this falls back to `fsync()`. |
 
-> All file-modification functions return `true` on success and `false` on failure.
+> Except for `umask()`, file-modification functions return `true` on success and `false` on failure.
 
 > `touch()` accepts integer Unix timestamps or `null` for `$mtime` / `$atime`. Numeric values, including `-1`, are treated as explicit timestamps; `null` and omitted arguments select PHP's default/current-time behaviour.
+
+## Network utilities
+
+| Function | Signature | Description |
+|---|---|---|
+| `gethostname()` | `gethostname(): string` | Return the host name of the machine running the program |
+| `gethostbyname()` | `gethostbyname(string $hostname): string` | Resolve a host name to its IPv4 dotted-quad address through the system resolver; returns the host name unchanged when it cannot be resolved |
+| `gethostbyaddr()` | `gethostbyaddr(string $ip): string\|false` | Reverse-resolve an IPv4 dotted-quad address to a host name; returns the address unchanged when no record exists, or `false` when it is malformed |
+| `getprotobyname()` | `getprotobyname(string $protocol): int\|false` | Look up an IP protocol number by name or alias in the system protocols database; `false` when no entry matches |
+| `getprotobynumber()` | `getprotobynumber(int $protocol): string\|false` | Look up an IP protocol name by number in the system protocols database; `false` when no entry matches |
+| `getservbyname()` | `getservbyname(string $service, string $protocol): int\|false` | Look up an internet service port by service name or alias and protocol in the system services database; `false` when no entry matches |
+| `getservbyport()` | `getservbyport(int $port, string $protocol): string\|false` | Look up an internet service name by port number and protocol in the system services database; `false` when no entry matches |
 
 ## Debugging
 
 | Function | Signature | Description |
 |---|---|---|
-| `var_dump()` | `var_dump($value): void` | Output type and value |
+| `var_dump()` | `var_dump($value): void` | Output type and value. Homogeneous indexed arrays of `int`, `string`, `bool`, or `float` print full per-element bodies (`[N]=>\n  int(V)\n`, etc.). Heterogeneous Mixed-element arrays, hashes, and nested arrays/objects print the `array(N) { ... }` shell with an empty body — the recursive walkers for those layouts are still pending. |
 | `print_r()` | `print_r($value): void` | Human-readable output |
 
 ```php

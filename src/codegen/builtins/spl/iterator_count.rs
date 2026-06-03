@@ -61,11 +61,11 @@ fn emit_count_loaded_iterator_object(
     data: &mut DataSection,
 ) {
     let receiver_reg = abi::nested_call_reg(emitter);
-    emitter.instruction(&format!(
+    emitter.instruction(&format!(                                               // preserve iterator receiver while initializing the count slot
         "mov {}, {}",
         receiver_reg,
         abi::int_result_reg(emitter)
-    )); // preserve iterator receiver while initializing the count slot
+    ));
     abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), 0);
     abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // save iterator_count()'s counter underneath the loop receiver
     iterator_common::emit_restore_receiver_from_preserved_reg(emitter, receiver_reg);
@@ -95,11 +95,11 @@ fn emit_count_loaded_traversable_object(
     data: &mut DataSection,
 ) {
     let receiver_reg = abi::nested_call_reg(emitter);
-    emitter.instruction(&format!(
+    emitter.instruction(&format!(                                               // preserve Traversable receiver while initializing the count slot
         "mov {}, {}",
         receiver_reg,
         abi::int_result_reg(emitter)
-    )); // preserve Traversable receiver while initializing the count slot
+    ));
     abi::emit_load_int_immediate(emitter, abi::int_result_reg(emitter), 0);
     abi::emit_push_reg(emitter, abi::int_result_reg(emitter));                  // save iterator_count()'s counter underneath the loop receiver
     iterator_common::emit_restore_receiver_from_preserved_reg(emitter, receiver_reg);

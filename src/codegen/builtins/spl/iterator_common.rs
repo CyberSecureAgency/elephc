@@ -172,11 +172,11 @@ pub(super) fn emit_save_result_under_receiver(emitter: &mut Emitter) {
 
 /// Emits assembly for restore receiver from preserved reg.
 pub(super) fn emit_restore_receiver_from_preserved_reg(emitter: &mut Emitter, receiver_reg: &str) {
-    emitter.instruction(&format!(
+    emitter.instruction(&format!(                                               // restore the iterator receiver as the next loop-driver input
         "mov {}, {}",
         abi::int_result_reg(emitter),
         receiver_reg
-    )); // restore the iterator receiver as the next loop-driver input
+    ));
 }
 
 /// Emits assembly for increment saved count.

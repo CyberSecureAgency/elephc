@@ -40,6 +40,281 @@ pub(crate) fn emit_new_object(
     allocation::emit_new_object(class_name, args, emitter, ctx, data)
 }
 
+/// Emits `new $variable(...)` by resolving the runtime class-string to an AOT
+/// allocation path.
+///
+/// Known classes branch back into `allocation::emit_new_object`, so constructors
+/// and builtin/SPL storage initialization follow the same path as `new Class`.
+/// Misses still fall back to `__rt_new_by_name` to preserve the current null-on-
+/// unknown behavior until the unsupported-class fatal path is tightened.
+pub(crate) fn emit_new_dynamic(
+    name_expr: &Expr,
+    args: &[Expr],
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+    data: &mut DataSection,
+) -> PhpType {
+    if let Some(class_name) = resolve_literal_dynamic_new_class_name(name_expr, ctx) {
+        return allocation::emit_new_object(&class_name, args, emitter, ctx, data);
+    }
+
+    emitter.comment("new $variable()");
+    crate::codegen::expr::emit_expr(name_expr, emitter, ctx, data);
+    let done_label = ctx.next_label("new_dynamic_done");
+    let fallback_label = ctx.next_label("new_dynamic_fallback");
+    let mut cases = Vec::new();
+    abi::emit_push_result_value(emitter, &PhpType::Str);
+
+    for class_name in sorted_dynamic_new_class_names(ctx) {
+        let label = ctx.next_label("new_dynamic_case");
+        emit_branch_if_dynamic_new_class_name_matches(&class_name, &label, emitter, data);
+        cases.push((class_name, label));
+    }
+
+    abi::emit_jump(emitter, &fallback_label);                                  // no AOT class-string case matched, so use the legacy registry fallback
+
+    for (class_name, label) in cases {
+        emitter.label(&label);
+        abi::emit_release_temporary_stack(emitter, 16);                         // discard the saved dynamic class-string before constructing the selected class
+        allocation::emit_new_object(&class_name, args, emitter, ctx, data);
+        emit_box_current_object_result(emitter);
+        abi::emit_jump(emitter, &done_label);                                   // skip the remaining dynamic-new cases after the selected allocation path succeeds
+    }
+
+    emitter.label(&fallback_label);
+    emit_new_dynamic_fallback(emitter, ctx);
+    emitter.label(&done_label);
+    PhpType::Mixed
+}
+
+/// Resolves a literal dynamic class-string to a known canonical class name.
+fn resolve_literal_dynamic_new_class_name(name_expr: &Expr, ctx: &Context) -> Option<String> {
+    let ExprKind::StringLiteral(class_name) = &name_expr.kind else {
+        return None;
+    };
+    let class_key = php_symbol_key(class_name.trim_start_matches('\\'));
+    ctx.classes
+        .keys()
+        .find(|existing| php_symbol_key(existing) == class_key)
+        .cloned()
+}
+
+/// Returns class names in stable class-id order for deterministic dynamic-new dispatch.
+fn sorted_dynamic_new_class_names(ctx: &Context) -> Vec<String> {
+    let mut classes: Vec<(u64, String)> = ctx
+        .classes
+        .iter()
+        .filter(|(name, _)| is_dynamic_new_aot_candidate(name))
+        .map(|(name, info)| (info.class_id, name.clone()))
+        .collect();
+    classes.sort_by_key(|(class_id, _)| *class_id);
+    classes.into_iter().map(|(_, name)| name).collect()
+}
+
+/// Returns true when `class_name` can safely use the static allocation path for `new $name`.
+fn is_dynamic_new_aot_candidate(class_name: &str) -> bool {
+    if class_name.starts_with("__Elephc") {
+        return false;
+    }
+    if supported_dynamic_new_builtin_class_names().contains(&class_name) {
+        return true;
+    }
+    !known_dynamic_new_builtin_class_names().contains(&class_name)
+}
+
+/// Returns builtin class names with allocation paths that are safe for dynamic `new`.
+pub(crate) fn supported_dynamic_new_builtin_class_names() -> &'static [&'static str] {
+    &[
+        "ArrayIterator",
+        "ArrayObject",
+        "BadFunctionCallException",
+        "BadMethodCallException",
+        "CallbackFilterIterator",
+        "DomainException",
+        "Error",
+        "Exception",
+        "Fiber",
+        "FiberError",
+        "InvalidArgumentException",
+        "IteratorIterator",
+        "JsonException",
+        "LengthException",
+        "LogicException",
+        "OutOfBoundsException",
+        "OutOfRangeException",
+        "OverflowException",
+        "RangeException",
+        "RecursiveCallbackFilterIterator",
+        "ReflectionClass",
+        "ReflectionMethod",
+        "ReflectionProperty",
+        "RuntimeException",
+        "SplDoublyLinkedList",
+        "SplFixedArray",
+        "SplQueue",
+        "SplStack",
+        "TypeError",
+        "UnderflowException",
+        "UnexpectedValueException",
+        "ValueError",
+        "stdClass",
+    ]
+}
+
+/// Returns builtin class names that should not be mistaken for user classes.
+fn known_dynamic_new_builtin_class_names() -> &'static [&'static str] {
+    &[
+        "AppendIterator",
+        "ArrayIterator",
+        "ArrayObject",
+        "BadFunctionCallException",
+        "BadMethodCallException",
+        "CachingIterator",
+        "CallbackFilterIterator",
+        "DirectoryIterator",
+        "DomainException",
+        "EmptyIterator",
+        "Error",
+        "Exception",
+        "Fiber",
+        "FiberError",
+        "FilesystemIterator",
+        "FilterIterator",
+        "Generator",
+        "GlobIterator",
+        "InfiniteIterator",
+        "InternalIterator",
+        "InvalidArgumentException",
+        "IteratorIterator",
+        "JsonException",
+        "LengthException",
+        "LimitIterator",
+        "LogicException",
+        "MultipleIterator",
+        "NoRewindIterator",
+        "OutOfBoundsException",
+        "OutOfRangeException",
+        "OverflowException",
+        "ParentIterator",
+        "RangeException",
+        "RecursiveArrayIterator",
+        "RecursiveCachingIterator",
+        "RecursiveCallbackFilterIterator",
+        "RecursiveDirectoryIterator",
+        "RecursiveFilterIterator",
+        "RecursiveIteratorIterator",
+        "RecursiveRegexIterator",
+        "ReflectionAttribute",
+        "ReflectionClass",
+        "ReflectionMethod",
+        "ReflectionProperty",
+        "RegexIterator",
+        "RuntimeException",
+        "SplDoublyLinkedList",
+        "SplFileInfo",
+        "SplFileObject",
+        "SplFixedArray",
+        "SplHeap",
+        "SplMaxHeap",
+        "SplMinHeap",
+        "SplObjectStorage",
+        "SplPriorityQueue",
+        "SplQueue",
+        "SplStack",
+        "SplTempFileObject",
+        "TypeError",
+        "UnderflowException",
+        "UnexpectedValueException",
+        "ValueError",
+        "stdClass",
+    ]
+}
+
+/// Emits a branch to `matched_label` when the saved dynamic class-string matches `class_name`.
+fn emit_branch_if_dynamic_new_class_name_matches(
+    class_name: &str,
+    matched_label: &str,
+    emitter: &mut Emitter,
+    data: &mut DataSection,
+) {
+    let (candidate_label, candidate_len) = data.add_string(class_name.as_bytes());
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            abi::emit_load_temporary_stack_slot(emitter, "x1", 0);
+            abi::emit_load_temporary_stack_slot(emitter, "x2", 8);
+            abi::emit_symbol_address(emitter, "x3", &candidate_label);
+            abi::emit_load_int_immediate(emitter, "x4", candidate_len as i64);
+            abi::emit_call_label(emitter, "__rt_strcasecmp");
+            emitter.instruction("cmp x0, #0");                                  // did the dynamic class-string match this AOT class name case-insensitively?
+            emitter.instruction(&format!("b.eq {}", matched_label));            // select this class allocation path when the class-string matches
+        }
+        Arch::X86_64 => {
+            abi::emit_load_temporary_stack_slot(emitter, "rdi", 0);
+            abi::emit_load_temporary_stack_slot(emitter, "rsi", 8);
+            abi::emit_symbol_address(emitter, "rdx", &candidate_label);
+            abi::emit_load_int_immediate(emitter, "rcx", candidate_len as i64);
+            abi::emit_call_label(emitter, "__rt_strcasecmp");
+            emitter.instruction("test rax, rax");                               // did the dynamic class-string match this AOT class name case-insensitively?
+            emitter.instruction(&format!("je {}", matched_label));              // select this class allocation path when the class-string matches
+        }
+    }
+}
+
+/// Boxes the current object result register into a `Mixed` object cell.
+fn emit_box_current_object_result(emitter: &mut Emitter) {
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            emitter.instruction("mov x1, x0");                                  // payload_lo = object pointer
+            emitter.instruction("mov x2, #0");                                  // object Mixed cells have no high payload
+            emitter.instruction("mov x0, #6");                                  // runtime tag 6 = object
+        }
+        Arch::X86_64 => {
+            emitter.instruction("mov rdi, rax");                                // payload_lo = object pointer
+            emitter.instruction("xor esi, esi");                                // object Mixed cells have no high payload
+            emitter.instruction("mov eax, 6");                                  // runtime tag 6 = object
+        }
+    }
+    abi::emit_call_label(emitter, "__rt_mixed_from_value");
+}
+
+/// Invokes the legacy runtime dynamic-new registry and boxes object/null results.
+fn emit_new_dynamic_fallback(
+    emitter: &mut Emitter,
+    ctx: &mut Context,
+) {
+    let null_label = ctx.next_label("new_dynamic_null");
+    let done_label = ctx.next_label("new_dynamic_fallback_done");
+    match emitter.target.arch {
+        Arch::AArch64 => {
+            abi::emit_pop_reg_pair(emitter, "x1", "x2");                       // restore the saved dynamic class-string for the legacy registry lookup
+            abi::emit_call_label(emitter, "__rt_new_by_name");
+            emitter.instruction(&format!("cbz x0, {}", null_label));            // null pointer -> box PHP null on a registry miss
+            emit_box_current_object_result(emitter);
+            emitter.instruction(&format!("b {}", done_label));                  // skip null boxing after a successful registry allocation
+            emitter.label(&null_label);
+            emitter.instruction("mov x1, #0");                                  // null payload_lo
+            emitter.instruction("mov x2, #0");                                  // null payload_hi
+            emitter.instruction("mov x0, #8");                                  // runtime tag 8 = null
+            abi::emit_call_label(emitter, "__rt_mixed_from_value");
+            emitter.label(&done_label);
+        }
+        Arch::X86_64 => {
+            abi::emit_pop_reg_pair(emitter, "rax", "rdx");                     // restore the saved dynamic class-string for the legacy registry lookup
+            abi::emit_call_label(emitter, "__rt_new_by_name");
+            emitter.instruction("test rax, rax");                               // did the registry miss this dynamic class name?
+            emitter.instruction(&format!("jz {}", null_label));                 // box PHP null on a registry miss
+            emit_box_current_object_result(emitter);
+            emitter.instruction(&format!("jmp {}", done_label));                // skip null boxing after a successful registry allocation
+            emitter.label(&null_label);
+            emitter.instruction("xor edi, edi");                                // null payload_lo
+            emitter.instruction("xor esi, esi");                                // null payload_hi
+            emitter.instruction("mov eax, 8");                                  // runtime tag 8 = null
+            abi::emit_call_label(emitter, "__rt_mixed_from_value");
+            emitter.label(&done_label);
+        }
+    }
+}
+
 /// Emits a `new $class(...)`-style internal factory constrained to a parent class.
 pub(crate) fn emit_new_dynamic_object(
     class_name: &Expr,

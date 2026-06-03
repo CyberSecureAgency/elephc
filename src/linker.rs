@@ -8,7 +8,7 @@
 //! Key details:
 //! - Target-specific command flags must stay aligned with `crate::codegen::platform::Target`.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{self, Command};
 
 use crate::codegen::platform::{Platform, Target};
@@ -46,6 +46,9 @@ pub(crate) fn link(
     extra_link_paths: &[String],
     extra_frameworks: &[String],
 ) {
+    let needs_elephc_tls = extra_link_libs.iter().any(|l| l == "elephc_tls");
+    let elephc_tls_dir = needs_elephc_tls.then(elephc_tls_lib_dir).flatten();
+
     let mut ld_cmd = match target.platform {
         Platform::MacOS => {
             let sdk_path = macos_sdk_path();
@@ -70,9 +73,15 @@ pub(crate) fn link(
                 cmd.arg("-Wl,--no-as-needed");
             }
             cmd.args(["-lm", "-lpthread"]);
+            if needs_elephc_tls {
+                cmd.arg("-ldl");
+            }
             cmd
         }
     };
+    if let Some(dir) = elephc_tls_dir.as_deref() {
+        ld_cmd.arg(format!("-L{}", dir));
+    }
     if target.platform == Platform::MacOS && !extra_link_libs.is_empty() {
         for path in default_macos_library_paths() {
             ld_cmd.arg(format!("-L{}", path));
@@ -113,6 +122,75 @@ fn run_tool(name: &str, cmd: &mut Command) {
             process::exit(1);
         }
     }
+}
+
+/// Locates `libelephc_tls.a` for programs that use TLS-backed stream wrappers.
+///
+/// Searches explicit configuration, installed layouts (`bin/elephc` plus
+/// sibling `lib/`), and local Cargo target directories. In a source checkout,
+/// attempts to build the staticlib once when it is missing so `cargo run --`
+/// can compile TLS examples without a manual preparatory command.
+fn elephc_tls_lib_dir() -> Option<String> {
+    if let Ok(env_dir) = std::env::var("ELEPHC_TLS_LIB_DIR") {
+        if !env_dir.is_empty() {
+            return Some(env_dir);
+        }
+    }
+
+    if let Some(dir) = find_elephc_tls_lib_dir() {
+        return Some(dir);
+    }
+
+    let workspace = find_elephc_tls_workspace()?;
+    build_elephc_tls_staticlib(&workspace);
+    find_elephc_tls_lib_dir()
+}
+
+/// Returns the first candidate directory that currently contains `libelephc_tls.a`.
+fn find_elephc_tls_lib_dir() -> Option<String> {
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    let mut candidates = vec![
+        dir.to_path_buf(),
+        dir.parent().map(|parent| parent.join("lib")).unwrap_or_default(),
+    ];
+    if let Ok(target_dir) = std::env::var("CARGO_TARGET_DIR") {
+        if !target_dir.is_empty() {
+            candidates.push(PathBuf::from(&target_dir).join("debug"));
+            candidates.push(PathBuf::from(target_dir).join("release"));
+        }
+    }
+    // Fallbacks for source-tree builds where the process cwd is the workspace
+    // root or a path below it.
+    candidates.push(PathBuf::from("target/debug"));
+    candidates.push(PathBuf::from("target/release"));
+
+    candidates
+        .into_iter()
+        .find(|candidate| candidate.join("libelephc_tls.a").exists())
+        .map(|candidate| candidate.display().to_string())
+}
+
+/// Finds the nearest ancestor that looks like an elephc workspace checkout.
+fn find_elephc_tls_workspace() -> Option<PathBuf> {
+    let cwd = std::env::current_dir().ok()?;
+    cwd.ancestors()
+        .find(|dir| dir.join("crates/elephc-tls/Cargo.toml").exists())
+        .map(Path::to_path_buf)
+}
+
+/// Builds the TLS staticlib in the current binary's debug/release profile.
+fn build_elephc_tls_staticlib(workspace: &Path) {
+    let release = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(Path::to_path_buf))
+        .is_some_and(|dir| dir.file_name().is_some_and(|name| name == "release"));
+    let mut cmd = Command::new("cargo");
+    cmd.args(["build", "-p", "elephc-tls"]);
+    if release {
+        cmd.arg("--release");
+    }
+    let _ = cmd.current_dir(workspace).status();
 }
 
 /// Returns the macOS SDK path by running `xcrun --show-sdk-path`.

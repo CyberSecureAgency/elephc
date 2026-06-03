@@ -293,11 +293,11 @@ src/
 │   │
 │   ├── builtins/              Built-in function codegen (one file per language function)
 │   │   ├── mod.rs             Dispatcher — chains to category modules
-│   │   ├── strings/           strlen, substr, strpos, explode, sprintf, md5, ... (59 files)
+│   │   ├── strings/           strlen, substr, strpos, explode, sprintf, md5, ... (69 files)
 │   │   ├── arrays/            count, array_push, buffer_len/free, sort, array_map, usort, ... (64 files)
 │   │   ├── math/              abs, floor, pow, rand, fmod, fdiv, round, min, max, sin, cos, ... (33 files)
-│   │   ├── types/             is_*, gettype, empty, unset, settype, class introspection, ... (24 files)
-│   │   ├── io/                fopen, fwrite, file_get_contents, scandir, ... (74 files)
+│   │   ├── types/             is_*, gettype, empty, unset, settype, class introspection, ... (27 files)
+│   │   ├── io/                fopen, fwrite, file_get_contents, streams, sockets, scandir, ... (141 files)
 │   │   ├── pointers/          ptr, ptr_get, ptr_set, ptr_read8, ptr_write8, ptr_offset, ... (16 files)
 │   │   ├── spl/               iterator_to_array, iterator_count, iterator_apply, iterator_common (5 files)
 │   │   └── system/            exit, define, time, date, mktime, json_encode, preg_match, attribute reflection, ... (32 files)
@@ -307,17 +307,17 @@ src/
 │       ├── data/              Fixed, user-program, and instanceof runtime data tables (4 files)
 │       ├── diagnostics.rs     Suppressible runtime-warning channel used by `@`
 │       ├── emitters.rs        Shared emit helpers used across runtime categories
-│       ├── strings/           itoa, concat, resource display, ftoa, sprintf, md5, sha1, str_persist, ... (60 files)
-│       ├── arrays/            heap_alloc, heap_free, array_free_deep, array_grow, hash_grow, hash_*, mixed boxing/freeing, mixed instanceof, sort, usort, refcount, gc/decref dispatch, ... (124 files)
+│       ├── strings/           itoa, concat, resource display, ftoa, sprintf, md5, sha1, str_persist, ... (66 files)
+│       ├── arrays/            heap_alloc, heap_free, array_free_deep, array_grow, hash_grow, hash_*, mixed boxing/freeing, mixed instanceof, sort, usort, refcount, gc/decref dispatch, ... (125 files)
 │       ├── callables/         Runtime `is_callable()` fallback for dynamic strings/arrays/hashes/objects/Mixed plus callable descriptor release (3 files)
-│       ├── io/                fopen, fgets, fread, stat, scandir, ... (30 files)
+│       ├── io/                fopen, fgets, fread, stat, streams, sockets, filters, scandir, ... (107 files)
 │       ├── buffers/           buffer_new, buffer_len, bounds_fail, use_after_free helpers (5 files incl. mod.rs)
 │       ├── exceptions.rs      Exception runtime module root / re-exports
 │       ├── exceptions/        cleanup_frames, dynamic_instanceof, matches, throw_current, rethrow_current, class_implements helpers (6 files)
 │       ├── system/            build_argv, time, getenv, shell_exec, php_uname, date, mktime, strtotime, match_unhandled, json_encode_*, json_decode, preg_*, ... (34 files)
 │       ├── pointers/          ptoa, ptr_check_nonnull, str_to_cstr, cstr_to_str, ptr_read_string, ptr_write_string, ... (7 files)
 │       ├── fibers/            stack allocation/free, context switch, entry trampoline (4 files) + `api/` (target-aware public API helpers)
-│       ├── objects/           stdClass, Mixed property/index access, JSON stdClass encoding helpers (4 files)
+│       ├── objects/           stdClass, Mixed property/index access, JSON stdClass encoding helpers (5 files)
 │       ├── spl/               SplDoublyLinkedList and SplFixedArray runtime container helpers (3 files)
 │       └── generators/        Generator frame layout and __rt_gen_* helpers (2 files)
 │

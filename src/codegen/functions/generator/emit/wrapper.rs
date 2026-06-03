@@ -100,14 +100,14 @@ pub(in crate::codegen::functions::generator) fn emit_wrapper(
     emitter.instruction(&format!("adr x9, {}", resume_label));                  // load address of the resume function symbol
     emitter.instruction(&format!("str x9, [x0, #{}]", gen_frame::OFF_RESUME_FN)); // resume_fn at OFF_RESUME_FN
 
-    emitter.instruction(&format!("str xzr, [x0, #{}]", gen_frame::OFF_STATE_IDX));        // state_idx + flags
+    emitter.instruction(&format!("str xzr, [x0, #{}]", gen_frame::OFF_STATE_IDX)); // state_idx + flags
     emitter.instruction(&format!("str xzr, [x0, #{}]", gen_frame::OFF_AUTO_KEY_COUNTER)); // auto_key_counter
-    emitter.instruction(&format!("str xzr, [x0, #{}]", gen_frame::OFF_LAST_KEY));         // last_key (Mixed pointer, NULL until first yield)
-    emitter.instruction(&format!("str xzr, [x0, #{}]", gen_frame::OFF_LAST_VALUE));       // last_value (Mixed pointer)
-    emitter.instruction(&format!("str xzr, [x0, #{}]", gen_frame::OFF_RETURN_VALUE));     // return_value (Mixed pointer)
-    emitter.instruction(&format!("str xzr, [x0, #{}]", gen_frame::OFF_SENT_VALUE));       // sent_value (Mixed pointer)
-    emitter.instruction(&format!("str xzr, [x0, #{}]", gen_frame::OFF_DELEGATED_ITER));   // delegated_iter
-    emitter.instruction(&format!("str xzr, [x0, #{}]", gen_frame::OFF_LAYOUT_ID));        // layout_id
+    emitter.instruction(&format!("str xzr, [x0, #{}]", gen_frame::OFF_LAST_KEY)); // last_key (Mixed pointer, NULL until first yield)
+    emitter.instruction(&format!("str xzr, [x0, #{}]", gen_frame::OFF_LAST_VALUE)); // last_value (Mixed pointer)
+    emitter.instruction(&format!("str xzr, [x0, #{}]", gen_frame::OFF_RETURN_VALUE)); // return_value (Mixed pointer)
+    emitter.instruction(&format!("str xzr, [x0, #{}]", gen_frame::OFF_SENT_VALUE)); // sent_value (Mixed pointer)
+    emitter.instruction(&format!("str xzr, [x0, #{}]", gen_frame::OFF_DELEGATED_ITER)); // delegated_iter
+    emitter.instruction(&format!("str xzr, [x0, #{}]", gen_frame::OFF_LAYOUT_ID)); // layout_id
 
     for i in 0..int_param_count {
         let frame_off = slot_offset(i);

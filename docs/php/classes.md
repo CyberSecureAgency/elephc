@@ -235,6 +235,8 @@ class User {
 
 Property type declarations are checked at compile time for both instance and static properties. Defaults and later assignments must be compatible with the declared type, including constructor assignments through untyped parameters. Typed properties without an explicit default start in PHP's uninitialized state; reading an instance or static property before the first assignment is a fatal runtime error, while assigning values such as `0`, `false`, `""`, or `null` to compatible nullable storage initializes the slot normally. Nullable shorthand (`?T`) and union storage use the compiler's boxed mixed representation internally. `void` and `callable` property types are rejected.
 
+Property default values are applied both for the normal `new ClassName()` form and for dynamic `new $variable()` instantiation (and therefore for runtime-instantiated stream wrappers and stream filters). When the class name resolves to a known class, dynamic instantiation follows the same allocation path as direct construction, so constructor arguments are evaluated and `__construct` runs normally.
+
 ### Property redeclaration
 
 A child class may redeclare a property inherited from a non-private parent. The redeclaration is checked at compile time and must follow PHP rules:
@@ -427,6 +429,26 @@ class Child extends Base {
 ```
 
 `new static()` follows PHP late static binding and constructs an instance of the called class.
+
+## Dynamic instantiation (`new $variable()`)
+
+`new $variable()` constructs an instance whose class is selected at runtime from a string variable:
+
+```php
+<?php
+class Foo {}
+class Bar {}
+
+$cls = "Foo";
+$obj = new $cls();                       // Foo instance
+echo gettype($obj);                      // "object"
+
+$missing = "NoSuchClass";
+$bad = new $missing();                   // PHP null
+echo gettype($bad);                      // "NULL"
+```
+
+elephc resolves the class name case-insensitively against compile-time class metadata, matching PHP class lookup. A match dispatches through the same allocation path as `new ClassName()`, including constructor calls, declared property defaults, and supported built-in/SPL runtime storage initialization. An unknown name currently yields PHP `null`; the missing-class fatal path is not yet tightened.
 
 ## Override rules
 Same parameter count, same pass-by-reference positions, same default layout, same variadic shape.

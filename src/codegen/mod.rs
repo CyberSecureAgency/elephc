@@ -15,6 +15,7 @@ pub(crate) mod callable_dispatch;
 pub(crate) mod runtime_callable_invoker;
 mod callables;
 mod class_methods;
+mod property_init_thunks;
 /// Codegen context module.
 pub mod context;
 mod data_section;
@@ -109,6 +110,7 @@ use crate::types::{
     PackedClassInfo, PhpType, TypeEnv,
 };
 use class_methods::emit_class_methods;
+use property_init_thunks::emit_property_init_thunk;
 use data_section::DataSection;
 use driver_support::align16;
 use emit::Emitter;
@@ -255,6 +257,29 @@ pub fn generate_user_asm(
             callable_return_sigs,
             callable_array_return_sigs,
             &fiber_return_sigs,
+            &function_variant_group_names,
+            &global_constants,
+            interfaces,
+            &declared_traits,
+            classes,
+            enums,
+            packed_classes,
+            extern_functions,
+            extern_classes,
+            extern_globals,
+        );
+        // Per-class property-default thunk (_class_propinit_<id>), invoked by
+        // __rt_new_by_name so new $var() / registered wrappers + filters get
+        // their declared property defaults. Same filtered/sorted class set as
+        // the method emission above and the _class_propinit_ptrs table.
+        emit_property_init_thunk(
+            &mut emitter,
+            &mut data,
+            class_name,
+            class_info,
+            functions,
+            callable_param_sigs,
+            callable_return_sigs,
             &function_variant_group_names,
             &global_constants,
             interfaces,
@@ -496,6 +521,7 @@ fn collect_emitted_class_names(
     for factory in reflection::collect_attribute_factories(classes) {
         names.insert(factory.class_name);
     }
+    collect_dynamic_object_factory_classes(program, classes, &mut names);
     expand_emitted_class_dependencies(&mut names, classes);
     names
 }
@@ -745,6 +771,17 @@ fn collect_dynamic_object_factory_classes_in_expr(
         | ExprKind::StaticMethodCall { args, .. }
         | ExprKind::NewObject { args, .. }
         | ExprKind::NewScopedObject { args, .. } => {
+            for arg in args {
+                collect_dynamic_object_factory_classes_in_expr(arg, classes, names);
+            }
+        }
+        ExprKind::NewDynamic { name_expr, args } => {
+            for class_name in expr::objects::supported_dynamic_new_builtin_class_names() {
+                if classes.contains_key(*class_name) {
+                    names.insert((*class_name).to_string());
+                }
+            }
+            collect_dynamic_object_factory_classes_in_expr(name_expr, classes, names);
             for arg in args {
                 collect_dynamic_object_factory_classes_in_expr(arg, classes, names);
             }
