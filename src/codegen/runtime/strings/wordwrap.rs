@@ -93,7 +93,7 @@ pub fn emit_wordwrap(emitter: &mut Emitter) {
 
 /// Emits the x86_64 Linux implementation of the `__rt_wordwrap` runtime helper.
 ///
-/// Input registers: rdi=source ptr, rdx=source len, rcx=width, r8=break str ptr, [rbp-16]=break str len
+/// Input registers: rax=source ptr, rdx=source len, rdi=width, rcx=break str ptr, r8=break str len
 /// Output registers: rax=result ptr, rdx=result len
 ///
 /// Uses stack slots at `[rbp-8..48]` for spill: break string ptr/len, width, result start pointer,
@@ -120,12 +120,12 @@ fn emit_wordwrap_linux_x86_64(emitter: &mut Emitter) {
     emitter.label("__rt_wordwrap_loop_linux_x86_64");
     emitter.instruction("test rdx, rdx");                                       // have all input bytes been consumed by the wrapping loop?
     emitter.instruction("jz __rt_wordwrap_done_linux_x86_64");                  // finalize the wrapped string once there are no source bytes left
-    emitter.instruction("mov al, BYTE PTR [rax]");                              // load the next source byte before applying newline and width-boundary rules
+    emitter.instruction("mov r10b, BYTE PTR [rax]");                            // load the next source byte without aliasing the source pointer register
     emitter.instruction("add rax, 1");                                          // advance the source-string cursor after consuming one byte
     emitter.instruction("sub rdx, 1");                                          // decrement the remaining source-byte count after consuming one byte
-    emitter.instruction("cmp al, 10");                                          // is the current source byte already a newline that resets the current line-length counter?
+    emitter.instruction("cmp r10b, 10");                                        // is the current source byte already a newline that resets the current line-length counter?
     emitter.instruction("jne __rt_wordwrap_check_linux_x86_64");                // only run the width-boundary logic when the consumed byte is not an existing newline
-    emitter.instruction("mov BYTE PTR [r11], al");                              // copy the existing newline into the wrapped output unchanged
+    emitter.instruction("mov BYTE PTR [r11], r10b");                            // copy the existing newline into the wrapped output unchanged
     emitter.instruction("add r11, 1");                                          // advance the wrapped-output destination after copying the existing newline
     emitter.instruction("mov QWORD PTR [rbp - 48], 0");                         // reset the current line-length counter after an existing newline in the input
     emitter.instruction("jmp __rt_wordwrap_loop_linux_x86_64");                 // continue processing the remaining source bytes after handling the existing newline
@@ -152,7 +152,7 @@ fn emit_wordwrap_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov QWORD PTR [rbp - 48], 0");                         // reset the current line-length counter after inserting the configured wrap separator
 
     emitter.label("__rt_wordwrap_store_linux_x86_64");
-    emitter.instruction("mov BYTE PTR [r11], al");                              // store the current source byte into the wrapped output after any required break insertion
+    emitter.instruction("mov BYTE PTR [r11], r10b");                            // store the current source byte into the wrapped output after any required break insertion
     emitter.instruction("add r11, 1");                                          // advance the wrapped-output destination after storing one source byte
     emitter.instruction("mov rcx, QWORD PTR [rbp - 48]");                       // reload the current line-length counter before incrementing it for the stored source byte
     emitter.instruction("add rcx, 1");                                          // increment the current line-length counter after storing one non-newline source byte
