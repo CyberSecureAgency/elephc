@@ -19,6 +19,7 @@ use super::context::FunctionContext;
 use super::{CodegenIrError, Result};
 
 mod arithmetic;
+mod arrays;
 mod builtins;
 mod comparisons;
 mod conversions;
@@ -80,6 +81,9 @@ pub(super) fn lower_instruction(ctx: &mut FunctionContext<'_>, inst_id: InstId) 
         Op::StrConcat => strings::lower_str_concat(ctx, &inst),
         Op::StrLen => strings::lower_str_len(ctx, &inst),
         Op::StrCharAt => strings::lower_str_char_at(ctx, &inst),
+        Op::ArrayNew => arrays::lower_array_new(ctx, &inst),
+        Op::ArrayLen => arrays::lower_array_len(ctx, &inst),
+        Op::ArrayPush => arrays::lower_array_push(ctx, &inst),
         Op::Call => lower_direct_call(ctx, &inst),
         Op::BuiltinCall => builtins::lower_builtin_call(ctx, &inst),
         Op::Acquire => ownership::lower_acquire(ctx, &inst),

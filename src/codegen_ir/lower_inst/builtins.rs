@@ -25,6 +25,7 @@ pub(super) fn lower_builtin_call(ctx: &mut FunctionContext<'_>, inst: &Instructi
     let key = php_symbol_key(name.trim_start_matches('\\'));
     match key.as_str() {
         "strlen" => lower_strlen(ctx, inst),
+        "count" => lower_count(ctx, inst),
         "intval" => lower_intval(ctx, inst),
         "floatval" => lower_floatval(ctx, inst),
         "boolval" => lower_boolval(ctx, inst),
@@ -34,6 +35,24 @@ pub(super) fn lower_builtin_call(ctx: &mut FunctionContext<'_>, inst: &Instructi
         "is_null" => lower_is_null_builtin(ctx, inst),
         "is_string" => lower_static_type_predicate(ctx, inst, "is_string", PhpType::Str),
         _ => Err(CodegenIrError::unsupported(format!("builtin call {}", name))),
+    }
+}
+
+/// Lowers `count(array)` for concrete array values by reading the runtime length header.
+fn lower_count(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    ensure_arg_count(inst, "count", 1)?;
+    let value = expect_operand(inst, 0)?;
+    let ty = ctx.load_value_to_result(value)?;
+    match ty {
+        PhpType::Array(_) | PhpType::AssocArray { .. } => {
+            let result_reg = abi::int_result_reg(ctx.emitter);
+            abi::emit_load_from_address(ctx.emitter, result_reg, result_reg, 0);
+            store_if_result(ctx, inst)
+        }
+        other => Err(CodegenIrError::unsupported(format!(
+            "count for PHP type {:?}",
+            other
+        ))),
     }
 }
 

@@ -242,6 +242,22 @@ fn ir_backend_handles_string_ownership_ops() {
     }
 }
 
+/// Verifies basic indexed-array allocation, append growth, and count lowering.
+#[test]
+fn ir_backend_handles_basic_indexed_arrays() {
+    for (name, source, expected) in [
+        ("array_count_ints", "<?php $a = [1, 2, 3]; echo count($a);", "3"),
+        ("array_count_strings", "<?php $a = [\"a\", \"b\"]; echo count($a);", "2"),
+        (
+            "array_push_grows_local",
+            "<?php $a = []; $a[] = 1; $a[] = 2; $a[] = 3; $a[] = 4; $a[] = 5; echo count($a);",
+            "5",
+        ),
+    ] {
+        assert_eq!(compile_and_run_ir_backend(name, source), expected);
+    }
+}
+
 /// Compiles `source` with `--ir-backend`, runs the output binary, and returns stdout.
 fn compile_and_run_ir_backend(name: &str, source: &str) -> String {
     compile_and_run_ir_backend_with_args(name, source, &[])
