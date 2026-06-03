@@ -23,17 +23,33 @@ fn elephc_cli_bin() -> String {
     })
 }
 
-/// Verifies the IR backend compiles, links, and runs a straight-line scalar echo program.
+/// Verifies the IR backend compiles, links, and runs straight-line scalar echo programs.
 #[test]
-fn ir_backend_hello_world() {
+fn ir_backend_echoes_scalar_literals() {
+    for (name, source, expected) in [
+        ("int", "<?php echo 42;", "42"),
+        ("string", "<?php echo \"hi\";", "hi"),
+        ("bool_true", "<?php echo true;", "1"),
+        ("bool_false", "<?php echo false;", ""),
+        ("null", "<?php echo null;", ""),
+        ("float", "<?php echo 1.5;", "1.5"),
+    ] {
+        let output = compile_and_run_ir_backend(name, source);
+        assert_eq!(output, expected, "unexpected stdout for {name}");
+    }
+}
+
+/// Compiles `source` with `--ir-backend`, runs the output binary, and returns stdout.
+fn compile_and_run_ir_backend(name: &str, source: &str) -> String {
     let dir = std::env::temp_dir().join(format!(
-        "elephc_ir_backend_hello_{}_{}",
+        "elephc_ir_backend_{}_{}_{}",
+        name,
         std::process::id(),
         unique_test_id()
     ));
     fs::create_dir_all(&dir).expect("failed to create IR backend hello directory");
     let php_path = dir.join("main.php");
-    fs::write(&php_path, "<?php echo 42;").expect("failed to write IR backend PHP fixture");
+    fs::write(&php_path, source).expect("failed to write IR backend PHP fixture");
 
     let compile = Command::new(elephc_cli_bin())
         .env("XDG_CACHE_HOME", dir.join("cache-root"))
@@ -53,9 +69,10 @@ fn ir_backend_hello_world() {
         .output()
         .expect("failed to run IR backend binary");
     assert!(run.status.success(), "IR backend binary failed");
-    assert_eq!(String::from_utf8(run.stdout).unwrap(), "42");
+    let stdout = String::from_utf8(run.stdout).unwrap();
 
     let _ = fs::remove_dir_all(&dir);
+    stdout
 }
 
 /// Returns a coarse unique suffix for temporary test directories.

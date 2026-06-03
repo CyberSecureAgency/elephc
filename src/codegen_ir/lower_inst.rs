@@ -26,12 +26,30 @@ pub(super) fn lower_instruction(ctx: &mut FunctionContext<'_>, inst_id: InstId) 
         .ok_or_else(|| CodegenIrError::missing_entry("instruction", inst_id.as_raw()))?;
     match inst.op {
         Op::ConstI64 => lower_const_i64(ctx, &inst),
+        Op::ConstF64 => lower_const_f64(ctx, &inst),
         Op::ConstBool => lower_const_bool(ctx, &inst),
         Op::ConstNull => lower_const_null(ctx, &inst),
         Op::ConstStr => lower_const_str(ctx, &inst),
         Op::EchoValue => lower_echo_value(ctx, &inst),
         _ => Err(CodegenIrError::unsupported(format!("opcode {}", inst.op.name()))),
     }
+}
+
+/// Lowers a floating-point constant into the canonical float result register and slot.
+fn lower_const_f64(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    let value = expect_f64(inst)?;
+    let label = ctx.data.add_float(value);
+    let scratch = abi::symbol_scratch_reg(ctx.emitter);
+    abi::emit_symbol_address(ctx.emitter, scratch, &label);
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction(&format!("ldr {}, [{}]", abi::float_result_reg(ctx.emitter), scratch)); // load the 64-bit float literal through the symbol scratch register
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction(&format!("movsd {}, QWORD PTR [{}]", abi::float_result_reg(ctx.emitter), scratch)); // load the 64-bit float literal through the symbol scratch register
+        }
+    }
+    store_if_result(ctx, inst)
 }
 
 /// Lowers an integer constant into the canonical integer result register and slot.
@@ -128,6 +146,17 @@ fn expect_i64(inst: &Instruction) -> Result<i64> {
         Some(Immediate::I64(value)) => Ok(value),
         _ => Err(CodegenIrError::invalid_module(format!(
             "{} missing i64 immediate",
+            inst.op.name()
+        ))),
+    }
+}
+
+/// Returns the floating-point immediate attached to a constant instruction.
+fn expect_f64(inst: &Instruction) -> Result<f64> {
+    match inst.immediate {
+        Some(Immediate::F64(value)) => Ok(value),
+        _ => Err(CodegenIrError::invalid_module(format!(
+            "{} missing f64 immediate",
             inst.op.name()
         ))),
     }
