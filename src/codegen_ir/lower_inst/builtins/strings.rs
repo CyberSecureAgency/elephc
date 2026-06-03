@@ -17,6 +17,34 @@ use crate::types::PhpType;
 use super::super::super::context::FunctionContext;
 use super::{expect_operand, store_if_result};
 
+/// Lowers a one-argument string builtin that directly delegates to a runtime helper.
+pub(super) fn lower_unary_string_runtime(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+    name: &str,
+    runtime_label: &str,
+) -> Result<()> {
+    load_single_string_arg(ctx, inst, name)?;
+    abi::emit_call_label(ctx.emitter, runtime_label);
+    store_if_result(ctx, inst)
+}
+
+/// Lowers `ucfirst()` by copying the string and uppercasing the first ASCII byte.
+pub(super) fn lower_ucfirst(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    load_single_string_arg(ctx, inst, "ucfirst")?;
+    abi::emit_call_label(ctx.emitter, "__rt_strcopy");
+    emit_first_char_case_adjust(ctx, "ucfirst", 97, 122, FirstCharAdjust::Uppercase);
+    store_if_result(ctx, inst)
+}
+
+/// Lowers `lcfirst()` by copying the string and lowercasing the first ASCII byte.
+pub(super) fn lower_lcfirst(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    load_single_string_arg(ctx, inst, "lcfirst")?;
+    abi::emit_call_label(ctx.emitter, "__rt_strcopy");
+    emit_first_char_case_adjust(ctx, "lcfirst", 65, 90, FirstCharAdjust::Lowercase);
+    store_if_result(ctx, inst)
+}
+
 /// Lowers `number_format()` by arranging its runtime helper arguments.
 pub(super) fn lower_number_format(
     ctx: &mut FunctionContext<'_>,
@@ -39,6 +67,86 @@ pub(super) fn lower_number_format(
     pop_number_format_args(ctx);
     abi::emit_call_label(ctx.emitter, "__rt_number_format");
     store_if_result(ctx, inst)
+}
+
+/// Describes how the first-byte ASCII case helper mutates matched characters.
+enum FirstCharAdjust {
+    Uppercase,
+    Lowercase,
+}
+
+/// Loads the sole argument for a string-transform builtin into string result registers.
+fn load_single_string_arg(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+    name: &str,
+) -> Result<()> {
+    if inst.operands.len() != 1 {
+        return Err(CodegenIrError::invalid_module(format!(
+            "{} expected 1 arg, got {}",
+            name,
+            inst.operands.len()
+        )));
+    }
+    let value = expect_operand(inst, 0)?;
+    match ctx.load_value_to_result(value)?.codegen_repr() {
+        PhpType::Str => Ok(()),
+        other => Err(CodegenIrError::unsupported(format!(
+            "{} for PHP type {:?}",
+            name, other
+        ))),
+    }
+}
+
+/// Emits target-aware first-byte ASCII case adjustment for `ucfirst()` and `lcfirst()`.
+fn emit_first_char_case_adjust(
+    ctx: &mut FunctionContext<'_>,
+    label_prefix: &str,
+    lower_bound: u8,
+    upper_bound: u8,
+    adjust: FirstCharAdjust,
+) {
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            let done = ctx.next_label(&format!("{}_done", label_prefix));
+            ctx.emitter.instruction(&format!("cbz x2, {}", done));              // leave empty strings unchanged because there is no first byte
+            ctx.emitter.instruction("ldrb w9, [x1]");                           // load the first byte of the copied string for ASCII case checks
+            ctx.emitter.instruction(&format!("cmp w9, #{}", lower_bound));      // compare the first byte against the lower ASCII case bound
+            ctx.emitter.instruction(&format!("b.lt {}", done));                 // leave bytes below the case range unchanged
+            ctx.emitter.instruction(&format!("cmp w9, #{}", upper_bound));      // compare the first byte against the upper ASCII case bound
+            ctx.emitter.instruction(&format!("b.gt {}", done));                 // leave bytes above the case range unchanged
+            match adjust {
+                FirstCharAdjust::Uppercase => {
+                    ctx.emitter.instruction("sub w9, w9, #32");                 // convert lowercase ASCII to uppercase
+                }
+                FirstCharAdjust::Lowercase => {
+                    ctx.emitter.instruction("add w9, w9, #32");                 // convert uppercase ASCII to lowercase
+                }
+            }
+            ctx.emitter.instruction("strb w9, [x1]");                           // store the adjusted first byte into the copied string
+            ctx.emitter.label(&done);
+        }
+        Arch::X86_64 => {
+            let done = ctx.next_label(&format!("{}_done", label_prefix));
+            ctx.emitter.instruction("test rdx, rdx");                           // leave empty strings unchanged because there is no first byte
+            ctx.emitter.instruction(&format!("jz {}", done));                   // skip first-byte mutation for empty strings
+            ctx.emitter.instruction("movzx ecx, BYTE PTR [rax]");               // load the first byte of the copied string for ASCII case checks
+            ctx.emitter.instruction(&format!("cmp cl, {}", lower_bound));       // compare the first byte against the lower ASCII case bound
+            ctx.emitter.instruction(&format!("jb {}", done));                   // leave bytes below the case range unchanged
+            ctx.emitter.instruction(&format!("cmp cl, {}", upper_bound));       // compare the first byte against the upper ASCII case bound
+            ctx.emitter.instruction(&format!("ja {}", done));                   // leave bytes above the case range unchanged
+            match adjust {
+                FirstCharAdjust::Uppercase => {
+                    ctx.emitter.instruction("sub cl, 32");                      // convert lowercase ASCII to uppercase
+                }
+                FirstCharAdjust::Lowercase => {
+                    ctx.emitter.instruction("add cl, 32");                      // convert uppercase ASCII to lowercase
+                }
+            }
+            ctx.emitter.instruction("mov BYTE PTR [rax], cl");                  // store the adjusted first byte into the copied string
+            ctx.emitter.label(&done);
+        }
+    }
 }
 
 /// Pushes the explicit or default decimal-count argument.

@@ -72,6 +72,21 @@ pub(super) fn lower_builtin_call(ctx: &mut FunctionContext<'_>, inst: &Instructi
         "is_string" => lower_static_type_predicate(ctx, inst, "is_string", PhpType::Str),
         "is_numeric" => is_numeric::lower_is_numeric(ctx, inst),
         "number_format" => strings::lower_number_format(ctx, inst),
+        "strtolower" => strings::lower_unary_string_runtime(
+            ctx,
+            inst,
+            "strtolower",
+            "__rt_strtolower",
+        ),
+        "strtoupper" => strings::lower_unary_string_runtime(
+            ctx,
+            inst,
+            "strtoupper",
+            "__rt_strtoupper",
+        ),
+        "strrev" => strings::lower_unary_string_runtime(ctx, inst, "strrev", "__rt_strrev"),
+        "ucfirst" => strings::lower_ucfirst(ctx, inst),
+        "lcfirst" => strings::lower_lcfirst(ctx, inst),
         _ => Err(CodegenIrError::unsupported(format!("builtin call {}", name))),
     }
 }
