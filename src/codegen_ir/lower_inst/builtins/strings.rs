@@ -29,6 +29,14 @@ pub(super) fn lower_unary_string_runtime(
     store_if_result(ctx, inst)
 }
 
+/// Lowers `grapheme_strrev()` and boxes its `string|false` result as `Mixed`.
+pub(super) fn lower_grapheme_strrev(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    load_single_string_arg(ctx, inst, "grapheme_strrev")?;
+    abi::emit_call_label(ctx.emitter, "__rt_grapheme_strrev");
+    box_grapheme_strrev_result(ctx);
+    store_if_result(ctx, inst)
+}
+
 /// Lowers `ucfirst()` by copying the string and uppercasing the first ASCII byte.
 pub(super) fn lower_ucfirst(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     load_single_string_arg(ctx, inst, "ucfirst")?;
@@ -853,6 +861,38 @@ fn box_search_result(ctx: &mut FunctionContext<'_>, label_prefix: &str) {
             ctx.emitter.instruction("xor eax, eax");                            // select runtime tag 0 for an integer mixed value
             abi::emit_call_label(ctx.emitter, "__rt_mixed_from_value");
             ctx.emitter.label(&end_label);
+        }
+    }
+}
+
+/// Boxes the raw `grapheme_strrev()` runtime result as PHP `string|false`.
+fn box_grapheme_strrev_result(ctx: &mut FunctionContext<'_>) {
+    let false_label = ctx.next_label("grapheme_strrev_false");
+    let done_label = ctx.next_label("grapheme_strrev_done");
+
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction(&format!("cbz x1, {}", false_label));       // box false when grapheme scanning reports a null string pointer
+            crate::codegen::emit_box_current_value_as_mixed(ctx.emitter, &PhpType::Str);
+            ctx.emitter.instruction(&format!("b {}", done_label));              // skip false boxing after a successful grapheme reversal
+            ctx.emitter.label(&false_label);
+            ctx.emitter.instruction("mov x1, #0");                              // false payload = 0 for grapheme_strrev() failure
+            ctx.emitter.instruction("mov x2, #0");                              // bool mixed payloads do not use a high word
+            ctx.emitter.instruction("mov x0, #3");                              // runtime tag 3 = bool false
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_from_value");
+            ctx.emitter.label(&done_label);
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("test rax, rax");                           // test the returned string pointer for the failure sentinel
+            ctx.emitter.instruction(&format!("jz {}", false_label));            // box false when grapheme scanning reports a null string pointer
+            crate::codegen::emit_box_current_value_as_mixed(ctx.emitter, &PhpType::Str);
+            ctx.emitter.instruction(&format!("jmp {}", done_label));            // skip false boxing after a successful grapheme reversal
+            ctx.emitter.label(&false_label);
+            ctx.emitter.instruction("xor edi, edi");                            // false payload = 0 for grapheme_strrev() failure
+            ctx.emitter.instruction("xor esi, esi");                            // bool mixed payloads do not use a high word
+            ctx.emitter.instruction("mov eax, 3");                              // runtime tag 3 = bool false
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_from_value");
+            ctx.emitter.label(&done_label);
         }
     }
 }

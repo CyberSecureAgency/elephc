@@ -90,6 +90,7 @@ pub(super) fn lower_builtin_call(ctx: &mut FunctionContext<'_>, inst: &Instructi
             "__rt_strtoupper",
         ),
         "strrev" => strings::lower_unary_string_runtime(ctx, inst, "strrev", "__rt_strrev"),
+        "grapheme_strrev" => strings::lower_grapheme_strrev(ctx, inst),
         "str_repeat" => strings::lower_str_repeat(ctx, inst),
         "substr" => strings::lower_substr(ctx, inst),
         "strstr" => strings::lower_strstr(ctx, inst),

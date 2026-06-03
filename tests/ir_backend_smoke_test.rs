@@ -281,6 +281,11 @@ fn ir_backend_handles_scalar_builtins() {
             "hello world:HELLO WORLD:Hello:hello:olleH",
         ),
         (
+            "grapheme_strrev_strings",
+            r#"<?php echo grapheme_strrev("ABCDE"); echo ':'; echo grapheme_strrev("ab\0cd");"#,
+            "EDCBA:dc\0ba",
+        ),
+        (
             "str_pad_strings",
             r#"<?php echo '[' . str_pad("hi", 5) . ']'; echo ':'; echo '[' . str_pad("hi", 5, "_", 0) . ']'; echo ':'; echo '[' . str_pad("hi", 6, "-", 2) . ']'; echo ':'; echo '[' . str_pad("42", 5, "0", 0) . ']';"#,
             "[hi   ]:[___hi]:[--hi--]:[00042]",
