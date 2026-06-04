@@ -283,6 +283,9 @@ fn validate_instruction_immediate(inst_id: InstId, inst: &Instruction) -> Result
         ICmp | FCmp => require_immediate(inst_id, inst, "comparison predicate", |imm| {
             matches!(imm, Imm::CmpPredicate(_))
         }),
+        MixedNumericBinop => require_immediate(inst_id, inst, "mixed numeric op", |imm| {
+            matches!(imm, Imm::MixedNumericOp(_))
+        }),
         Cast => require_immediate(inst_id, inst, "cast target", |imm| {
             matches!(imm, Imm::CastTarget(_))
         }),
@@ -343,6 +346,7 @@ fn validate_opcode_rules(function: &Function, inst_id: InstId, inst: &Instructio
         IAdd | ISub | IMul | IDiv | ISDiv | ISMod | IPow | IBitAnd | IBitOr | IBitXor
         | IShl | IShrA => check_binary(function, inst_id, inst, IrType::I64, "I64"),
         FAdd | FSub | FMul | FDiv | FPow => check_binary(function, inst_id, inst, IrType::F64, "F64"),
+        MixedNumericBinop => check_count(inst_id, inst, 2, "2"),
         INeg | IBitNot => check_unary(function, inst_id, inst, IrType::I64, "I64"),
         FNeg => check_unary(function, inst_id, inst, IrType::F64, "F64"),
         ICmp => check_binary(function, inst_id, inst, IrType::I64, "I64"),

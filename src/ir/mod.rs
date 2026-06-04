@@ -30,7 +30,7 @@ pub use function::{
     Function, FunctionFlags, FunctionId, FunctionParam, LocalKind, LocalSlot, LocalSlotId,
 };
 pub use instr::{
-    BuiltinId, CmpPredicate, Immediate, InstId, Instruction, Op, RuntimeId,
+    BuiltinId, CmpPredicate, Immediate, InstId, Instruction, MixedNumericOp, Op, RuntimeId,
 };
 pub use module::{
     ClassTable, DataId, DataPool, EnumTable, ExternDecl, ExternParamDecl, InterfaceTable,

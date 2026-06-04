@@ -100,11 +100,31 @@ pub enum Immediate {
     FunctionVariantRef { group: u32, variant: u32 },
     HeapKind(IrHeapKind),
     MixedTag(u8),
+    MixedNumericOp(MixedNumericOp),
     CmpPredicate(CmpPredicate),
     CastTarget(IrType),
     TypeName(DataId),
     Capacity(u32),
     WidthBytes(u8),
+}
+
+/// Runtime arithmetic operation carried by `Op::MixedNumericBinop`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MixedNumericOp {
+    Add,
+    Sub,
+    Mul,
+}
+
+impl MixedNumericOp {
+    /// Returns the lower-case textual spelling used by the EIR printer.
+    pub fn as_eir(self) -> &'static str {
+        match self {
+            MixedNumericOp::Add => "add",
+            MixedNumericOp::Sub => "sub",
+            MixedNumericOp::Mul => "mul",
+        }
+    }
 }
 
 /// Comparison predicate for integer and floating-point compare opcodes.

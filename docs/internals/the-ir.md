@@ -460,7 +460,7 @@ Each instruction has:
 | `INeg`, `IBitNot` | `I64` | `I64` | pure |
 | `IBitAnd`, `IBitOr`, `IBitXor`, `IShl`, `IShrA` | `I64`, `I64` | `I64` | pure |
 | `FAdd`, `FSub`, `FMul`, `FDiv`, `FPow`, `FNeg` | `F64` operands | `F64` | pure or libcall |
-| `MixedNumericBinop(op)` | mixed/union operands | mixed/scalar | `reads_heap`, maybe `alloc_heap`, `may_warn`, `may_fatal`, `may_deopt` |
+| `MixedNumericBinop(add\|sub\|mul)` | mixed/union operands | mixed/scalar | `reads_heap`, maybe `alloc_heap`, `may_warn`, `may_fatal`, `may_deopt` |
 
 `BinOp::Div` follows PHP division behavior and may produce float. `BinOp::Pow`
 preserves PHP exponentiation result rules.

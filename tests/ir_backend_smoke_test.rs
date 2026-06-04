@@ -508,6 +508,30 @@ echo "]";
     );
 }
 
+/// Verifies mixed numeric add/sub/mul dispatches through boxed Mixed runtime helpers.
+#[test]
+fn ir_backend_handles_mixed_numeric_binops() {
+    let source = r#"<?php
+$map = [
+    "i" => 40,
+    "f" => 1.5,
+];
+echo $map["i"] + 2;
+echo ":";
+echo $map["i"] - 5;
+echo ":";
+echo $map["i"] * 2;
+echo ":";
+echo $map["f"] + 2.5;
+echo ":";
+echo $map["f"] * 2;
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("mixed_numeric_binops", source),
+        "42:35:80:4:3"
+    );
+}
+
 /// Verifies selected type predicates inspect boxed Mixed payloads in the EIR backend.
 #[test]
 fn ir_backend_handles_mixed_type_predicates() {

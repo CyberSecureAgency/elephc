@@ -60,6 +60,7 @@ pub(super) fn lower_instruction(ctx: &mut FunctionContext<'_>, inst_id: InstId) 
         Op::IBitNot => arithmetic::lower_int_unary(ctx, &inst, "mvn", "not"),
         Op::IShl => arithmetic::lower_int_shift(ctx, &inst, "lsl", "shl"),
         Op::IShrA => arithmetic::lower_int_shift(ctx, &inst, "asr", "sar"),
+        Op::MixedNumericBinop => arithmetic::lower_mixed_numeric_binop(ctx, &inst),
         Op::FAdd => floats::lower_float_binop(ctx, &inst, "fadd", "addsd"),
         Op::FSub => floats::lower_float_binop(ctx, &inst, "fsub", "subsd"),
         Op::FMul => floats::lower_float_binop(ctx, &inst, "fmul", "mulsd"),

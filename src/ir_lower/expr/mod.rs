@@ -11,7 +11,8 @@
 //!   conservative effects until Phase 04 gives them target-specific meaning.
 
 use crate::ir::{
-    BlockId, CmpPredicate, Effects, Immediate, IrHeapKind, IrType, Op, Ownership, Terminator,
+    BlockId, CmpPredicate, Effects, Immediate, IrHeapKind, IrType, MixedNumericOp, Op,
+    Ownership, Terminator,
 };
 use crate::ir_lower::context::{value_ir_type, LoweredValue, LoweringContext};
 use crate::ir_lower::effects_lookup;
@@ -251,6 +252,11 @@ fn lower_numeric_binary(
             Some(expr.span),
         );
     }
+    if let Some(mixed_op) = mixed_numeric_op(op) {
+        if should_use_mixed_numeric_binop(lhs.ir_type, rhs.ir_type) {
+            return lower_mixed_numeric_binary(ctx, lhs, rhs, mixed_op, expr);
+        }
+    }
     if lhs.ir_type == IrType::F64 || rhs.ir_type == IrType::F64 {
         let lhs = coerce_to_float(ctx, lhs, expr);
         let rhs = coerce_to_float(ctx, rhs, expr);
@@ -287,14 +293,51 @@ fn lower_numeric_binary(
             .expect("numeric binary produces a value");
         return LoweredValue { value, ir_type: result_type };
     }
+    if let Some(mixed_op) = mixed_numeric_op(op) {
+        return lower_mixed_numeric_binary(ctx, lhs, rhs, mixed_op, expr);
+    }
+    ctx.emit_value(
+        Op::RuntimeCall,
+        vec![lhs.value, rhs.value],
+        None,
+        fallback_expr_type(expr),
+        effects_lookup::runtime_effects(),
+        Some(expr.span),
+    )
+}
+
+/// Returns true when runtime mixed numeric dispatch is needed before float coercion.
+fn should_use_mixed_numeric_binop(lhs: IrType, rhs: IrType) -> bool {
+    !matches!(lhs, IrType::I64 | IrType::F64)
+        || !matches!(rhs, IrType::I64 | IrType::F64)
+}
+
+/// Emits a mixed-numeric EIR opcode with the operation immediate required by the backend.
+fn lower_mixed_numeric_binary(
+    ctx: &mut LoweringContext<'_, '_>,
+    lhs: LoweredValue,
+    rhs: LoweredValue,
+    op: MixedNumericOp,
+    expr: &Expr,
+) -> LoweredValue {
     ctx.emit_value(
         Op::MixedNumericBinop,
         vec![lhs.value, rhs.value],
-        None,
+        Some(Immediate::MixedNumericOp(op)),
         PhpType::Mixed,
         Op::MixedNumericBinop.default_effects(),
         Some(expr.span),
     )
+}
+
+/// Maps AST arithmetic to the mixed-numeric runtime helper set currently available.
+fn mixed_numeric_op(op: &BinOp) -> Option<MixedNumericOp> {
+    match op {
+        BinOp::Add => Some(MixedNumericOp::Add),
+        BinOp::Sub => Some(MixedNumericOp::Sub),
+        BinOp::Mul => Some(MixedNumericOp::Mul),
+        _ => None,
+    }
 }
 
 /// Lowers string concatenation.

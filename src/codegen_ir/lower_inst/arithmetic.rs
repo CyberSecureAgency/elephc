@@ -11,11 +11,12 @@
 
 use crate::codegen::abi;
 use crate::codegen::platform::Arch;
-use crate::ir::Instruction;
+use crate::ir::{Immediate, Instruction, MixedNumericOp, ValueId};
+use crate::types::PhpType;
 
 use super::super::context::FunctionContext;
 use super::{expect_operand, require_integer_like, store_if_result};
-use crate::codegen_ir::Result;
+use crate::codegen_ir::{CodegenIrError, Result};
 
 /// Lowers a two-operand integer arithmetic or bitwise instruction.
 pub(super) fn lower_int_binop(
@@ -147,4 +148,105 @@ pub(super) fn lower_int_shift(
         }
     }
     store_if_result(ctx, inst)
+}
+
+/// Lowers a dynamic mixed numeric add/sub/mul through the boxed-Mixed runtime helpers.
+pub(super) fn lower_mixed_numeric_binop(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+) -> Result<()> {
+    let lhs = expect_operand(inst, 0)?;
+    let rhs = expect_operand(inst, 1)?;
+    let op = expect_mixed_numeric_op(inst)?;
+    let lhs_ty = ctx.value_php_type(lhs)?;
+    let rhs_ty = ctx.value_php_type(rhs)?;
+    let left_box_temp = !is_mixed_like(&lhs_ty);
+    let right_box_temp = !is_mixed_like(&rhs_ty);
+
+    materialize_value_as_mixed(ctx, lhs, &lhs_ty)?;
+    abi::emit_push_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));
+    materialize_value_as_mixed(ctx, rhs, &rhs_ty)?;
+    abi::emit_push_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            abi::emit_load_temporary_stack_slot(ctx.emitter, "x0", 16);
+            abi::emit_load_temporary_stack_slot(ctx.emitter, "x1", 0);
+        }
+        Arch::X86_64 => {
+            abi::emit_load_temporary_stack_slot(ctx.emitter, "rax", 16);
+            abi::emit_load_temporary_stack_slot(ctx.emitter, "rdi", 0);
+        }
+    }
+    abi::emit_call_label(ctx.emitter, mixed_numeric_helper(op));
+    abi::emit_push_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));
+    if left_box_temp {
+        decref_mixed_temp_at(ctx, 32);
+    }
+    if right_box_temp {
+        decref_mixed_temp_at(ctx, 16);
+    }
+    abi::emit_pop_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));
+    abi::emit_release_temporary_stack(ctx.emitter, 32);
+    store_if_result(ctx, inst)
+}
+
+/// Returns true when a PHP type is already represented as a boxed Mixed pointer.
+fn is_mixed_like(ty: &PhpType) -> bool {
+    matches!(ty.codegen_repr(), PhpType::Mixed)
+}
+
+/// Loads an SSA value as a boxed Mixed pointer in the integer result register.
+fn materialize_value_as_mixed(
+    ctx: &mut FunctionContext<'_>,
+    value: ValueId,
+    ty: &PhpType,
+) -> Result<()> {
+    let ty = ty.codegen_repr();
+    if is_mixed_like(&ty) {
+        ctx.load_value_to_result(value)?;
+        return Ok(());
+    }
+    match ty {
+        PhpType::Void | PhpType::Never => {
+            abi::emit_load_int_immediate(ctx.emitter, abi::int_result_reg(ctx.emitter), 0);
+        }
+        _ => {
+            ctx.load_value_to_result(value)?;
+        }
+    }
+    crate::codegen::emit_box_current_value_as_mixed(ctx.emitter, &ty);
+    Ok(())
+}
+
+/// Releases a temporary Mixed box saved on the temporary stack.
+fn decref_mixed_temp_at(ctx: &mut FunctionContext<'_>, offset: usize) {
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            abi::emit_load_temporary_stack_slot(ctx.emitter, "x0", offset);
+        }
+        Arch::X86_64 => {
+            abi::emit_load_temporary_stack_slot(ctx.emitter, "rax", offset);
+        }
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_decref_mixed");
+}
+
+/// Returns the mixed numeric operation immediate attached to the EIR instruction.
+fn expect_mixed_numeric_op(inst: &Instruction) -> Result<MixedNumericOp> {
+    match inst.immediate {
+        Some(Immediate::MixedNumericOp(op)) => Ok(op),
+        _ => Err(CodegenIrError::invalid_module(format!(
+            "{} missing mixed numeric op immediate",
+            inst.op.name()
+        ))),
+    }
+}
+
+/// Maps a mixed numeric operation to the target-aware runtime helper label.
+fn mixed_numeric_helper(op: MixedNumericOp) -> &'static str {
+    match op {
+        MixedNumericOp::Add => "__rt_mixed_numeric_add",
+        MixedNumericOp::Sub => "__rt_mixed_numeric_sub",
+        MixedNumericOp::Mul => "__rt_mixed_numeric_mul",
+    }
 }

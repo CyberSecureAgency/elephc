@@ -221,6 +221,9 @@ fn print_immediate(out: &mut String, data: &DataPool, immediate: &Immediate) {
         Immediate::MixedTag(tag) => {
             let _ = write!(out, " tag#{}", tag);
         }
+        Immediate::MixedNumericOp(op) => {
+            let _ = write!(out, " {}", op.as_eir());
+        }
         Immediate::CmpPredicate(predicate) => {
             let _ = write!(out, " {:?}", predicate);
         }
