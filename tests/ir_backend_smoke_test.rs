@@ -745,6 +745,25 @@ fn ir_backend_handles_indexed_array_key_exists() {
     }
 }
 
+/// Verifies associative-array key existence probes hash keys without reading values.
+#[test]
+fn ir_backend_handles_assoc_array_key_exists() {
+    for (name, source, expected) in [
+        (
+            "assoc_array_key_exists_string",
+            "<?php $m = ['name' => 'Alice', 'age' => '30']; echo array_key_exists('name', $m) ? 'yes' : 'no'; echo ':'; echo array_key_exists('missing', $m) ? 'bad' : 'ok';",
+            "yes:ok",
+        ),
+        (
+            "assoc_array_key_exists_int",
+            "<?php $m = [1 => 'one', '02' => 'two']; echo array_key_exists(1, $m) ? 'yes' : 'no'; echo ':'; echo array_key_exists('02', $m) ? 'yes' : 'no'; echo ':'; echo array_key_exists(2, $m) ? 'bad' : 'ok';",
+            "yes:yes:ok",
+        ),
+    ] {
+        assert_eq!(compile_and_run_ir_backend(name, source), expected);
+    }
+}
+
 /// Verifies indexed-array membership for scalar and string payloads.
 #[test]
 fn ir_backend_handles_indexed_in_array() {

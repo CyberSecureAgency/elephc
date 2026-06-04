@@ -19,6 +19,7 @@ use crate::types::PhpType;
 use super::super::super::context::FunctionContext;
 use super::super::{expect_operand, store_if_result};
 
+mod key_exists;
 mod values;
 
 /// Lowers `array_sum()` over supported indexed-array payloads.
@@ -99,28 +100,9 @@ pub(super) fn lower_array_rand(ctx: &mut FunctionContext<'_>, inst: &Instruction
     store_if_result(ctx, inst)
 }
 
-/// Lowers `array_key_exists()` for indexed arrays with integer-like keys.
+/// Lowers `array_key_exists()` through the dedicated key-existence builtin emitter.
 pub(super) fn lower_array_key_exists(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
-    super::ensure_arg_count(inst, "array_key_exists", 2)?;
-    let key = expect_operand(inst, 0)?;
-    let array = expect_operand(inst, 1)?;
-    require_indexed_array_key_exists_types(
-        ctx.value_php_type(key)?,
-        ctx.value_php_type(array)?,
-        "array_key_exists",
-    )?;
-    match ctx.emitter.target.arch {
-        Arch::AArch64 => {
-            ctx.load_value_to_reg(array, "x0")?;
-            ctx.load_value_to_reg(key, "x1")?;
-        }
-        Arch::X86_64 => {
-            ctx.load_value_to_reg(array, "rdi")?;
-            ctx.load_value_to_reg(key, "rsi")?;
-        }
-    }
-    abi::emit_call_label(ctx.emitter, "__rt_array_key_exists");
-    store_if_result(ctx, inst)
+    key_exists::lower_array_key_exists(ctx, inst)
 }
 
 /// Lowers `array_search()` for indexed arrays with integer-like payloads.
@@ -492,30 +474,4 @@ fn lower_in_array_string_x86_64(
     ctx.emitter.instruction("xor eax, eax");                                    // return false when no indexed string element matches
     ctx.emitter.label(&done_label);
     Ok(())
-}
-
-/// Verifies indexed-array key existence can use the integer-key runtime helper.
-fn require_indexed_array_key_exists_types(
-    key_ty: PhpType,
-    array_ty: PhpType,
-    name: &str,
-) -> Result<()> {
-    match array_ty.codegen_repr() {
-        PhpType::Array(_) => {}
-        other => {
-            return Err(CodegenIrError::unsupported(format!(
-                "{} for PHP array type {:?}",
-                name,
-                other
-            )));
-        }
-    }
-    match key_ty.codegen_repr() {
-        PhpType::Int | PhpType::Bool => Ok(()),
-        other => Err(CodegenIrError::unsupported(format!(
-            "{} key PHP type {:?}",
-            name,
-            other
-        ))),
-    }
 }
