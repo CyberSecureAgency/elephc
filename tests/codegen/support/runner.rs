@@ -159,6 +159,12 @@ pub(crate) fn link_binary(
             for framework in extra_frameworks {
                 ld_cmd.args(["-framework", framework]);
             }
+            // The PostgreSQL driver in the PDO bridge pulls in `whoami`, which
+            // references CoreFoundation / SystemConfiguration on macOS.
+            if actual_link_libs.iter().any(|lib| *lib == "elephc_pdo") {
+                ld_cmd.args(["-framework", "CoreFoundation"]);
+                ld_cmd.args(["-framework", "SystemConfiguration"]);
+            }
             let ld_out = ld_cmd.output().expect("failed to run linker");
             assert!(
                 ld_out.status.success(),
@@ -191,9 +197,9 @@ pub(crate) fn link_binary(
             }
             // Math and POSIX regex libraries needed on Linux
             ld_cmd.args(["-lm", "-lpthread"]);
-            // rustls (elephc-tls) and the elephc-sqlite bridge staticlib (PDO)
+            // rustls (elephc-tls) and the elephc-pdo bridge staticlib (PDO)
             // both pull in the dynamic loader for the libc unwinder on Linux.
-            if needs_elephc_tls || actual_link_libs.iter().any(|lib| *lib == "elephc_sqlite") {
+            if needs_elephc_tls || actual_link_libs.iter().any(|lib| *lib == "elephc_pdo") {
                 ld_cmd.arg("-ldl");
             }
             let ld_out = ld_cmd.output().expect("failed to run linker");

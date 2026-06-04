@@ -619,7 +619,8 @@ program references PDO, so non-PDO binaries never link the bridge.
 - [x] `PDOStatement` is Traversable — `foreach ($stmt as $key => $row)` walks the result set forward in the current fetch mode with sequential integer keys
 - [x] `PDO::quote()` (SQLite single-quote escaping) and `FETCH_COLUMN` mode (`fetch` / `fetchAll` / `foreach` yield one column as a scalar; column index via `setFetchMode(PDO::FETCH_COLUMN, $col)`)
 - [x] `getAttribute` / `setAttribute` (`ATTR_ERRMODE`, `ATTR_DRIVER_NAME`, constructor options array) and configurable error mode — `ERRMODE_EXCEPTION` (default, throws), `ERRMODE_SILENT` (`exec` → `false`, `query` / `prepare` → falsy), `ERRMODE_WARNING` (writes to `STDERR`, returns the same)
-- [ ] MySQL (`pdo_mysql`) and PostgreSQL (`pdo_pgsql`) drivers — additional bridge entry points behind the same prelude
+- [x] PostgreSQL (`pdo_pgsql`) driver — the bridge crate (`crates/elephc-pdo`) is now driver-agnostic: each connection/statement handle is tagged with its driver and the DSN prefix (`sqlite:` / `pgsql:`) selects it at `open()`. PostgreSQL uses the pure-Rust `postgres` client (no system libpq), translates `?` / `:name` placeholders to `$1, $2, …`, prepares server-side for column metadata and materializes result sets, decodes int/float/bool/text/null, and supports `lastInsertId()` via `lastval()` / `currval($sequence)`. The same PDO prelude drives both drivers; PostgreSQL fixtures (which need a live server) are `#[ignore]`d in `tests/codegen/pdo_pgsql.rs`
+- [ ] MySQL (`pdo_mysql`) driver — an additional driver behind the same bridge/prelude
 - [ ] `FETCH_CLASS` / `FETCH_INTO`, statement-level error-mode propagation, and persistent connections
 - [ ] Dynamic property assignment so `FETCH_OBJ` materializes a stdClass directly instead of via a JSON round-trip
 - [ ] Binary/BLOB values with embedded NUL bytes (the text bridge path is NUL-terminated)

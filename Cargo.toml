@@ -12,11 +12,11 @@ categories = ["compilers", "command-line-utilities"]
 
 # The bridge staticlibs are default workspace members so plain `cargo build` /
 # `cargo test` materialize libelephc_tls.a (https:// wrapper) and
-# libelephc_sqlite.a (PDO/SQLite) into target/<profile>/, where linker.rs locates
-# them for programs that use those features.
+# libelephc_pdo.a (PDO: SQLite + PostgreSQL) into target/<profile>/, where
+# linker.rs locates them for programs that use those features.
 [workspace]
-members = [".", "crates/elephc-tls", "crates/elephc-sqlite"]
-default-members = [".", "crates/elephc-tls", "crates/elephc-sqlite"]
+members = [".", "crates/elephc-tls", "crates/elephc-pdo"]
+default-members = [".", "crates/elephc-tls", "crates/elephc-pdo"]
 resolver = "2"
 
 [[bin]]

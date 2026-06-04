@@ -48,12 +48,12 @@ pub(crate) fn link(
 ) {
     let needs_elephc_tls = extra_link_libs.iter().any(|l| l == "elephc_tls");
     let elephc_tls_dir = needs_elephc_tls.then(elephc_tls_lib_dir).flatten();
-    // The SQLite bridge staticlib (PDO support) is not a system library: locate
-    // libelephc_sqlite.a so its directory can be added to the linker search path
-    // and, on Linux, link -ldl for the Rust staticlib's runtime symbols.
-    let needs_elephc_sqlite = extra_link_libs.iter().any(|l| l == "elephc_sqlite");
-    let elephc_sqlite_dir = if needs_elephc_sqlite {
-        find_staticlib_dir("ELEPHC_SQLITE_LIB_DIR", "libelephc_sqlite.a")
+    // The PDO bridge staticlib (SQLite + PostgreSQL) is not a system library:
+    // locate libelephc_pdo.a so its directory can be added to the linker search
+    // path and, on Linux, link -ldl for the Rust staticlib's runtime symbols.
+    let needs_elephc_pdo = extra_link_libs.iter().any(|l| l == "elephc_pdo");
+    let elephc_pdo_dir = if needs_elephc_pdo {
+        find_staticlib_dir("ELEPHC_PDO_LIB_DIR", "libelephc_pdo.a")
     } else {
         None
     };
@@ -82,7 +82,7 @@ pub(crate) fn link(
                 cmd.arg("-Wl,--no-as-needed");
             }
             cmd.args(["-lm", "-lpthread"]);
-            if needs_elephc_tls || needs_elephc_sqlite {
+            if needs_elephc_tls || needs_elephc_pdo {
                 cmd.arg("-ldl");
             }
             cmd
@@ -91,7 +91,7 @@ pub(crate) fn link(
     if let Some(dir) = elephc_tls_dir.as_deref() {
         ld_cmd.arg(format!("-L{}", dir));
     }
-    if let Some(dir) = elephc_sqlite_dir.as_deref() {
+    if let Some(dir) = elephc_pdo_dir.as_deref() {
         ld_cmd.arg(format!("-L{}", dir));
     }
     if target.platform == Platform::MacOS && !extra_link_libs.is_empty() {
@@ -113,6 +113,13 @@ pub(crate) fn link(
     if target.platform == Platform::MacOS {
         for fw in extra_frameworks {
             ld_cmd.args(["-framework", fw]);
+        }
+        // The PostgreSQL driver in the PDO bridge pulls in `whoami` (to default
+        // the connection user), which references CoreFoundation /
+        // SystemConfiguration on macOS. Link them whenever the bridge is used.
+        if needs_elephc_pdo {
+            ld_cmd.args(["-framework", "CoreFoundation"]);
+            ld_cmd.args(["-framework", "SystemConfiguration"]);
         }
     }
     run_tool("Linker", &mut ld_cmd);
@@ -206,8 +213,8 @@ fn build_elephc_tls_staticlib(workspace: &Path) {
 }
 
 /// Locates the directory holding a non-system bridge staticlib (e.g.
-/// `libelephc_sqlite.a`) for programs that use it. Honours the given env var
-/// first (e.g. `ELEPHC_SQLITE_LIB_DIR`), then the directory of the running
+/// `libelephc_pdo.a`) for programs that use it. Honours the given env var
+/// first (e.g. `ELEPHC_PDO_LIB_DIR`), then the directory of the running
 /// `elephc` binary and its parent (so `target/<profile>/deps/` test binaries
 /// resolve to `target/<profile>/`), then a cwd-relative `target/debug` and
 /// `target/release` fallback for `cargo test` / `cargo run`.

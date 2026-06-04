@@ -1,30 +1,39 @@
 ---
 title: "PDO (Databases)"
-description: "PDO database access with the SQLite driver: connections, prepared statements, fetch modes, and transactions."
+description: "PDO database access with the SQLite and PostgreSQL drivers: connections, prepared statements, fetch modes, and transactions."
 sidebar:
   order: 16
 ---
 
-elephc supports a practical subset of PHP's PDO database layer, backed by the
-**SQLite** driver. `PDO`, `PDOStatement`, and `PDOException` behave like their
-PHP counterparts for everyday use: connect, execute, prepare/bind, fetch, and run
-transactions.
+elephc supports a practical subset of PHP's PDO database layer, with the
+**SQLite** and **PostgreSQL** drivers. `PDO`, `PDOStatement`, and `PDOException`
+behave like their PHP counterparts for everyday use: connect, execute,
+prepare/bind, fetch, and run transactions. The DSN prefix selects the driver, so
+the same code works against either database.
 
-SQLite is statically bundled into the program, so a compiled PDO binary has **no
-system database dependency** — it runs anywhere the elephc binary runs.
+Both drivers are linked statically (SQLite is bundled; PostgreSQL uses a
+pure-Rust client), so a compiled PDO binary has **no system database-client
+dependency** — it runs anywhere the elephc binary runs. SQLite runs in-process;
+PostgreSQL connects to a running server over the network.
 
 ## Connecting
 
 ```php
 <?php
-// File-backed database (created if missing) or an in-memory database.
+// SQLite — file-backed (created if missing) or in-memory.
 $db = new PDO("sqlite:/path/to/app.db");
 $mem = new PDO("sqlite::memory:");
+
+// PostgreSQL — credentials in the DSN or as constructor arguments.
+$pg = new PDO("pgsql:host=localhost;port=5432;dbname=app;user=me;password=secret");
+$pg = new PDO("pgsql:host=localhost;dbname=app", "me", "secret");
 ```
 
-The DSN must start with `sqlite:`. The optional `$username`, `$password`, and
-`$options` constructor arguments are accepted for signature compatibility but are
-ignored by the SQLite driver. A failed connection throws a `PDOException`.
+The DSN must start with `sqlite:` or `pgsql:`. For SQLite, the `$username`,
+`$password`, and `$options` arguments are accepted for signature compatibility
+but ignored. For PostgreSQL, `$username` / `$password` are folded into the
+connection (other keys like `host`, `port`, `dbname`, `sslmode` come from the
+`key=value;…` DSN). A failed connection throws a `PDOException`.
 
 ## Executing statements
 
@@ -120,6 +129,22 @@ foreach ($stmt as $i => $row) {
 The cursor is forward-only: each row is consumed as it is yielded, so a statement
 can be iterated once.
 
+## PostgreSQL notes
+
+The PostgreSQL driver behaves like the SQLite one, with a few database-specific
+points:
+
+- **Placeholders.** PDO `?` and `:name` placeholders are translated to
+  PostgreSQL's native `$1, $2, …` at prepare time, so you write the same
+  portable SQL for either driver.
+- **`lastInsertId()`.** PostgreSQL has no rowid; `lastInsertId()` returns the
+  session's last sequence value (`lastval()`), or `lastInsertId($sequence)`
+  returns `currval($sequence)`. Use a `SERIAL`/`IDENTITY` column or `RETURNING`.
+- **Types.** `integer`/`bigint` → int, `real`/`double precision` → float,
+  `boolean` → `0`/`1`, text types → string, `NULL` → null. Columns without a
+  direct scalar decoding (e.g. `numeric`, arrays, JSON, date/time) are best read
+  with an explicit `::text` (or `::float8`) cast in the query.
+
 ## Transactions
 
 ```php
@@ -189,8 +214,8 @@ The mode can also be seeded from the constructor's options array:
 
 ## Limitations
 
-- **SQLite only.** MySQL and PostgreSQL drivers are not yet implemented (the
-  bridge is structured to add them later).
+- **SQLite and PostgreSQL only.** The MySQL driver is not yet implemented (the
+  bridge is structured to add it as another driver behind the same prelude).
 - **`bindParam()`** binds the current value, not a deferred by-reference read.
 - **`FETCH_CLASS` / `FETCH_INTO`** are not implemented.
 - **`FETCH_OBJ`** materializes the stdClass via a JSON round-trip, so a result

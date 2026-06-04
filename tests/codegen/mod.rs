@@ -28,6 +28,7 @@ mod magic_constants;
 mod strings;
 mod io;
 mod pdo;
+mod pdo_pgsql;
 mod arrays;
 mod callables;
 mod system;

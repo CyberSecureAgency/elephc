@@ -8,10 +8,11 @@
 //!
 //! Key details:
 //! - The PDO prelude is injected by the compiler when a program references PDO,
-//!   and the program links the `elephc-sqlite` bridge staticlib (built as a
+//!   and the program links the `elephc-pdo` bridge staticlib (built as a
 //!   workspace default-member, located in `target/<profile>/`). No external
-//!   database is required: `sqlite::memory:` runs in-process, so these tests are
-//!   not `#[ignore]`d.
+//!   database is required for these SQLite fixtures: `sqlite::memory:` runs
+//!   in-process, so they are not `#[ignore]`d. PostgreSQL fixtures (which need a
+//!   live server) live in `tests/codegen/pdo_pgsql.rs` and are `#[ignore]`d.
 
 use crate::support::*;
 

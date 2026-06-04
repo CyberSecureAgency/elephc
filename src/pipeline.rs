@@ -110,7 +110,7 @@ pub(crate) fn compile(config: CliConfig) {
 
     // Inject the PDO standard-library prelude (extern bridge + PDO classes,
     // written in elephc-PHP) only when the program references PDO, so non-PDO
-    // binaries never declare the elephc_sqlite externs or link the bridge.
+    // binaries never declare the elephc_pdo externs or link the bridge.
     // Runs after include resolution so PDO usage inside includes is detected.
     let phase_started = Instant::now();
     let ast = pdo_prelude::inject_if_used(ast);
