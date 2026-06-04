@@ -15,7 +15,8 @@ use crate::codegen::emit::Emitter;
 use crate::codegen::UNINITIALIZED_TYPED_PROPERTY_SENTINEL;
 use crate::ir::{BasicBlock, Function, Module};
 use crate::names::{
-    function_epilogue_symbol, method_symbol, static_method_symbol, static_property_symbol,
+    function_epilogue_symbol, method_symbol, php_symbol_key, static_method_symbol,
+    static_property_symbol,
 };
 
 use super::context::FunctionContext;
@@ -103,10 +104,11 @@ fn class_method_entry_symbol(function: &Function) -> Result<String> {
             function.name
         )));
     };
+    let method_key = php_symbol_key(method_name);
     if function.flags.is_static {
-        Ok(static_method_symbol(class_name, method_name))
+        Ok(static_method_symbol(class_name, &method_key))
     } else {
-        Ok(method_symbol(class_name, method_name))
+        Ok(method_symbol(class_name, &method_key))
     }
 }
 

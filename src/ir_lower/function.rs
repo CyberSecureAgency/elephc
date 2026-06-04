@@ -107,7 +107,6 @@ pub(crate) fn lower_class_method(
         return_ir_type(&signature.return_type),
         signature.return_type.clone(),
     );
-    function.params = function_params(signature);
     function.flags = FunctionFlags {
         is_method: true,
         is_static,
@@ -115,9 +114,20 @@ pub(crate) fn lower_class_method(
     };
     function.source_signature = Some(source_signature(&name, signature));
     let mut env = env_from_signature(signature);
+    let mut body_params = signature.params.clone();
     if !is_static {
-        env.insert("this".to_string(), PhpType::Object(class_name.to_string()));
+        let this_type = PhpType::Object(class_name.to_string());
+        function.params.push(FunctionParam {
+            name: "this".to_string(),
+            ir_type: value_ir_type(&this_type),
+            php_type: this_type.clone(),
+            by_ref: false,
+            variadic: false,
+        });
+        env.insert("this".to_string(), this_type.clone());
+        body_params.insert(0, ("this".to_string(), this_type));
     }
+    function.params.extend(function_params(signature));
     lower_body_into_function(
         &mut function,
         &mut module.data,
@@ -129,7 +139,7 @@ pub(crate) fn lower_class_method(
         &check_result.interfaces,
         constants,
         signature.return_type.clone(),
-        &signature.params,
+        &body_params,
     );
     module.class_methods.push(function);
 }

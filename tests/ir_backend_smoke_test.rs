@@ -992,6 +992,27 @@ echo $box->i;
     );
 }
 
+/// Verifies direct instance-method calls pass `$this` through the EIR method ABI.
+#[test]
+fn ir_backend_calls_simple_instance_method() {
+    let source = r#"<?php
+class Box {
+    public int $i;
+
+    public function value(): int {
+        return $this->i;
+    }
+}
+$box = new Box();
+$box->i = 7;
+echo $box->value();
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("simple_instance_method_call", source),
+        "7"
+    );
+}
+
 /// Verifies typed declared properties still fatal when read before initialization.
 #[test]
 fn ir_backend_fatals_on_uninitialized_typed_object_property() {
