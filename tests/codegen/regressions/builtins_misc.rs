@@ -275,3 +275,14 @@ fn test_is_infinite_nan_is_false() {
     );
     assert_eq!(out, "0110");
 }
+
+/// Verifies `is_numeric()` of a boxed Mixed value unboxes the runtime tag and, for a string
+/// payload, runs the numeric-string scan — instead of constant-folding to false. Covers
+/// int/float (numeric), numeric and non-numeric strings, bool, and a bare `.`.
+#[test]
+fn test_is_numeric_mixed_array_element() {
+    let out = compile_and_run(
+        r#"<?php $a = [2.5, "3.14", 5, "x", true, "-7", "."]; foreach ($a as $v) { echo (is_numeric($v) ? "1" : "0"); }"#,
+    );
+    assert_eq!(out, "1110010");
+}
