@@ -241,3 +241,15 @@ fn test_pow_mixed_base_and_exponent() {
     );
     assert_eq!(out, "25|0.17677669529664|64");
 }
+
+/// Verifies `is_float()` of a boxed Mixed value (a heterogeneous-array element) tests the
+/// runtime tag instead of constant-folding to false. Before the fix every element of a
+/// mixed int/float array reported "i"; floats must report "f" while ints/strings/bools
+/// report "i", matching the sibling predicates (is_int already did this).
+#[test]
+fn test_is_float_mixed_array_element_tests_runtime_tag() {
+    let out = compile_and_run(
+        r#"<?php $a = [-5, -2.5, 7, 3.25, "x", true]; foreach ($a as $v) { echo (is_float($v) ? "f" : "i"); }"#,
+    );
+    assert_eq!(out, "ififii");
+}
