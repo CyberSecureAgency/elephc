@@ -803,6 +803,8 @@ fn pointer_builtin_return_type(
     match php_symbol_key(name.trim_start_matches('\\')).as_str() {
         "ptr_null" => Some(PhpType::Pointer(None)),
         "ptr_is_null" => Some(PhpType::Bool),
+        "ptr_get" | "ptr_read8" | "ptr_read16" | "ptr_read32" => Some(PhpType::Int),
+        "ptr_set" | "ptr_write8" | "ptr_write16" | "ptr_write32" => Some(PhpType::Void),
         "ptr_offset" => {
             let pointer = operands.first()?;
             match ctx.builder.value_php_type(*pointer).codegen_repr() {

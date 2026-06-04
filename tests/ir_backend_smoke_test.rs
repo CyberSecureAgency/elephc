@@ -593,6 +593,35 @@ free($mem);
     );
 }
 
+/// Verifies raw pointer memory reads and writes through the EIR backend.
+#[test]
+fn ir_backend_handles_pointer_memory_builtins() {
+    let source = r#"<?php
+extern function malloc(int $size): ptr;
+extern function free(ptr $ptr): void;
+$buf = malloc(16);
+ptr_set($buf, 123456789);
+echo ptr_get($buf);
+echo ":";
+ptr_write8($buf, 255);
+ptr_write8(ptr_offset($buf, 1), 1);
+echo ptr_read8($buf);
+echo ",";
+echo ptr_read8(ptr_offset($buf, 1));
+echo ":";
+ptr_write16($buf, 0x1234);
+echo ptr_read16($buf);
+echo ":";
+ptr_write32($buf, 305419896);
+echo ptr_read32($buf);
+free($buf);
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("pointer_memory_builtins", source),
+        "123456789:255,1:4660:305419896"
+    );
+}
+
 /// Verifies selected type predicates inspect boxed Mixed payloads in the EIR backend.
 #[test]
 fn ir_backend_handles_mixed_type_predicates() {
