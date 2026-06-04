@@ -168,7 +168,10 @@ pub(super) fn check_builtin(
             for arg in args {
                 checker.infer_type(arg, env)?;
             }
-            Ok(Some(PhpType::Str))
+            Ok(Some(checker.normalize_union_type(vec![
+                PhpType::Str,
+                PhpType::Bool,
+            ])))
         }
         "fseek" => {
             if args.len() < 2 || args.len() > 3 {
@@ -178,7 +181,10 @@ pub(super) fn check_builtin(
             for arg in args.iter().skip(1) {
                 checker.infer_type(arg, env)?;
             }
-            Ok(Some(PhpType::Int))
+            Ok(Some(checker.normalize_union_type(vec![
+                PhpType::Int,
+                PhpType::Bool,
+            ])))
         }
         "ftell" => {
             if args.len() != 1 {
@@ -376,10 +382,16 @@ pub(super) fn check_builtin(
                 ));
             }
             ensure_stream_resource(checker, name, &args[0], env)?;
-            for arg in &args[1..] {
-                checker.infer_type(arg, env)?;
+            if let Some(length) = args.get(1) {
+                ensure_optional_int(checker, name, "length", length, env)?;
             }
-            Ok(Some(PhpType::Str))
+            if let Some(offset) = args.get(2) {
+                ensure_int(checker, name, "offset", offset, env)?;
+            }
+            Ok(Some(checker.normalize_union_type(vec![
+                PhpType::Str,
+                PhpType::Bool,
+            ])))
         }
         "stream_get_meta_data" => {
             if args.len() != 1 {
@@ -403,10 +415,16 @@ pub(super) fn check_builtin(
             }
             ensure_stream_resource(checker, name, &args[0], env)?;
             ensure_stream_resource(checker, name, &args[1], env)?;
-            for arg in &args[2..] {
-                checker.infer_type(arg, env)?;
+            if let Some(length) = args.get(2) {
+                ensure_optional_int(checker, name, "length", length, env)?;
             }
-            Ok(Some(PhpType::Int))
+            if let Some(offset) = args.get(3) {
+                ensure_int(checker, name, "offset", offset, env)?;
+            }
+            Ok(Some(checker.normalize_union_type(vec![
+                PhpType::Int,
+                PhpType::Bool,
+            ])))
         }
         "stream_socket_server" => {
             if args.len() != 1 {
@@ -988,6 +1006,62 @@ pub(super) fn check_builtin(
             Ok(Some(PhpType::Void))
         }
         _ => Ok(None),
+    }
+}
+
+/// Ensures a stream builtin argument is an `int`, emitting a parameter-specific
+/// compile error otherwise.
+fn ensure_int(
+    checker: &mut Checker,
+    builtin: &str,
+    param: &str,
+    arg: &Expr,
+    env: &TypeEnv,
+) -> Result<(), CompileError> {
+    let ty = checker.infer_type(arg, env)?;
+    if accepts_int(&ty) {
+        return Ok(());
+    }
+    Err(CompileError::new(
+        arg.span,
+        &format!("{}() {} must be int", builtin, param),
+    ))
+}
+
+/// Ensures a stream builtin length argument is `int|null`, matching PHP's
+/// nullable `$length` parameter while keeping codegen from seeing strings/floats.
+fn ensure_optional_int(
+    checker: &mut Checker,
+    builtin: &str,
+    param: &str,
+    arg: &Expr,
+    env: &TypeEnv,
+) -> Result<(), CompileError> {
+    let ty = checker.infer_type(arg, env)?;
+    if accepts_int_or_null(&ty) {
+        return Ok(());
+    }
+    Err(CompileError::new(
+        arg.span,
+        &format!("{}() {} must be int or null", builtin, param),
+    ))
+}
+
+/// Returns true when a type is statically compatible with an `int` parameter.
+fn accepts_int(ty: &PhpType) -> bool {
+    match ty {
+        PhpType::Int => true,
+        PhpType::Union(members) => members.iter().all(accepts_int),
+        _ => false,
+    }
+}
+
+/// Returns true when a type is statically compatible with an `int|null` parameter.
+fn accepts_int_or_null(ty: &PhpType) -> bool {
+    match ty {
+        PhpType::Int | PhpType::Void => true,
+        PhpType::Union(members) => members.iter().all(accepts_int_or_null),
+        _ => false,
     }
 }
 

@@ -1,12 +1,17 @@
 //! Purpose:
 //! Emits PHP `file_get_contents` file input builtin calls.
-//! Coordinates path or stream arguments with runtime helpers that allocate returned strings or arrays.
+//! Coordinates filesystem paths, PHAR entries, and built-in URL wrappers with
+//! runtime helpers that allocate and box returned string or false results.
 //!
 //! Called from:
 //! - `crate::codegen::builtins::io::emit()`.
 //!
 //! Key details:
-//! - Failure paths must distinguish PHP false from empty string or empty array results.
+//! - Literal `http://`, `https://`, `ftp://`, and `ftps://` URLs reuse the same
+//!   wrapper open helpers as `fopen()`, then slurp and close the descriptor.
+//! - Dynamic paths route through a runtime URL dispatcher; when TLS is required,
+//!   the program entry point publishes TLS entry points before user code runs.
+//! - Failure paths must distinguish PHP false from empty string results.
 
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
@@ -61,7 +66,7 @@ pub fn emit(
             box_file_get_contents_result(emitter, ctx);
             return Some(PhpType::Mixed);
         }
-        // Literal http/https/ftp URLs open the wrapper, slurp the whole body
+        // Literal http/https/ftp/ftps URLs open the wrapper, slurp the whole body
         // into an owned string, and box it — the fopen() + stream_get_contents()
         // + fclose() model. A failed open boxes PHP false.
         if url.starts_with("http://") {
@@ -86,7 +91,7 @@ pub fn emit(
         }
     }
     emit_expr(&args[0], emitter, ctx, data);
-    abi::emit_call_label(emitter, "__rt_file_get_contents_maybe_phar");         // reads the file (routes a non-literal phar:// URL to the runtime phar reader, else __rt_file_get_contents)
+    abi::emit_call_label(emitter, "__rt_file_get_contents_maybe_url");          // routes dynamic URL/phar paths before the filesystem reader
     box_file_get_contents_result(emitter, ctx);
     Some(PhpType::Mixed)
 }
@@ -148,9 +153,9 @@ fn box_file_get_contents_result(emitter: &mut Emitter, ctx: &mut Context) {
 /// Given an open stream fd in the int-result register (`x0`/`rax`), or `-1` on a
 /// failed open, slurps the whole stream into an **owned** string, closes the fd,
 /// and boxes the result as `file_get_contents()`'s `PhpType::Mixed` (string on
-/// success, bool `false` on a failed open). The slurp uses `__rt_stream_get_contents`
-/// (a borrowed `_concat_buf` slice) and then `__rt_str_persist` so the boxed
-/// string owns its bytes and survives later `_concat_buf` reuse.
+/// success, bool `false` on a failed open). The slurp uses the TLS-aware
+/// `__rt_stream_get_contents` read-all helper and then `__rt_str_persist` so the
+/// boxed string owns its bytes and survives later `_concat_buf` reuse.
 fn emit_url_slurp_and_box(emitter: &mut Emitter, ctx: &mut Context) {
     let fail_label = ctx.next_label("fgc_url_fail");
     let done_label = ctx.next_label("fgc_url_done");
@@ -163,6 +168,7 @@ fn emit_url_slurp_and_box(emitter: &mut Emitter, ctx: &mut Context) {
             abi::emit_call_label(emitter, "__rt_stream_get_contents");          // (x0=fd) → x1=ptr, x2=len (concat_buf slice)
             emitter.instruction("stp x1, x2, [sp, #8]");                        // save the slurped ptr/len across the close
             emitter.instruction("ldr x0, [sp, #0]");                            // reload the fd
+            super::fclose::emit_tls_session_teardown(emitter, ctx);
             emitter.syscall(6);                                                 // close(fd)
             emitter.instruction("ldp x1, x2, [sp, #8]");                        // restore the slurped ptr/len
             abi::emit_call_label(emitter, "__rt_str_persist");                  // copy to owned heap → x1=ptr, x2=len
@@ -181,7 +187,9 @@ fn emit_url_slurp_and_box(emitter: &mut Emitter, ctx: &mut Context) {
             abi::emit_call_label(emitter, "__rt_stream_get_contents");          // rax=ptr, rdx=len (concat_buf slice)
             emitter.instruction("mov QWORD PTR [rsp + 8], rax");                // save the slurped ptr across the close
             emitter.instruction("mov QWORD PTR [rsp + 16], rdx");               // save the slurped len across the close
-            emitter.instruction("mov rdi, QWORD PTR [rsp + 0]");                // reload the fd
+            emitter.instruction("mov rax, QWORD PTR [rsp + 0]");                // reload the fd for TLS teardown
+            super::fclose::emit_tls_session_teardown(emitter, ctx);
+            emitter.instruction("mov rdi, rax");                                // move the restored fd into close()'s argument register
             emitter.instruction("call close");                                  // close(fd) via libc
             emitter.instruction("mov rax, QWORD PTR [rsp + 8]");                // restore the slurped ptr
             emitter.instruction("mov rdx, QWORD PTR [rsp + 16]");               // restore the slurped len

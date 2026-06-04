@@ -42,8 +42,8 @@ code should guard failed opens before using the handle.
 | `readline()` | `readline([$prompt]): string` | Read a line from standard input. |
 | `readfile()` | `readfile($filename): int\|false` | Open a path or wrapper URL, stream it to stdout, and return copied bytes; returns `false` when open fails. |
 | `fpassthru()` | `fpassthru(resource $handle): int` | Stream the remaining bytes of an open handle to stdout, returning `-1` on read failure. |
-| `stream_get_contents()` | `stream_get_contents(resource $handle, ?int $length = null, int $offset = -1): string` | Read remaining bytes from the stream. `$offset >= 0` seeks there first (seekable streams / user wrappers via `stream_seek()`); a finite `$length` reads at most that many bytes (a `null`/negative `$length` reads to EOF). On a non-seekable stream (e.g. a socket) a finite `$length` performs a single bounded read, so it may return fewer bytes than the requested length in one call. |
-| `stream_copy_to_stream()` | `stream_copy_to_stream(resource $from, resource $to, ?int $length = null, int $offset = -1): int` | Copy bytes from one stream to another, returning the count. `$offset >= 0` seeks the source first (seekable streams / user wrappers via `stream_seek()`); a finite `$length` copies at most that many bytes (a `null`/negative `$length` copies to EOF). The bounded form drives a chunked read/write loop, so it correctly fills up to `$length` even across multiple reads. |
+| `stream_get_contents()` | `stream_get_contents(resource $handle, ?int $length = null, int $offset = -1): string\|false` | Read remaining bytes from the stream. `$offset >= 0` seeks there first (seekable streams / user wrappers via `stream_seek()`) and returns `false` if that seek fails; a finite `$length` reads at most that many bytes (a `null`/negative `$length` reads to EOF). The bounded form loops through `fread` until it fills `$length`, reaches EOF, or receives an empty read. |
+| `stream_copy_to_stream()` | `stream_copy_to_stream(resource $from, resource $to, ?int $length = null, int $offset = -1): int\|false` | Copy bytes from one stream to another, returning the count. `$offset >= 0` seeks the source first (seekable streams / user wrappers via `stream_seek()`) and returns `false` if that seek fails; a finite `$length` copies at most that many bytes (a `null`/negative `$length` copies to EOF). The bounded form drives a chunked read/write loop and clamps wrapper chunks that exceed the requested count. |
 | `stream_get_line()` | `stream_get_line(resource $handle, int $length [, string $ending]): string` | Read up to `$length` bytes, stopping at and consuming `$ending` when supplied. |
 | `flock()` | `flock(resource $handle, int $op, &$would_block = null): bool` | Advisory locking. `LOCK_SH`, `LOCK_EX`, `LOCK_UN`, and `LOCK_NB` are supported; user wrappers route through `stream_lock(int $operation)`. |
 | `tmpfile()` | `tmpfile(): resource\|false` | Create an anonymous temporary stream backed by a `/tmp/elephc-XXXXXX` file that is immediately unlinked. |
@@ -71,9 +71,9 @@ streams are unbuffered, so the accepted buffer size does not change behavior.
 | `php://filter` | Opens an underlying resource and attaches one built-in filter at open time, for example `php://filter/read=string.toupper/resource=php://temp`. |
 | `data://` | RFC 2397 inline payload streams. Base64 and percent-decoded payloads are supported. The URI must be a string literal. |
 | `phar://` | Read or write a single PHAR entry. Literal reads happen at compile time and embed the entry in the binary; non-literal reads happen at runtime for uncompressed entries. |
-| `ftp://` | Anonymous binary passive FTP read streams. Literal URLs only; credentials in the URL are ignored in v1. |
-| `ftps://` | Explicit FTP over TLS using `AUTH TLS`, with TLS on both control and data channels. Literal URLs only. |
-| `http://` | HTTP/1.0 `GET` read streams. Literal URLs only; v1 does not follow redirects and buffers up to 1 MiB. |
+| `ftp://` | Anonymous binary passive FTP read streams. `fopen()` requires a literal URL; `file_get_contents()` also accepts runtime string URLs. Credentials in the URL are ignored in v1. |
+| `ftps://` | Explicit FTP over TLS using `AUTH TLS`, with TLS on both control and data channels. `fopen()` requires a literal URL; `file_get_contents()` also accepts runtime string URLs. |
+| `http://` | HTTP/1.0 `GET` read streams. `fopen()` requires a literal URL; `file_get_contents()` also accepts runtime string URLs. v1 does not follow redirects and buffers up to 1 MiB. |
 | `https://` | Same as `http://`, but over TLS through the `elephc-tls` static library. Programs using it auto-link `-lelephc_tls`; programs that do not use TLS pay no extra link cost. |
 | `compress.zlib://` | Read-only wrapper that opens the underlying file and applies `zlib.inflate`. |
 | `compress.bzip2://` | Read-only wrapper that opens the underlying file and decompresses it through libbz2. |
@@ -84,6 +84,11 @@ a native, signed PHAR archive with a SHA1 trailer, and
 `file_put_contents("phar://archive.phar/entry", $data)` uses the same path.
 Current limits: one PHAR write stream at a time, uncompressed entry payloads
 only, no key/private-key signing variants, and no tar/zip PHAR variants.
+
+`file_get_contents($url)` recognizes runtime `http://`, `https://`, `ftp://`,
+and `ftps://` strings before falling back to `phar://`/filesystem handling.
+Because the scheme is not known statically, non-literal `file_get_contents()`
+conservatively links `elephc-tls`.
 
 `https://`, `ftps://`, and `stream_socket_enable_crypto()` use `elephc-tls`
 (rustls, the `ring` crypto provider, and Mozilla webpki roots). TLS contexts can
@@ -111,6 +116,8 @@ Active stream-context consumers:
 - `fopen("http://...")` reads `http.method`, `http.header`, and `http.content`.
 - `fopen("https://...")` reads the `ssl` trust and peer-name options.
 - `fopen("ftp://...")` reads `ftp.resume_pos`.
+- `file_get_contents()` over `https://` reads the same `ssl` options; over
+  `ftp://` or `ftps://` it reads `ftp.resume_pos`.
 - `stream_socket_server()` reads `socket.backlog`.
 - `stream_socket_enable_crypto()` reads TLS peer and client-certificate options.
 
