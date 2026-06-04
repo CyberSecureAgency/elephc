@@ -1178,6 +1178,31 @@ echo $i >= 0 && $i < count($a) ? "range" : "bad";
     assert_eq!(compile_and_run_ir_backend("array_rand_indexed", source), "ok:range");
 }
 
+/// Verifies that the IR backend lowers `range()` for ascending, descending, and singleton integer spans.
+#[test]
+fn ir_backend_handles_range_builtin() {
+    let cases = [
+        (
+            "range_ascending",
+            "<?php $a = range(1, 5); echo count($a) . ':' . $a[0] . ':' . $a[4];",
+            "5:1:5",
+        ),
+        (
+            "range_descending",
+            "<?php $a = range(5, 1); echo count($a) . ':' . $a[0] . ':' . $a[4];",
+            "5:5:1",
+        ),
+        (
+            "range_singleton",
+            "<?php $a = range(3, 3); echo count($a) . ':' . $a[0];",
+            "1:3",
+        ),
+    ];
+    for (name, source, expected) in cases {
+        assert_eq!(compile_and_run_ir_backend(name, source), expected);
+    }
+}
+
 /// Verifies array truthiness follows PHP length rules for empty and non-empty containers.
 #[test]
 fn ir_backend_handles_array_truthiness() {

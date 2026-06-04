@@ -82,6 +82,7 @@ pub(super) fn lower_builtin_call(ctx: &mut FunctionContext<'_>, inst: &Instructi
         "array_key_exists" => arrays::lower_array_key_exists(ctx, inst),
         "array_search" => arrays::lower_array_search(ctx, inst),
         "in_array" => arrays::lower_in_array(ctx, inst),
+        "range" => arrays::lower_range(ctx, inst),
         "intval" => lower_intval(ctx, inst),
         "floatval" => lower_floatval(ctx, inst),
         "boolval" => lower_boolval(ctx, inst),

@@ -229,6 +229,28 @@ pub(super) fn lower_array_rand(ctx: &mut FunctionContext<'_>, inst: &Instruction
     store_if_result(ctx, inst)
 }
 
+/// Lowers `range()` for integer endpoints through the shared runtime constructor.
+pub(super) fn lower_range(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    super::ensure_arg_count(inst, "range", 2)?;
+    let start = expect_operand(inst, 0)?;
+    let end = expect_operand(inst, 1)?;
+    require_range_endpoint(ctx.value_php_type(start)?, "start")?;
+    require_range_endpoint(ctx.value_php_type(end)?, "end")?;
+    require_range_result_type(&inst.result_php_type.codegen_repr())?;
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.load_value_to_reg(start, "x0")?;
+            ctx.load_value_to_reg(end, "x1")?;
+        }
+        Arch::X86_64 => {
+            ctx.load_value_to_reg(start, "rdi")?;
+            ctx.load_value_to_reg(end, "rsi")?;
+        }
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_range");
+    store_if_result(ctx, inst)
+}
+
 /// Lowers `array_pop()` for indexed arrays by mutating length and boxing `T|null` as Mixed.
 pub(super) fn lower_array_pop(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     super::ensure_arg_count(inst, "array_pop", 1)?;
@@ -323,6 +345,29 @@ fn require_supported_indexed_array(ty: PhpType, name: &str) -> Result<()> {
 fn require_eight_byte_indexed_array(ty: PhpType, name: &str) -> Result<()> {
     let _ = eight_byte_indexed_array_element_type(ty, name)?;
     Ok(())
+}
+
+/// Verifies that a `range()` endpoint can be passed to the integer runtime helper.
+fn require_range_endpoint(ty: PhpType, name: &str) -> Result<()> {
+    match ty.codegen_repr() {
+        PhpType::Int | PhpType::Bool => Ok(()),
+        other => Err(CodegenIrError::unsupported(format!(
+            "range {} PHP type {:?}",
+            name,
+            other
+        ))),
+    }
+}
+
+/// Verifies `range()` is represented as an indexed integer array.
+fn require_range_result_type(result_ty: &PhpType) -> Result<()> {
+    match result_ty {
+        PhpType::Array(elem) if elem.codegen_repr() == PhpType::Int => Ok(()),
+        other => Err(CodegenIrError::unsupported(format!(
+            "range result PHP type {:?}",
+            other
+        ))),
+    }
 }
 
 /// Verifies two indexed arrays can share an 8-byte scalar runtime helper.

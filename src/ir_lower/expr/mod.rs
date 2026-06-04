@@ -792,6 +792,7 @@ fn array_builtin_return_type(
         "array_flip" => array_flip_builtin_return_type(ctx, operands),
         "array_fill_keys" => array_fill_keys_builtin_return_type(ctx, operands),
         "array_merge" => array_merge_builtin_return_type(ctx, operands),
+        "range" => Some(PhpType::Array(Box::new(PhpType::Int))),
         "array_values" => {
             let array = operands.first()?;
             match ctx.builder.value_php_type(*array).codegen_repr() {
