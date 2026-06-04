@@ -622,6 +622,28 @@ free($buf);
     );
 }
 
+/// Verifies pointer string copy builtins preserve byte counts through raw memory.
+#[test]
+fn ir_backend_handles_pointer_string_builtins() {
+    let source = r#"<?php
+extern function malloc(int $size): ptr;
+extern function free(ptr $ptr): void;
+$buf = malloc(16);
+$written = ptr_write_string($buf, "GET /");
+$s = ptr_read_string($buf, $written);
+echo $written;
+echo ":";
+echo $s;
+echo ":";
+echo strlen(ptr_read_string($buf, 0));
+free($buf);
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("pointer_string_builtins", source),
+        "5:GET /:0"
+    );
+}
+
 /// Verifies selected type predicates inspect boxed Mixed payloads in the EIR backend.
 #[test]
 fn ir_backend_handles_mixed_type_predicates() {

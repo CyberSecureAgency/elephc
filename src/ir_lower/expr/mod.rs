@@ -804,7 +804,9 @@ fn pointer_builtin_return_type(
         "ptr_null" => Some(PhpType::Pointer(None)),
         "ptr_is_null" => Some(PhpType::Bool),
         "ptr_get" | "ptr_read8" | "ptr_read16" | "ptr_read32" => Some(PhpType::Int),
+        "ptr_read_string" => Some(PhpType::Str),
         "ptr_set" | "ptr_write8" | "ptr_write16" | "ptr_write32" => Some(PhpType::Void),
+        "ptr_write_string" => Some(PhpType::Int),
         "ptr_offset" => {
             let pointer = operands.first()?;
             match ctx.builder.value_php_type(*pointer).codegen_repr() {

@@ -1,13 +1,15 @@
 //! Purpose:
 //! Lowers compiler-extension pointer builtins for the EIR backend.
-//! Covers raw null materialization, null tests, and byte-offset address arithmetic.
+//! Covers raw null materialization, null tests, address arithmetic, raw memory loads/stores,
+//! and byte-exact string copies through runtime helpers.
 //!
 //! Called from:
 //! - `crate::codegen_ir::lower_inst::builtins::lower_builtin_call()`.
 //!
 //! Key details:
 //! - Pointer values are raw machine addresses in the integer result register.
-//! - These builtins do not allocate, box, retain, or release PHP runtime values.
+//! - Numeric pointer builtins do not allocate, box, retain, or release PHP runtime values.
+//! - String pointer builtins delegate allocation/copy semantics to the existing runtime helpers.
 
 use crate::codegen::abi;
 use crate::codegen::platform::Arch;
@@ -92,6 +94,28 @@ pub(super) fn lower_ptr_read32(ctx: &mut FunctionContext<'_>, inst: &Instruction
     lower_pointer_read(ctx, inst, "ptr_read32", PointerWidth::Word32)
 }
 
+/// Lowers `ptr_read_string(pointer, length)` by copying raw bytes into an owned PHP string.
+pub(super) fn lower_ptr_read_string(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    ensure_arg_count(inst, "ptr_read_string", 2)?;
+    let pointer = expect_operand(inst, 0)?;
+    let length = expect_operand(inst, 1)?;
+    load_checked_pointer(ctx, pointer, "ptr_read_string")?;
+    abi::emit_push_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));
+    require_int_value(ctx.load_value_to_result(length)?, "ptr_read_string length")?;
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction("mov x1, x0");                              // pass the requested byte length to the runtime string-copy helper
+            abi::emit_pop_reg(ctx.emitter, "x0");
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("mov rdx, rax");                            // pass the requested byte length to the runtime string-copy helper
+            abi::emit_pop_reg(ctx.emitter, "rax");
+        }
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_ptr_read_string");
+    store_if_result(ctx, inst)
+}
+
 /// Lowers `ptr_write8(pointer, value)` by writing one byte through a checked pointer.
 pub(super) fn lower_ptr_write8(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     lower_pointer_write(ctx, inst, "ptr_write8", PointerWidth::Byte, WordValuePolicy::IntOnly)
@@ -105,6 +129,27 @@ pub(super) fn lower_ptr_write16(ctx: &mut FunctionContext<'_>, inst: &Instructio
 /// Lowers `ptr_write32(pointer, value)` by writing one 32-bit word through a checked pointer.
 pub(super) fn lower_ptr_write32(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     lower_pointer_write(ctx, inst, "ptr_write32", PointerWidth::Word32, WordValuePolicy::IntOnly)
+}
+
+/// Lowers `ptr_write_string(pointer, string)` by copying PHP string bytes into raw memory.
+pub(super) fn lower_ptr_write_string(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    ensure_arg_count(inst, "ptr_write_string", 2)?;
+    let pointer = expect_operand(inst, 0)?;
+    let string = expect_operand(inst, 1)?;
+    load_checked_pointer(ctx, pointer, "ptr_write_string")?;
+    abi::emit_push_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));
+    let (ptr_reg, len_reg) = abi::string_result_regs(ctx.emitter);
+    ctx.load_string_value_to_regs(string, ptr_reg, len_reg)?;
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            abi::emit_pop_reg(ctx.emitter, "x0");
+        }
+        Arch::X86_64 => {
+            abi::emit_pop_reg(ctx.emitter, "rdi");
+        }
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_ptr_write_string");
+    store_if_result(ctx, inst)
 }
 
 /// Native integer width for raw pointer memory reads and writes.
@@ -311,6 +356,18 @@ fn require_integer_offset(ty: PhpType, name: &str) -> Result<()> {
         PhpType::Int | PhpType::Bool => Ok(()),
         other => Err(CodegenIrError::unsupported(format!(
             "{} offset PHP type {:?}",
+            name,
+            other
+        ))),
+    }
+}
+
+/// Verifies a pointer string-copy length operand is a concrete PHP integer.
+fn require_int_value(ty: PhpType, name: &str) -> Result<()> {
+    match ty.codegen_repr() {
+        PhpType::Int => Ok(()),
+        other => Err(CodegenIrError::unsupported(format!(
+            "{} PHP type {:?}",
             name,
             other
         ))),
