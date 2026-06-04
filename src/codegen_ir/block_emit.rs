@@ -9,10 +9,12 @@
 //! - This first backend increment supports straight-line main blocks and reports
 //!   explicit unsupported-feature errors for control flow not lowered yet.
 
+use crate::codegen::abi;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
+use crate::codegen::UNINITIALIZED_TYPED_PROPERTY_SENTINEL;
 use crate::ir::{BasicBlock, Function, Module};
-use crate::names::function_epilogue_symbol;
+use crate::names::{function_epilogue_symbol, static_property_symbol};
 
 use super::context::FunctionContext;
 use super::frame;
@@ -73,6 +75,7 @@ fn emit_main_function(
     let layout = frame::layout_for_function(function);
     let mut ctx = FunctionContext::new(module, function, emitter, data, layout, true, None);
     frame::emit_main_prologue(&mut ctx);
+    emit_static_property_sentinels(&mut ctx);
     emit_blocks(&mut ctx)?;
     if !ctx.epilogue_emitted {
         frame::emit_main_epilogue(&mut ctx);
@@ -83,6 +86,47 @@ fn emit_main_function(
 /// Returns true when a function is the process entry function.
 fn is_main(function: &Function) -> bool {
     function.flags.is_main || function.name == "main"
+}
+
+/// Marks typed static properties without defaults as uninitialized before user code runs.
+fn emit_static_property_sentinels(ctx: &mut FunctionContext<'_>) {
+    let mut class_names = super::runtime_referenced_class_names(ctx.module)
+        .into_iter()
+        .collect::<Vec<_>>();
+    class_names.sort();
+    for class_name in class_names {
+        let Some(class_info) = ctx.module.class_infos.get(&class_name) else {
+            continue;
+        };
+        for (index, (property, _)) in class_info.static_properties.iter().enumerate() {
+            let declaring_class = class_info
+                .static_property_declaring_classes
+                .get(property)
+                .map(String::as_str)
+                .unwrap_or(class_name.as_str());
+            if declaring_class != class_name
+                || !class_info.declared_static_properties.contains(property)
+                || class_info
+                    .static_defaults
+                    .get(index)
+                    .is_some_and(Option::is_some)
+            {
+                continue;
+            }
+            ctx.emitter.comment(&format!(
+                "mark static property {}::${} uninitialized",
+                class_name, property
+            ));
+            let marker_reg = abi::int_result_reg(ctx.emitter);
+            abi::emit_load_int_immediate(
+                ctx.emitter,
+                marker_reg,
+                UNINITIALIZED_TYPED_PROPERTY_SENTINEL,
+            );
+            let symbol = static_property_symbol(&class_name, property);
+            abi::emit_store_reg_to_symbol(ctx.emitter, marker_reg, &symbol, 8);
+        }
+    }
 }
 
 /// Emits every block in table order.

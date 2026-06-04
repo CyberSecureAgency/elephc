@@ -840,6 +840,60 @@ echo ($user instanceof $target) ? "T" : "F";
     );
 }
 
+/// Verifies simple typed static properties round-trip through EIR symbol storage.
+#[test]
+fn ir_backend_handles_simple_static_properties() {
+    let source = r#"<?php
+class Counter {
+    public static int $i;
+    public static string $s;
+    public static float $f;
+    public static bool $b;
+}
+Counter::$i = 7;
+Counter::$s = "ok";
+Counter::$f = 1.5;
+Counter::$b = true;
+echo Counter::$i;
+echo ":";
+echo Counter::$s;
+echo ":";
+echo Counter::$f;
+echo ":";
+if (Counter::$b) { echo "T"; } else { echo "F"; }
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("simple_static_properties", source),
+        "7:ok:1.5:T"
+    );
+}
+
+/// Verifies typed static properties still fatal when read before initialization.
+#[test]
+fn ir_backend_fatals_on_uninitialized_typed_static_property() {
+    let run = compile_ir_backend_and_run(
+        "uninitialized_typed_static_property",
+        r#"<?php
+class Counter { public static int $i; }
+echo Counter::$i;
+"#,
+        &[],
+    );
+    assert!(
+        !run.status.success(),
+        "IR backend uninitialized typed static property fixture unexpectedly succeeded"
+    );
+    assert_eq!(
+        String::from_utf8(run.stdout).expect("fatal stdout should be utf8"),
+        ""
+    );
+    let stderr = String::from_utf8(run.stderr).expect("fatal stderr should be utf8");
+    assert!(
+        stderr.contains("Fatal error: Typed static property Counter::$i must not be accessed before initialization"),
+        "unexpected fatal stderr: {stderr}"
+    );
+}
+
 /// Verifies simple declared object properties round-trip through EIR object slots.
 #[test]
 fn ir_backend_handles_simple_object_properties() {

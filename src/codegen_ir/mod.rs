@@ -131,6 +131,11 @@ fn runtime_referenced_class_names(module: &Module) -> HashSet<String> {
     if module_uses_dynamic_instanceof(module) {
         names.extend(dynamic_instanceof_class_names(module));
     }
+    for class_name in referenced_static_property_class_names(module) {
+        if module.class_infos.contains_key(&class_name) {
+            names.insert(class_name);
+        }
+    }
     for class_name in referenced_class_data_names(module) {
         if module.class_infos.contains_key(&class_name) {
             names.insert(class_name);
@@ -251,6 +256,38 @@ fn interface_metadata_supported_for_dynamic_instanceof(
         stack.extend(interface_info.parents.iter().map(String::as_str));
     }
     true
+}
+
+/// Returns class names encoded in static property load/store immediates.
+fn referenced_static_property_class_names(module: &Module) -> HashSet<String> {
+    let mut names = HashSet::new();
+    for function in module
+        .functions
+        .iter()
+        .chain(module.class_methods.iter())
+        .chain(module.closures.iter())
+        .chain(module.fiber_wrappers.iter())
+        .chain(module.callback_wrappers.iter())
+        .chain(module.extern_callback_trampolines.iter())
+        .chain(module.runtime_callable_invokers.iter())
+    {
+        for inst in &function.instructions {
+            if !matches!(inst.op, Op::LoadStaticProperty | Op::StoreStaticProperty) {
+                continue;
+            }
+            let Some(Immediate::Data(data)) = inst.immediate else {
+                continue;
+            };
+            let Some(label) = module.data.strings.get(data.as_raw() as usize) else {
+                continue;
+            };
+            let Some((class_name, _)) = label.rsplit_once("::") else {
+                continue;
+            };
+            names.insert(class_name.trim_start_matches('\\').to_string());
+        }
+    }
+    names
 }
 
 /// Returns class-name data entries attached to runtime object metadata opcodes.

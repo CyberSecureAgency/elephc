@@ -1444,14 +1444,39 @@ fn lower_dynamic_property_get(ctx: &mut LoweringContext<'_, '_>, object: &Expr, 
 fn lower_static_property_get(ctx: &mut LoweringContext<'_, '_>, receiver: &StaticReceiver, property: &str, expr: &Expr) -> LoweredValue {
     let name = format!("{}::{}", receiver_name(receiver), property);
     let data = ctx.intern_string(&name);
+    let result_type = static_property_result_type(ctx, receiver, property, expr);
     ctx.emit_value(
         Op::LoadStaticProperty,
         Vec::new(),
         Some(Immediate::Data(data)),
-        fallback_expr_type(expr),
+        result_type,
         Op::LoadStaticProperty.default_effects(),
         Some(expr.span),
     )
+}
+
+/// Returns precise PHP metadata for a static property read when class metadata is available.
+fn static_property_result_type(
+    ctx: &LoweringContext<'_, '_>,
+    receiver: &StaticReceiver,
+    property: &str,
+    expr: &Expr,
+) -> PhpType {
+    let StaticReceiver::Named(name) = receiver else {
+        return fallback_expr_type(expr);
+    };
+    let normalized = name.as_str().trim_start_matches('\\');
+    let Some(class_info) = ctx.classes.get(normalized) else {
+        return fallback_expr_type(expr);
+    };
+    let Some((_, property_ty)) = class_info
+        .static_properties
+        .iter()
+        .find(|(name, _)| name == property)
+    else {
+        return fallback_expr_type(expr);
+    };
+    normalize_value_php_type(property_ty.codegen_repr())
 }
 
 /// Lowers an object method call.
