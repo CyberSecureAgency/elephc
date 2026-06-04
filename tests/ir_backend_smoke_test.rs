@@ -779,6 +779,62 @@ echo ($child instanceof Missing) ? "T" : "F";
     );
 }
 
+/// Verifies simple declared object properties round-trip through EIR object slots.
+#[test]
+fn ir_backend_handles_simple_object_properties() {
+    let source = r#"<?php
+class Box {
+    public int $i;
+    public string $s;
+    public float $f;
+    public bool $b;
+}
+$box = new Box();
+$box->i = 7;
+$box->s = "ok";
+$box->f = 1.5;
+$box->b = true;
+echo $box->i;
+echo ":";
+echo $box->s;
+echo ":";
+echo $box->f;
+echo ":";
+if ($box->b) { echo "T"; } else { echo "F"; }
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("simple_object_properties", source),
+        "7:ok:1.5:T"
+    );
+}
+
+/// Verifies typed declared properties still fatal when read before initialization.
+#[test]
+fn ir_backend_fatals_on_uninitialized_typed_object_property() {
+    let run = compile_ir_backend_and_run(
+        "uninitialized_typed_object_property",
+        r#"<?php
+class Box { public int $i; }
+$box = new Box();
+echo $box->i;
+"#,
+        &[],
+    );
+    assert!(
+        !run.status.success(),
+        "IR backend uninitialized typed property fixture unexpectedly succeeded"
+    );
+    assert_eq!(
+        String::from_utf8(run.stdout).expect("fatal stdout should be utf8"),
+        ""
+    );
+    let stderr = String::from_utf8(run.stderr).expect("fatal stderr should be utf8");
+    assert!(
+        stderr.contains("Fatal error: Typed property Box::$i must not be accessed before initialization"),
+        "unexpected fatal stderr: {stderr}"
+    );
+}
+
 /// Verifies selected type predicates inspect boxed Mixed payloads in the EIR backend.
 #[test]
 fn ir_backend_handles_mixed_type_predicates() {

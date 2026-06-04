@@ -1363,14 +1363,67 @@ fn lower_property_get(
 ) -> LoweredValue {
     let object = lower_expr(ctx, object);
     let data = ctx.intern_string(property);
+    let result_type = property_get_result_type(ctx, object.value, property, op, expr);
     ctx.emit_value(
         op,
         vec![object.value],
         Some(Immediate::Data(data)),
-        fallback_expr_type(expr),
+        result_type,
         op.default_effects(),
         Some(expr.span),
     )
+}
+
+/// Returns precise PHP metadata for a named property read when class metadata is available.
+fn property_get_result_type(
+    ctx: &LoweringContext<'_, '_>,
+    object: crate::ir::ValueId,
+    property: &str,
+    op: Op,
+    expr: &Expr,
+) -> PhpType {
+    let object_ty = ctx.builder.value_php_type(object);
+    let Some((class_name, nullable)) = singular_object_class(&object_ty) else {
+        return fallback_expr_type(expr);
+    };
+    let normalized = class_name.trim_start_matches('\\');
+    let Some(class_info) = ctx.classes.get(normalized) else {
+        return fallback_expr_type(expr);
+    };
+    let Some((_, property_ty)) = class_info.properties.iter().find(|(name, _)| name == property) else {
+        return fallback_expr_type(expr);
+    };
+    let property_ty = normalize_value_php_type(property_ty.codegen_repr());
+    if op == Op::NullsafePropGet && nullable {
+        PhpType::Union(vec![property_ty, PhpType::Void]).codegen_repr()
+    } else {
+        property_ty
+    }
+}
+
+/// Returns the single object class represented by a direct or nullable object type.
+fn singular_object_class(php_type: &PhpType) -> Option<(&str, bool)> {
+    match php_type {
+        PhpType::Object(name) => Some((name.as_str(), false)),
+        PhpType::Union(members) => {
+            let mut found = None;
+            let mut nullable = false;
+            for member in members {
+                match member {
+                    PhpType::Void => nullable = true,
+                    PhpType::Object(name) => {
+                        if found.is_some_and(|existing| existing != name.as_str()) {
+                            return None;
+                        }
+                        found = Some(name.as_str());
+                    }
+                    _ => return None,
+                }
+            }
+            found.map(|class_name| (class_name, nullable))
+        }
+        _ => None,
+    }
 }
 
 /// Lowers a dynamic property read.
