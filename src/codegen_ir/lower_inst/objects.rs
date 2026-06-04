@@ -10,7 +10,8 @@
 //!   heap kind word before payload, class id at payload offset 0, then 16 bytes
 //!   per declared property slot.
 //! - This slice intentionally rejects dynamic properties, references, interface
-//!   method metadata, and default property expressions until their runtime paths land.
+//!   method metadata, and non-literal default property expressions until their
+//!   runtime paths land.
 
 use std::collections::HashSet;
 
@@ -19,11 +20,11 @@ use crate::codegen::platform::Arch;
 use crate::codegen::UNINITIALIZED_TYPED_PROPERTY_SENTINEL;
 use crate::ir::Instruction;
 use crate::names::{method_symbol, php_symbol_key};
-use crate::parser::ast::ExprKind;
 use crate::types::PhpType;
 
 use super::super::context::FunctionContext;
 use super::{direct_call_stack_pad_bytes, expect_data, expect_operand, materialize_direct_call_args, store_if_result};
+use crate::codegen_ir::literal_defaults::{literal_default_value, LiteralDefaultValue};
 use crate::codegen_ir::{CodegenIrError, Result};
 
 const X86_64_HEAP_MAGIC_HI32: u64 = 0x454C5048;
@@ -37,18 +38,10 @@ struct PropertySlot {
     is_declared: bool,
 }
 
-/// Literal default value that the EIR object allocator can write directly.
-enum PropertyDefaultValue {
-    Int(i64),
-    Bool(bool),
-    Float(f64),
-    Str(String),
-}
-
 /// Resolved object property default metadata for fixed-offset initialization.
 struct PropertyDefault {
     offset: usize,
-    value: PropertyDefaultValue,
+    value: LiteralDefaultValue,
 }
 
 /// Lowers fixed-class object allocation and optional constructor invocation.
@@ -142,53 +135,15 @@ fn collect_property_defaults(
             .unwrap_or(8 + index * 16);
         defaults.push(PropertyDefault {
             offset,
-            value: property_default_value(property, php_type, &default_expr.kind, inst)?,
+            value: literal_default_value(
+                &format!("property ${}", property),
+                php_type,
+                &default_expr.kind,
+                inst.op.name(),
+            )?,
         });
     }
     Ok(defaults)
-}
-
-/// Converts a supported property default expression into a direct slot value.
-fn property_default_value(
-    property: &str,
-    php_type: &PhpType,
-    expr: &ExprKind,
-    inst: &Instruction,
-) -> Result<PropertyDefaultValue> {
-    match (php_type, expr) {
-        (PhpType::Int, ExprKind::IntLiteral(value)) => Ok(PropertyDefaultValue::Int(*value)),
-        (PhpType::Int, ExprKind::Negate(inner)) => match &inner.kind {
-            ExprKind::IntLiteral(value) => value
-                .checked_neg()
-                .map(PropertyDefaultValue::Int)
-                .ok_or_else(|| unsupported_property_default(property, php_type, inst)),
-            _ => Err(unsupported_property_default(property, php_type, inst)),
-        },
-        (PhpType::Bool, ExprKind::BoolLiteral(value)) => Ok(PropertyDefaultValue::Bool(*value)),
-        (PhpType::Float, ExprKind::FloatLiteral(value)) => Ok(PropertyDefaultValue::Float(*value)),
-        (PhpType::Float, ExprKind::IntLiteral(value)) => Ok(PropertyDefaultValue::Float(*value as f64)),
-        (PhpType::Float, ExprKind::Negate(inner)) => match &inner.kind {
-            ExprKind::FloatLiteral(value) => Ok(PropertyDefaultValue::Float(-value)),
-            ExprKind::IntLiteral(value) => Ok(PropertyDefaultValue::Float(-(*value as f64))),
-            _ => Err(unsupported_property_default(property, php_type, inst)),
-        },
-        (PhpType::Str, ExprKind::StringLiteral(value)) => Ok(PropertyDefaultValue::Str(value.clone())),
-        _ => Err(unsupported_property_default(property, php_type, inst)),
-    }
-}
-
-/// Builds the unsupported-feature error for property default forms outside this slice.
-fn unsupported_property_default(
-    property: &str,
-    php_type: &PhpType,
-    inst: &Instruction,
-) -> CodegenIrError {
-    CodegenIrError::unsupported(format!(
-        "{} for default value of property ${} with PHP type {:?}",
-        inst.op.name(),
-        property,
-        php_type
-    ))
 }
 
 /// Writes all supported property defaults into the newly allocated object.
@@ -212,19 +167,19 @@ fn emit_property_default(
     default: &PropertyDefault,
 ) -> Result<()> {
     match &default.value {
-        PropertyDefaultValue::Int(value) => {
+        LiteralDefaultValue::Int(value) => {
             let int_reg = abi::int_result_reg(ctx.emitter);
             abi::emit_load_int_immediate(ctx.emitter, int_reg, *value);
             abi::emit_store_to_address(ctx.emitter, int_reg, object_reg, default.offset);
             abi::emit_store_zero_to_address(ctx.emitter, object_reg, default.offset + 8);
         }
-        PropertyDefaultValue::Bool(value) => {
+        LiteralDefaultValue::Bool(value) => {
             let int_reg = abi::int_result_reg(ctx.emitter);
             abi::emit_load_int_immediate(ctx.emitter, int_reg, i64::from(*value));
             abi::emit_store_to_address(ctx.emitter, int_reg, object_reg, default.offset);
             abi::emit_store_zero_to_address(ctx.emitter, object_reg, default.offset + 8);
         }
-        PropertyDefaultValue::Float(value) => {
+        LiteralDefaultValue::Float(value) => {
             let label = ctx.data.add_float(*value);
             let scratch = abi::symbol_scratch_reg(ctx.emitter);
             let float_reg = abi::float_result_reg(ctx.emitter);
@@ -240,7 +195,7 @@ fn emit_property_default(
             abi::emit_store_to_address(ctx.emitter, float_reg, object_reg, default.offset);
             abi::emit_store_zero_to_address(ctx.emitter, object_reg, default.offset + 8);
         }
-        PropertyDefaultValue::Str(value) => {
+        LiteralDefaultValue::Str(value) => {
             let (label, len) = ctx.data.add_string(value.as_bytes());
             let (ptr_reg, len_reg) = abi::string_result_regs(ctx.emitter);
             abi::emit_symbol_address(ctx.emitter, ptr_reg, &label);

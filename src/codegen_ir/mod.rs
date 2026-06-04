@@ -14,6 +14,7 @@ mod block_emit;
 mod context;
 mod frame;
 mod function_variants;
+mod literal_defaults;
 mod lower_inst;
 mod lower_term;
 pub mod value_placement;

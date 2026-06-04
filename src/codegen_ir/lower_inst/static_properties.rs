@@ -8,7 +8,7 @@
 //! Key details:
 //! - This slice supports public scalar/string static properties with named,
 //!   lexical `self`, and lexical `parent` receivers, but not late static binding,
-//!   references, defaults, or array mutation.
+//!   references, or array mutation.
 //! - Typed static properties use the same high-word uninitialized sentinel as
 //!   the legacy backend before reads.
 
@@ -95,7 +95,6 @@ fn resolve_static_property_slot(
         .get(declaring_class)
         .ok_or_else(|| CodegenIrError::unsupported(format!("unknown static property declaring class {}", declaring_class)))?;
     reject_non_public_static_property(declaring_class, property, declaring_info, inst)?;
-    reject_static_property_default(declaring_class, property, declaring_info, inst)?;
     Ok(StaticPropertySlot {
         declaring_class: declaring_class.to_string(),
         property: property.to_string(),
@@ -174,40 +173,6 @@ fn reject_non_public_static_property(
         declaring_class,
         property
     )))
-}
-
-/// Rejects static property defaults until EIR main emits initializer expressions.
-fn reject_static_property_default(
-    declaring_class: &str,
-    property: &str,
-    declaring_info: &ClassInfo,
-    inst: &Instruction,
-) -> Result<()> {
-    let Some(index) = declaring_info
-        .static_properties
-        .iter()
-        .position(|(name, _)| name == property)
-    else {
-        return Err(CodegenIrError::unsupported(format!(
-            "{} for missing declaring static property {}::${}",
-            inst.op.name(),
-            declaring_class,
-            property
-        )));
-    };
-    if declaring_info
-        .static_defaults
-        .get(index)
-        .is_some_and(Option::is_some)
-    {
-        return Err(CodegenIrError::unsupported(format!(
-            "{} for static property default {}::${}",
-            inst.op.name(),
-            declaring_class,
-            property
-        )));
-    }
-    Ok(())
 }
 
 /// Verifies that this slice knows how to represent the static property type.

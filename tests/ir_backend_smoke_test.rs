@@ -966,6 +966,35 @@ echo Counter::total();
     );
 }
 
+/// Verifies supported literal static-property defaults are initialized before main user code.
+#[test]
+fn ir_backend_handles_literal_static_property_defaults() {
+    let source = r#"<?php
+class BaseDefaults {
+    public static int $base = -3;
+}
+class Defaults extends BaseDefaults {
+    public static int $i = 7;
+    public static string $s = "ok";
+    public static float $f = -2.5;
+    public static bool $b = true;
+}
+echo Defaults::$base;
+echo ":";
+echo Defaults::$i;
+echo ":";
+echo Defaults::$s;
+echo ":";
+echo Defaults::$f;
+echo ":";
+if (Defaults::$b) { echo "T"; } else { echo "F"; }
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("literal_static_property_defaults", source),
+        "-3:7:ok:-2.5:T"
+    );
+}
+
 /// Verifies typed static properties still fatal when read before initialization.
 #[test]
 fn ir_backend_fatals_on_uninitialized_typed_static_property() {
