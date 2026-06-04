@@ -788,6 +788,40 @@ fn ir_backend_handles_array_keys() {
     }
 }
 
+/// Verifies indexed-array `array_slice()` copies scalar and Mixed payloads with PHP slice bounds.
+#[test]
+fn ir_backend_handles_indexed_array_slice() {
+    for (name, source, expected) in [
+        (
+            "array_slice_int_explicit_length",
+            "<?php $a = [10, 20, 30, 40, 50]; $b = array_slice($a, 1, 3); echo count($b); echo ':'; echo $b[0]; echo ' '; echo $b[1]; echo ' '; echo $b[2];",
+            "3:20 30 40",
+        ),
+        (
+            "array_slice_int_omitted_length",
+            "<?php $a = [10, 20, 30, 40]; $b = array_slice($a, 2); echo count($b); echo ':'; echo $b[0]; echo ' '; echo $b[1];",
+            "2:30 40",
+        ),
+        (
+            "array_slice_int_null_length",
+            "<?php $a = [5, 6, 7]; $b = array_slice($a, 1, null); echo count($b); echo ':'; echo $b[0]; echo $b[1];",
+            "2:67",
+        ),
+        (
+            "array_slice_int_negative_offset",
+            "<?php $a = [10, 20, 30, 40]; $b = array_slice($a, -2, 1); echo count($b); echo ':'; echo $b[0];",
+            "1:30",
+        ),
+        (
+            "array_slice_mixed_payloads",
+            "<?php $a = [1, true, 3]; $b = array_slice($a, 0, 2); echo count($b); echo ':'; echo $b[0]; echo ':'; echo $b[1];",
+            "2:1:1",
+        ),
+    ] {
+        assert_eq!(compile_and_run_ir_backend(name, source), expected);
+    }
+}
+
 /// Verifies indexed-array membership for scalar and string payloads.
 #[test]
 fn ir_backend_handles_indexed_in_array() {

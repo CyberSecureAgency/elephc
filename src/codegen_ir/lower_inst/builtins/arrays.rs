@@ -83,6 +83,24 @@ pub(super) fn lower_array_merge(ctx: &mut FunctionContext<'_>, inst: &Instructio
     store_if_result(ctx, inst)
 }
 
+/// Lowers `array_slice()` for indexed arrays with pointer-sized payload slots.
+pub(super) fn lower_array_slice(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    ensure_arg_count_between(inst, "array_slice", 2, 3)?;
+    let array = expect_operand(inst, 0)?;
+    let offset = expect_operand(inst, 1)?;
+    let length = if inst.operands.len() == 3 {
+        Some(expect_operand(inst, 2)?)
+    } else {
+        None
+    };
+    let source_elem_ty = array_slice_source_element_type(ctx.value_php_type(array)?)?;
+    let result_elem_ty = result_array_element_type(&inst.result_php_type.codegen_repr())?;
+    require_array_slice_result_type(&source_elem_ty, &result_elem_ty)?;
+    lower_array_slice_call(ctx, array, offset, length, &source_elem_ty)?;
+    normalize_array_slice_result(ctx, &source_elem_ty, &result_elem_ty)?;
+    store_if_result(ctx, inst)
+}
+
 /// Lowers `array_values()` through the dedicated values-array builtin emitter.
 pub(super) fn lower_array_values(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     values::lower_array_values(ctx, inst)
@@ -196,6 +214,18 @@ fn require_compatible_eight_byte_indexed_arrays(
     )))
 }
 
+/// Verifies that a builtin call has a lowered operand count within an inclusive range.
+fn ensure_arg_count_between(inst: &Instruction, name: &str, min: usize, max: usize) -> Result<()> {
+    let actual = inst.operands.len();
+    if (min..=max).contains(&actual) {
+        return Ok(());
+    }
+    Err(CodegenIrError::invalid_module(format!(
+        "{} expected {}..={} args, got {}",
+        name, min, max, actual
+    )))
+}
+
 /// Returns the element type for indexed arrays supported by scalar 8-byte helpers.
 fn eight_byte_indexed_array_element_type(ty: PhpType, name: &str) -> Result<PhpType> {
     match ty.codegen_repr() {
@@ -219,6 +249,181 @@ fn eight_byte_indexed_array_element_type(ty: PhpType, name: &str) -> Result<PhpT
             )))
         }
         other => Err(CodegenIrError::unsupported(format!("{} for PHP type {:?}", name, other))),
+    }
+}
+
+/// Returns the source element type when `array_slice()` can use legacy pointer-sized helpers.
+fn array_slice_source_element_type(ty: PhpType) -> Result<PhpType> {
+    match ty.codegen_repr() {
+        PhpType::Array(elem) => {
+            let elem = elem.codegen_repr();
+            require_array_slice_element_layout(&elem)?;
+            Ok(elem)
+        }
+        other => Err(CodegenIrError::unsupported(format!(
+            "array_slice for PHP type {:?}",
+            other
+        ))),
+    }
+}
+
+/// Returns the result element type declared by the lowered builtin instruction.
+fn result_array_element_type(ty: &PhpType) -> Result<PhpType> {
+    match ty {
+        PhpType::Array(elem) => Ok(elem.codegen_repr()),
+        other => Err(CodegenIrError::unsupported(format!(
+            "array_slice result PHP type {:?}",
+            other
+        ))),
+    }
+}
+
+/// Verifies that the runtime slice helper can copy this element representation.
+fn require_array_slice_element_layout(elem: &PhpType) -> Result<()> {
+    if matches!(
+        elem,
+        PhpType::Int
+            | PhpType::Bool
+            | PhpType::Float
+            | PhpType::Void
+            | PhpType::Mixed
+            | PhpType::Array(_)
+            | PhpType::AssocArray { .. }
+            | PhpType::Object(_)
+    ) {
+        return Ok(());
+    }
+    Err(CodegenIrError::unsupported(format!(
+        "array_slice indexed-array element PHP type {:?}",
+        elem
+    )))
+}
+
+/// Verifies the destination element type matches the copied layout or is a Mixed widening.
+fn require_array_slice_result_type(source_elem_ty: &PhpType, result_elem_ty: &PhpType) -> Result<()> {
+    if source_elem_ty == result_elem_ty || result_elem_ty == &PhpType::Mixed {
+        return Ok(());
+    }
+    Err(CodegenIrError::unsupported(format!(
+        "array_slice result element PHP type {:?} for source element PHP type {:?}",
+        result_elem_ty,
+        source_elem_ty
+    )))
+}
+
+/// Calls the appropriate legacy runtime helper after materializing slice arguments.
+fn lower_array_slice_call(
+    ctx: &mut FunctionContext<'_>,
+    array: ValueId,
+    offset: ValueId,
+    length: Option<ValueId>,
+    source_elem_ty: &PhpType,
+) -> Result<()> {
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.load_value_to_reg(array, "x0")?;
+            ctx.load_value_to_reg(offset, "x1")?;
+            load_array_slice_length(ctx, length, "x2")?;
+        }
+        Arch::X86_64 => {
+            ctx.load_value_to_reg(array, "rdi")?;
+            ctx.load_value_to_reg(offset, "rsi")?;
+            load_array_slice_length(ctx, length, "rdx")?;
+        }
+    }
+    abi::emit_call_label(ctx.emitter, array_slice_runtime_helper(source_elem_ty));
+    Ok(())
+}
+
+/// Loads the optional slice length or the runtime until-end sentinel into `reg`.
+fn load_array_slice_length(
+    ctx: &mut FunctionContext<'_>,
+    length: Option<ValueId>,
+    reg: &str,
+) -> Result<()> {
+    let Some(length) = length else {
+        emit_array_slice_until_end_sentinel(ctx, reg);
+        return Ok(());
+    };
+    match ctx.value_php_type(length)?.codegen_repr() {
+        PhpType::Int => {
+            ctx.load_value_to_reg(length, reg)?;
+        }
+        PhpType::Void => emit_array_slice_until_end_sentinel(ctx, reg),
+        other => {
+            return Err(CodegenIrError::unsupported(format!(
+                "array_slice length PHP type {:?}",
+                other
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Emits the `-1` runtime sentinel used when slicing to the end of the source array.
+fn emit_array_slice_until_end_sentinel(ctx: &mut FunctionContext<'_>, reg: &str) {
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction(&format!("mov {}, #-1", reg));              // use -1 as the array_slice() runtime sentinel for length until the end
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction(&format!("mov {}, -1", reg));               // use -1 as the x86_64 array_slice() runtime sentinel for length until the end
+        }
+    }
+}
+
+/// Returns the helper that matches the source element ownership representation.
+fn array_slice_runtime_helper(source_elem_ty: &PhpType) -> &'static str {
+    if source_elem_ty.is_refcounted() {
+        "__rt_array_slice_refcounted"
+    } else {
+        "__rt_array_slice"
+    }
+}
+
+/// Stamps the result array and widens copied slots when the EIR result expects Mixed.
+fn normalize_array_slice_result(
+    ctx: &mut FunctionContext<'_>,
+    source_elem_ty: &PhpType,
+    result_elem_ty: &PhpType,
+) -> Result<()> {
+    if result_elem_ty == &PhpType::Mixed && source_elem_ty != &PhpType::Mixed {
+        let source_tag = array_slice_runtime_value_tag(source_elem_ty)?;
+        match ctx.emitter.target.arch {
+            Arch::AArch64 => {
+                ctx.emitter.instruction(&format!("mov x1, #{}", source_tag));   // pass the source slot value_type tag to widen the slice result to Mixed
+            }
+            Arch::X86_64 => {
+                ctx.emitter.instruction("mov rdi, rax");                        // pass the sliced indexed-array pointer to the Mixed-widening helper
+                ctx.emitter.instruction(&format!("mov rsi, {}", source_tag));   // pass the source slot value_type tag to widen the slice result to Mixed
+            }
+        }
+        abi::emit_call_label(ctx.emitter, "__rt_array_to_mixed");
+        return Ok(());
+    }
+    crate::codegen::emit_array_value_type_stamp(
+        ctx.emitter,
+        abi::int_result_reg(ctx.emitter),
+        result_elem_ty,
+    );
+    Ok(())
+}
+
+/// Returns the runtime value_type tag used by the array-to-Mixed widening helper.
+fn array_slice_runtime_value_tag(elem: &PhpType) -> Result<u8> {
+    match elem {
+        PhpType::Int => Ok(0),
+        PhpType::Float => Ok(2),
+        PhpType::Bool => Ok(3),
+        PhpType::Array(_) => Ok(4),
+        PhpType::AssocArray { .. } => Ok(5),
+        PhpType::Object(_) => Ok(6),
+        PhpType::Mixed => Ok(7),
+        PhpType::Void => Ok(8),
+        other => Err(CodegenIrError::unsupported(format!(
+            "array_slice Mixed widening for element PHP type {:?}",
+            other
+        ))),
     }
 }
 
