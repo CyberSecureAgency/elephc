@@ -19,6 +19,7 @@ use crate::codegen::platform::Arch;
 use crate::codegen::UNINITIALIZED_TYPED_PROPERTY_SENTINEL;
 use crate::ir::Instruction;
 use crate::names::{method_symbol, php_symbol_key};
+use crate::parser::ast::ExprKind;
 use crate::types::PhpType;
 
 use super::super::context::FunctionContext;
@@ -36,25 +37,45 @@ struct PropertySlot {
     is_declared: bool,
 }
 
+/// Literal default value that the EIR object allocator can write directly.
+enum PropertyDefaultValue {
+    Int(i64),
+    Bool(bool),
+    Float(f64),
+    Str(String),
+}
+
+/// Resolved object property default metadata for fixed-offset initialization.
+struct PropertyDefault {
+    offset: usize,
+    value: PropertyDefaultValue,
+}
+
 /// Lowers fixed-class object allocation and optional constructor invocation.
 pub(super) fn lower_object_new(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     let class_name = class_name_immediate(ctx, inst)?.to_string();
     let constructor_key = php_symbol_key("__construct");
-    let (class_id, property_count, uninitialized_marker_offsets, constructor_impl) = {
+    let (
+        class_id,
+        property_count,
+        uninitialized_marker_offsets,
+        property_defaults,
+        constructor_impl,
+    ) = {
         let class_info = ctx
             .module
             .class_infos
             .get(&class_name)
             .ok_or_else(|| CodegenIrError::unsupported(format!("unknown class {}", class_name)))?;
         if class_info.allow_dynamic_properties
-            || class_info.defaults.iter().any(Option::is_some)
             || class_interfaces_require_method_metadata(ctx, class_info)
         {
             return Err(CodegenIrError::unsupported(format!(
-                "object allocation requiring dynamic, default, or interface method metadata for {}",
+                "object allocation requiring dynamic or interface method metadata for {}",
                 class_name
             )));
         }
+        let property_defaults = collect_property_defaults(class_info, inst)?;
         let constructor_impl = if let Some(constructor) = class_info.methods.get(&constructor_key) {
             if constructor.params.len() != inst.operands.len() {
                 return Err(CodegenIrError::unsupported(format!(
@@ -79,7 +100,13 @@ pub(super) fn lower_object_new(ctx: &mut FunctionContext<'_>, inst: &Instruction
             None
         };
         let marker_offsets = uninitialized_property_marker_offsets(class_info);
-        (class_info.class_id, class_info.properties.len(), marker_offsets, constructor_impl)
+        (
+            class_info.class_id,
+            class_info.properties.len(),
+            marker_offsets,
+            property_defaults,
+            constructor_impl,
+        )
     };
     emit_object_allocation(
         ctx,
@@ -91,8 +118,136 @@ pub(super) fn lower_object_new(ctx: &mut FunctionContext<'_>, inst: &Instruction
         .result
         .ok_or_else(|| CodegenIrError::invalid_module("object_new missing result value"))?;
     ctx.store_result_value(result)?;
+    emit_property_defaults(ctx, result, &property_defaults)?;
     if let Some(impl_class) = constructor_impl {
         emit_constructor_call(ctx, result, &inst.operands, &impl_class, &constructor_key)?;
+    }
+    Ok(())
+}
+
+/// Collects literal defaults that can be copied directly into object property slots.
+fn collect_property_defaults(
+    class_info: &crate::types::ClassInfo,
+    inst: &Instruction,
+) -> Result<Vec<PropertyDefault>> {
+    let mut defaults = Vec::new();
+    for (index, (property, php_type)) in class_info.properties.iter().enumerate() {
+        let Some(default_expr) = class_info.defaults.get(index).and_then(Option::as_ref) else {
+            continue;
+        };
+        let offset = class_info
+            .property_offsets
+            .get(property)
+            .copied()
+            .unwrap_or(8 + index * 16);
+        defaults.push(PropertyDefault {
+            offset,
+            value: property_default_value(property, php_type, &default_expr.kind, inst)?,
+        });
+    }
+    Ok(defaults)
+}
+
+/// Converts a supported property default expression into a direct slot value.
+fn property_default_value(
+    property: &str,
+    php_type: &PhpType,
+    expr: &ExprKind,
+    inst: &Instruction,
+) -> Result<PropertyDefaultValue> {
+    match (php_type, expr) {
+        (PhpType::Int, ExprKind::IntLiteral(value)) => Ok(PropertyDefaultValue::Int(*value)),
+        (PhpType::Int, ExprKind::Negate(inner)) => match &inner.kind {
+            ExprKind::IntLiteral(value) => value
+                .checked_neg()
+                .map(PropertyDefaultValue::Int)
+                .ok_or_else(|| unsupported_property_default(property, php_type, inst)),
+            _ => Err(unsupported_property_default(property, php_type, inst)),
+        },
+        (PhpType::Bool, ExprKind::BoolLiteral(value)) => Ok(PropertyDefaultValue::Bool(*value)),
+        (PhpType::Float, ExprKind::FloatLiteral(value)) => Ok(PropertyDefaultValue::Float(*value)),
+        (PhpType::Float, ExprKind::IntLiteral(value)) => Ok(PropertyDefaultValue::Float(*value as f64)),
+        (PhpType::Float, ExprKind::Negate(inner)) => match &inner.kind {
+            ExprKind::FloatLiteral(value) => Ok(PropertyDefaultValue::Float(-value)),
+            ExprKind::IntLiteral(value) => Ok(PropertyDefaultValue::Float(-(*value as f64))),
+            _ => Err(unsupported_property_default(property, php_type, inst)),
+        },
+        (PhpType::Str, ExprKind::StringLiteral(value)) => Ok(PropertyDefaultValue::Str(value.clone())),
+        _ => Err(unsupported_property_default(property, php_type, inst)),
+    }
+}
+
+/// Builds the unsupported-feature error for property default forms outside this slice.
+fn unsupported_property_default(
+    property: &str,
+    php_type: &PhpType,
+    inst: &Instruction,
+) -> CodegenIrError {
+    CodegenIrError::unsupported(format!(
+        "{} for default value of property ${} with PHP type {:?}",
+        inst.op.name(),
+        property,
+        php_type
+    ))
+}
+
+/// Writes all supported property defaults into the newly allocated object.
+fn emit_property_defaults(
+    ctx: &mut FunctionContext<'_>,
+    object: crate::ir::ValueId,
+    defaults: &[PropertyDefault],
+) -> Result<()> {
+    for default in defaults {
+        let object_reg = abi::secondary_scratch_reg(ctx.emitter);
+        ctx.load_value_to_reg(object, object_reg)?;
+        emit_property_default(ctx, object_reg, default)?;
+    }
+    Ok(())
+}
+
+/// Writes one literal property default into its object slot.
+fn emit_property_default(
+    ctx: &mut FunctionContext<'_>,
+    object_reg: &str,
+    default: &PropertyDefault,
+) -> Result<()> {
+    match &default.value {
+        PropertyDefaultValue::Int(value) => {
+            let int_reg = abi::int_result_reg(ctx.emitter);
+            abi::emit_load_int_immediate(ctx.emitter, int_reg, *value);
+            abi::emit_store_to_address(ctx.emitter, int_reg, object_reg, default.offset);
+            abi::emit_store_zero_to_address(ctx.emitter, object_reg, default.offset + 8);
+        }
+        PropertyDefaultValue::Bool(value) => {
+            let int_reg = abi::int_result_reg(ctx.emitter);
+            abi::emit_load_int_immediate(ctx.emitter, int_reg, i64::from(*value));
+            abi::emit_store_to_address(ctx.emitter, int_reg, object_reg, default.offset);
+            abi::emit_store_zero_to_address(ctx.emitter, object_reg, default.offset + 8);
+        }
+        PropertyDefaultValue::Float(value) => {
+            let label = ctx.data.add_float(*value);
+            let scratch = abi::symbol_scratch_reg(ctx.emitter);
+            let float_reg = abi::float_result_reg(ctx.emitter);
+            abi::emit_symbol_address(ctx.emitter, scratch, &label);
+            match ctx.emitter.target.arch {
+                Arch::AArch64 => {
+                    ctx.emitter.instruction(&format!("ldr {}, [{}]", float_reg, scratch)); // load the property default float literal through the symbol scratch register
+                }
+                Arch::X86_64 => {
+                    ctx.emitter.instruction(&format!("movsd {}, QWORD PTR [{}]", float_reg, scratch)); // load the property default float literal through the symbol scratch register
+                }
+            }
+            abi::emit_store_to_address(ctx.emitter, float_reg, object_reg, default.offset);
+            abi::emit_store_zero_to_address(ctx.emitter, object_reg, default.offset + 8);
+        }
+        PropertyDefaultValue::Str(value) => {
+            let (label, len) = ctx.data.add_string(value.as_bytes());
+            let (ptr_reg, len_reg) = abi::string_result_regs(ctx.emitter);
+            abi::emit_symbol_address(ctx.emitter, ptr_reg, &label);
+            abi::emit_load_int_immediate(ctx.emitter, len_reg, len as i64);
+            abi::emit_store_to_address(ctx.emitter, ptr_reg, object_reg, default.offset);
+            abi::emit_store_to_address(ctx.emitter, len_reg, object_reg, default.offset + 8);
+        }
     }
     Ok(())
 }

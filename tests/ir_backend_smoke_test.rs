@@ -995,6 +995,31 @@ if ($box->b) { echo "T"; } else { echo "F"; }
     );
 }
 
+/// Verifies supported scalar object-property defaults are copied into new instances.
+#[test]
+fn ir_backend_handles_literal_object_property_defaults() {
+    let source = r#"<?php
+class Defaults {
+    public int $i = -3;
+    public string $s = "ok";
+    public float $f = 1.5;
+    public bool $b = true;
+}
+$box = new Defaults();
+echo $box->i;
+echo ":";
+echo $box->s;
+echo ":";
+echo $box->f;
+echo ":";
+if ($box->b) { echo "T"; } else { echo "F"; }
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("literal_object_property_defaults", source),
+        "-3:ok:1.5:T"
+    );
+}
+
 /// Verifies object allocation works for classes whose metadata includes method tables.
 #[test]
 fn ir_backend_handles_object_properties_on_classes_with_methods() {
