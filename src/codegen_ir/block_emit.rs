@@ -14,7 +14,9 @@ use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
 use crate::codegen::UNINITIALIZED_TYPED_PROPERTY_SENTINEL;
 use crate::ir::{BasicBlock, Function, Module};
-use crate::names::{function_epilogue_symbol, static_property_symbol};
+use crate::names::{
+    function_epilogue_symbol, method_symbol, static_method_symbol, static_property_symbol,
+};
 
 use super::context::FunctionContext;
 use super::frame;
@@ -32,6 +34,9 @@ pub(super) fn emit_module(
     function_variants::emit_dispatchers(module, emitter, data);
     for function in module.functions.iter().filter(|function| !is_main(function)) {
         emit_user_function(module, function, emitter, data)?;
+    }
+    for method in &module.class_methods {
+        emit_class_method(module, method, emitter, data)?;
     }
     let main = module
         .functions
@@ -63,6 +68,46 @@ fn emit_user_function(
     emit_blocks(&mut ctx)?;
     frame::emit_function_epilogue(&mut ctx);
     Ok(())
+}
+
+/// Emits a class method using the legacy runtime metadata symbol shape.
+fn emit_class_method(
+    module: &Module,
+    function: &Function,
+    emitter: &mut Emitter,
+    data: &mut DataSection,
+) -> Result<()> {
+    let layout = frame::layout_for_function(function);
+    let entry_label = class_method_entry_symbol(function)?;
+    let epilogue_label = format!("{}_epilogue", entry_label);
+    let mut ctx = FunctionContext::new(
+        module,
+        function,
+        emitter,
+        data,
+        layout,
+        false,
+        Some(epilogue_label),
+    );
+    frame::emit_function_prologue_with_label(&mut ctx, &entry_label)?;
+    emit_blocks(&mut ctx)?;
+    frame::emit_function_epilogue(&mut ctx);
+    Ok(())
+}
+
+/// Returns the runtime metadata entry label for an EIR class-method function.
+fn class_method_entry_symbol(function: &Function) -> Result<String> {
+    let Some((class_name, method_name)) = function.name.rsplit_once("::") else {
+        return Err(CodegenIrError::invalid_module(format!(
+            "class method function '{}' has no class receiver",
+            function.name
+        )));
+    };
+    if function.flags.is_static {
+        Ok(static_method_symbol(class_name, method_name))
+    } else {
+        Ok(method_symbol(class_name, method_name))
+    }
 }
 
 /// Emits the EIR main function as the process entry point.

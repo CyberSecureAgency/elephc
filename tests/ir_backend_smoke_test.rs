@@ -868,6 +868,30 @@ if (Counter::$b) { echo "T"; } else { echo "F"; }
     );
 }
 
+/// Verifies static properties on classes with method metadata link through emitted method symbols.
+#[test]
+fn ir_backend_handles_static_properties_on_classes_with_methods() {
+    let source = r#"<?php
+class Counter {
+    public static int $i;
+
+    public function value(): int {
+        return 1;
+    }
+
+    public static function marker(): int {
+        return 2;
+    }
+}
+Counter::$i = 7;
+echo Counter::$i;
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("static_properties_with_methods", source),
+        "7"
+    );
+}
+
 /// Verifies typed static properties still fatal when read before initialization.
 #[test]
 fn ir_backend_fatals_on_uninitialized_typed_static_property() {

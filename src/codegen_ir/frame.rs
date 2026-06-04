@@ -65,11 +65,20 @@ pub(super) fn emit_main_prologue(ctx: &mut FunctionContext<'_>) {
 
 /// Emits a direct-callable user function prologue and stores incoming params.
 pub(super) fn emit_function_prologue(ctx: &mut FunctionContext<'_>) -> crate::codegen_ir::Result<()> {
+    let label = function_symbol(&ctx.function.name);
+    emit_function_prologue_with_label(ctx, &label)
+}
+
+/// Emits a callable function prologue using an already-resolved entry label.
+pub(super) fn emit_function_prologue_with_label(
+    ctx: &mut FunctionContext<'_>,
+    entry_label: &str,
+) -> crate::codegen_ir::Result<()> {
     if ctx.emitter.target.arch == Arch::AArch64 {
         ctx.emitter.raw(".align 2");
     }
     ctx.emitter.blank();
-    ctx.emitter.label_global(&function_symbol(&ctx.function.name));
+    ctx.emitter.label_global(entry_label);
     abi::emit_frame_prologue(ctx.emitter, ctx.frame_size);
     let mut incoming_args = abi::IncomingArgCursor::for_target(ctx.emitter.target, 0);
     for (index, param) in ctx.function.params.iter().enumerate() {

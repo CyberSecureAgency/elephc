@@ -7,7 +7,7 @@
 //!
 //! Key details:
 //! - This slice supports public scalar/string static properties without late
-//!   static binding, references, defaults, array mutation, or method metadata.
+//!   static binding, references, defaults, or array mutation.
 //! - Typed static properties use the same high-word uninitialized sentinel as
 //!   the legacy backend before reads.
 
@@ -78,7 +78,6 @@ fn resolve_static_property_slot(
         .class_infos
         .get(receiver)
         .ok_or_else(|| CodegenIrError::unsupported(format!("unknown static property class {}", receiver)))?;
-    reject_method_metadata_class(receiver, class_info, inst)?;
     let Some((_, php_type)) = class_info
         .static_properties
         .iter()
@@ -131,18 +130,6 @@ fn parse_static_property_label(label: &str) -> Result<(&str, &str)> {
     label.rsplit_once("::").ok_or_else(|| {
         CodegenIrError::invalid_module(format!("invalid static property label '{}'", label))
     })
-}
-
-/// Rejects class metadata that would require method symbols not emitted by this EIR slice.
-fn reject_method_metadata_class(class_name: &str, class_info: &ClassInfo, inst: &Instruction) -> Result<()> {
-    if class_info.vtable_methods.is_empty() && class_info.static_vtable_methods.is_empty() {
-        return Ok(());
-    }
-    Err(CodegenIrError::unsupported(format!(
-        "{} for class with method metadata {}",
-        inst.op.name(),
-        class_name
-    )))
 }
 
 /// Rejects non-public static properties until the EIR backend has class-context visibility checks.
