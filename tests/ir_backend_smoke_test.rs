@@ -644,6 +644,21 @@ free($buf);
     );
 }
 
+/// Verifies pointer casts preserve the raw address while changing pointee metadata.
+#[test]
+fn ir_backend_handles_pointer_casts() {
+    let source = r#"<?php
+extern function malloc(int $size): ptr;
+extern function free(ptr $ptr): void;
+$buf = malloc(8);
+ptr_set($buf, 77);
+$typed = ptr_cast<int>($buf);
+echo ptr_get($typed);
+free($buf);
+"#;
+    assert_eq!(compile_and_run_ir_backend("pointer_casts", source), "77");
+}
+
 /// Verifies selected type predicates inspect boxed Mixed payloads in the EIR backend.
 #[test]
 fn ir_backend_handles_mixed_type_predicates() {

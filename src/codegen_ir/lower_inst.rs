@@ -29,6 +29,7 @@ mod floats;
 mod hashes;
 mod iterators;
 mod ownership;
+mod pointers;
 mod predicates;
 mod strings;
 
@@ -102,6 +103,7 @@ pub(super) fn lower_instruction(ctx: &mut FunctionContext<'_>, inst_id: InstId) 
         Op::IterCurrentKey => iterators::lower_iter_current_key(ctx, &inst),
         Op::IterCurrentValue => iterators::lower_iter_current_value(ctx, &inst),
         Op::IterEnd => iterators::lower_iter_end(ctx, &inst),
+        Op::PtrCast => pointers::lower_ptr_cast(ctx, &inst),
         Op::Call => lower_direct_call(ctx, &inst),
         Op::ExternCall => externs::lower_extern_call(ctx, &inst),
         Op::BuiltinCall => builtins::lower_builtin_call(ctx, &inst),
