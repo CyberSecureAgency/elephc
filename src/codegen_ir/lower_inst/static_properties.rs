@@ -6,8 +6,9 @@
 //! - `crate::codegen_ir::lower_inst::lower_instruction()`.
 //!
 //! Key details:
-//! - This slice supports public scalar/string static properties without late
-//!   static binding, references, defaults, or array mutation.
+//! - This slice supports public scalar/string static properties with named,
+//!   lexical `self`, and lexical `parent` receivers, but not late static binding,
+//!   references, defaults, or array mutation.
 //! - Typed static properties use the same high-word uninitialized sentinel as
 //!   the legacy backend before reads.
 
@@ -65,18 +66,11 @@ fn resolve_static_property_slot(
 ) -> Result<StaticPropertySlot> {
     let label = static_property_label(ctx, inst)?;
     let (receiver, property) = parse_static_property_label(label)?;
-    let receiver = receiver.trim_start_matches('\\');
-    if matches!(receiver, "self" | "static" | "parent") {
-        return Err(CodegenIrError::unsupported(format!(
-            "{} for late-bound static receiver {}",
-            inst.op.name(),
-            receiver
-        )));
-    }
+    let receiver = resolve_static_property_receiver(ctx, receiver, inst)?;
     let class_info = ctx
         .module
         .class_infos
-        .get(receiver)
+        .get(receiver.as_str())
         .ok_or_else(|| CodegenIrError::unsupported(format!("unknown static property class {}", receiver)))?;
     let Some((_, php_type)) = class_info
         .static_properties
@@ -94,7 +88,7 @@ fn resolve_static_property_slot(
         .static_property_declaring_classes
         .get(property)
         .map(String::as_str)
-        .unwrap_or(receiver);
+        .unwrap_or(receiver.as_str());
     let declaring_info = ctx
         .module
         .class_infos
@@ -109,6 +103,35 @@ fn resolve_static_property_slot(
         symbol: static_property_symbol(declaring_class, property),
         is_declared: declaring_info.declared_static_properties.contains(property),
     })
+}
+
+/// Resolves named, `self`, and `parent` receivers for direct static property access.
+fn resolve_static_property_receiver(
+    ctx: &FunctionContext<'_>,
+    receiver: &str,
+    inst: &Instruction,
+) -> Result<String> {
+    let receiver = receiver.trim_start_matches('\\');
+    match receiver {
+        "self" => super::current_method_class(ctx).map(str::to_string),
+        "parent" => {
+            let class_name = super::current_method_class(ctx)?;
+            ctx.module
+                .class_infos
+                .get(class_name)
+                .and_then(|class| class.parent.clone())
+                .ok_or_else(|| CodegenIrError::unsupported(format!(
+                    "{} for parent static receiver outside class with parent for {}",
+                    inst.op.name(),
+                    ctx.function.name
+                )))
+        }
+        "static" => Err(CodegenIrError::unsupported(format!(
+            "{} for late-bound static receiver static",
+            inst.op.name()
+        ))),
+        _ => Ok(receiver.to_string()),
+    }
 }
 
 /// Resolves the instruction string immediate that encodes `Class::property`.

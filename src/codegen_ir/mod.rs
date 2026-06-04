@@ -26,7 +26,7 @@ use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 use crate::codegen::runtime;
-use crate::ir::{Immediate, Module, Op};
+use crate::ir::{Function, Immediate, Module, Op};
 use crate::types::{ClassInfo, FunctionSig, InterfaceInfo, PhpType};
 
 /// Error returned by the Phase 04 IR backend while a required lowering path is missing.
@@ -284,10 +284,35 @@ fn referenced_static_property_class_names(module: &Module) -> HashSet<String> {
             let Some((class_name, _)) = label.rsplit_once("::") else {
                 continue;
             };
-            names.insert(class_name.trim_start_matches('\\').to_string());
+            if let Some(class_name) = resolve_static_property_metadata_class(module, function, class_name) {
+                names.insert(class_name);
+            }
         }
     }
     names
+}
+
+/// Resolves lexical static-property receivers for runtime metadata collection.
+fn resolve_static_property_metadata_class(
+    module: &Module,
+    function: &Function,
+    class_name: &str,
+) -> Option<String> {
+    let class_name = class_name.trim_start_matches('\\');
+    match class_name {
+        "self" => current_function_class(function).map(str::to_string),
+        "parent" => {
+            let current = current_function_class(function)?;
+            module.class_infos.get(current)?.parent.clone()
+        }
+        "static" => None,
+        _ => Some(class_name.to_string()),
+    }
+}
+
+/// Returns the class encoded in an EIR method function name.
+fn current_function_class(function: &Function) -> Option<&str> {
+    function.name.rsplit_once("::").map(|(class_name, _)| class_name)
 }
 
 /// Returns class-name data entries attached to runtime object metadata opcodes.

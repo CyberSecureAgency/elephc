@@ -912,6 +912,34 @@ echo Counter::$i;
     );
 }
 
+/// Verifies lexical `self::` and `parent::` static-property receivers lower in class methods.
+#[test]
+fn ir_backend_handles_lexical_static_property_receivers() {
+    let source = r#"<?php
+class BaseCounter {
+    public static int $i;
+}
+class Counter extends BaseCounter {
+    public static int $j;
+
+    public static function setBoth(): void {
+        self::$j = 4;
+        parent::$i = 6;
+    }
+
+    public static function total(): int {
+        return self::$j + parent::$i;
+    }
+}
+Counter::setBoth();
+echo Counter::total();
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("lexical_static_property_receivers", source),
+        "10"
+    );
+}
+
 /// Verifies typed static properties still fatal when read before initialization.
 #[test]
 fn ir_backend_fatals_on_uninitialized_typed_static_property() {
