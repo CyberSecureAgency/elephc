@@ -72,6 +72,7 @@ pub(super) fn lower_builtin_call(ctx: &mut FunctionContext<'_>, inst: &Instructi
         "array_rand" => arrays::lower_array_rand(ctx, inst),
         "array_pop" => arrays::lower_array_pop(ctx, inst),
         "array_shift" => arrays::lower_array_shift(ctx, inst),
+        "array_unshift" => arrays::lower_array_unshift(ctx, inst),
         "array_key_exists" => arrays::lower_array_key_exists(ctx, inst),
         "array_search" => arrays::lower_array_search(ctx, inst),
         "in_array" => arrays::lower_in_array(ctx, inst),

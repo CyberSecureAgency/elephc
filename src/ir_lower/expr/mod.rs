@@ -853,7 +853,7 @@ fn builtin_return_type_override(name: &str) -> Option<PhpType> {
         "define" | "defined" | "empty" | "function_exists" | "is_callable" | "is_numeric" => {
             Some(PhpType::Bool)
         }
-        "printf" | "array_rand" => Some(PhpType::Int),
+        "printf" | "array_rand" | "array_push" | "array_unshift" => Some(PhpType::Int),
         "strpos" | "strrpos" => Some(PhpType::Mixed),
         "explode" | "str_split" | "sscanf" => Some(PhpType::Array(Box::new(PhpType::Str))),
         _ => None,

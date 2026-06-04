@@ -628,6 +628,25 @@ fn ir_backend_handles_indexed_array_shift() {
     }
 }
 
+/// Verifies `array_unshift()` prepends indexed values and returns the new length.
+#[test]
+fn ir_backend_handles_indexed_array_unshift() {
+    for (name, source, expected) in [
+        (
+            "array_unshift_int_returns_count",
+            "<?php $a = [2, 3]; $n = array_unshift($a, 1); echo $n; echo ':'; echo $a[0]; echo ':'; echo $a[1]; echo ':'; echo $a[2];",
+            "3:1:2:3",
+        ),
+        (
+            "array_unshift_bool_payload",
+            "<?php $a = [false]; $n = array_unshift($a, true); echo $n; echo ':'; echo $a[0] ? 'T' : 'F'; echo ':'; echo $a[1] ? 'T' : 'F';",
+            "2:T:F",
+        ),
+    ] {
+        assert_eq!(compile_and_run_ir_backend(name, source), expected);
+    }
+}
+
 /// Verifies indexed arrays can read pointer-sized nested array elements.
 #[test]
 fn ir_backend_handles_nested_indexed_array_reads() {
