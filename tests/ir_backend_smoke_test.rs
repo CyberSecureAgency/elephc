@@ -3406,6 +3406,23 @@ echo is_file("subdir") ? "F" : "!";
     assert_eq!(out, "YNF!D!");
 }
 
+/// Verifies `file_put_contents()` writes files and returns the written byte count.
+#[test]
+fn ir_backend_handles_file_put_contents() {
+    let source = r#"<?php
+echo file_put_contents("created.txt", "hello");
+echo ":";
+echo file_exists("created.txt") ? "Y" : "N";
+echo ":";
+echo file_put_contents("empty.txt", "");
+echo file_exists("empty.txt") ? "Y" : "N";
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("file_put_contents", source),
+        "5:Y:0Y"
+    );
+}
+
 /// Verifies global constant declarations, references, and `defined()` lowering.
 #[test]
 fn ir_backend_handles_global_constants_and_defined() {
