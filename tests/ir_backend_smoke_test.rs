@@ -2694,6 +2694,32 @@ echo $tmp->fread(10);
     );
 }
 
+/// Verifies `SplTempFileObject` spills to a temp stream and preserves cursor semantics.
+#[test]
+fn ir_backend_handles_spl_temp_file_object_spill_stream() {
+    let source = r#"<?php
+$tmp = new SplTempFileObject(3);
+$tmp->fwrite("abc");
+echo $tmp->ftell();
+echo "|";
+$tmp->fwrite("d");
+echo $tmp->ftell();
+$tmp->fseek(1);
+$tmp->fwrite("YY");
+$tmp->rewind();
+echo "|";
+echo $tmp->fread(4);
+$tmp->ftruncate(2);
+$tmp->rewind();
+echo "|";
+echo $tmp->fread(10);
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("spl_temp_file_object_spill_stream", source),
+        "3|4|aYYd|aY"
+    );
+}
+
 /// Verifies typed declared properties still fatal when read before initialization.
 #[test]
 fn ir_backend_fatals_on_uninitialized_typed_object_property() {

@@ -1076,6 +1076,32 @@ echo $tmp->fread(10);
     );
 }
 
+/// Verifies `SplTempFileObject` spill stream behavior matches the legacy backend.
+#[test]
+fn parity_spl_temp_file_object_spill_stream() {
+    assert_backend_parity(
+        "spl_temp_file_object_spill_stream",
+        r#"<?php
+$tmp = new SplTempFileObject(3);
+$tmp->fwrite("abc");
+echo $tmp->ftell();
+echo "|";
+$tmp->fwrite("d");
+echo $tmp->ftell();
+$tmp->fseek(1);
+$tmp->fwrite("YY");
+$tmp->rewind();
+echo "|";
+echo $tmp->fread(4);
+$tmp->ftruncate(2);
+$tmp->rewind();
+echo "|";
+echo $tmp->fread(10);
+"#,
+        &[],
+    );
+}
+
 /// Compiles and runs a PHP snippet through both backends and compares stdout.
 fn assert_backend_parity(name: &str, source: &str, args: &[&str]) {
     let legacy = compile_and_run_backend(name, source, args, Backend::Legacy);
