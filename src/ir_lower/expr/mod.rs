@@ -1679,9 +1679,10 @@ fn builtin_return_type_override(name: &str) -> Option<PhpType> {
         }
         "date" => Some(PhpType::Str),
         "microtime" => Some(PhpType::Float),
-        "printf" | "array_rand" | "array_unshift" | "mktime" | "strtotime" | "time" => {
+        "printf" | "array_rand" | "array_unshift" | "mktime" | "sleep" | "strtotime" | "time" => {
             Some(PhpType::Int)
         }
+        "usleep" => Some(PhpType::Void),
         "strpos" | "strrpos" => Some(PhpType::Mixed),
         "explode" | "str_split" | "sscanf" => Some(PhpType::Array(Box::new(PhpType::Str))),
         _ => None,

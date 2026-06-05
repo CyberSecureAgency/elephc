@@ -725,6 +725,18 @@ echo microtime() > 0.0 ? "M" : "N";
     );
 }
 
+/// Verifies no-op sleep builtins dispatch through the target C library symbols.
+#[test]
+fn ir_backend_handles_sleep_builtins() {
+    let source = r#"<?php
+sleep(0);
+echo "S";
+usleep(0);
+echo "U";
+"#;
+    assert_eq!(compile_and_run_ir_backend("sleep_builtins", source), "SU");
+}
+
 /// Verifies JSON validation builtins update and expose runtime JSON error state.
 #[test]
 fn ir_backend_handles_json_validation_builtins() {

@@ -16,7 +16,7 @@ use crate::ir::{Instruction, ValueId};
 use crate::types::PhpType;
 
 use super::super::super::context::FunctionContext;
-use super::{expect_operand, store_if_result};
+use super::{expect_operand, load_value_to_first_int_arg, store_if_result};
 
 /// Lowers `date(format, timestamp?)` through the shared formatter runtime helper.
 pub(super) fn lower_date(
@@ -74,6 +74,14 @@ pub(super) fn lower_mktime(
     store_if_result(ctx, inst)
 }
 
+/// Lowers `sleep(seconds)` through the target's C library symbol.
+pub(super) fn lower_sleep(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+) -> Result<()> {
+    lower_unary_blocking_c_call(ctx, inst, "sleep", "sleep seconds")
+}
+
 /// Lowers `strtotime(datetime)` through the shared parser runtime helper.
 pub(super) fn lower_strtotime(
     ctx: &mut FunctionContext<'_>,
@@ -102,6 +110,28 @@ pub(super) fn lower_time(
 ) -> Result<()> {
     super::ensure_arg_count(inst, "time", 0)?;
     abi::emit_call_label(ctx.emitter, "__rt_time");
+    store_if_result(ctx, inst)
+}
+
+/// Lowers `usleep(microseconds)` through the target's C library symbol.
+pub(super) fn lower_usleep(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+) -> Result<()> {
+    lower_unary_blocking_c_call(ctx, inst, "usleep", "usleep microseconds")
+}
+
+/// Lowers a one-argument blocking libc call that receives an integer duration.
+fn lower_unary_blocking_c_call(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+    name: &str,
+    context: &str,
+) -> Result<()> {
+    super::ensure_arg_count(inst, name, 1)?;
+    let duration = expect_operand(inst, 0)?;
+    require_integer_like(load_value_to_first_int_arg(ctx, duration)?, context)?;
+    ctx.emitter.bl_c(name);
     store_if_result(ctx, inst)
 }
 
