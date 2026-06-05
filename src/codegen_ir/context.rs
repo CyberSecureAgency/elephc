@@ -145,6 +145,15 @@ impl<'a> FunctionContext<'a> {
             .ok_or_else(|| CodegenIrError::missing_entry("local slot", slot.as_raw()))
     }
 
+    /// Returns the local slot with the requested source name.
+    pub(super) fn local_slot_by_name(&self, name: &str) -> Option<LocalSlotId> {
+        self.function
+            .locals
+            .iter()
+            .find(|local| local.name.as_deref() == Some(name))
+            .map(|local| local.id)
+    }
+
     /// Loads a stored SSA value into the target's canonical result register(s).
     pub(super) fn load_value_to_result(&mut self, value: ValueId) -> Result<PhpType> {
         let ty = self.value_php_type(value)?;

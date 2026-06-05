@@ -2126,12 +2126,11 @@ fn static_receiver_class_name(
 ) -> Option<String> {
     match receiver {
         StaticReceiver::Named(name) => Some(name.as_str().trim_start_matches('\\').to_string()),
-        StaticReceiver::Self_ => ctx.current_class.clone(),
+        StaticReceiver::Self_ | StaticReceiver::Static => ctx.current_class.clone(),
         StaticReceiver::Parent => {
             let current = ctx.current_class.as_deref()?;
             ctx.classes.get(current).and_then(|class_info| class_info.parent.clone())
         }
-        StaticReceiver::Static => None,
     }
 }
 

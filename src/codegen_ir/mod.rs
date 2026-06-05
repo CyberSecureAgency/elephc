@@ -356,6 +356,9 @@ fn referenced_static_property_class_names(module: &Module) -> HashSet<String> {
             if let Some(class_name) = resolve_static_property_metadata_class(module, function, class_name) {
                 names.insert(class_name);
             }
+            if class_name.trim_start_matches('\\') == "static" {
+                names.extend(redeclared_late_static_property_classes(module, function, label));
+            }
         }
     }
     names
@@ -374,9 +377,59 @@ fn resolve_static_property_metadata_class(
             let current = current_function_class(function)?;
             module.class_infos.get(current)?.parent.clone()
         }
-        "static" => None,
+        "static" => current_function_class(function).map(str::to_string),
         _ => Some(class_name.to_string()),
     }
+}
+
+/// Returns descendant classes that redeclare a late-bound static property label.
+fn redeclared_late_static_property_classes(
+    module: &Module,
+    function: &Function,
+    label: &str,
+) -> HashSet<String> {
+    let mut names = HashSet::new();
+    let Some(base_class) = current_function_class(function) else {
+        return names;
+    };
+    let Some((_, property)) = label.rsplit_once("::") else {
+        return names;
+    };
+    let Some(base_info) = module.class_infos.get(base_class) else {
+        return names;
+    };
+    let fallback_declaring_class = base_info
+        .static_property_declaring_classes
+        .get(property)
+        .map(String::as_str)
+        .unwrap_or(base_class);
+    for (class_name, class_info) in &module.class_infos {
+        if !is_same_or_descendant(module, class_name, base_class) {
+            continue;
+        }
+        let Some(declaring_class) = class_info.static_property_declaring_classes.get(property) else {
+            continue;
+        };
+        if declaring_class != fallback_declaring_class {
+            names.insert(declaring_class.clone());
+        }
+    }
+    names
+}
+
+/// Returns true when `class_name` is `ancestor` or one of its descendants.
+fn is_same_or_descendant(module: &Module, class_name: &str, ancestor: &str) -> bool {
+    let mut cursor = Some(class_name);
+    while let Some(name) = cursor {
+        if name == ancestor {
+            return true;
+        }
+        cursor = module
+            .class_infos
+            .get(name)
+            .and_then(|class_info| class_info.parent.as_deref());
+    }
+    false
 }
 
 /// Returns the class encoded in an EIR method function name.

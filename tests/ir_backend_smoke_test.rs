@@ -1385,6 +1385,41 @@ echo Counter::total();
     );
 }
 
+/// Verifies `static::$items` in static methods writes to the late-bound redeclared array slot.
+#[test]
+fn ir_backend_handles_late_bound_static_array_property_writes() {
+    let source = r#"<?php
+class BaseBag {
+    public static array $items = [];
+
+    public static function add(int $value): void {
+        static::$items[] = $value;
+    }
+
+    public static function putAtThree(int $value): void {
+        static::$items[3] = $value;
+    }
+
+    public static function size(): int {
+        return count(static::$items);
+    }
+}
+
+class ChildBag extends BaseBag {
+    public static array $items = [];
+}
+
+BaseBag::add(1);
+ChildBag::add(2);
+ChildBag::putAtThree(7);
+echo BaseBag::size() . ":" . ChildBag::size();
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("late_bound_static_array_property_writes", source),
+        "1:4"
+    );
+}
+
 /// Verifies supported literal static-property defaults are initialized before main user code.
 #[test]
 fn ir_backend_handles_literal_static_property_defaults() {

@@ -40,6 +40,8 @@ mod strings;
 mod static_locals;
 mod static_properties;
 
+const CALLED_CLASS_ID_PARAM: &str = "__elephc_called_class_id";
+
 /// Lowers one EIR instruction by opcode.
 pub(super) fn lower_instruction(ctx: &mut FunctionContext<'_>, inst_id: InstId) -> Result<()> {
     let inst = ctx
@@ -296,6 +298,12 @@ struct MethodCallTarget {
     return_ty: PhpType,
 }
 
+/// Source for the hidden called-class id passed to static method bodies.
+enum CalledClassIdArg {
+    Immediate(u64),
+    Local(LocalSlotId),
+}
+
 /// Resolves method implementation class, canonical key, return type, and ABI arity.
 fn resolve_method_call_target(
     ctx: &FunctionContext<'_>,
@@ -374,8 +382,9 @@ fn method_name_data<'a>(ctx: &'a FunctionContext<'_>, inst: &Instruction) -> Res
 /// Lowers a direct static-method call on a named class receiver.
 fn lower_static_method_call(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     let target = method_name_data(ctx, inst)?.to_string();
-    let (receiver, method_name) = parse_static_method_target(&target)?;
-    let receiver = resolve_static_method_receiver(ctx, receiver)?;
+    let (receiver_label, method_name) = parse_static_method_target(&target)?;
+    let receiver = resolve_static_method_receiver(ctx, receiver_label)?;
+    let called_class_id = resolve_static_called_class_arg(ctx, receiver_label, &receiver)?;
     let class_info = ctx
         .module
         .class_infos
@@ -404,7 +413,8 @@ fn lower_static_method_call(ctx: &mut FunctionContext<'_>, inst: &Instruction) -
         .iter()
         .map(|(_, ty)| ty.codegen_repr())
         .collect::<Vec<_>>();
-    let overflow_bytes = materialize_direct_call_args(ctx, &inst.operands, &param_types)?;
+    let overflow_bytes =
+        materialize_static_method_call_args(ctx, &called_class_id, &inst.operands, &param_types)?;
     let caller_stack_pad_bytes = direct_call_stack_pad_bytes(ctx, overflow_bytes);
     abi::emit_reserve_temporary_stack(ctx.emitter, caller_stack_pad_bytes);
     abi::emit_call_label(ctx.emitter, &static_method_symbol(impl_class, &method_key));
@@ -421,6 +431,26 @@ fn lower_static_method_call(ctx: &mut FunctionContext<'_>, inst: &Instruction) -
         ctx.store_result_value(result)?;
     }
     Ok(())
+}
+
+/// Resolves the hidden called-class id argument for a static method call.
+fn resolve_static_called_class_arg(
+    ctx: &FunctionContext<'_>,
+    receiver_label: &str,
+    receiver: &str,
+) -> Result<CalledClassIdArg> {
+    let receiver_label = receiver_label.trim_start_matches('\\');
+    if matches!(receiver_label, "self" | "parent" | "static") {
+        if let Some(slot) = ctx.local_slot_by_name(CALLED_CLASS_ID_PARAM) {
+            return Ok(CalledClassIdArg::Local(slot));
+        }
+    }
+    let class_info = ctx
+        .module
+        .class_infos
+        .get(receiver)
+        .ok_or_else(|| CodegenIrError::unsupported(format!("static method call on unknown class {}", receiver)))?;
+    Ok(CalledClassIdArg::Immediate(class_info.class_id))
 }
 
 /// Resolves lexical `self` and `parent` receivers for static method calls.
@@ -524,6 +554,61 @@ pub(super) fn materialize_direct_call_args(
         abi::emit_push_result_value(ctx.emitter, &push_ty);
     }
     Ok(abi::materialize_outgoing_args(ctx.emitter, &assignments))
+}
+
+/// Loads the hidden called-class id plus visible operands for an EIR static method call.
+fn materialize_static_method_call_args(
+    ctx: &mut FunctionContext<'_>,
+    called_class_id: &CalledClassIdArg,
+    args: &[ValueId],
+    param_types: &[PhpType],
+) -> Result<usize> {
+    if args.len() != param_types.len() {
+        return Err(CodegenIrError::invalid_module(format!(
+            "static method call materialization received {} args for {} visible params",
+            args.len(),
+            param_types.len()
+        )));
+    }
+    let mut abi_param_types = Vec::with_capacity(param_types.len() + 1);
+    abi_param_types.push(PhpType::Int);
+    abi_param_types.extend_from_slice(param_types);
+    let assignments =
+        abi::build_outgoing_arg_assignments_for_target(ctx.emitter.target, &abi_param_types, 0);
+    materialize_called_class_id(ctx, called_class_id)?;
+    abi::emit_push_result_value(ctx.emitter, &PhpType::Int);
+    for (value, param_ty) in args.iter().zip(param_types.iter()) {
+        let source_ty = ctx.load_value_to_result(*value)?;
+        let push_ty = materialize_direct_call_arg_for_param(ctx, &source_ty, param_ty)?;
+        abi::emit_push_result_value(ctx.emitter, &push_ty);
+    }
+    Ok(abi::materialize_outgoing_args(ctx.emitter, &assignments))
+}
+
+/// Materializes the hidden called-class id into the integer result register.
+fn materialize_called_class_id(
+    ctx: &mut FunctionContext<'_>,
+    called_class_id: &CalledClassIdArg,
+) -> Result<()> {
+    match called_class_id {
+        CalledClassIdArg::Immediate(class_id) => {
+            abi::emit_load_int_immediate(
+                ctx.emitter,
+                abi::int_result_reg(ctx.emitter),
+                *class_id as i64,
+            );
+        }
+        CalledClassIdArg::Local(slot) => {
+            let source_ty = ctx.load_local_to_result(*slot)?;
+            if source_ty != PhpType::Int {
+                return Err(CodegenIrError::invalid_module(format!(
+                    "hidden called-class id local has PHP type {:?}",
+                    source_ty
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Converts the loaded call operand to the ABI shape required by the callee parameter.

@@ -23,6 +23,8 @@ use crate::types::{CheckResult, FunctionSig, PackedClassInfo, PhpType, TypeEnv};
 /// AST parameter tuple shape used by function, method, and closure declarations.
 type AstParams = [(String, Option<TypeExpr>, Option<crate::parser::ast::Expr>, bool)];
 
+const CALLED_CLASS_ID_PARAM: &str = "__elephc_called_class_id";
+
 /// Lowers the top-level statement list as the synthetic `main` EIR function.
 pub(crate) fn lower_main(
     program: &Program,
@@ -225,7 +227,18 @@ pub(crate) fn lower_class_method(
     function.source_signature = Some(source_signature(&name, signature));
     let mut env = env_from_signature(signature);
     let mut body_params = signature.params.clone();
-    if !is_static {
+    if is_static {
+        let hidden_called_class = (CALLED_CLASS_ID_PARAM.to_string(), PhpType::Int);
+        function.params.push(FunctionParam {
+            name: hidden_called_class.0.clone(),
+            ir_type: value_ir_type(&hidden_called_class.1),
+            php_type: hidden_called_class.1.clone(),
+            by_ref: false,
+            variadic: false,
+        });
+        env.insert(hidden_called_class.0.clone(), hidden_called_class.1.clone());
+        body_params.insert(0, hidden_called_class);
+    } else {
         let this_type = PhpType::Object(class_name.to_string());
         function.params.push(FunctionParam {
             name: "this".to_string(),
