@@ -1043,6 +1043,16 @@ fn coerce_to_return_type(
         IrType::I64 => coerce_to_int(ctx, value, span),
         IrType::F64 => coerce_to_float(ctx, value, span),
         IrType::Str => coerce_to_string(ctx, value, span),
+        IrType::Heap(_) if ctx.return_php_type.codegen_repr() == PhpType::Mixed => {
+            ctx.emit_value(
+                Op::MixedBox,
+                vec![value.value],
+                None,
+                ctx.return_php_type.clone(),
+                Op::MixedBox.default_effects(),
+                span,
+            )
+        }
         IrType::Heap(_) => ctx.emit_value(
             Op::RuntimeCall,
             vec![value.value],

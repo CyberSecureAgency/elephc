@@ -1165,6 +1165,36 @@ if ($box->b) { echo "T"; } else { echo "F"; }
     );
 }
 
+/// Verifies nullsafe property reads short-circuit null receivers and box non-null values.
+#[test]
+fn ir_backend_handles_nullsafe_object_properties() {
+    let source = r#"<?php
+class Box {
+    public int $i;
+}
+function maybe_box(bool $flag): ?Box {
+    if ($flag) {
+        $box = new Box();
+        $box->i = 9;
+        return $box;
+    }
+    return null;
+}
+$missing = maybe_box(false)?->i;
+if (is_null($missing)) {
+    echo "null";
+} else {
+    echo "bad";
+}
+echo ":";
+echo maybe_box(true)?->i;
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("nullsafe_object_properties", source),
+        "null:9"
+    );
+}
+
 /// Verifies supported scalar object-property defaults are copied into new instances.
 #[test]
 fn ir_backend_handles_literal_object_property_defaults() {

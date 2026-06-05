@@ -9,7 +9,7 @@
 //! - Results are written to fixed value-placement slots immediately after definition.
 //! - Unsupported opcodes fail explicitly instead of falling back to legacy AST codegen.
 
-use crate::codegen::abi;
+use crate::codegen::{abi, emit_box_current_value_as_mixed};
 use crate::codegen::platform::Arch;
 use crate::ir::{CmpPredicate, Immediate, InstId, Instruction, LocalSlotId, Op, ValueId};
 use crate::names::{
@@ -94,6 +94,7 @@ pub(super) fn lower_instruction(ctx: &mut FunctionContext<'_>, inst_id: InstId) 
         Op::StrToI => conversions::lower_str_to_int(ctx, &inst),
         Op::StrToF => conversions::lower_str_to_float(ctx, &inst),
         Op::Cast => conversions::lower_cast(ctx, &inst),
+        Op::MixedBox => lower_mixed_box(ctx, &inst),
         Op::StrConcat => strings::lower_str_concat(ctx, &inst),
         Op::StrLen => strings::lower_str_len(ctx, &inst),
         Op::StrCharAt => strings::lower_str_char_at(ctx, &inst),
@@ -118,6 +119,7 @@ pub(super) fn lower_instruction(ctx: &mut FunctionContext<'_>, inst_id: InstId) 
         Op::BufferSet => buffers::lower_buffer_set(ctx, &inst),
         Op::ObjectNew => objects::lower_object_new(ctx, &inst),
         Op::PropGet => objects::lower_prop_get(ctx, &inst),
+        Op::NullsafePropGet => objects::lower_nullsafe_prop_get(ctx, &inst),
         Op::PropSet => objects::lower_prop_set(ctx, &inst),
         Op::InstanceOf => objects::lower_instanceof(ctx, &inst),
         Op::InstanceOfDynamic => objects::lower_instanceof_dynamic(ctx, &inst),
@@ -509,6 +511,14 @@ fn lower_const_null(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result
         abi::int_result_reg(ctx.emitter),
         0x7fff_ffff_ffff_fffe,
     );
+    store_if_result(ctx, inst)
+}
+
+/// Lowers explicit Mixed boxing for scalar, string, object, and existing Mixed operands.
+fn lower_mixed_box(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    let value = expect_operand(inst, 0)?;
+    let source_ty = ctx.load_value_to_result(value)?;
+    emit_box_current_value_as_mixed(ctx.emitter, &source_ty);
     store_if_result(ctx, inst)
 }
 

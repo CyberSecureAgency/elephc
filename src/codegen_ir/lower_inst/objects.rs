@@ -15,7 +15,7 @@
 
 use std::collections::HashSet;
 
-use crate::codegen::abi;
+use crate::codegen::{abi, emit_box_current_value_as_mixed};
 use crate::codegen::platform::Arch;
 use crate::codegen::UNINITIALIZED_TYPED_PROPERTY_SENTINEL;
 use crate::ir::{Immediate, Instruction, Op, ValueDef, ValueId};
@@ -28,6 +28,7 @@ use crate::codegen_ir::literal_defaults::{literal_default_value, LiteralDefaultV
 use crate::codegen_ir::{CodegenIrError, Result};
 
 const X86_64_HEAP_MAGIC_HI32: u64 = 0x454C5048;
+const RUNTIME_NULL_SENTINEL: i64 = 0x7fff_ffff_ffff_fffe;
 
 /// Resolved declared-property storage metadata for a known object receiver.
 struct PropertySlot {
@@ -241,6 +242,40 @@ pub(super) fn lower_prop_get(ctx: &mut FunctionContext<'_>, inst: &Instruction) 
     store_if_result(ctx, inst)
 }
 
+/// Lowers a nullsafe declared-property read for nullable object receivers.
+pub(super) fn lower_nullsafe_prop_get(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+) -> Result<()> {
+    let object = expect_operand(inst, 0)?;
+    let property = property_name_immediate(ctx, inst)?.to_string();
+    let Some((class_name, nullable)) = nullable_object_receiver_class(ctx, object)? else {
+        return Err(CodegenIrError::unsupported(format!(
+            "{} for receiver PHP type {:?}",
+            inst.op.name(),
+            raw_value_php_type(ctx, object)?
+        )));
+    };
+    if !nullable {
+        return lower_prop_get(ctx, inst);
+    }
+    let slot = resolve_property_slot_for_class(ctx, &class_name, &property, inst)?;
+    let null_label = ctx.next_label("nullsafe_prop_null");
+    let done_label = ctx.next_label("nullsafe_prop_done");
+    let base_reg = abi::symbol_scratch_reg(ctx.emitter);
+    emit_nullable_receiver_object_payload(ctx, object, &null_label, base_reg)?;
+    if slot.is_declared {
+        emit_uninitialized_typed_property_guard(ctx, &slot, base_reg);
+    }
+    emit_property_load(ctx, &slot, base_reg)?;
+    emit_box_current_value_as_mixed(ctx.emitter, &slot.php_type.codegen_repr());
+    abi::emit_jump(ctx.emitter, &done_label);
+    ctx.emitter.label(&null_label);
+    emit_boxed_null(ctx);
+    ctx.emitter.label(&done_label);
+    store_if_result(ctx, inst)
+}
+
 /// Lowers a declared object property write for statically known object receivers.
 pub(super) fn lower_prop_set(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     let object = expect_operand(inst, 0)?;
@@ -409,6 +444,16 @@ fn resolve_property_slot(
             object_ty
         )));
     };
+    resolve_property_slot_for_class(ctx, &class_name, property, inst)
+}
+
+/// Resolves a property slot for a known class name.
+fn resolve_property_slot_for_class(
+    ctx: &FunctionContext<'_>,
+    class_name: &str,
+    property: &str,
+    inst: &Instruction,
+) -> Result<PropertySlot> {
     let normalized = class_name.trim_start_matches('\\');
     let class_info = ctx
         .module
@@ -449,6 +494,81 @@ fn resolve_property_slot(
         offset,
         is_declared: class_info.declared_properties.contains(property),
     })
+}
+
+/// Returns the source PHP type for an SSA value before codegen representation erasure.
+fn raw_value_php_type(ctx: &FunctionContext<'_>, value: ValueId) -> Result<PhpType> {
+    ctx.function
+        .value(value)
+        .map(|metadata| metadata.php_type.clone())
+        .ok_or_else(|| CodegenIrError::missing_entry("value", value.as_raw()))
+}
+
+/// Resolves an object or object|null source type for a nullsafe receiver.
+fn nullable_object_receiver_class(
+    ctx: &FunctionContext<'_>,
+    object: ValueId,
+) -> Result<Option<(String, bool)>> {
+    match raw_value_php_type(ctx, object)? {
+        PhpType::Object(class_name) => Ok(Some((class_name, false))),
+        PhpType::Union(members) => {
+            let mut class_name = None;
+            let mut nullable = false;
+            for member in members {
+                match member {
+                    PhpType::Void => nullable = true,
+                    PhpType::Object(candidate) => {
+                        if class_name
+                            .as_ref()
+                            .is_some_and(|existing: &String| existing != &candidate)
+                        {
+                            return Ok(None);
+                        }
+                        class_name = Some(candidate);
+                    }
+                    _ => return Ok(None),
+                }
+            }
+            Ok(class_name.map(|name| (name, nullable)))
+        }
+        _ => Ok(None),
+    }
+}
+
+/// Unboxes a nullable object receiver and branches when it holds PHP null.
+fn emit_nullable_receiver_object_payload(
+    ctx: &mut FunctionContext<'_>,
+    object: ValueId,
+    null_label: &str,
+    object_reg: &str,
+) -> Result<()> {
+    let ty = ctx.load_value_to_result(object)?;
+    if ty != PhpType::Mixed {
+        return Err(CodegenIrError::unsupported(format!(
+            "nullsafe property receiver storage {:?}",
+            ty
+        )));
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_mixed_unbox");
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction("cmp x0, #8");                              // check whether the nullable receiver holds PHP null
+            ctx.emitter.instruction(&format!("b.eq {}", null_label));           // short-circuit property access for nullsafe null receivers
+            ctx.emitter.instruction(&format!("mov {}, x1", object_reg));        // promote the unboxed object payload into the property base register
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("cmp rax, 8");                              // check whether the nullable receiver holds PHP null
+            ctx.emitter.instruction(&format!("je {}", null_label));             // short-circuit property access for nullsafe null receivers
+            ctx.emitter.instruction(&format!("mov {}, rdi", object_reg));       // promote the unboxed object payload into the property base register
+        }
+    }
+    Ok(())
+}
+
+/// Boxes a PHP null sentinel as a runtime Mixed cell.
+fn emit_boxed_null(ctx: &mut FunctionContext<'_>) {
+    abi::emit_load_int_immediate(ctx.emitter, abi::int_result_reg(ctx.emitter), RUNTIME_NULL_SENTINEL);
+    emit_box_current_value_as_mixed(ctx.emitter, &PhpType::Void);
 }
 
 /// Resolves a field slot on an embedded packed-class receiver.

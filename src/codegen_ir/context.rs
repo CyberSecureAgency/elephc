@@ -12,7 +12,7 @@
 
 use std::collections::HashMap;
 
-use crate::codegen::abi;
+use crate::codegen::{abi, emit_box_current_value_as_mixed};
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
 use crate::ir::{BlockId, DataId, Function, LocalSlotId, Module, Ownership, ValueId};
@@ -199,9 +199,13 @@ impl<'a> FunctionContext<'a> {
 
     /// Stores an SSA value into an addressable local slot.
     pub(super) fn store_value_to_local(&mut self, slot: LocalSlotId, value: ValueId) -> Result<()> {
-        let ty = self.load_value_to_result(value)?;
+        let source_ty = self.load_value_to_result(value)?;
+        let target_ty = self.local_php_type(slot)?;
+        if target_ty == PhpType::Mixed && source_ty != PhpType::Mixed {
+            emit_box_current_value_as_mixed(self.emitter, &source_ty);
+        }
         let offset = self.local_offset(slot)?;
-        self.store_current_result_at_offset(&ty, offset);
+        self.store_current_result_at_offset(&target_ty, offset);
         Ok(())
     }
 
