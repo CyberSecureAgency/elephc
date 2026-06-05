@@ -66,6 +66,31 @@ pub(super) fn lower_file_exists(
     lower_unary_path_predicate(ctx, inst, "file_exists", "__rt_file_exists")
 }
 
+/// Lowers `unlink(path)` through the target-aware runtime helper.
+pub(super) fn lower_unlink(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    lower_unary_path_predicate(ctx, inst, "unlink", "__rt_unlink")
+}
+
+/// Lowers `mkdir(path)` through the target-aware runtime helper.
+pub(super) fn lower_mkdir(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    lower_unary_path_predicate(ctx, inst, "mkdir", "__rt_mkdir")
+}
+
+/// Lowers `rmdir(path)` through the target-aware runtime helper.
+pub(super) fn lower_rmdir(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    lower_unary_path_predicate(ctx, inst, "rmdir", "__rt_rmdir")
+}
+
+/// Lowers `copy(source, dest)` through the target-aware runtime helper.
+pub(super) fn lower_copy(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    lower_binary_path_predicate(ctx, inst, "copy", "__rt_copy")
+}
+
+/// Lowers `rename(from, to)` through the target-aware runtime helper.
+pub(super) fn lower_rename(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    lower_binary_path_predicate(ctx, inst, "rename", "__rt_rename")
+}
+
 /// Lowers `filesize(path)` through the target-aware runtime stat helper.
 pub(super) fn lower_filesize(
     ctx: &mut FunctionContext<'_>,

@@ -1674,9 +1674,10 @@ fn is_scalar_merge_element_type(ty: &PhpType) -> bool {
 /// Returns precise builtin return types needed by EIR value materialization.
 fn builtin_return_type_override(name: &str) -> Option<PhpType> {
     match php_symbol_key(name.trim_start_matches('\\')).as_str() {
-        "define" | "defined" | "empty" | "file_exists" | "function_exists" | "is_callable"
-        | "is_dir" | "is_executable" | "is_file" | "is_link" | "is_numeric" | "link"
-        | "is_readable" | "is_writeable" | "is_writable" | "symlink" => Some(PhpType::Bool),
+        "copy" | "define" | "defined" | "empty" | "file_exists" | "function_exists"
+        | "is_callable" | "is_dir" | "is_executable" | "is_file" | "is_link"
+        | "is_numeric" | "link" | "mkdir" | "rename" | "rmdir" | "is_readable"
+        | "is_writeable" | "is_writable" | "symlink" | "unlink" => Some(PhpType::Bool),
         "date" => Some(PhpType::Str),
         "microtime" => Some(PhpType::Float),
         "clearstatcache" => Some(PhpType::Void),

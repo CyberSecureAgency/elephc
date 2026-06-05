@@ -3617,6 +3617,35 @@ echo readlink("missing.txt") === false ? "F" : "!";
     );
 }
 
+/// Verifies basic filesystem mutation builtins return booleans and affect paths.
+#[test]
+fn ir_backend_handles_basic_filesystem_mutations() {
+    let source = r#"<?php
+echo mkdir("dir") ? "M" : "!";
+echo is_dir("dir") ? "D" : "!";
+echo rmdir("dir") ? "R" : "!";
+echo is_dir("dir") ? "!" : "G";
+echo ":";
+file_put_contents("orig.txt", "data");
+echo copy("orig.txt", "dup.txt") ? "C" : "!";
+echo ":";
+echo file_get_contents("dup.txt");
+echo ":";
+echo unlink("dup.txt") ? "U" : "!";
+echo file_exists("dup.txt") ? "!" : "G";
+echo ":";
+echo rename("orig.txt", "new.txt") ? "N" : "!";
+echo file_get_contents("new.txt");
+echo ":";
+echo file_exists("orig.txt") ? "!" : "O";
+echo unlink("new.txt") ? "X" : "!";
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("filesystem_mutations", source),
+        "MDRG:C:data:UG:Ndata:OX"
+    );
+}
+
 /// Verifies global constant declarations, references, and `defined()` lowering.
 #[test]
 fn ir_backend_handles_global_constants_and_defined() {
