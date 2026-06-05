@@ -835,6 +835,31 @@ echo $parts[2];
     );
 }
 
+/// Verifies `preg_match()` writes capture arrays back to local `$matches` slots.
+#[test]
+fn ir_backend_handles_preg_match_captures() {
+    let source = r#"<?php
+$ok = preg_match("/(a)?(b)/", "b", $matches);
+echo $ok;
+echo ":";
+echo count($matches);
+echo ":";
+echo "[" . $matches[0] . "]";
+echo "[" . $matches[1] . "]";
+echo "[" . $matches[2] . "]";
+$matches = ["old"];
+$miss = preg_match("/x/", "abc", $matches);
+echo ":";
+echo $miss;
+echo ":";
+echo count($matches);
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("preg_match_captures", source),
+        "1:3:[b][][b]:0:0"
+    );
+}
+
 /// Verifies JSON validation builtins update and expose runtime JSON error state.
 #[test]
 fn ir_backend_handles_json_validation_builtins() {

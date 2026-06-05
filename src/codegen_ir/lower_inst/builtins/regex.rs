@@ -6,13 +6,14 @@
 //! - `crate::codegen_ir::lower_inst::builtins::lower_builtin_call()`.
 //!
 //! Key details:
-//! - `preg_match()` capture arrays and `preg_replace_callback()` remain explicit future work.
+//! - `preg_match()` captures currently support direct local `$matches` variables.
+//! - `preg_replace_callback()` remains explicit future work.
 //! - `preg_split()` forces boxed Mixed element slots so dynamic flags cannot mismatch layout.
 
 use crate::codegen::abi;
 use crate::codegen::platform::Arch;
 use crate::codegen_ir::{CodegenIrError, Result};
-use crate::ir::{Instruction, ValueId};
+use crate::ir::{Immediate, Instruction, LocalSlotId, Op, ValueDef, ValueId};
 use crate::types::PhpType;
 
 use super::super::super::context::FunctionContext;
@@ -24,11 +25,22 @@ pub(super) fn lower_preg_match(
     ctx: &mut FunctionContext<'_>,
     inst: &Instruction,
 ) -> Result<()> {
-    super::ensure_arg_count(inst, "preg_match", 2)?;
+    super::ensure_arg_count_between(inst, "preg_match", 2, 3)?;
     let pattern = super::expect_operand(inst, 0)?;
     let subject = super::expect_operand(inst, 1)?;
+    let matches_slot = inst
+        .operands
+        .get(2)
+        .copied()
+        .map(|value| matches_local_slot(ctx, value))
+        .transpose()?;
     load_pattern_and_subject(ctx, pattern, subject)?;
-    abi::emit_call_label(ctx.emitter, "__rt_preg_match");
+    if let Some(slot) = matches_slot {
+        abi::emit_call_label(ctx.emitter, "__rt_preg_match_capture");
+        store_matches_array(ctx, slot)?;
+    } else {
+        abi::emit_call_label(ctx.emitter, "__rt_preg_match");
+    }
     super::store_if_result(ctx, inst)
 }
 
@@ -116,6 +128,48 @@ fn load_pattern_and_subject(
             load_string_arg(ctx, subject, "rdx", "rcx", "preg subject")
         }
     }
+}
+
+/// Returns the local slot represented by a `preg_match()` `$matches` operand.
+fn matches_local_slot(ctx: &FunctionContext<'_>, value: ValueId) -> Result<LocalSlotId> {
+    let value_ref = ctx
+        .function
+        .value(value)
+        .ok_or_else(|| CodegenIrError::missing_entry("value", value.as_raw()))?;
+    let ValueDef::Instruction { inst, .. } = value_ref.def else {
+        return Err(CodegenIrError::unsupported(
+            "preg_match matches argument that is not a local load",
+        ));
+    };
+    let inst_ref = ctx
+        .function
+        .instruction(inst)
+        .ok_or_else(|| CodegenIrError::missing_entry("instruction", inst.as_raw()))?;
+    if inst_ref.op != Op::LoadLocal {
+        return Err(CodegenIrError::unsupported(
+            "preg_match matches argument that is not a local variable",
+        ));
+    }
+    let Some(Immediate::LocalSlot(slot)) = inst_ref.immediate else {
+        return Err(CodegenIrError::invalid_module(
+            "preg_match matches load missing local slot",
+        ));
+    };
+    Ok(slot)
+}
+
+/// Stores the runtime-built matches array into a local slot without clobbering the match flag.
+fn store_matches_array(ctx: &mut FunctionContext<'_>, slot: LocalSlotId) -> Result<()> {
+    let offset = ctx.local_offset(slot)?;
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            abi::store_at_offset(ctx.emitter, "x1", offset);
+        }
+        Arch::X86_64 => {
+            abi::store_at_offset(ctx.emitter, "rdx", offset);
+        }
+    }
+    Ok(())
 }
 
 /// Loads a string operand into an explicit pointer/length register pair.
