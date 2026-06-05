@@ -122,6 +122,30 @@ echo preg_replace_callback("/[A-Z]/", eir_regex_replace_fcc(...), "AB");
     );
 }
 
+/// Verifies static method callback forms lower to the same direct calls as legacy codegen.
+#[test]
+fn parity_static_method_callable_dispatch() {
+    assert_backend_parity(
+        "static_method_call_user_func",
+        r#"<?php
+class EirStaticCallback {
+    public static function hit(int $value): int {
+        return $value + 1;
+    }
+    public static function join(string $left, string $right): string {
+        return $left . ":" . $right;
+    }
+}
+echo call_user_func(["EirStaticCallback", "hit"], 4);
+echo "|";
+echo call_user_func(EirStaticCallback::hit(...), 8);
+echo "|";
+echo call_user_func_array(["eirstaticcallback", "JOIN"], ["right" => "R", "left" => "L"]);
+"#,
+        &[],
+    );
+}
+
 /// Verifies reflection attribute owner metadata matches the legacy backend.
 #[test]
 fn parity_reflection_owner_attributes() {

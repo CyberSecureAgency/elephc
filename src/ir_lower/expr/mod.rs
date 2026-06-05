@@ -905,11 +905,15 @@ fn lower_static_is_callable(
     }
 }
 
-/// Resolved compile-time string callback target for `call_user_func*`.
-enum StaticStringCallableTarget {
+/// Resolved compile-time callback target for `call_user_func*`.
+enum StaticCallableTarget {
     UserFunction(String),
     ExternFunction(String),
     Builtin(String),
+    StaticMethod {
+        receiver: StaticReceiver,
+        method: String,
+    },
 }
 
 /// Lowers static-string `call_user_func*` forms to direct call opcodes when possible.
@@ -921,26 +925,67 @@ fn lower_static_call_user_func(
 ) -> Option<LoweredValue> {
     match php_symbol_key(name.trim_start_matches('\\')).as_str() {
         "call_user_func" => {
-            let callback = static_function_callback_name(args.first()?)?;
-            lower_static_string_callable_call(ctx, &callback, &args[1..], expr)
+            let callback = static_call_user_func_callback(ctx, args.first()?)?;
+            lower_static_callable_call(ctx, callback, &args[1..], expr)
         }
         "call_user_func_array" => {
             let [callback_arg, arg_array] = args else {
                 return None;
             };
-            let callback = static_function_callback_name(callback_arg)?;
+            let callback = static_call_user_func_callback(ctx, callback_arg)?;
             let callback_args = static_call_user_func_array_args(arg_array)?;
-            lower_static_string_callable_call(ctx, &callback, &callback_args, expr)
+            lower_static_callable_call(ctx, callback, &callback_args, expr)
         }
         _ => None,
     }
 }
 
-/// Returns a static function callback name from a string or function FCC expression.
-fn static_function_callback_name(callback: &Expr) -> Option<String> {
+/// Resolves a compile-time `call_user_func*` callback expression.
+fn static_call_user_func_callback(
+    ctx: &LoweringContext<'_, '_>,
+    callback: &Expr,
+) -> Option<StaticCallableTarget> {
     match &callback.kind {
+        ExprKind::StringLiteral(name) => resolve_static_string_callable(ctx, name),
+        ExprKind::FirstClassCallable(CallableTarget::Function(name)) => {
+            resolve_static_string_callable(ctx, name.as_str())
+        }
+        ExprKind::FirstClassCallable(CallableTarget::StaticMethod { receiver, method }) => {
+            resolve_static_method_callable(ctx, receiver.clone(), method.clone())
+        }
+        ExprKind::ArrayLiteral(items) => static_array_callable_target(ctx, items),
+        _ => None,
+    }
+}
+
+/// Resolves a static `[class, method]` callback array literal.
+fn static_array_callable_target(
+    ctx: &LoweringContext<'_, '_>,
+    items: &[Expr],
+) -> Option<StaticCallableTarget> {
+    let [class_expr, method_expr] = items else {
+        return None;
+    };
+    let class_name = static_callable_class_name(ctx, class_expr)?;
+    let ExprKind::StringLiteral(method) = &method_expr.kind else {
+        return None;
+    };
+    let class_name = lookup_folded_name(ctx.classes.keys(), class_name.trim_start_matches('\\'))?;
+    resolve_static_method_callable(
+        ctx,
+        StaticReceiver::Named(Name::from(class_name)),
+        method.clone(),
+    )
+}
+
+/// Extracts a compile-time class name for a static callable array.
+fn static_callable_class_name(
+    ctx: &LoweringContext<'_, '_>,
+    class_expr: &Expr,
+) -> Option<String> {
+    match &class_expr.kind {
         ExprKind::StringLiteral(name) => Some(name.clone()),
-        ExprKind::FirstClassCallable(CallableTarget::Function(name)) => Some(name.as_str().to_string()),
+        ExprKind::ClassConstant { receiver } => static_receiver_class_name(ctx, receiver),
         _ => None,
     }
 }
@@ -975,16 +1020,15 @@ fn static_call_user_func_array_assoc_args(pairs: &[(Expr, Expr)]) -> Option<Vec<
     Some(args)
 }
 
-/// Lowers one resolved static-string callable target to the corresponding EIR call opcode.
-fn lower_static_string_callable_call(
+/// Lowers one resolved static callable target to the corresponding EIR call opcode.
+fn lower_static_callable_call(
     ctx: &mut LoweringContext<'_, '_>,
-    callback: &str,
+    target: StaticCallableTarget,
     callback_args: &[Expr],
     expr: &Expr,
 ) -> Option<LoweredValue> {
-    let target = resolve_static_string_callable(ctx, callback)?;
     match target {
-        StaticStringCallableTarget::UserFunction(function_name) => {
+        StaticCallableTarget::UserFunction(function_name) => {
             let sig = ctx.functions.get(&function_name).cloned();
             let operands = lower_args_with_signature(ctx, sig.as_ref(), callback_args);
             let php_type = call_return_type(ctx, &function_name, &operands);
@@ -998,7 +1042,7 @@ fn lower_static_string_callable_call(
                 Some(expr.span),
             ))
         }
-        StaticStringCallableTarget::ExternFunction(function_name) => {
+        StaticCallableTarget::ExternFunction(function_name) => {
             let operands = lower_args(ctx, callback_args);
             let php_type = call_return_type(ctx, &function_name, &operands);
             let data = ctx.intern_function_name(&function_name);
@@ -1011,7 +1055,7 @@ fn lower_static_string_callable_call(
                 Some(expr.span),
             ))
         }
-        StaticStringCallableTarget::Builtin(function_name) => {
+        StaticCallableTarget::Builtin(function_name) => {
             let sig = call_signature(ctx, &function_name, callback_args);
             let operands = lower_builtin_call_args(ctx, &function_name, sig.as_ref(), callback_args);
             let php_type = call_return_type(ctx, &function_name, &operands);
@@ -1025,6 +1069,9 @@ fn lower_static_string_callable_call(
                 Some(expr.span),
             ))
         }
+        StaticCallableTarget::StaticMethod { receiver, method } => {
+            Some(lower_static_method_call(ctx, &receiver, &method, callback_args, expr))
+        }
     }
 }
 
@@ -1032,15 +1079,33 @@ fn lower_static_string_callable_call(
 fn resolve_static_string_callable(
     ctx: &LoweringContext<'_, '_>,
     callback: &str,
-) -> Option<StaticStringCallableTarget> {
+) -> Option<StaticCallableTarget> {
     let callback = callback.trim_start_matches('\\');
+    if let Some((class_name, method)) = callback.rsplit_once("::") {
+        let class_name = lookup_folded_name(ctx.classes.keys(), class_name.trim_start_matches('\\'))?;
+        return resolve_static_method_callable(
+            ctx,
+            StaticReceiver::Named(Name::from(class_name)),
+            method.to_string(),
+        );
+    }
     if let Some(function_name) = lookup_folded_name(ctx.extern_functions.keys(), callback) {
-        return Some(StaticStringCallableTarget::ExternFunction(function_name));
+        return Some(StaticCallableTarget::ExternFunction(function_name));
     }
     if let Some(function_name) = lookup_folded_name(ctx.functions.keys(), callback) {
-        return Some(StaticStringCallableTarget::UserFunction(function_name));
+        return Some(StaticCallableTarget::UserFunction(function_name));
     }
-    canonical_builtin_function_name(callback).map(StaticStringCallableTarget::Builtin)
+    canonical_builtin_function_name(callback).map(StaticCallableTarget::Builtin)
+}
+
+/// Resolves a static method callback when class and method are compile-time known.
+fn resolve_static_method_callable(
+    ctx: &LoweringContext<'_, '_>,
+    receiver: StaticReceiver,
+    method: String,
+) -> Option<StaticCallableTarget> {
+    static_method_implementation_signature(ctx, &receiver, &method)?;
+    Some(StaticCallableTarget::StaticMethod { receiver, method })
 }
 
 /// Looks up a PHP function name case-insensitively and returns the canonical candidate.
