@@ -846,6 +846,9 @@ fn lower_function_call(ctx: &mut LoweringContext<'_, '_>, name: &Name, args: &[E
     if let Some(value) = lower_static_array_reduce(ctx, canonical, args, expr) {
         return value;
     }
+    if let Some(value) = lower_static_array_walk(ctx, canonical, args, expr) {
+        return value;
+    }
     if php_symbol_key(canonical.trim_start_matches('\\')) == "unset" {
         if let Some(value) = lower_unset_locals(ctx, args, expr) {
             return value;
@@ -1020,6 +1023,33 @@ fn lower_static_array_reduce(
         store_value_into_temp(ctx, &temp_name, result_type.clone(), reduced, expr.span);
     }
     Some(ctx.load_local(&temp_name, Some(expr.span)))
+}
+
+/// Lowers `array_walk()` for a static callback and immediate indexed-array literal.
+fn lower_static_array_walk(
+    ctx: &mut LoweringContext<'_, '_>,
+    name: &str,
+    args: &[Expr],
+    expr: &Expr,
+) -> Option<LoweredValue> {
+    if php_symbol_key(name.trim_start_matches('\\')) != "array_walk" || args.len() != 2 {
+        return None;
+    }
+    if crate::types::call_args::has_named_args(args) || args.iter().any(is_spread_arg) {
+        return None;
+    }
+    let ExprKind::ArrayLiteral(items) = &args[0].kind else {
+        return None;
+    };
+    if !items.iter().all(static_callback_array_item_can_inline) {
+        return None;
+    }
+    let callback = static_call_user_func_callback(ctx, &args[1])?;
+    for item in items {
+        let item_value = lower_expr(ctx, item);
+        lower_static_callable_value_call(ctx, callback.clone(), vec![item_value.value], expr)?;
+    }
+    Some(lower_null(ctx, expr))
 }
 
 /// Returns whether a literal array element can be reordered around callback invocation safely.

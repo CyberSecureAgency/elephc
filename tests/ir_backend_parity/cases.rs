@@ -350,6 +350,32 @@ echo array_reduce([2, 3, 4], $stat, 1);
     );
 }
 
+/// Verifies static `array_walk()` callback forms over immediate indexed literals match legacy output.
+#[test]
+fn parity_static_array_walk_callbacks() {
+    assert_backend_parity(
+        "static_array_walk_callbacks",
+        r#"<?php
+function eir_walk_show(int $value): void {
+    echo $value;
+}
+class EirWalkStatic {
+    public static function show(int $value): void {
+        echo $value + 1;
+    }
+}
+array_walk([1, 2], "eir_walk_show");
+echo "|";
+$fn = eir_walk_show(...);
+array_walk([3, 4], $fn);
+echo "|";
+$stat = EirWalkStatic::show(...);
+array_walk([5, 6], $stat);
+"#,
+        &[],
+    );
+}
+
 /// Verifies reflection attribute owner metadata matches the legacy backend.
 #[test]
 fn parity_reflection_owner_attributes() {
