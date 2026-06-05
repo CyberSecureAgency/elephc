@@ -875,6 +875,21 @@ echo preg_replace_callback("/([a-z])([a-z])/", "eir_regex_replace", "ab cd");
     );
 }
 
+/// Verifies `preg_replace_callback()` can call static function first-class callables.
+#[test]
+fn ir_backend_handles_preg_replace_callback_static_function_fcc() {
+    let source = r#"<?php
+function eir_regex_replace_fcc(array $matches): string {
+    return "F" . count($matches);
+}
+echo preg_replace_callback("/[A-Z]/", eir_regex_replace_fcc(...), "AB");
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("preg_replace_callback_static_function_fcc", source),
+        "F1F1"
+    );
+}
+
 /// Verifies JSON validation builtins update and expose runtime JSON error state.
 #[test]
 fn ir_backend_handles_json_validation_builtins() {

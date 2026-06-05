@@ -1079,6 +1079,12 @@ fn lower_builtin_call_args(
     match php_symbol_key(name.trim_start_matches('\\')).as_str() {
         "date" => lower_date_args(ctx, sig, args),
         "json_decode" => lower_json_decode_args(ctx, sig, args),
+        "preg_replace_callback"
+            if !crate::types::call_args::has_named_args(args)
+                && !args.iter().any(is_spread_arg) =>
+        {
+            lower_preg_replace_callback_args(ctx, sig, args)
+        }
         "preg_match" | "preg_split"
             if !crate::types::call_args::has_named_args(args)
                 && !args.iter().any(is_spread_arg) =>
@@ -1087,6 +1093,24 @@ fn lower_builtin_call_args(
         }
         _ => lower_args_with_signature(ctx, sig, args),
     }
+}
+
+/// Lowers static function first-class callbacks for `preg_replace_callback()`.
+fn lower_preg_replace_callback_args(
+    ctx: &mut LoweringContext<'_, '_>,
+    sig: Option<&FunctionSig>,
+    args: &[Expr],
+) -> Vec<crate::ir::ValueId> {
+    if args.len() != 3 {
+        return lower_args_with_signature(ctx, sig, args);
+    }
+    let ExprKind::FirstClassCallable(CallableTarget::Function(callback)) = &args[1].kind else {
+        return lower_args_with_signature(ctx, sig, args);
+    };
+    let pattern = lower_expr(ctx, &args[0]);
+    let callback = lower_string_literal(ctx, callback.as_str(), &args[1]);
+    let subject = lower_expr(ctx, &args[2]);
+    vec![pattern.value, callback.value, subject.value]
 }
 
 /// Lowers simple positional `date` operands while stabilizing the format string before timestamp evaluation.
