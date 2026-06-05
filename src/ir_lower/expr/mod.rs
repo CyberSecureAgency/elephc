@@ -1696,18 +1696,19 @@ fn builtin_return_type_override(name: &str) -> Option<PhpType> {
         | "mkdir" | "rename" | "rmdir" | "is_readable" | "is_writeable" | "is_writable"
         | "symlink" | "touch" | "unlink" => Some(PhpType::Bool),
         "basename" | "date" | "dirname" | "getcwd" | "readline" | "sys_get_temp_dir"
-        | "tempnam" => Some(PhpType::Str),
+        | "fread" | "tempnam" => Some(PhpType::Str),
         "microtime" => Some(PhpType::Float),
         "clearstatcache" => Some(PhpType::Void),
+        "fclose" => Some(PhpType::Bool),
         "printf" | "array_rand" | "array_unshift" | "file_put_contents" | "filemtime"
-        | "filesize" | "linkinfo" | "mktime" | "sleep" | "strtotime" | "time"
+        | "filesize" | "fwrite" | "linkinfo" | "mktime" | "sleep" | "strtotime" | "time"
         | "umask" => {
             Some(PhpType::Int)
         }
         "usleep" => Some(PhpType::Void),
         "file_get_contents" | "fileatime" | "filectime" | "filegroup" | "fileinode"
         | "fileowner" | "fileperms" | "filetype" | "readfile" | "readlink" | "realpath"
-        | "stat" | "lstat" | "strpos" | "strrpos" => {
+        | "fopen" | "stat" | "lstat" | "strpos" | "strrpos" => {
             Some(PhpType::Mixed)
         }
         "explode" | "file" | "glob" | "scandir" | "str_split" | "sscanf" => {

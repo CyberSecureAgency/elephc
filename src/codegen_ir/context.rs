@@ -128,6 +128,14 @@ impl<'a> FunctionContext<'a> {
             .ok_or_else(|| CodegenIrError::missing_entry("value", value.as_raw()))
     }
 
+    /// Returns a function value's source PHP metadata before codegen representation erasure.
+    pub(super) fn raw_value_php_type(&self, value: ValueId) -> Result<PhpType> {
+        self.function
+            .value(value)
+            .map(|metadata| metadata.php_type.clone())
+            .ok_or_else(|| CodegenIrError::missing_entry("value", value.as_raw()))
+    }
+
     /// Returns the EIR ownership metadata attached to an SSA value.
     pub(super) fn value_ownership(&self, value: ValueId) -> Result<Ownership> {
         self.function

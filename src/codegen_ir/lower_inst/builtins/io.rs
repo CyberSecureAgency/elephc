@@ -76,6 +76,112 @@ pub(super) fn lower_readline(ctx: &mut FunctionContext<'_>, inst: &Instruction) 
     store_if_result(ctx, inst)
 }
 
+/// Lowers `fopen(filename, mode)` and boxes stream resources or PHP false.
+pub(super) fn lower_fopen(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    super::ensure_arg_count(inst, "fopen", 2)?;
+    let filename = expect_operand(inst, 0)?;
+    let mode = expect_operand(inst, 1)?;
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            load_string_to_result(ctx, filename, "fopen filename")?;
+            abi::emit_push_reg_pair(ctx.emitter, "x1", "x2");
+            load_string_to_result(ctx, mode, "fopen mode")?;
+            ctx.emitter.instruction("mov x3, x1");                              // pass the mode pointer in the runtime helper's secondary string slot
+            ctx.emitter.instruction("mov x4, x2");                              // pass the mode length in the runtime helper's secondary string slot
+            abi::emit_pop_reg_pair(ctx.emitter, "x1", "x2");
+        }
+        Arch::X86_64 => {
+            load_string_to_result(ctx, filename, "fopen filename")?;
+            abi::emit_push_reg_pair(ctx.emitter, "rax", "rdx");
+            load_string_to_result(ctx, mode, "fopen mode")?;
+            ctx.emitter.instruction("mov rdi, rax");                            // pass the mode pointer while the filename remains on the stack
+            ctx.emitter.instruction("mov rsi, rdx");                            // pass the mode length while the filename remains on the stack
+            abi::emit_pop_reg_pair(ctx.emitter, "rax", "rdx");
+        }
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_fopen");
+    box_fopen_result(ctx);
+    store_if_result(ctx, inst)
+}
+
+/// Lowers `fclose(stream)` after validating and unboxing the stream handle.
+pub(super) fn lower_fclose(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    super::ensure_arg_count(inst, "fclose", 1)?;
+    let stream = expect_operand(inst, 0)?;
+    load_stream_fd_to_result(ctx, stream, "fclose")?;
+    let success_label = ctx.next_label("fclose_ok");
+    let done_label = ctx.next_label("fclose_done");
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.syscall(6);
+            ctx.emitter.instruction("cmp x0, #0");                              // test whether close() reported success
+            ctx.emitter.instruction(&format!("b.eq {}", success_label));        // branch to the true result when the stream closed cleanly
+            ctx.emitter.instruction("mov x0, #0");                              // return false when the stream close failed
+            ctx.emitter.instruction(&format!("b {}", done_label));              // skip the success result on the failure path
+            ctx.emitter.label(&success_label);
+            ctx.emitter.instruction("mov x0, #1");                              // return true when the stream close succeeded
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("mov rdi, rax");                            // pass the stream fd to libc close()
+            ctx.emitter.instruction("call close");                              // close the requested stream descriptor
+            ctx.emitter.instruction("cmp rax, 0");                              // test whether close() reported success
+            ctx.emitter.instruction(&format!("je {}", success_label));          // branch to the true result when the stream closed cleanly
+            ctx.emitter.instruction("xor eax, eax");                            // return false when the stream close failed
+            ctx.emitter.instruction(&format!("jmp {}", done_label));            // skip the success result on the failure path
+            ctx.emitter.label(&success_label);
+            ctx.emitter.instruction("mov rax, 1");                              // return true when the stream close succeeded
+        }
+    }
+    ctx.emitter.label(&done_label);
+    store_if_result(ctx, inst)
+}
+
+/// Lowers `fread(stream, length)` using the shared runtime file-read helper.
+pub(super) fn lower_fread(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    super::ensure_arg_count(inst, "fread", 2)?;
+    let stream = expect_operand(inst, 0)?;
+    let length = expect_operand(inst, 1)?;
+    load_stream_fd_to_result(ctx, stream, "fread")?;
+    abi::emit_push_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));
+    require_int(ctx.load_value_to_result(length)?.codegen_repr(), "fread length")?;
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction("mov x1, x0");                              // pass the requested byte count to the fread runtime helper
+            abi::emit_pop_reg(ctx.emitter, "x0");
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("mov rsi, rax");                            // pass the requested byte count to the fread runtime helper
+            abi::emit_pop_reg(ctx.emitter, "rdi");
+        }
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_fread");
+    store_if_result(ctx, inst)
+}
+
+/// Lowers `fwrite(stream, data)` and returns the number of bytes written.
+pub(super) fn lower_fwrite(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    super::ensure_arg_count(inst, "fwrite", 2)?;
+    let stream = expect_operand(inst, 0)?;
+    let data = expect_operand(inst, 1)?;
+    load_stream_fd_to_result(ctx, stream, "fwrite")?;
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            abi::emit_push_reg(ctx.emitter, "x0");
+            load_string_to_result(ctx, data, "fwrite data")?;
+            abi::emit_pop_reg(ctx.emitter, "x0");
+            ctx.emitter.syscall(4);
+        }
+        Arch::X86_64 => {
+            abi::emit_push_reg(ctx.emitter, "rax");
+            load_string_to_result(ctx, data, "fwrite data")?;
+            abi::emit_pop_reg(ctx.emitter, "rdi");
+            ctx.emitter.instruction("mov rsi, rax");                            // pass the string pointer to libc write()
+            ctx.emitter.instruction("call write");                              // write the supplied string to the stream descriptor
+        }
+    }
+    store_if_result(ctx, inst)
+}
+
 /// Lowers `file(path)` through the target-aware runtime line-array helper.
 pub(super) fn lower_file(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     lower_unary_path_array(ctx, inst, "file", "__rt_file")
@@ -984,6 +1090,83 @@ fn lower_unary_path_stat_array_or_false(
     store_if_result(ctx, inst)
 }
 
+/// Loads a resource or boxed resource handle into the target integer result register.
+fn load_stream_fd_to_result(
+    ctx: &mut FunctionContext<'_>,
+    value: ValueId,
+    function_name: &str,
+) -> Result<()> {
+    let raw_ty = ctx.raw_value_php_type(value)?;
+    ctx.load_value_to_result(value)?;
+    match raw_ty {
+        PhpType::Resource(_) => Ok(()),
+        PhpType::Mixed | PhpType::Union(_) => {
+            emit_unbox_stream_or_type_error(ctx, function_name);
+            Ok(())
+        }
+        other => Err(CodegenIrError::unsupported(format!(
+            "{} stream argument PHP type {:?}",
+            function_name, other
+        ))),
+    }
+}
+
+/// Unboxes a Mixed stream resource or emits a fatal TypeError for non-resource values.
+fn emit_unbox_stream_or_type_error(ctx: &mut FunctionContext<'_>, function_name: &str) {
+    let ok_label = ctx.next_label("stream_resource_ok");
+    abi::emit_call_label(ctx.emitter, "__rt_mixed_unbox");
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction("cmp x0, #9");                              // check whether the boxed stream value uses the resource tag
+            ctx.emitter.instruction(&format!("b.eq {}", ok_label));             // continue only when the boxed value is a resource
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("cmp rax, 9");                              // check whether the boxed stream value uses the resource tag
+            ctx.emitter.instruction(&format!("je {}", ok_label));               // continue only when the boxed value is a resource
+        }
+    }
+    emit_stream_type_error_and_exit(ctx, function_name);
+    ctx.emitter.label(&ok_label);
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction("mov x0, x1");                              // expose the unboxed native stream fd as the integer result
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("mov rax, rdi");                            // expose the unboxed native stream fd as the integer result
+        }
+    }
+}
+
+/// Emits a fatal stream TypeError diagnostic and terminates with exit status 1.
+fn emit_stream_type_error_and_exit(ctx: &mut FunctionContext<'_>, function_name: &str) {
+    let message = format!(
+        "Fatal error: Uncaught TypeError: {}(): Argument #1 ($stream) must be of type resource, non-resource given\n",
+        function_name
+    );
+    let (label, len) = ctx.data.add_string(message.as_bytes());
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction("mov x0, #2");                              // write the stream TypeError diagnostic to stderr
+            ctx.emitter.adrp("x1", &label);                                     // load the diagnostic string page
+            ctx.emitter.add_lo12("x1", "x1", &label);                           // resolve the diagnostic string address within the page
+            ctx.emitter.instruction(&format!("mov x2, #{}", len));              // pass the diagnostic byte length to write()
+            ctx.emitter.syscall(4);
+            ctx.emitter.instruction("mov x0, #1");                              // exit with status 1 after reporting the TypeError
+            ctx.emitter.syscall(1);
+        }
+        Arch::X86_64 => {
+            abi::emit_symbol_address(ctx.emitter, "rsi", &label);
+            ctx.emitter.instruction(&format!("mov edx, {}", len));              // pass the diagnostic byte length to write()
+            ctx.emitter.instruction("mov edi, 2");                              // write the stream TypeError diagnostic to stderr
+            ctx.emitter.instruction("mov eax, 1");                              // select Linux x86_64 write syscall
+            ctx.emitter.instruction("syscall");                                 // emit the stream TypeError diagnostic
+            ctx.emitter.instruction("mov edi, 1");                              // exit with status 1 after reporting the TypeError
+            ctx.emitter.instruction("mov eax, 60");                             // select Linux x86_64 exit syscall
+            ctx.emitter.instruction("syscall");                                 // terminate the process after the fatal TypeError
+        }
+    }
+}
+
 /// Materializes `file_put_contents` arguments for the ARM64 runtime ABI.
 fn lower_file_put_contents_arm64(
     ctx: &mut FunctionContext<'_>,
@@ -1014,6 +1197,44 @@ fn lower_file_put_contents_x86_64(
     abi::emit_pop_reg_pair(ctx.emitter, "rax", "rdx");
     abi::emit_call_label(ctx.emitter, "__rt_file_put_contents");
     Ok(())
+}
+
+/// Boxes an `fopen()` descriptor as a PHP resource or PHP false on failure.
+fn box_fopen_result(ctx: &mut FunctionContext<'_>) {
+    let false_label = ctx.next_label("fopen_false");
+    let done_label = ctx.next_label("fopen_done");
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction("cmp x0, #0");                              // test whether fopen() returned a negative descriptor
+            ctx.emitter.instruction(&format!("b.lt {}", false_label));          // box PHP false when opening the stream failed
+            ctx.emitter.instruction("mov x1, x0");                              // pass the native stream fd as the Mixed low payload word
+            ctx.emitter.instruction("mov x2, #0");                              // resource Mixed payloads do not use a high word
+            ctx.emitter.instruction("mov x0, #9");                              // select runtime tag 9 for a stream resource
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_from_value");
+            ctx.emitter.instruction(&format!("b {}", done_label));              // skip false boxing after building the resource result
+            ctx.emitter.label(&false_label);
+            ctx.emitter.instruction("mov x1, #0");                              // use zero as the false payload for fopen failure
+            ctx.emitter.instruction("mov x2, #0");                              // bool Mixed payloads do not use a high word
+            ctx.emitter.instruction("mov x0, #3");                              // select runtime tag 3 for a boolean false value
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_from_value");
+            ctx.emitter.label(&done_label);
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("test rax, rax");                           // test whether fopen() returned a negative descriptor
+            ctx.emitter.instruction(&format!("js {}", false_label));            // box PHP false when opening the stream failed
+            ctx.emitter.instruction("mov rdi, rax");                            // pass the native stream fd as the Mixed low payload word
+            ctx.emitter.instruction("xor esi, esi");                            // resource Mixed payloads do not use a high word
+            ctx.emitter.instruction("mov eax, 9");                              // select runtime tag 9 for a stream resource
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_from_value");
+            ctx.emitter.instruction(&format!("jmp {}", done_label));            // skip false boxing after building the resource result
+            ctx.emitter.label(&false_label);
+            ctx.emitter.instruction("xor edi, edi");                            // use zero as the false payload for fopen failure
+            ctx.emitter.instruction("xor esi, esi");                            // bool Mixed payloads do not use a high word
+            ctx.emitter.instruction("mov eax, 3");                              // select runtime tag 3 for a boolean false value
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_from_value");
+            ctx.emitter.label(&done_label);
+        }
+    }
 }
 
 /// Boxes an owned runtime string result into PHP `string|false` Mixed form.

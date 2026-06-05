@@ -3512,6 +3512,50 @@ echo "read: " . trim($line);
     );
 }
 
+/// Verifies basic stream resources round-trip through fopen/fwrite/fread/fclose.
+#[test]
+fn ir_backend_handles_basic_streams() {
+    let source = r#"<?php
+$f = fopen("rw.txt", "w");
+echo gettype($f) . ":";
+echo fwrite($f, "test data");
+echo ":";
+echo fclose($f) ? "closed" : "!";
+$f = fopen("rw.txt", "r");
+$content = fread($f, 9);
+fclose($f);
+echo ":" . $content;
+echo ":";
+echo @fopen("missing.txt", "r") === false ? "false" : "!";
+echo ":";
+echo fwrite(STDOUT, "direct");
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("basic_streams", source),
+        "resource:9:closed:test data:false:direct6"
+    );
+}
+
+/// Verifies boxed false stream values fail before being treated as file descriptors.
+#[test]
+fn ir_backend_rejects_false_stream_handles() {
+    let run = compile_ir_backend_and_run(
+        "false_stream_handle",
+        r#"<?php
+$f = @fopen("missing.txt", "r");
+fread($f, 1);
+echo "unreachable";
+"#,
+        &[],
+    );
+    assert!(!run.status.success(), "false stream handle unexpectedly succeeded");
+    let stderr = String::from_utf8(run.stderr).expect("stream TypeError should be utf8");
+    assert!(
+        stderr.contains("TypeError: fread()") && stderr.contains("resource"),
+        "expected fread TypeError, got stderr={stderr}"
+    );
+}
+
 /// Verifies `filesize()` returns the current byte length for a written file.
 #[test]
 fn ir_backend_handles_filesize() {
