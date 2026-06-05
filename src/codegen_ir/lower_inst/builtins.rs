@@ -128,6 +128,7 @@ pub(super) fn lower_builtin_call(ctx: &mut FunctionContext<'_>, inst: &Instructi
         "file_put_contents" => io::lower_file_put_contents(ctx, inst),
         "file_exists" => io::lower_file_exists(ctx, inst),
         "filesize" => io::lower_filesize(ctx, inst),
+        "filemtime" => io::lower_filemtime(ctx, inst),
         "is_file" => io::lower_is_file(ctx, inst),
         "is_dir" => io::lower_is_dir(ctx, inst),
         "date" => system::lower_date(ctx, inst),

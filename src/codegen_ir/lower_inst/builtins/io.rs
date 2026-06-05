@@ -64,6 +64,14 @@ pub(super) fn lower_filesize(
     lower_unary_path_int(ctx, inst, "filesize", "__rt_filesize")
 }
 
+/// Lowers `filemtime(path)` through the target-aware runtime stat helper.
+pub(super) fn lower_filemtime(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+) -> Result<()> {
+    lower_unary_path_int(ctx, inst, "filemtime", "__rt_filemtime")
+}
+
 /// Lowers `is_file(path)` through the target-aware runtime stat helper.
 pub(super) fn lower_is_file(
     ctx: &mut FunctionContext<'_>,

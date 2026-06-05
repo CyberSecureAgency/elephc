@@ -3465,6 +3465,17 @@ echo filesize("size.txt");
     assert_eq!(compile_and_run_ir_backend("filesize", source), "5");
 }
 
+/// Verifies `filemtime()` returns a plausible timestamp for a freshly written file.
+#[test]
+fn ir_backend_handles_filemtime() {
+    let source = r#"<?php
+file_put_contents("ts.txt", "x");
+$t = filemtime("ts.txt");
+if ($t > 1000000000) { echo "ok"; }
+"#;
+    assert_eq!(compile_and_run_ir_backend("filemtime", source), "ok");
+}
+
 /// Verifies global constant declarations, references, and `defined()` lowering.
 #[test]
 fn ir_backend_handles_global_constants_and_defined() {
