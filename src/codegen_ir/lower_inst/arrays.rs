@@ -65,12 +65,13 @@ pub(super) fn lower_array_set(ctx: &mut FunctionContext<'_>, inst: &Instruction)
     let index = expect_operand(inst, 1)?;
     let value = expect_operand(inst, 2)?;
     let elem_ty = indexed_array_element_type(&ctx.value_php_type(array)?, inst)?;
-    let value_ty = effective_array_set_value_type(&elem_ty, &ctx.value_php_type(value)?, inst)?;
+    let raw_value_ty = ctx.value_php_type(value)?.codegen_repr();
+    let value_ty = effective_array_set_value_type(&elem_ty, &raw_value_ty, inst)?;
     require_integer_like_index(ctx.value_php_type(index)?, inst)?;
     let source_local = source_load_local_slot(ctx, array)?;
     match ctx.emitter.target.arch {
-        Arch::AArch64 => lower_array_set_aarch64(ctx, array, index, value, &value_ty)?,
-        Arch::X86_64 => lower_array_set_x86_64(ctx, array, index, value, &value_ty)?,
+        Arch::AArch64 => lower_array_set_aarch64(ctx, array, index, value, &raw_value_ty, &value_ty)?,
+        Arch::X86_64 => lower_array_set_x86_64(ctx, array, index, value, &raw_value_ty, &value_ty)?,
     }
     ctx.store_result_value(array)?;
     if let Some(slot) = source_local {
@@ -154,8 +155,12 @@ fn lower_array_set_aarch64(
     array: ValueId,
     index: ValueId,
     value: ValueId,
+    raw_value_ty: &PhpType,
     value_ty: &PhpType,
 ) -> Result<()> {
+    if matches!(value_ty, PhpType::Mixed) {
+        return lower_mixed_array_set_aarch64(ctx, array, index, value, raw_value_ty);
+    }
     ctx.load_value_to_reg(array, "x0")?;
     ctx.load_value_to_reg(index, "x1")?;
     match value_ty {
@@ -212,8 +217,12 @@ fn lower_array_set_x86_64(
     array: ValueId,
     index: ValueId,
     value: ValueId,
+    raw_value_ty: &PhpType,
     value_ty: &PhpType,
 ) -> Result<()> {
+    if matches!(value_ty, PhpType::Mixed) {
+        return lower_mixed_array_set_x86_64(ctx, array, index, value, raw_value_ty);
+    }
     ctx.load_value_to_reg(array, "rdi")?;
     ctx.load_value_to_reg(index, "rsi")?;
     match value_ty {
@@ -474,6 +483,50 @@ fn lower_mixed_array_push_x86_64(
     Ok(())
 }
 
+/// Boxes or retains a value, then stores it into a Mixed indexed array on AArch64.
+fn lower_mixed_array_set_aarch64(
+    ctx: &mut FunctionContext<'_>,
+    array: ValueId,
+    index: ValueId,
+    value: ValueId,
+    value_ty: &PhpType,
+) -> Result<()> {
+    ctx.load_value_to_result(value)?;
+    if matches!(value_ty.codegen_repr(), PhpType::Mixed | PhpType::Union(_)) {
+        abi::emit_incref_if_refcounted(ctx.emitter, value_ty);
+    } else {
+        emit_box_current_value_as_mixed(ctx.emitter, &value_ty.codegen_repr());
+    }
+    abi::emit_push_reg(ctx.emitter, "x0");
+    ctx.load_value_to_reg(array, "x0")?;
+    ctx.load_value_to_reg(index, "x1")?;
+    abi::emit_pop_reg(ctx.emitter, "x2");
+    abi::emit_call_label(ctx.emitter, "__rt_array_set_mixed");
+    Ok(())
+}
+
+/// Boxes or retains a value, then stores it into a Mixed indexed array on x86_64.
+fn lower_mixed_array_set_x86_64(
+    ctx: &mut FunctionContext<'_>,
+    array: ValueId,
+    index: ValueId,
+    value: ValueId,
+    value_ty: &PhpType,
+) -> Result<()> {
+    ctx.load_value_to_result(value)?;
+    if matches!(value_ty.codegen_repr(), PhpType::Mixed | PhpType::Union(_)) {
+        abi::emit_incref_if_refcounted(ctx.emitter, value_ty);
+    } else {
+        emit_box_current_value_as_mixed(ctx.emitter, &value_ty.codegen_repr());
+    }
+    abi::emit_push_reg(ctx.emitter, "rax");
+    ctx.load_value_to_reg(array, "rdi")?;
+    ctx.load_value_to_reg(index, "rsi")?;
+    abi::emit_pop_reg(ctx.emitter, "rdx");
+    abi::emit_call_label(ctx.emitter, "__rt_array_set_mixed");
+    Ok(())
+}
+
 /// Returns the PHP element type for an indexed-array operand.
 fn indexed_array_element_type(array_ty: &PhpType, inst: &Instruction) -> Result<PhpType> {
     match array_ty {
@@ -494,6 +547,9 @@ fn effective_array_set_value_type(
 ) -> Result<PhpType> {
     let elem_ty = elem_ty.codegen_repr();
     let value_ty = value_ty.codegen_repr();
+    if matches!(elem_ty, PhpType::Mixed) {
+        return Ok(PhpType::Mixed);
+    }
     if matches!(elem_ty, PhpType::Never | PhpType::Void) {
         return require_supported_array_set_value(value_ty, inst);
     }
