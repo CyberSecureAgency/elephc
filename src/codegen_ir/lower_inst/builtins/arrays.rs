@@ -772,19 +772,35 @@ fn static_callback_entry_label(
     owner: &str,
     visible_arg_types: Option<&[PhpType]>,
 ) -> Result<String> {
-    let callback_name = static_callback_name_operand(ctx, value, owner)?;
-    if let Some(callee) = ctx.callable_function_by_name(&callback_name) {
+    let callback = static_callback_name_operand(ctx, value, owner)?;
+    if let Some(callee) = ctx.callable_function_by_name(&callback.name) {
         return Ok(function_symbol(&callee.name));
     }
-    if let Some(target) = static_method_callback_target(ctx, &callback_name, owner, visible_arg_types)? {
-        let visible_arg_types = visible_arg_types.expect("static method callback target requires known argument types");
-        return Ok(emit_static_method_callback_wrapper(ctx, &target, visible_arg_types));
+    if callback.kind == StaticCallbackOperandKind::FirstClassCallable {
+        if let Some(target) = static_method_callback_target(ctx, &callback.name, owner, visible_arg_types)? {
+            let visible_arg_types =
+                visible_arg_types.expect("static method callback target requires known argument types");
+            return Ok(emit_static_method_callback_wrapper(ctx, &target, visible_arg_types));
+        }
     }
     Err(CodegenIrError::unsupported(format!(
-        "{} '{}' is not a user function or supported static method",
+        "{} '{}' is not a user function or supported first-class static method",
         owner,
-        callback_name
+        callback.name
     )))
+}
+
+/// Static callback operand metadata recovered from a literal-producing EIR instruction.
+struct StaticCallbackName {
+    name: String,
+    kind: StaticCallbackOperandKind,
+}
+
+/// Classifies whether a static callback came from a PHP string or `foo(...)` syntax.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StaticCallbackOperandKind {
+    StringLiteral,
+    FirstClassCallable,
 }
 
 /// Returns a static callback name from a string literal or `foo(...)` descriptor instruction.
@@ -792,7 +808,7 @@ fn static_callback_name_operand(
     ctx: &FunctionContext<'_>,
     value: ValueId,
     owner: &str,
-) -> Result<String> {
+) -> Result<StaticCallbackName> {
     let Some(value_ref) = ctx.function.value(value) else {
         return Err(CodegenIrError::missing_entry("value", value.as_raw()));
     };
@@ -805,24 +821,30 @@ fn static_callback_name_operand(
     let Some(inst_ref) = ctx.function.instruction(inst) else {
         return Err(CodegenIrError::missing_entry("instruction", inst.as_raw()));
     };
-    if !matches!(inst_ref.op, Op::ConstStr | Op::FirstClassCallableNew) {
-        return Err(CodegenIrError::unsupported(format!(
-            "{} with non-static callback operand",
-            owner
-        )));
-    }
+    let kind = match inst_ref.op {
+        Op::ConstStr => StaticCallbackOperandKind::StringLiteral,
+        Op::FirstClassCallableNew => StaticCallbackOperandKind::FirstClassCallable,
+        _ => {
+            return Err(CodegenIrError::unsupported(format!(
+                "{} with non-static callback operand",
+                owner
+            )));
+        }
+    };
     let Some(Immediate::Data(data)) = inst_ref.immediate.as_ref() else {
         return Err(CodegenIrError::invalid_module(format!(
             "{} string literal has no data id",
             owner
         )));
     };
-    ctx.module
+    let name = ctx
+        .module
         .data
         .strings
         .get(data.as_raw() as usize)
         .cloned()
-        .ok_or_else(|| CodegenIrError::missing_entry("data string", data.as_raw()))
+        .ok_or_else(|| CodegenIrError::missing_entry("data string", data.as_raw()))?;
+    Ok(StaticCallbackName { name, kind })
 }
 
 /// Resolved static-method callback metadata for a small runtime helper wrapper.
