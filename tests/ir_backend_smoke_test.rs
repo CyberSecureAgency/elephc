@@ -9,8 +9,9 @@
 //!   testing library helpers.
 
 use std::fs;
+use std::io::Write;
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 
 /// Returns the path to the cargo-built `elephc` binary.
 fn elephc_cli_bin() -> String {
@@ -3498,6 +3499,19 @@ echo $missing === false ? "F" : "!";
     );
 }
 
+/// Verifies `readline()` reads stdin and optional prompts are emitted first.
+#[test]
+fn ir_backend_handles_readline() {
+    let source = r#"<?php
+$line = readline("name: ");
+echo "read: " . trim($line);
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend_with_stdin("readline", source, "world\n"),
+        "name: read: world"
+    );
+}
+
 /// Verifies `filesize()` returns the current byte length for a written file.
 #[test]
 fn ir_backend_handles_filesize() {
@@ -4033,6 +4047,13 @@ fn compile_and_run_ir_backend_with_args(name: &str, source: &str, args: &[&str])
     String::from_utf8(run.stdout).unwrap()
 }
 
+/// Compiles `source`, runs the output binary with stdin, and returns stdout.
+fn compile_and_run_ir_backend_with_stdin(name: &str, source: &str, stdin: &str) -> String {
+    let run = compile_ir_backend_and_run_with_stdin(name, source, stdin);
+    assert!(run.status.success(), "IR backend binary failed for {name}");
+    String::from_utf8(run.stdout).unwrap()
+}
+
 /// Compiles `source` with `--ir-backend`, runs the binary, and returns raw process output.
 fn compile_ir_backend_and_run(name: &str, source: &str, args: &[&str]) -> Output {
     let dir = std::env::temp_dir().join(format!(
@@ -4063,6 +4084,52 @@ fn compile_ir_backend_and_run(name: &str, source: &str, args: &[&str]) -> Output
         .args(args)
         .output()
         .expect("failed to run IR backend binary");
+
+    let _ = fs::remove_dir_all(&dir);
+    run
+}
+
+/// Compiles `source` with `--ir-backend`, feeds stdin, and returns raw process output.
+fn compile_ir_backend_and_run_with_stdin(name: &str, source: &str, stdin: &str) -> Output {
+    let dir = std::env::temp_dir().join(format!(
+        "elephc_ir_backend_{}_{}_{}",
+        name,
+        std::process::id(),
+        unique_test_id()
+    ));
+    fs::create_dir_all(&dir).expect("failed to create IR backend stdin directory");
+    let php_path = dir.join("main.php");
+    fs::write(&php_path, source).expect("failed to write IR backend PHP fixture");
+
+    let compile = Command::new(elephc_cli_bin())
+        .env("XDG_CACHE_HOME", dir.join("cache-root"))
+        .current_dir(&dir)
+        .arg("--ir-backend")
+        .arg(&php_path)
+        .output()
+        .expect("failed to run elephc CLI with --ir-backend");
+    assert!(
+        compile.status.success(),
+        "elephc --ir-backend failed for {name}: stderr={}",
+        String::from_utf8_lossy(&compile.stderr)
+    );
+
+    let mut child = Command::new(dir.join("main"))
+        .current_dir(&dir)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn IR backend binary");
+    child
+        .stdin
+        .take()
+        .expect("failed to open IR backend stdin")
+        .write_all(stdin.as_bytes())
+        .expect("failed to write IR backend stdin");
+    let run = child
+        .wait_with_output()
+        .expect("failed to wait for IR backend binary");
 
     let _ = fs::remove_dir_all(&dir);
     run

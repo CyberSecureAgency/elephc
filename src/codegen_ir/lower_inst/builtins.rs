@@ -126,6 +126,7 @@ pub(super) fn lower_builtin_call(ctx: &mut FunctionContext<'_>, inst: &Instructi
         "defined" => lower_defined(ctx, inst),
         "file_get_contents" => io::lower_file_get_contents(ctx, inst),
         "readfile" => io::lower_readfile(ctx, inst),
+        "readline" => io::lower_readline(ctx, inst),
         "file" => io::lower_file(ctx, inst),
         "realpath" => io::lower_realpath(ctx, inst),
         "file_put_contents" => io::lower_file_put_contents(ctx, inst),

@@ -46,6 +46,36 @@ pub(super) fn lower_readfile(ctx: &mut FunctionContext<'_>, inst: &Instruction) 
     store_if_result(ctx, inst)
 }
 
+/// Lowers `readline(prompt?)` by optionally writing a prompt and reading stdin.
+pub(super) fn lower_readline(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    ensure_arg_count_between(inst, "readline", 0, 1)?;
+    if inst.operands.len() == 1 {
+        let prompt = expect_operand(inst, 0)?;
+        load_string_to_result(ctx, prompt, "readline prompt")?;
+        match ctx.emitter.target.arch {
+            Arch::AArch64 => {
+                ctx.emitter.instruction("mov x0, #1");                          // pass stdout as the destination fd for the readline prompt
+                ctx.emitter.syscall(4);                                         // write the prompt before blocking on stdin
+            }
+            Arch::X86_64 => {
+                ctx.emitter.instruction("mov rsi, rax");                        // pass the prompt pointer as write()'s buffer argument
+                ctx.emitter.instruction("mov rdi, 1");                          // pass stdout as the destination fd for the readline prompt
+                ctx.emitter.instruction("call write");                          // write the prompt before blocking on stdin
+            }
+        }
+    }
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction("mov x0, #0");                              // pass stdin fd 0 to the shared line-reader helper
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("xor edi, edi");                            // pass stdin fd 0 to the shared line-reader helper
+        }
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_fgets");
+    store_if_result(ctx, inst)
+}
+
 /// Lowers `file(path)` through the target-aware runtime line-array helper.
 pub(super) fn lower_file(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     lower_unary_path_array(ctx, inst, "file", "__rt_file")
