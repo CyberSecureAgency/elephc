@@ -489,6 +489,20 @@ echo $f->isTerminated() ? "T" : "t";
     );
 }
 
+/// Verifies Fiber getReturn reads the terminal null Mixed value after completion.
+#[test]
+fn ir_backend_gets_void_fiber_return_value() {
+    let source = r#"<?php
+$f = new Fiber(function(): void {});
+$f->start();
+echo is_null($f->getReturn()) ? "null" : "not-null";
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("fiber_get_return_void", source),
+        "null"
+    );
+}
+
 /// Verifies pipe calls through runtime-selected first-class function descriptors.
 #[test]
 fn ir_backend_handles_runtime_function_pipe_calls() {

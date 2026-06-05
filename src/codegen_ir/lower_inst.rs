@@ -497,6 +497,9 @@ fn lower_method_call(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Resul
     if is_fiber_start_call(&class_name, &method_name) {
         return lower_fiber_start(ctx, inst, object);
     }
+    if is_fiber_get_return_call(&class_name, &method_name) {
+        return lower_fiber_noarg_runtime_method(ctx, inst, object, "__rt_fiber_get_return");
+    }
     let target = resolve_method_call_target(ctx, &class_name, &method_name, inst.operands.len())?;
     let mut param_types = Vec::with_capacity(target.params.len() + 1);
     param_types.push(PhpType::Object(class_name));
@@ -524,6 +527,25 @@ fn lower_fiber_start(
     let receiver_arg = abi::int_arg_reg_name(ctx.emitter.target, 0);
     ctx.load_value_to_reg(object, receiver_arg)?;
     abi::emit_call_label(ctx.emitter, "__rt_fiber_start");
+    store_if_result(ctx, inst)
+}
+
+/// Lowers no-argument Fiber instance methods that delegate to one runtime helper.
+fn lower_fiber_noarg_runtime_method(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+    object: ValueId,
+    helper: &str,
+) -> Result<()> {
+    if inst.operands.len() != 1 {
+        return Err(CodegenIrError::unsupported(format!(
+            "Fiber runtime method {} with EIR arguments",
+            helper
+        )));
+    }
+    let receiver_arg = abi::int_arg_reg_name(ctx.emitter.target, 0);
+    ctx.load_value_to_reg(object, receiver_arg)?;
+    abi::emit_call_label(ctx.emitter, helper);
     store_if_result(ctx, inst)
 }
 
@@ -610,6 +632,12 @@ impl FiberStatePredicate {
 fn is_fiber_start_call(class_name: &str, method_name: &str) -> bool {
     php_symbol_key(class_name.trim_start_matches('\\')) == "fiber"
         && php_symbol_key(method_name) == "start"
+}
+
+/// Returns true when a direct method call targets PHP's built-in `Fiber::getReturn`.
+fn is_fiber_get_return_call(class_name: &str, method_name: &str) -> bool {
+    php_symbol_key(class_name.trim_start_matches('\\')) == "fiber"
+        && php_symbol_key(method_name) == "getreturn"
 }
 
 /// Resolves a Fiber state predicate method name, if the receiver is `Fiber`.
