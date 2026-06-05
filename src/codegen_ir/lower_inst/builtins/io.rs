@@ -72,6 +72,54 @@ pub(super) fn lower_filemtime(
     lower_unary_path_int(ctx, inst, "filemtime", "__rt_filemtime")
 }
 
+/// Lowers `fileatime(path)` and boxes the runtime integer-or-false result.
+pub(super) fn lower_fileatime(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+) -> Result<()> {
+    lower_unary_path_stat_int_or_false(ctx, inst, "fileatime", "__rt_fileatime")
+}
+
+/// Lowers `filectime(path)` and boxes the runtime integer-or-false result.
+pub(super) fn lower_filectime(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+) -> Result<()> {
+    lower_unary_path_stat_int_or_false(ctx, inst, "filectime", "__rt_filectime")
+}
+
+/// Lowers `fileperms(path)` and boxes the runtime integer-or-false result.
+pub(super) fn lower_fileperms(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+) -> Result<()> {
+    lower_unary_path_stat_int_or_false(ctx, inst, "fileperms", "__rt_fileperms")
+}
+
+/// Lowers `fileowner(path)` and boxes the runtime integer-or-false result.
+pub(super) fn lower_fileowner(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+) -> Result<()> {
+    lower_unary_path_stat_int_or_false(ctx, inst, "fileowner", "__rt_fileowner")
+}
+
+/// Lowers `filegroup(path)` and boxes the runtime integer-or-false result.
+pub(super) fn lower_filegroup(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+) -> Result<()> {
+    lower_unary_path_stat_int_or_false(ctx, inst, "filegroup", "__rt_filegroup")
+}
+
+/// Lowers `fileinode(path)` and boxes the runtime integer-or-false result.
+pub(super) fn lower_fileinode(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+) -> Result<()> {
+    lower_unary_path_stat_int_or_false(ctx, inst, "fileinode", "__rt_fileinode")
+}
+
 /// Lowers `is_file(path)` through the target-aware runtime stat helper.
 pub(super) fn lower_is_file(
     ctx: &mut FunctionContext<'_>,
@@ -156,6 +204,21 @@ fn lower_unary_path_int(
     store_if_result(ctx, inst)
 }
 
+/// Loads a path string, calls a stat helper, boxes int success or PHP false, and stores it.
+fn lower_unary_path_stat_int_or_false(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+    name: &str,
+    runtime_label: &str,
+) -> Result<()> {
+    super::ensure_arg_count(inst, name, 1)?;
+    let path = expect_operand(inst, 0)?;
+    load_string_to_result(ctx, path, name)?;
+    abi::emit_call_label(ctx.emitter, runtime_label);
+    box_stat_int_or_false_result(ctx);
+    store_if_result(ctx, inst)
+}
+
 /// Materializes `file_put_contents` arguments for the ARM64 runtime ABI.
 fn lower_file_put_contents_arm64(
     ctx: &mut FunctionContext<'_>,
@@ -226,6 +289,43 @@ fn box_file_get_contents_result(ctx: &mut FunctionContext<'_>) {
             ctx.emitter.instruction("mov QWORD PTR [rax + 8], r10");            // store the owned file string pointer in the Mixed cell
             ctx.emitter.instruction("mov QWORD PTR [rax + 16], r11");           // store the owned file string length in the Mixed cell
             ctx.emitter.instruction(&format!("jmp {}", done_label));            // skip false boxing after building the string Mixed result
+            ctx.emitter.label(&false_label);
+            ctx.emitter.instruction("xor edi, edi");                            // use zero as the false payload for the Mixed bool box
+            ctx.emitter.instruction("xor esi, esi");                            // clear the unused high payload word for bool Mixed boxes
+            ctx.emitter.instruction("mov eax, 3");                              // select runtime tag 3 for a boolean false Mixed value
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_from_value");
+            ctx.emitter.label(&done_label);
+        }
+    }
+}
+
+/// Boxes the raw stat integer payload into PHP `int|false` Mixed form.
+fn box_stat_int_or_false_result(ctx: &mut FunctionContext<'_>) {
+    let false_label = ctx.next_label("stat_int_false");
+    let done_label = ctx.next_label("stat_int_done");
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction(&format!("cbz x1, {}", false_label));       // box PHP false when the runtime success flag is unset
+            ctx.emitter.instruction("mov x2, xzr");                             // integer Mixed payloads do not use a high word
+            ctx.emitter.instruction("mov x1, x0");                              // pass the stat integer as the Mixed low payload word
+            ctx.emitter.instruction("mov x0, #0");                              // select runtime tag 0 for an integer Mixed value
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_from_value");
+            ctx.emitter.instruction(&format!("b {}", done_label));              // skip false boxing after building the integer Mixed result
+            ctx.emitter.label(&false_label);
+            ctx.emitter.instruction("mov x1, #0");                              // use zero as the false payload for the Mixed bool box
+            ctx.emitter.instruction("mov x2, #0");                              // clear the unused high payload word for bool Mixed boxes
+            ctx.emitter.instruction("mov x0, #3");                              // select runtime tag 3 for a boolean false Mixed value
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_from_value");
+            ctx.emitter.label(&done_label);
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("test rdx, rdx");                           // test whether the runtime success flag is set
+            ctx.emitter.instruction(&format!("jz {}", false_label));            // box PHP false when the stat helper failed
+            ctx.emitter.instruction("mov rdi, rax");                            // pass the stat integer as the Mixed low payload word
+            ctx.emitter.instruction("xor esi, esi");                            // integer Mixed payloads do not use a high word
+            ctx.emitter.instruction("xor eax, eax");                            // select runtime tag 0 for an integer Mixed value
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_from_value");
+            ctx.emitter.instruction(&format!("jmp {}", done_label));            // skip false boxing after building the integer Mixed result
             ctx.emitter.label(&false_label);
             ctx.emitter.instruction("xor edi, edi");                            // use zero as the false payload for the Mixed bool box
             ctx.emitter.instruction("xor esi, esi");                            // clear the unused high payload word for bool Mixed boxes

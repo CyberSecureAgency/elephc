@@ -3494,6 +3494,31 @@ if ($t > 1000000000) { echo "ok"; }
     assert_eq!(compile_and_run_ir_backend("filemtime", source), "ok");
 }
 
+/// Verifies scalar stat getters box integer successes and strict false failures.
+#[test]
+fn ir_backend_handles_scalar_stat_getters() {
+    let source = r#"<?php
+file_put_contents("stat.txt", "abc");
+echo gettype(fileatime("stat.txt"));
+echo gettype(filectime("stat.txt"));
+echo gettype(fileperms("stat.txt"));
+echo gettype(fileowner("stat.txt"));
+echo gettype(filegroup("stat.txt"));
+echo gettype(fileinode("stat.txt"));
+echo ":";
+echo fileatime("missing.txt") === false ? "A" : "!";
+echo filectime("missing.txt") === false ? "C" : "!";
+echo fileperms("missing.txt") === false ? "P" : "!";
+echo fileowner("missing.txt") === false ? "O" : "!";
+echo filegroup("missing.txt") === false ? "G" : "!";
+echo fileinode("missing.txt") === false ? "I" : "!";
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("scalar_stat_getters", source),
+        "integerintegerintegerintegerintegerinteger:ACPOGI"
+    );
+}
+
 /// Verifies global constant declarations, references, and `defined()` lowering.
 #[test]
 fn ir_backend_handles_global_constants_and_defined() {
