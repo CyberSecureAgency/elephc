@@ -878,6 +878,28 @@ unlink("a.txt");
     );
 }
 
+/// Verifies `foreach` over `SplFileObject` matches the legacy backend.
+#[test]
+fn parity_spl_file_object_foreach() {
+    assert_backend_parity(
+        "spl_file_object_foreach",
+        r#"<?php
+file_put_contents("a.txt", "one\ntwo\n");
+
+$info = new SplFileInfo("a.txt");
+foreach ($info->openFile() as $line => $text) {
+    echo $line;
+    echo ":";
+    echo $text;
+    echo ";";
+}
+
+unlink("a.txt");
+"#,
+        &[],
+    );
+}
+
 /// Compiles and runs a PHP snippet through both backends and compares stdout.
 fn assert_backend_parity(name: &str, source: &str, args: &[&str]) {
     let legacy = compile_and_run_backend(name, source, args, Backend::Legacy);

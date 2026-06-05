@@ -12,10 +12,11 @@
 use crate::codegen::platform::Arch;
 use crate::codegen::{abi, emit_box_current_value_as_mixed, emit_box_runtime_payload_as_mixed};
 use crate::ir::{Instruction, Op, ValueDef, ValueId};
+use crate::names::{method_symbol, php_symbol_key};
 use crate::types::PhpType;
 
 use super::super::context::FunctionContext;
-use super::{expect_operand, store_if_result};
+use super::{direct_call_stack_pad_bytes, expect_operand, store_if_result};
 use crate::codegen_ir::{CodegenIrError, Result};
 
 const ITER_SOURCE_OFFSET_DELTA: usize = 0;
@@ -29,6 +30,7 @@ const ITER_VALUE_TAG_OFFSET_DELTA: usize = 48;
 enum IteratorSourceKind {
     Indexed { elem: PhpType },
     Hash,
+    Object { class_name: String },
 }
 
 /// Lowers iterator initialization by storing the source pointer and initial cursor.
@@ -42,12 +44,16 @@ pub(super) fn lower_iter_start(ctx: &mut FunctionContext<'_>, inst: &Instruction
     let result_reg = abi::int_result_reg(ctx.emitter);
     ctx.load_value_to_reg(source, result_reg)?;
     abi::store_at_offset(ctx.emitter, result_reg, offset - ITER_SOURCE_OFFSET_DELTA);
-    let initial_cursor = match source_kind {
+    let initial_cursor = match &source_kind {
         IteratorSourceKind::Indexed { .. } => -1,
         IteratorSourceKind::Hash => 0,
+        IteratorSourceKind::Object { .. } => 0,
     };
     abi::emit_load_int_immediate(ctx.emitter, result_reg, initial_cursor);
     abi::store_at_offset(ctx.emitter, result_reg, offset - ITER_CURSOR_OFFSET_DELTA);
+    if let IteratorSourceKind::Object { class_name } = source_kind {
+        emit_object_iterator_method_call(ctx, offset, &class_name, "rewind")?;
+    }
     Ok(())
 }
 
@@ -64,6 +70,9 @@ pub(super) fn lower_iter_next(ctx: &mut FunctionContext<'_>, inst: &Instruction)
             Arch::AArch64 => lower_hash_iter_next_aarch64(ctx, offset),
             Arch::X86_64 => lower_hash_iter_next_x86_64(ctx, offset),
         },
+        IteratorSourceKind::Object { class_name } => {
+            lower_object_iter_next(ctx, offset, &class_name)?;
+        }
     }
     store_if_result(ctx, inst)
 }
@@ -85,6 +94,9 @@ pub(super) fn lower_iter_current_key(
             Arch::AArch64 => load_current_hash_key_as_mixed_aarch64(ctx, offset),
             Arch::X86_64 => load_current_hash_key_as_mixed_x86_64(ctx, offset),
         },
+        IteratorSourceKind::Object { class_name } => {
+            emit_object_iterator_method_call(ctx, offset, &class_name, "key")?;
+        }
     }
     store_if_result(ctx, inst)
 }
@@ -108,8 +120,119 @@ pub(super) fn lower_iter_current_value(
             Arch::AArch64 => load_current_hash_value_as_mixed_aarch64(ctx, offset),
             Arch::X86_64 => load_current_hash_value_as_mixed_x86_64(ctx, offset),
         },
+        IteratorSourceKind::Object { class_name } => {
+            emit_object_iterator_method_call(ctx, offset, &class_name, "current")?;
+        }
     }
     store_if_result(ctx, inst)
+}
+
+/// Lowers object iterator advancement using PHP's Iterator method protocol.
+fn lower_object_iter_next(
+    ctx: &mut FunctionContext<'_>,
+    offset: usize,
+    class_name: &str,
+) -> Result<()> {
+    let first_label = ctx.next_label("object_iter_first");
+    let valid_label = ctx.next_label("object_iter_valid");
+    let started_reg = abi::int_result_reg(ctx.emitter);
+    abi::load_at_offset(ctx.emitter, started_reg, offset - ITER_CURSOR_OFFSET_DELTA);
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction(&format!("cmp {}, #0", started_reg));       // check whether this object iterator has already yielded once
+            ctx.emitter.instruction(&format!("b.eq {}", first_label));          // skip next() before the first valid() probe
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction(&format!("test {}, {}", started_reg, started_reg)); // check whether this object iterator has already yielded once
+            ctx.emitter.instruction(&format!("je {}", first_label));            // skip next() before the first valid() probe
+        }
+    }
+    emit_object_iterator_method_call(ctx, offset, class_name, "next")?;
+    abi::emit_jump(ctx.emitter, &valid_label);
+    ctx.emitter.label(&first_label);
+    abi::emit_load_int_immediate(ctx.emitter, started_reg, 1);
+    abi::store_at_offset(ctx.emitter, started_reg, offset - ITER_CURSOR_OFFSET_DELTA);
+    ctx.emitter.label(&valid_label);
+    emit_object_iterator_method_call(ctx, offset, class_name, "valid")
+}
+
+/// Emits a zero-argument Iterator method call against the object stored in iterator state.
+fn emit_object_iterator_method_call(
+    ctx: &mut FunctionContext<'_>,
+    offset: usize,
+    class_name: &str,
+    method_name: &str,
+) -> Result<()> {
+    let method_key = php_symbol_key(method_name);
+    let target = object_iterator_method_target(ctx, class_name, &method_key)?;
+    let assignments = abi::build_outgoing_arg_assignments_for_target(
+        ctx.emitter.target,
+        &[PhpType::Object(class_name.to_string())],
+        0,
+    );
+    let result_reg = abi::int_result_reg(ctx.emitter);
+    abi::load_at_offset(ctx.emitter, result_reg, offset - ITER_SOURCE_OFFSET_DELTA);
+    abi::emit_push_result_value(ctx.emitter, &PhpType::Object(class_name.to_string()));
+    let overflow_bytes = abi::materialize_outgoing_args(ctx.emitter, &assignments);
+    let caller_stack_pad_bytes = direct_call_stack_pad_bytes(ctx, overflow_bytes);
+    abi::emit_reserve_temporary_stack(ctx.emitter, caller_stack_pad_bytes);
+    abi::emit_call_label(ctx.emitter, &method_symbol(&target.impl_class, &method_key));
+    abi::emit_release_temporary_stack(ctx.emitter, caller_stack_pad_bytes);
+    abi::emit_release_temporary_stack(ctx.emitter, overflow_bytes);
+    Ok(())
+}
+
+/// Resolves the concrete implementation class for an object iterator method.
+fn object_iterator_method_target(
+    ctx: &FunctionContext<'_>,
+    class_name: &str,
+    method_key: &str,
+) -> Result<ObjectIteratorMethodTarget> {
+    let normalized = class_name.trim_start_matches('\\');
+    let class_info = ctx
+        .module
+        .class_infos
+        .get(normalized)
+        .ok_or_else(|| CodegenIrError::unsupported(format!("iterator object class {}", normalized)))?;
+    let callee_sig = class_info
+        .methods
+        .get(method_key)
+        .ok_or_else(|| CodegenIrError::unsupported(format!("iterator method {}::{}", normalized, method_key)))?;
+    if !callee_sig.params.is_empty() {
+        return Err(CodegenIrError::unsupported(format!(
+            "iterator method {}::{} with {} params",
+            normalized,
+            method_key,
+            callee_sig.params.len()
+        )));
+    }
+    let impl_class = class_info
+        .method_impl_classes
+        .get(method_key)
+        .cloned()
+        .unwrap_or_else(|| normalized.to_string());
+    let emitted = ctx.module.class_methods.iter().any(|function| {
+        !function.flags.is_static
+            && function
+                .name
+                .rsplit_once("::")
+                .is_some_and(|(candidate_class, candidate_method)| {
+                    candidate_class == impl_class
+                        && php_symbol_key(candidate_method) == method_key
+                })
+    });
+    if !emitted {
+        return Err(CodegenIrError::unsupported(format!(
+            "iterator method {}::{} without an emitted EIR method body",
+            impl_class, method_key
+        )));
+    }
+    Ok(ObjectIteratorMethodTarget { impl_class })
+}
+
+/// Resolved method implementation for an object iterator method call.
+struct ObjectIteratorMethodTarget {
+    impl_class: String,
 }
 
 /// Lowers iterator cleanup; Phase 04 array iterator state is stack-resident.
@@ -393,6 +516,7 @@ fn iterator_source_kind_from_type(ty: &PhpType, inst: &Instruction) -> Result<It
     match ty.codegen_repr() {
         PhpType::Array(elem) => Ok(IteratorSourceKind::Indexed { elem: elem.codegen_repr() }),
         PhpType::AssocArray { .. } => Ok(IteratorSourceKind::Hash),
+        PhpType::Object(class_name) => Ok(IteratorSourceKind::Object { class_name }),
         other => Err(CodegenIrError::unsupported(format!(
             "{} over PHP type {:?}",
             inst.op.name(),

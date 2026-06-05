@@ -2496,6 +2496,28 @@ unlink("a.txt");
     );
 }
 
+/// Verifies `foreach` over `SplFileObject` uses the emitted Iterator method protocol.
+#[test]
+fn ir_backend_handles_spl_file_object_foreach() {
+    let source = r#"<?php
+file_put_contents("a.txt", "one\ntwo\n");
+
+$info = new SplFileInfo("a.txt");
+foreach ($info->openFile() as $line => $text) {
+    echo $line;
+    echo ":";
+    echo $text;
+    echo ";";
+}
+
+unlink("a.txt");
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("spl_file_object_foreach", source),
+        "0:one\n;1:two\n;"
+    );
+}
+
 /// Verifies typed declared properties still fatal when read before initialization.
 #[test]
 fn ir_backend_fatals_on_uninitialized_typed_object_property() {
