@@ -897,21 +897,26 @@ fn lower_static_call_user_func(
 ) -> Option<LoweredValue> {
     match php_symbol_key(name.trim_start_matches('\\')).as_str() {
         "call_user_func" => {
-            let ExprKind::StringLiteral(callback) = &args.first()?.kind else {
-                return None;
-            };
-            lower_static_string_callable_call(ctx, callback, &args[1..], expr)
+            let callback = static_function_callback_name(args.first()?)?;
+            lower_static_string_callable_call(ctx, &callback, &args[1..], expr)
         }
         "call_user_func_array" => {
             let [callback_arg, arg_array] = args else {
                 return None;
             };
-            let ExprKind::StringLiteral(callback) = &callback_arg.kind else {
-                return None;
-            };
+            let callback = static_function_callback_name(callback_arg)?;
             let callback_args = static_call_user_func_array_args(arg_array)?;
-            lower_static_string_callable_call(ctx, callback, &callback_args, expr)
+            lower_static_string_callable_call(ctx, &callback, &callback_args, expr)
         }
+        _ => None,
+    }
+}
+
+/// Returns a static function callback name from a string or function FCC expression.
+fn static_function_callback_name(callback: &Expr) -> Option<String> {
+    match &callback.kind {
+        ExprKind::StringLiteral(name) => Some(name.clone()),
+        ExprKind::FirstClassCallable(CallableTarget::Function(name)) => Some(name.as_str().to_string()),
         _ => None,
     }
 }

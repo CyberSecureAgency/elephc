@@ -4789,6 +4789,26 @@ echo CALL_USER_FUNC_ARRAY("str_repeat", ["times" => 2, "string" => "ha"]);
     );
 }
 
+/// Verifies function first-class callables lower to direct call_user_func* EIR calls.
+#[test]
+fn ir_backend_handles_function_fcc_call_user_func() {
+    let source = r#"<?php
+function fcc_sum(int $left, int $right): int {
+    return $left + $right;
+}
+function fcc_join(string $left, string $right): string {
+    return $left . ":" . $right;
+}
+echo call_user_func(fcc_sum(...), 2, 5);
+echo "|";
+echo call_user_func_array(fcc_join(...), ["go", "now"]);
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("function_fcc_call_user_func", source),
+        "7|go:now"
+    );
+}
+
 /// Verifies is_callable() treats include-discovered string names as known callables.
 #[test]
 fn ir_backend_handles_is_callable_for_include_variants() {
