@@ -3380,6 +3380,32 @@ fn ir_backend_handles_static_function_exists_checks() {
     );
 }
 
+/// Verifies filesystem stat predicates lower through the EIR backend runtime helpers.
+#[test]
+fn ir_backend_handles_filesystem_stat_predicates() {
+    let out = compile_and_run_ir_backend_files(
+        "filesystem_stat_predicates",
+        &[
+            (
+                "main.php",
+                r#"<?php
+echo file_exists("exists.txt") ? "Y" : "N";
+echo file_exists("missing.txt") ? "Y" : "N";
+echo is_file("exists.txt") ? "F" : "!";
+echo is_dir("exists.txt") ? "D" : "!";
+echo is_dir("subdir") ? "D" : "!";
+echo is_file("subdir") ? "F" : "!";
+"#,
+            ),
+            ("exists.txt", "data"),
+            ("subdir/item.txt", "nested"),
+        ],
+        "main.php",
+        &[],
+    );
+    assert_eq!(out, "YNF!D!");
+}
+
 /// Verifies global constant declarations, references, and `defined()` lowering.
 #[test]
 fn ir_backend_handles_global_constants_and_defined() {

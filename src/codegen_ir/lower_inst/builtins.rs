@@ -25,6 +25,7 @@ mod arrays;
 mod buffers;
 mod ctype;
 mod debug;
+mod io;
 mod json;
 mod math;
 mod pointers;
@@ -123,6 +124,9 @@ pub(super) fn lower_builtin_call(ctx: &mut FunctionContext<'_>, inst: &Instructi
         "gettype" => lower_gettype(ctx, inst),
         "define" => lower_define(ctx, inst),
         "defined" => lower_defined(ctx, inst),
+        "file_exists" => io::lower_file_exists(ctx, inst),
+        "is_file" => io::lower_is_file(ctx, inst),
+        "is_dir" => io::lower_is_dir(ctx, inst),
         "date" => system::lower_date(ctx, inst),
         "microtime" => system::lower_microtime(ctx, inst),
         "mktime" => system::lower_mktime(ctx, inst),
