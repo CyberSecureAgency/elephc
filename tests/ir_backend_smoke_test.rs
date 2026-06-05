@@ -1586,7 +1586,7 @@ if ($box->b) { echo "T"; } else { echo "F"; }
     );
 }
 
-/// Verifies indexed-array object and static-property defaults allocate real Mixed arrays.
+/// Verifies indexed-array property defaults allocate real Mixed arrays and support indexed writes.
 #[test]
 fn ir_backend_handles_array_property_defaults() {
     let object_source = r#"<?php
@@ -1601,13 +1601,20 @@ echo ":";
 echo is_null($box->a[1]) ? "N" : "bad";
 echo ":";
 echo $box->a[2];
-$box->a[] = 2;
+$box->a[0] = 7;
+$box->a[5] = null;
 echo ":";
-echo $box->a[3];
+echo count($box->a);
+echo ":";
+echo $box->a[0];
+echo ":";
+echo is_null($box->a[4]) ? "G" : "bad";
+echo ":";
+echo is_null($box->a[5]) ? "N" : "bad";
 "#;
     assert_eq!(
         compile_and_run_ir_backend("array_object_property_defaults", object_source),
-        "3:1:N:ok:2"
+        "3:1:N:ok:6:7:G:N"
     );
 
     let static_source = r#"<?php
@@ -1621,13 +1628,20 @@ echo ":";
 echo is_null(Box::$a[1]) ? "N" : "bad";
 echo ":";
 echo Box::$a[2];
-Box::$a[] = 2;
+Box::$a[0] = 7;
+Box::$a[5] = null;
 echo ":";
-echo Box::$a[3];
+echo count(Box::$a);
+echo ":";
+echo Box::$a[0];
+echo ":";
+echo is_null(Box::$a[4]) ? "G" : "bad";
+echo ":";
+echo is_null(Box::$a[5]) ? "N" : "bad";
 "#;
     assert_eq!(
         compile_and_run_ir_backend("array_static_property_defaults", static_source),
-        "3:1:N:ok:2"
+        "3:1:N:ok:6:7:G:N"
     );
 }
 

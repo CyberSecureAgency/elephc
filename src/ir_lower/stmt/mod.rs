@@ -877,6 +877,23 @@ fn lower_static_property_array_assign(
     value: &Expr,
     span: Span,
 ) {
+    if let Some(property_ty) =
+        static_property_type(ctx, receiver, property).filter(is_indexed_array_type)
+    {
+        let property_value = load_static_property_as(ctx, receiver, property, property_ty, span);
+        let index = lower_expr(ctx, index);
+        let value = lower_expr(ctx, value);
+        ctx.emit_void(
+            Op::ArraySet,
+            vec![property_value.value, index.value, value.value],
+            None,
+            Op::ArraySet.default_effects(),
+            Some(span),
+        );
+        store_static_property(ctx, receiver, property, property_value.value, span);
+        return;
+    }
+
     let property_value = load_static_property(ctx, receiver, property, span);
     let index = lower_expr(ctx, index);
     let value = lower_expr(ctx, value);
@@ -949,6 +966,37 @@ fn lower_property_array_assign(
     span: Span,
 ) {
     let object = lower_expr(ctx, object);
+    if let Some(property_ty) =
+        object_property_type(ctx, object.value, property).filter(is_indexed_array_type)
+    {
+        let data = ctx.intern_string(property);
+        let property_value = ctx.emit_value(
+            Op::PropGet,
+            vec![object.value],
+            Some(Immediate::Data(data)),
+            property_ty,
+            Op::PropGet.default_effects(),
+            Some(span),
+        );
+        let index = lower_expr(ctx, index);
+        let value = lower_expr(ctx, value);
+        ctx.emit_void(
+            Op::ArraySet,
+            vec![property_value.value, index.value, value.value],
+            None,
+            Op::ArraySet.default_effects(),
+            Some(span),
+        );
+        ctx.emit_void(
+            Op::PropSet,
+            vec![object.value, property_value.value],
+            Some(Immediate::Data(data)),
+            Op::PropSet.default_effects(),
+            Some(span),
+        );
+        return;
+    }
+
     let index = lower_expr(ctx, index);
     let value = lower_expr(ctx, value);
     let data = ctx.intern_string(property);

@@ -1006,25 +1006,33 @@ fn emit_property_store(
     match &slot.php_type {
         PhpType::Str => {
             let (ptr_reg, len_reg) = abi::string_result_regs(ctx.emitter);
+            abi::emit_push_reg(ctx.emitter, base_reg);
             ctx.load_string_value_to_regs(value, ptr_reg, len_reg)?;
+            abi::emit_pop_reg(ctx.emitter, base_reg);
             abi::emit_store_to_address(ctx.emitter, ptr_reg, base_reg, slot.offset);
             abi::emit_store_to_address(ctx.emitter, len_reg, base_reg, slot.offset + 8);
         }
         PhpType::Float => {
             let float_reg = abi::float_result_reg(ctx.emitter);
+            abi::emit_push_reg(ctx.emitter, base_reg);
             ctx.load_value_to_reg(value, float_reg)?;
+            abi::emit_pop_reg(ctx.emitter, base_reg);
             abi::emit_store_to_address(ctx.emitter, float_reg, base_reg, slot.offset);
             abi::emit_store_zero_to_address(ctx.emitter, base_reg, slot.offset + 8);
         }
         PhpType::Bool | PhpType::Int => {
             let int_reg = abi::int_result_reg(ctx.emitter);
+            abi::emit_push_reg(ctx.emitter, base_reg);
             ctx.load_value_to_reg(value, int_reg)?;
+            abi::emit_pop_reg(ctx.emitter, base_reg);
             abi::emit_store_to_address(ctx.emitter, int_reg, base_reg, slot.offset);
             abi::emit_store_zero_to_address(ctx.emitter, base_reg, slot.offset + 8);
         }
         ty if is_pointer_sized_property_type(ty) => {
             let int_reg = abi::int_result_reg(ctx.emitter);
+            abi::emit_push_reg(ctx.emitter, base_reg);
             ctx.load_value_to_reg(value, int_reg)?;
+            abi::emit_pop_reg(ctx.emitter, base_reg);
             abi::emit_store_to_address(ctx.emitter, int_reg, base_reg, slot.offset);
             abi::emit_store_zero_to_address(ctx.emitter, base_reg, slot.offset + 8);
         }
