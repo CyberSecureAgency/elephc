@@ -95,7 +95,7 @@ pub(crate) fn lower_expr(ctx: &mut LoweringContext<'_, '_>, expr: &Expr) -> Lowe
         }
         ExprKind::MethodCall { object, method, args } => lower_method_call(ctx, object, method, args, Op::MethodCall, expr),
         ExprKind::NullsafeMethodCall { object, method, args } => {
-            lower_method_call(ctx, object, method, args, Op::NullsafeMethodCall, expr)
+            lower_nullsafe_method_call(ctx, object, method, args, expr)
         }
         ExprKind::StaticMethodCall { receiver, method, args } => {
             lower_static_method_call(ctx, receiver, method, args, expr)
@@ -1569,6 +1569,109 @@ fn lower_method_call(
     )
 }
 
+/// Lowers a nullsafe method call with lazy argument evaluation for nullable receivers.
+fn lower_nullsafe_method_call(
+    ctx: &mut LoweringContext<'_, '_>,
+    object: &Expr,
+    method: &str,
+    args: &[Expr],
+    expr: &Expr,
+) -> LoweredValue {
+    let object = lower_expr(ctx, object);
+    let object_ty = ctx.builder.value_php_type(object.value);
+    let Some((_, true)) = singular_object_class(&object_ty) else {
+        return lower_method_call_with_receiver(
+            ctx,
+            object,
+            method,
+            args,
+            Op::NullsafeMethodCall,
+            expr,
+        );
+    };
+    let result_type = method_call_result_type(
+        ctx,
+        object.value,
+        method,
+        Op::NullsafeMethodCall,
+        expr,
+    );
+    let temp_name = ctx.declare_hidden_temp(result_type.clone());
+    let null_block = ctx.builder.create_named_block("nullsafe.method.null", Vec::new());
+    let call_block = ctx.builder.create_named_block("nullsafe.method.call", Vec::new());
+    let merge = ctx.builder.create_named_block("nullsafe.method.merge", Vec::new());
+    let is_null = ctx.emit_value(
+        Op::IsNull,
+        vec![object.value],
+        None,
+        PhpType::Bool,
+        Op::IsNull.default_effects(),
+        Some(expr.span),
+    );
+    ctx.builder.terminate(Terminator::CondBr {
+        cond: is_null.value,
+        then_target: null_block,
+        then_args: Vec::new(),
+        else_target: call_block,
+        else_args: Vec::new(),
+    });
+
+    ctx.builder.position_at_end(null_block);
+    let null_value = lower_null(ctx, expr);
+    let null_value = if result_type.codegen_repr() == PhpType::Mixed {
+        ctx.emit_value(
+            Op::MixedBox,
+            vec![null_value.value],
+            None,
+            result_type.clone(),
+            Op::MixedBox.default_effects(),
+            Some(expr.span),
+        )
+    } else {
+        null_value
+    };
+    store_value_into_temp(ctx, &temp_name, result_type.clone(), null_value, expr.span);
+    branch_to(ctx, merge);
+
+    ctx.builder.position_at_end(call_block);
+    let call = lower_method_call_with_receiver(
+        ctx,
+        object,
+        method,
+        args,
+        Op::NullsafeMethodCall,
+        expr,
+    );
+    store_value_into_temp(ctx, &temp_name, result_type.clone(), call, expr.span);
+    branch_to(ctx, merge);
+
+    ctx.builder.position_at_end(merge);
+    ctx.load_local(&temp_name, Some(expr.span))
+}
+
+/// Lowers a method call using an already evaluated receiver value.
+fn lower_method_call_with_receiver(
+    ctx: &mut LoweringContext<'_, '_>,
+    object: LoweredValue,
+    method: &str,
+    args: &[Expr],
+    op: Op,
+    expr: &Expr,
+) -> LoweredValue {
+    let result_type = method_call_result_type(ctx, object.value, method, op, expr);
+    let mut operands = vec![object.value];
+    operands.extend(lower_args(ctx, args));
+    let data = ctx.intern_string(method);
+    ctx.emit_value(
+        op,
+        operands,
+        Some(Immediate::Data(data)),
+        result_type,
+        op.default_effects(),
+        Some(expr.span),
+    )
+}
+
 /// Returns the checked return type for an instance method call when metadata is available.
 fn method_call_result_type(
     ctx: &LoweringContext<'_, '_>,
@@ -1577,7 +1680,7 @@ fn method_call_result_type(
     op: Op,
     expr: &Expr,
 ) -> PhpType {
-    let object_ty = ctx.builder.value_php_type(object).codegen_repr();
+    let object_ty = ctx.builder.value_php_type(object);
     let Some((class_name, nullable)) = singular_object_class(&object_ty) else {
         return fallback_expr_type(expr);
     };

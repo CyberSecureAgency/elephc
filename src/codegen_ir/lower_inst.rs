@@ -131,6 +131,7 @@ pub(super) fn lower_instruction(ctx: &mut FunctionContext<'_>, inst_id: InstId) 
         Op::StoreStaticProperty => static_properties::lower_store_static_property(ctx, &inst),
         Op::Call => lower_direct_call(ctx, &inst),
         Op::MethodCall => lower_method_call(ctx, &inst),
+        Op::NullsafeMethodCall => lower_nullsafe_method_call(ctx, &inst),
         Op::StaticMethodCall => lower_static_method_call(ctx, &inst),
         Op::ExternCall => externs::lower_extern_call(ctx, &inst),
         Op::BuiltinCall => builtins::lower_builtin_call(ctx, &inst),
@@ -226,40 +227,110 @@ fn lower_method_call(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Resul
             object_ty
         )));
     };
+    let target = resolve_method_call_target(ctx, &class_name, &method_name, inst.operands.len())?;
+    let overflow_bytes = materialize_direct_call_args(ctx, &inst.operands)?;
+    let caller_stack_pad_bytes = direct_call_stack_pad_bytes(ctx, overflow_bytes);
+    abi::emit_reserve_temporary_stack(ctx.emitter, caller_stack_pad_bytes);
+    abi::emit_call_label(ctx.emitter, &method_symbol(&target.impl_class, &target.method_key));
+    abi::emit_release_temporary_stack(ctx.emitter, caller_stack_pad_bytes);
+    abi::emit_release_temporary_stack(ctx.emitter, overflow_bytes);
+    store_call_result(ctx, inst, &target.return_ty)
+}
+
+/// Lowers a nullsafe method call by short-circuiting boxed-null receivers.
+fn lower_nullsafe_method_call(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    let object = expect_operand(inst, 0)?;
+    let method_name = method_name_data(ctx, inst)?.to_string();
+    let Some((class_name, nullable)) = objects::nullable_object_receiver_class(ctx, object)? else {
+        return Err(CodegenIrError::unsupported(format!(
+            "{} for receiver PHP type {:?}",
+            inst.op.name(),
+            objects::raw_value_php_type(ctx, object)?
+        )));
+    };
+    if !nullable {
+        return lower_method_call(ctx, inst);
+    }
+    let target = resolve_method_call_target(ctx, &class_name, &method_name, inst.operands.len())?;
+    let null_label = ctx.next_label("nullsafe_method_null");
+    let done_label = ctx.next_label("nullsafe_method_done");
+    let object_reg = abi::symbol_scratch_reg(ctx.emitter);
+    objects::emit_nullable_receiver_object_payload(ctx, object, &null_label, object_reg)?;
+    let receiver_ty = PhpType::Object(class_name);
+    let overflow_bytes =
+        materialize_method_call_args_with_receiver_reg(ctx, object_reg, &receiver_ty, &inst.operands)?;
+    let caller_stack_pad_bytes = direct_call_stack_pad_bytes(ctx, overflow_bytes);
+    abi::emit_reserve_temporary_stack(ctx.emitter, caller_stack_pad_bytes);
+    abi::emit_call_label(ctx.emitter, &method_symbol(&target.impl_class, &target.method_key));
+    abi::emit_release_temporary_stack(ctx.emitter, caller_stack_pad_bytes);
+    abi::emit_release_temporary_stack(ctx.emitter, overflow_bytes);
+    if inst.result_php_type.codegen_repr() == PhpType::Mixed
+        && target.return_ty.codegen_repr() != PhpType::Mixed
+    {
+        emit_box_current_value_as_mixed(ctx.emitter, &target.return_ty.codegen_repr());
+    }
+    abi::emit_jump(ctx.emitter, &done_label);
+    ctx.emitter.label(&null_label);
+    objects::emit_boxed_null(ctx);
+    ctx.emitter.label(&done_label);
+    store_if_result(ctx, inst)
+}
+
+/// Resolved method metadata needed to issue a direct method call.
+struct MethodCallTarget {
+    impl_class: String,
+    method_key: String,
+    return_ty: PhpType,
+}
+
+/// Resolves method implementation class, canonical key, return type, and ABI arity.
+fn resolve_method_call_target(
+    ctx: &FunctionContext<'_>,
+    class_name: &str,
+    method_name: &str,
+    operand_count: usize,
+) -> Result<MethodCallTarget> {
     let normalized = class_name.trim_start_matches('\\');
     let class_info = ctx
         .module
         .class_infos
         .get(normalized)
         .ok_or_else(|| CodegenIrError::unsupported(format!("method call on unknown class {}", normalized)))?;
-    let method_key = php_symbol_key(&method_name);
+    let method_key = php_symbol_key(method_name);
     let callee_sig = class_info
         .methods
         .get(&method_key)
         .ok_or_else(|| CodegenIrError::unsupported(format!("method call to unknown method {}::{}", normalized, method_name)))?;
     let expected_args = callee_sig.params.len() + 1;
-    if inst.operands.len() != expected_args {
+    if operand_count != expected_args {
         return Err(CodegenIrError::unsupported(format!(
             "method call to {}::{} with {} operands for {} ABI params",
             normalized,
             method_name,
-            inst.operands.len(),
+            operand_count,
             expected_args
         )));
     }
     let impl_class = class_info
         .method_impl_classes
         .get(&method_key)
-        .map(String::as_str)
-        .unwrap_or(normalized);
-    let overflow_bytes = materialize_direct_call_args(ctx, &inst.operands)?;
-    let caller_stack_pad_bytes = direct_call_stack_pad_bytes(ctx, overflow_bytes);
-    abi::emit_reserve_temporary_stack(ctx.emitter, caller_stack_pad_bytes);
-    abi::emit_call_label(ctx.emitter, &method_symbol(impl_class, &method_key));
-    abi::emit_release_temporary_stack(ctx.emitter, caller_stack_pad_bytes);
-    abi::emit_release_temporary_stack(ctx.emitter, overflow_bytes);
+        .cloned()
+        .unwrap_or_else(|| normalized.to_string());
+    Ok(MethodCallTarget {
+        impl_class,
+        method_key,
+        return_ty: callee_sig.return_type.clone(),
+    })
+}
+
+/// Stores a call result, materializing PHP null for `void` returns when needed.
+fn store_call_result(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+    return_ty: &PhpType,
+) -> Result<()> {
     if let Some(result) = inst.result {
-        if ctx.value_php_type(result)? == PhpType::Void {
+        if return_ty.codegen_repr() == PhpType::Void || ctx.value_php_type(result)? == PhpType::Void {
             abi::emit_load_int_immediate(
                 ctx.emitter,
                 abi::int_result_reg(ctx.emitter),
@@ -417,6 +488,49 @@ fn materialize_direct_call_args(ctx: &mut FunctionContext<'_>, args: &[ValueId])
         abi::emit_push_result_value(ctx.emitter, ty);
     }
     Ok(abi::materialize_outgoing_args(ctx.emitter, &assignments))
+}
+
+/// Loads call arguments with an already-unboxed receiver as the first ABI argument.
+fn materialize_method_call_args_with_receiver_reg(
+    ctx: &mut FunctionContext<'_>,
+    receiver_reg: &str,
+    receiver_ty: &PhpType,
+    operands: &[ValueId],
+) -> Result<usize> {
+    let mut arg_types = Vec::with_capacity(operands.len());
+    arg_types.push(receiver_ty.clone());
+    arg_types.extend(
+        operands
+            .iter()
+            .skip(1)
+            .map(|value| ctx.value_php_type(*value))
+            .collect::<Result<Vec<_>>>()?,
+    );
+    let assignments =
+        abi::build_outgoing_arg_assignments_for_target(ctx.emitter.target, &arg_types, 0);
+    move_reg_to_int_result(ctx, receiver_reg);
+    abi::emit_push_result_value(ctx.emitter, receiver_ty);
+    for (value, ty) in operands.iter().skip(1).zip(arg_types.iter().skip(1)) {
+        ctx.load_value_to_result(*value)?;
+        abi::emit_push_result_value(ctx.emitter, ty);
+    }
+    Ok(abi::materialize_outgoing_args(ctx.emitter, &assignments))
+}
+
+/// Moves a scratch integer register into the canonical integer result register.
+fn move_reg_to_int_result(ctx: &mut FunctionContext<'_>, source_reg: &str) {
+    let result_reg = abi::int_result_reg(ctx.emitter);
+    if source_reg == result_reg {
+        return;
+    }
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction(&format!("mov {}, {}", result_reg, source_reg)); // move the unboxed receiver pointer into the normal argument staging register
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction(&format!("mov {}, {}", result_reg, source_reg)); // move the unboxed receiver pointer into the normal argument staging register
+        }
+    }
 }
 
 /// Returns the temporary caller-stack pad needed to match incoming stack-arg offsets.

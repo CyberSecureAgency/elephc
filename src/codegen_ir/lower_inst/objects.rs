@@ -497,7 +497,7 @@ fn resolve_property_slot_for_class(
 }
 
 /// Returns the source PHP type for an SSA value before codegen representation erasure.
-fn raw_value_php_type(ctx: &FunctionContext<'_>, value: ValueId) -> Result<PhpType> {
+pub(super) fn raw_value_php_type(ctx: &FunctionContext<'_>, value: ValueId) -> Result<PhpType> {
     ctx.function
         .value(value)
         .map(|metadata| metadata.php_type.clone())
@@ -505,7 +505,7 @@ fn raw_value_php_type(ctx: &FunctionContext<'_>, value: ValueId) -> Result<PhpTy
 }
 
 /// Resolves an object or object|null source type for a nullsafe receiver.
-fn nullable_object_receiver_class(
+pub(super) fn nullable_object_receiver_class(
     ctx: &FunctionContext<'_>,
     object: ValueId,
 ) -> Result<Option<(String, bool)>> {
@@ -536,7 +536,7 @@ fn nullable_object_receiver_class(
 }
 
 /// Unboxes a nullable object receiver and branches when it holds PHP null.
-fn emit_nullable_receiver_object_payload(
+pub(super) fn emit_nullable_receiver_object_payload(
     ctx: &mut FunctionContext<'_>,
     object: ValueId,
     null_label: &str,
@@ -566,7 +566,7 @@ fn emit_nullable_receiver_object_payload(
 }
 
 /// Boxes a PHP null sentinel as a runtime Mixed cell.
-fn emit_boxed_null(ctx: &mut FunctionContext<'_>) {
+pub(super) fn emit_boxed_null(ctx: &mut FunctionContext<'_>) {
     abi::emit_load_int_immediate(ctx.emitter, abi::int_result_reg(ctx.emitter), RUNTIME_NULL_SENTINEL);
     emit_box_current_value_as_mixed(ctx.emitter, &PhpType::Void);
 }

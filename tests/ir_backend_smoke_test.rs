@@ -1195,6 +1195,35 @@ echo maybe_box(true)?->i;
     );
 }
 
+/// Verifies nullsafe method calls skip arguments for null receivers and call normally otherwise.
+#[test]
+fn ir_backend_handles_nullsafe_method_calls() {
+    let source = r#"<?php
+function side(): string {
+    echo "bad";
+    return "side";
+}
+class Box {
+    public function label(string $value): string {
+        return $value;
+    }
+}
+function maybe_box(bool $flag): ?Box {
+    if ($flag) {
+        return new Box();
+    }
+    return null;
+}
+echo maybe_box(false)?->label(side()) ?? "none";
+echo ":";
+echo maybe_box(true)?->label("ok");
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("nullsafe_method_calls", source),
+        "none:ok"
+    );
+}
+
 /// Verifies supported scalar object-property defaults are copied into new instances.
 #[test]
 fn ir_backend_handles_literal_object_property_defaults() {
