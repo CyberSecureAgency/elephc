@@ -20,7 +20,7 @@ use super::super::context::FunctionContext;
 use super::{expect_data, expect_operand, load_value_to_first_int_arg, predicates, store_if_result};
 use crate::codegen_ir::{CodegenIrError, Result};
 
-mod attributes;
+pub(in crate::codegen_ir::lower_inst) mod attributes;
 mod arrays;
 mod buffers;
 mod class_relations;

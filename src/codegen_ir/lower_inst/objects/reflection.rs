@@ -1,0 +1,318 @@
+//! Purpose:
+//! Lowers metadata-aware allocation for builtin Reflection owner objects in the
+//! EIR backend.
+//!
+//! Called from:
+//! - `crate::codegen_ir::lower_inst::objects::lower_object_new()`.
+//!
+//! Key details:
+//! - `ReflectionClass`, `ReflectionMethod`, and `ReflectionProperty`
+//!   constructors are compile-time metadata lookups that populate private
+//!   `__name`/`__attrs` slots instead of running their public empty bodies.
+
+use crate::codegen::abi;
+use crate::codegen::platform::Arch;
+use crate::codegen_ir::{CodegenIrError, Result};
+use crate::ir::{Immediate, Instruction, Op, ValueDef, ValueId};
+use crate::names::php_symbol_key;
+use crate::types::AttrArgValue;
+
+use super::super::super::context::FunctionContext;
+
+/// Compile-time metadata used to populate one Reflection owner object.
+struct ReflectionOwnerMetadata {
+    reflected_name: Option<String>,
+    attr_names: Vec<String>,
+    attr_args: Vec<Option<Vec<AttrArgValue>>>,
+}
+
+/// Returns true for reflection owner classes that need metadata-aware construction.
+pub(super) fn is_reflection_owner_class(class_name: &str) -> bool {
+    matches!(
+        class_name,
+        "ReflectionClass" | "ReflectionMethod" | "ReflectionProperty"
+    )
+}
+
+/// Lowers builtin Reflection owner allocation by populating compile-time metadata slots.
+pub(super) fn lower_reflection_owner_new(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+    class_name: &str,
+) -> Result<()> {
+    let metadata = reflection_owner_metadata(ctx, class_name, inst)?;
+    let (class_id, property_count, uninitialized_marker_offsets) = {
+        let class_info = ctx
+            .module
+            .class_infos
+            .get(class_name)
+            .ok_or_else(|| CodegenIrError::unsupported(format!("unknown class {}", class_name)))?;
+        (
+            class_info.class_id,
+            class_info.properties.len(),
+            super::uninitialized_property_marker_offsets(class_info),
+        )
+    };
+    super::emit_object_allocation(
+        ctx,
+        class_id,
+        property_count,
+        &uninitialized_marker_offsets,
+    )?;
+    if let Some(reflected_name) = metadata.reflected_name.as_deref() {
+        emit_reflection_string_property(ctx, reflected_name, 8, 16);
+    }
+    emit_reflection_attrs_property(
+        ctx,
+        class_name,
+        &metadata.attr_names,
+        &metadata.attr_args,
+    )?;
+    let result = inst
+        .result
+        .ok_or_else(|| CodegenIrError::invalid_module("reflection object_new missing result"))?;
+    ctx.store_result_value(result)
+}
+
+/// Resolves Reflection constructor operands to captured class/member metadata.
+fn reflection_owner_metadata(
+    ctx: &FunctionContext<'_>,
+    class_name: &str,
+    inst: &Instruction,
+) -> Result<ReflectionOwnerMetadata> {
+    match class_name {
+        "ReflectionClass" => reflection_class_metadata(ctx, inst),
+        "ReflectionMethod" => reflection_method_metadata(ctx, inst),
+        "ReflectionProperty" => reflection_property_metadata(ctx, inst),
+        _ => Ok(empty_reflection_metadata()),
+    }
+}
+
+/// Resolves `ReflectionClass(class)` metadata.
+fn reflection_class_metadata(
+    ctx: &FunctionContext<'_>,
+    inst: &Instruction,
+) -> Result<ReflectionOwnerMetadata> {
+    let Some(class_operand) = inst.operands.first().copied() else {
+        return Ok(empty_reflection_metadata());
+    };
+    let reflected_class = const_string_or_class_operand(ctx, class_operand, "ReflectionClass")?;
+    Ok(resolve_reflection_class(ctx, &reflected_class)
+        .map(|(class_name, info)| ReflectionOwnerMetadata {
+            reflected_name: Some(class_name.to_string()),
+            attr_names: info.attribute_names.clone(),
+            attr_args: info.attribute_args.clone(),
+        })
+        .unwrap_or_else(empty_reflection_metadata))
+}
+
+/// Resolves `ReflectionMethod(class, method)` metadata.
+fn reflection_method_metadata(
+    ctx: &FunctionContext<'_>,
+    inst: &Instruction,
+) -> Result<ReflectionOwnerMetadata> {
+    let Some(class_operand) = inst.operands.first().copied() else {
+        return Ok(empty_reflection_metadata());
+    };
+    let Some(method_operand) = inst.operands.get(1).copied() else {
+        return Ok(empty_reflection_metadata());
+    };
+    let reflected_class = const_string_or_class_operand(ctx, class_operand, "ReflectionMethod")?;
+    let method_name = const_required_string_operand(ctx, method_operand, "ReflectionMethod")?;
+    let method_key = php_symbol_key(&method_name);
+    Ok(resolve_reflection_class(ctx, &reflected_class)
+        .and_then(|(_, info)| {
+            Some(ReflectionOwnerMetadata {
+                reflected_name: None,
+                attr_names: info.method_attribute_names.get(&method_key)?.clone(),
+                attr_args: info.method_attribute_args.get(&method_key)?.clone(),
+            })
+        })
+        .unwrap_or_else(empty_reflection_metadata))
+}
+
+/// Resolves `ReflectionProperty(class, property)` metadata.
+fn reflection_property_metadata(
+    ctx: &FunctionContext<'_>,
+    inst: &Instruction,
+) -> Result<ReflectionOwnerMetadata> {
+    let Some(class_operand) = inst.operands.first().copied() else {
+        return Ok(empty_reflection_metadata());
+    };
+    let Some(property_operand) = inst.operands.get(1).copied() else {
+        return Ok(empty_reflection_metadata());
+    };
+    let reflected_class = const_string_or_class_operand(ctx, class_operand, "ReflectionProperty")?;
+    let property_name = const_required_string_operand(ctx, property_operand, "ReflectionProperty")?;
+    Ok(resolve_reflection_class(ctx, &reflected_class)
+        .and_then(|(_, info)| {
+            Some(ReflectionOwnerMetadata {
+                reflected_name: None,
+                attr_names: info.property_attribute_names.get(&property_name)?.clone(),
+                attr_args: info.property_attribute_args.get(&property_name)?.clone(),
+            })
+        })
+        .unwrap_or_else(empty_reflection_metadata))
+}
+
+/// Looks up class metadata by PHP-style case-insensitive name.
+fn resolve_reflection_class<'a>(
+    ctx: &'a FunctionContext<'_>,
+    class_name: &str,
+) -> Option<(&'a str, &'a crate::types::ClassInfo)> {
+    let class_key = php_symbol_key(class_name.trim_start_matches('\\'));
+    ctx.module
+        .class_infos
+        .iter()
+        .find(|(candidate, _)| php_symbol_key(candidate.trim_start_matches('\\')) == class_key)
+        .map(|(name, info)| (name.as_str(), info))
+}
+
+/// Returns empty Reflection metadata for unsupported dynamic constructor operands.
+fn empty_reflection_metadata() -> ReflectionOwnerMetadata {
+    ReflectionOwnerMetadata {
+        reflected_name: None,
+        attr_names: Vec::new(),
+        attr_args: Vec::new(),
+    }
+}
+
+/// Extracts a constant string or class-name operand from an EIR value.
+fn const_string_or_class_operand(
+    ctx: &FunctionContext<'_>,
+    value: ValueId,
+    owner: &str,
+) -> Result<String> {
+    const_data_operand(ctx, value, owner, true)
+}
+
+/// Extracts a constant string operand from an EIR value.
+fn const_required_string_operand(
+    ctx: &FunctionContext<'_>,
+    value: ValueId,
+    owner: &str,
+) -> Result<String> {
+    const_data_operand(ctx, value, owner, false)
+}
+
+/// Reads a `ConstStr` or optional `ConstClassName` value from the module data pool.
+fn const_data_operand(
+    ctx: &FunctionContext<'_>,
+    value: ValueId,
+    owner: &str,
+    allow_class_name: bool,
+) -> Result<String> {
+    let value_ref = ctx
+        .function
+        .value(value)
+        .ok_or_else(|| CodegenIrError::missing_entry("value", value.as_raw()))?;
+    let ValueDef::Instruction { inst, .. } = value_ref.def else {
+        return Err(CodegenIrError::unsupported(format!(
+            "{} constructor with non-literal reflection argument",
+            owner
+        )));
+    };
+    let inst_ref = ctx
+        .function
+        .instruction(inst)
+        .ok_or_else(|| CodegenIrError::missing_entry("instruction", inst.as_raw()))?;
+    let Some(Immediate::Data(data)) = inst_ref.immediate else {
+        return Err(CodegenIrError::invalid_module(format!(
+            "{} reflection literal missing data id",
+            owner
+        )));
+    };
+    match inst_ref.op {
+        Op::ConstStr => ctx
+            .module
+            .data
+            .strings
+            .get(data.as_raw() as usize)
+            .cloned()
+            .ok_or_else(|| CodegenIrError::missing_entry("data string", data.as_raw())),
+        Op::ConstClassName if allow_class_name => ctx
+            .module
+            .data
+            .class_names
+            .get(data.as_raw() as usize)
+            .cloned()
+            .ok_or_else(|| CodegenIrError::missing_entry("class data", data.as_raw())),
+        _ => Err(CodegenIrError::unsupported(format!(
+            "{} constructor with non-literal reflection argument",
+            owner
+        ))),
+    }
+}
+
+/// Writes a heap-persisted string into the current Reflection object result slot.
+fn emit_reflection_string_property(
+    ctx: &mut FunctionContext<'_>,
+    value: &str,
+    low_offset: usize,
+    high_offset: usize,
+) {
+    let (label, len) = ctx.data.add_string(value.as_bytes());
+    let object_reg = abi::symbol_scratch_reg(ctx.emitter);
+    let result_reg = abi::int_result_reg(ctx.emitter);
+    abi::emit_push_reg(ctx.emitter, result_reg);
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            abi::emit_symbol_address(ctx.emitter, "x1", &label);
+            abi::emit_load_int_immediate(ctx.emitter, "x2", len as i64);
+            abi::emit_call_label(ctx.emitter, "__rt_str_persist");
+            abi::emit_pop_reg(ctx.emitter, object_reg);
+            abi::emit_store_to_address(ctx.emitter, "x1", object_reg, low_offset);
+            abi::emit_store_to_address(ctx.emitter, "x2", object_reg, high_offset);
+        }
+        Arch::X86_64 => {
+            abi::emit_symbol_address(ctx.emitter, "rax", &label);
+            abi::emit_load_int_immediate(ctx.emitter, "rdx", len as i64);
+            abi::emit_call_label(ctx.emitter, "__rt_str_persist");
+            abi::emit_pop_reg(ctx.emitter, object_reg);
+            abi::emit_store_to_address(ctx.emitter, "rax", object_reg, low_offset);
+            abi::emit_store_to_address(ctx.emitter, "rdx", object_reg, high_offset);
+        }
+    }
+    abi::emit_push_reg(ctx.emitter, object_reg);
+    abi::emit_pop_reg(ctx.emitter, result_reg);
+}
+
+/// Replaces the Reflection object's default `__attrs` array with populated metadata.
+fn emit_reflection_attrs_property(
+    ctx: &mut FunctionContext<'_>,
+    class_name: &str,
+    attr_names: &[String],
+    attr_args: &[Option<Vec<AttrArgValue>>],
+) -> Result<()> {
+    let (attrs_low_offset, attrs_high_offset) = reflection_attrs_offsets(class_name);
+    let result_reg = abi::int_result_reg(ctx.emitter);
+    let object_reg = abi::symbol_scratch_reg(ctx.emitter);
+    abi::emit_push_reg(ctx.emitter, result_reg);
+    abi::emit_load_temporary_stack_slot(ctx.emitter, object_reg, 0);
+    abi::emit_load_from_address(ctx.emitter, result_reg, object_reg, attrs_low_offset);
+    abi::emit_call_label(ctx.emitter, "__rt_decref_array");
+    super::super::builtins::attributes::emit_reflection_attribute_array(
+        ctx, attr_names, attr_args,
+    )?;
+    abi::emit_pop_reg(ctx.emitter, object_reg);
+    abi::emit_store_to_address(ctx.emitter, result_reg, object_reg, attrs_low_offset);
+    abi::emit_load_int_immediate(ctx.emitter, abi::secondary_scratch_reg(ctx.emitter), 4);
+    abi::emit_store_to_address(
+        ctx.emitter,
+        abi::secondary_scratch_reg(ctx.emitter),
+        object_reg,
+        attrs_high_offset,
+    );
+    abi::emit_push_reg(ctx.emitter, object_reg);
+    abi::emit_pop_reg(ctx.emitter, result_reg);
+    Ok(())
+}
+
+/// Returns the low/high object offsets for the private `__attrs` slot.
+fn reflection_attrs_offsets(class_name: &str) -> (usize, usize) {
+    if class_name == "ReflectionClass" {
+        (24, 32)
+    } else {
+        (8, 16)
+    }
+}

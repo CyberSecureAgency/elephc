@@ -28,7 +28,7 @@ pub(crate) fn lower(
     populate_metadata(&mut module, program, check_result);
     lower_function_declarations(program, &mut module, check_result, &constants);
     lower_class_like_methods(program, &mut module, check_result, &constants);
-    lower_builtin_reflection_attribute_methods(&mut module, check_result, &constants);
+    lower_builtin_reflection_methods(&mut module, check_result, &constants);
     function::lower_main(program, &mut module, check_result, &constants);
     validate_module(&module)?;
     Ok(module)
@@ -286,13 +286,30 @@ fn lower_methods_for_class_like(
     }
 }
 
-/// Lowers the synthetic `ReflectionAttribute` methods injected by the checker.
-fn lower_builtin_reflection_attribute_methods(
+/// Lowers the synthetic reflection methods injected by the checker.
+fn lower_builtin_reflection_methods(
     module: &mut Module,
     check_result: &CheckResult,
     constants: &std::collections::HashMap<String, (ExprKind, PhpType)>,
 ) {
-    let Some(class_info) = check_result.classes.get("ReflectionAttribute") else {
+    for class_name in [
+        "ReflectionAttribute",
+        "ReflectionClass",
+        "ReflectionMethod",
+        "ReflectionProperty",
+    ] {
+        lower_builtin_reflection_class_methods(class_name, module, check_result, constants);
+    }
+}
+
+/// Lowers all concrete synthetic methods for one builtin reflection class.
+fn lower_builtin_reflection_class_methods(
+    class_name: &str,
+    module: &mut Module,
+    check_result: &CheckResult,
+    constants: &std::collections::HashMap<String, (ExprKind, PhpType)>,
+) {
+    let Some(class_info) = check_result.classes.get(class_name) else {
         return;
     };
     for method in &class_info.method_decls {
@@ -300,7 +317,9 @@ fn lower_builtin_reflection_attribute_methods(
             continue;
         }
         let generated_body;
-        let body = if crate::names::php_symbol_key(&method.name) == "newinstance" {
+        let body = if class_name == "ReflectionAttribute"
+            && crate::names::php_symbol_key(&method.name) == "newinstance"
+        {
             generated_body =
                 crate::codegen::reflection::build_attribute_new_instance_body(&check_result.classes);
             generated_body.as_slice()
@@ -308,7 +327,7 @@ fn lower_builtin_reflection_attribute_methods(
             &method.body
         };
         function::lower_class_method(
-            "ReflectionAttribute",
+            class_name,
             &method.name,
             method.is_static,
             &method.params,

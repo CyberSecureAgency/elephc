@@ -3721,6 +3721,43 @@ echo ($instance instanceof EirRoute) ? "instance" : "bad";
     );
 }
 
+/// Verifies Reflection owner constructors populate captured attribute metadata through EIR.
+#[test]
+fn ir_backend_handles_reflection_owner_get_attributes() {
+    let source = r#"<?php
+class EirRoute {
+    public function __construct(string $name) {
+        echo "ctor:" . $name . ":";
+    }
+}
+#[EirRoute("class")]
+class EirReflectedController {
+    #[EirRoute("method")]
+    public function handle(): void {}
+
+    #[EirRoute("property")]
+    public int $id = 0;
+}
+$class = new ReflectionClass(EirReflectedController::class);
+$classAttrs = $class->getAttributes();
+$methodAttrs = (new ReflectionMethod(EirReflectedController::class, "handle"))->getAttributes();
+$propertyAttrs = (new ReflectionProperty(EirReflectedController::class, "id"))->getAttributes();
+echo $class->getName();
+echo ":";
+echo $classAttrs[0]->getName();
+echo ":";
+echo $classAttrs[0]->getArguments()[0];
+echo ":";
+$classAttrs[0]->newInstance();
+$methodAttrs[0]->newInstance();
+$propertyAttrs[0]->newInstance();
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("reflection_owner_get_attributes", source),
+        "EirReflectedController:EirRoute:class:ctor:class:ctor:method:ctor:property:"
+    );
+}
+
 /// Verifies declared class/interface introspection arrays lower through the EIR backend.
 #[test]
 fn ir_backend_handles_declared_name_builtins() {

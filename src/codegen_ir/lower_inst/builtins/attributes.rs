@@ -113,7 +113,7 @@ fn class_info<'a>(ctx: &'a FunctionContext<'_>, class_name: &str) -> Option<&'a 
 }
 
 /// Allocates and fills an indexed array of populated `ReflectionAttribute` objects.
-fn emit_reflection_attribute_array(
+pub(in crate::codegen_ir::lower_inst) fn emit_reflection_attribute_array(
     ctx: &mut FunctionContext<'_>,
     attr_names: &[String],
     attr_args: &[Option<Vec<AttrArgValue>>],

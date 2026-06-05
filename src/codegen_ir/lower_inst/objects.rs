@@ -32,6 +32,8 @@ use crate::codegen_ir::literal_defaults::{
 };
 use crate::codegen_ir::{CodegenIrError, Result};
 
+mod reflection;
+
 const X86_64_HEAP_MAGIC_HI32: u64 = 0x454C5048;
 const RUNTIME_NULL_SENTINEL: i64 = 0x7fff_ffff_ffff_fffe;
 
@@ -53,6 +55,9 @@ struct PropertyDefault {
 /// Lowers fixed-class object allocation and optional constructor invocation.
 pub(super) fn lower_object_new(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     let class_name = class_name_immediate(ctx, inst)?.to_string();
+    if reflection::is_reflection_owner_class(&class_name) {
+        return reflection::lower_reflection_owner_new(ctx, inst, &class_name);
+    }
     let constructor_key = php_symbol_key("__construct");
     let (
         class_id,
