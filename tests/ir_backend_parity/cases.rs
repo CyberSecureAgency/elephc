@@ -752,6 +752,26 @@ echo $customPath->getPathname();
     );
 }
 
+/// Verifies `setInfoClass()` stored factory overrides match the legacy backend.
+#[test]
+fn parity_spl_file_info_stored_info_class() {
+    assert_backend_parity(
+        "spl_file_info_stored_info_class",
+        r#"<?php
+class EirInfo extends SplFileInfo {}
+
+$info = new SplFileInfo(".");
+$info->setInfoClass(EirInfo::class);
+$file = $info->getFileInfo();
+$path = $info->getPathInfo();
+echo ($file instanceof EirInfo) ? "F" : "x";
+echo ":";
+echo ($path instanceof EirInfo) ? "P" : "x";
+"#,
+        &[],
+    );
+}
+
 /// Compiles and runs a PHP snippet through both backends and compares stdout.
 fn assert_backend_parity(name: &str, source: &str, args: &[&str]) {
     let legacy = compile_and_run_backend(name, source, args, Backend::Legacy);

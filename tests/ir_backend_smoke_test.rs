@@ -2370,6 +2370,26 @@ echo $customPath->getPathname();
     );
 }
 
+/// Verifies `setInfoClass()` changes the stored `SplFileInfo` factory class.
+#[test]
+fn ir_backend_handles_spl_file_info_stored_info_class() {
+    let source = r#"<?php
+class EirInfo extends SplFileInfo {}
+
+$info = new SplFileInfo(".");
+$info->setInfoClass(EirInfo::class);
+$file = $info->getFileInfo();
+$path = $info->getPathInfo();
+echo ($file instanceof EirInfo) ? "F" : "x";
+echo ":";
+echo ($path instanceof EirInfo) ? "P" : "x";
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("spl_file_info_stored_info_class", source),
+        "F:P"
+    );
+}
+
 /// Verifies typed declared properties still fatal when read before initialization.
 #[test]
 fn ir_backend_fatals_on_uninitialized_typed_object_property() {
