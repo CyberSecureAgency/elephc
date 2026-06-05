@@ -191,6 +191,16 @@ echo (EirDirectFcc::hit(...))(3);
         &[],
     );
     assert_backend_parity(
+        "direct_string_callable_expr_call",
+        r#"<?php
+function eir_direct_string_add(int $value): int {
+    return $value + 1;
+}
+echo ("eir_direct_string_add")(4);
+"#,
+        &[],
+    );
+    assert_backend_parity(
         "stored_first_class_callable_variable_call",
         r#"<?php
 function eir_stored_fcc_add(int $value): int {

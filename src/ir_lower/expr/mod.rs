@@ -2416,6 +2416,11 @@ fn lower_expr_call(ctx: &mut LoweringContext<'_, '_>, callee: &Expr, args: &[Exp
     if let Some(value) = lower_first_class_callable_expr_call(ctx, callee, args, expr) {
         return value;
     }
+    if let Some(callback) = static_call_user_func_callback(ctx, callee) {
+        if let Some(value) = lower_static_callable_call(ctx, callback, args, expr) {
+            return value;
+        }
+    }
     if let ExprKind::ArrayLiteral(items) = &callee.kind {
         if let Some(StaticCallableBinding::StaticMethod { receiver, method }) =
             static_array_callable_target(ctx, items)
