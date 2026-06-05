@@ -1187,6 +1187,31 @@ free($buf);
     assert_eq!(compile_and_run_ir_backend("pointer_casts", source), "77");
 }
 
+/// Verifies `ptr_sizeof()` materializes checked low-level type sizes.
+#[test]
+fn ir_backend_handles_ptr_sizeof() {
+    let source = r#"<?php
+class BoxedPoint {
+    public $x;
+    public $y;
+}
+extern class NativePoint {
+    public int $x;
+    public int $y;
+}
+echo ptr_sizeof("int");
+echo ":";
+echo ptr_sizeof("string");
+echo ":";
+echo ptr_sizeof("ptr");
+echo ":";
+echo ptr_sizeof("BoxedPoint");
+echo ":";
+echo ptr_sizeof("NativePoint");
+"#;
+    assert_eq!(compile_and_run_ir_backend("ptr_sizeof", source), "8:16:8:40:16");
+}
+
 /// Verifies scalar buffer allocation preserves the declared logical length.
 #[test]
 fn ir_backend_handles_buffer_new_and_len() {

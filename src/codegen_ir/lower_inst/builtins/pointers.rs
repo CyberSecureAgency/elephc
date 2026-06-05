@@ -14,7 +14,7 @@
 use crate::codegen::abi;
 use crate::codegen::platform::Arch;
 use crate::codegen_ir::{CodegenIrError, Result};
-use crate::ir::Instruction;
+use crate::ir::{Immediate, Instruction, Op, ValueDef, ValueId};
 use crate::types::PhpType;
 
 use super::super::super::context::FunctionContext;
@@ -43,6 +43,17 @@ pub(super) fn lower_ptr_is_null(ctx: &mut FunctionContext<'_>, inst: &Instructio
             ctx.emitter.instruction("movzx rax, al");                           // widen the null test result to the integer result register
         }
     }
+    store_if_result(ctx, inst)
+}
+
+/// Lowers `ptr_sizeof("type")` by materializing the checked static byte size.
+pub(super) fn lower_ptr_sizeof(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    ensure_arg_count(inst, "ptr_sizeof", 1)?;
+    let type_name = const_string_operand(ctx, expect_operand(inst, 0)?)?;
+    let size = pointer_target_size(ctx, &type_name).ok_or_else(|| {
+        CodegenIrError::unsupported(format!("ptr_sizeof type {:?}", type_name))
+    })?;
+    abi::emit_load_int_immediate(ctx.emitter, abi::int_result_reg(ctx.emitter), size as i64);
     store_if_result(ctx, inst)
 }
 
@@ -150,6 +161,70 @@ pub(super) fn lower_ptr_write_string(ctx: &mut FunctionContext<'_>, inst: &Instr
     }
     abi::emit_call_label(ctx.emitter, "__rt_ptr_write_string");
     store_if_result(ctx, inst)
+}
+
+/// Returns the literal string payload for a `ConstStr` operand.
+fn const_string_operand(ctx: &FunctionContext<'_>, value: ValueId) -> Result<String> {
+    let value_ref = ctx
+        .function
+        .value(value)
+        .ok_or_else(|| CodegenIrError::missing_entry("value", value.as_raw()))?;
+    let ValueDef::Instruction { inst, .. } = value_ref.def else {
+        return Err(CodegenIrError::unsupported(
+            "ptr_sizeof with non-literal type name",
+        ));
+    };
+    let inst_ref = ctx
+        .function
+        .instruction(inst)
+        .ok_or_else(|| CodegenIrError::missing_entry("instruction", inst.as_raw()))?;
+    if inst_ref.op != Op::ConstStr {
+        return Err(CodegenIrError::unsupported(
+            "ptr_sizeof with non-literal type name",
+        ));
+    }
+    let Some(Immediate::Data(data)) = inst_ref.immediate else {
+        return Err(CodegenIrError::invalid_module(
+            "ptr_sizeof string literal has no data id",
+        ));
+    };
+    ctx.module
+        .data
+        .strings
+        .get(data.as_raw() as usize)
+        .cloned()
+        .ok_or_else(|| CodegenIrError::missing_entry("data string", data.as_raw()))
+}
+
+/// Computes the byte size for a checked pointer target type name.
+fn pointer_target_size(ctx: &FunctionContext<'_>, type_name: &str) -> Option<usize> {
+    match type_name {
+        "int" | "integer" => Some(8),
+        "float" | "double" | "real" => Some(8),
+        "bool" | "boolean" => Some(8),
+        "string" => Some(16),
+        "ptr" | "pointer" => Some(8),
+        class_name => ctx
+            .module
+            .class_infos
+            .get(class_name)
+            .map(|info| {
+                let dynamic_slot = if info.allow_dynamic_properties { 8 } else { 0 };
+                8 + info.properties.len() * 16 + dynamic_slot
+            })
+            .or_else(|| {
+                ctx.module
+                    .extern_class_infos
+                    .get(class_name)
+                    .map(|info| info.total_size)
+            })
+            .or_else(|| {
+                ctx.module
+                    .packed_class_infos
+                    .get(class_name)
+                    .map(|info| info.total_size)
+            }),
+    }
 }
 
 /// Native integer width for raw pointer memory reads and writes.

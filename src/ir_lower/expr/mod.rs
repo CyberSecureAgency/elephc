@@ -1438,7 +1438,9 @@ fn pointer_builtin_return_type(
     match php_symbol_key(name.trim_start_matches('\\')).as_str() {
         "ptr_null" => Some(PhpType::Pointer(None)),
         "ptr_is_null" => Some(PhpType::Bool),
-        "ptr_get" | "ptr_read8" | "ptr_read16" | "ptr_read32" => Some(PhpType::Int),
+        "ptr_get" | "ptr_read8" | "ptr_read16" | "ptr_read32" | "ptr_sizeof" => {
+            Some(PhpType::Int)
+        }
         "ptr_read_string" => Some(PhpType::Str),
         "ptr_set" | "ptr_write8" | "ptr_write16" | "ptr_write32" => Some(PhpType::Void),
         "ptr_write_string" => Some(PhpType::Int),
