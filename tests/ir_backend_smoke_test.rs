@@ -702,6 +702,37 @@ line2:The quick |brown fox:4142:AB"#,
     }
 }
 
+/// Verifies JSON validation builtins update and expose runtime JSON error state.
+#[test]
+fn ir_backend_handles_json_validation_builtins() {
+    let source = r#"<?php
+function json_arg() { echo "J"; return "[1]"; }
+function depth_arg() { echo "D"; return 512; }
+function flags_arg() { echo "F"; return 0; }
+echo json_validate(json_arg(), depth_arg(), flags_arg()) ? "ok" : "no";
+echo ":";
+echo json_validate("[1]") ? "T" : "F";
+echo ":";
+json_validate("garbage");
+echo json_last_error();
+echo ":";
+echo json_last_error_msg();
+echo ":";
+json_validate("[1]", 16, JSON_INVALID_UTF8_IGNORE);
+echo json_last_error();
+echo ":";
+echo Json_Validate("[1]") ? "C" : "N";
+echo ":";
+echo strlen(\Json_Last_Error_Msg()) > 0 ? "M" : "E";
+echo ":";
+echo json_validate(123) ? "I" : "B";
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("json_validation_builtins", source),
+        "JDFok:T:4:Syntax error:0:C:M:I"
+    );
+}
+
 /// Verifies direct-call materialization boxes concrete values passed to `mixed` parameters.
 #[test]
 fn ir_backend_handles_gettype_for_mixed_parameters() {

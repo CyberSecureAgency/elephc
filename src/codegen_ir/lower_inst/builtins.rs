@@ -25,6 +25,7 @@ mod arrays;
 mod buffers;
 mod ctype;
 mod debug;
+mod json;
 mod math;
 mod pointers;
 mod strings;
@@ -121,6 +122,9 @@ pub(super) fn lower_builtin_call(ctx: &mut FunctionContext<'_>, inst: &Instructi
         "gettype" => lower_gettype(ctx, inst),
         "define" => lower_define(ctx, inst),
         "defined" => lower_defined(ctx, inst),
+        "json_last_error" => json::lower_json_last_error(ctx, inst),
+        "json_last_error_msg" => json::lower_json_last_error_msg(ctx, inst),
+        "json_validate" => json::lower_json_validate(ctx, inst),
         "function_exists" => lower_function_exists(ctx, inst),
         "is_callable" => lower_is_callable(ctx, inst),
         "print_r" => debug::lower_print_r(ctx, inst),
