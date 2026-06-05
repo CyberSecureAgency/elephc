@@ -9,7 +9,9 @@
 //! - Runtime append helpers may grow arrays and return a new heap pointer, so
 //!   the backend writes that pointer back to the source SSA slot and local slot.
 
-use crate::codegen::abi;
+use crate::codegen::{
+    abi, emit_box_current_value_as_mixed, emit_release_pushed_refcounted_temp_after_array_push,
+};
 use crate::codegen::platform::Arch;
 use crate::ir::{Immediate, Instruction, LocalSlotId, Op, ValueDef, ValueId};
 use crate::types::PhpType;
@@ -81,11 +83,13 @@ pub(super) fn lower_array_set(ctx: &mut FunctionContext<'_>, inst: &Instruction)
 pub(super) fn lower_array_push(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     let array = expect_operand(inst, 0)?;
     let value = expect_operand(inst, 1)?;
-    require_indexed_array(ctx.value_php_type(array)?, inst)?;
+    let array_ty = ctx.value_php_type(array)?;
+    require_indexed_array(array_ty.clone(), inst)?;
+    let elem_ty = indexed_array_element_type(&array_ty, inst)?;
     let source_local = source_load_local_slot(ctx, array)?;
     match ctx.emitter.target.arch {
-        Arch::AArch64 => lower_array_push_aarch64(ctx, array, value)?,
-        Arch::X86_64 => lower_array_push_x86_64(ctx, array, value)?,
+        Arch::AArch64 => lower_array_push_aarch64(ctx, array, value, &elem_ty)?,
+        Arch::X86_64 => lower_array_push_x86_64(ctx, array, value, &elem_ty)?,
     }
     ctx.store_result_value(array)?;
     if let Some(slot) = source_local {
@@ -338,8 +342,13 @@ fn lower_array_push_aarch64(
     ctx: &mut FunctionContext<'_>,
     array: ValueId,
     value: ValueId,
+    elem_ty: &PhpType,
 ) -> Result<()> {
-    match ctx.value_php_type(value)? {
+    let value_ty = ctx.value_php_type(value)?;
+    if array_push_value_needs_mixed_box(elem_ty, &value_ty) {
+        return lower_mixed_array_push_aarch64(ctx, array, value, &value_ty);
+    }
+    match value_ty {
         PhpType::Int | PhpType::Bool | PhpType::Callable => {
             ctx.load_value_to_reg(value, "x1")?;
             ctx.load_value_to_reg(array, "x9")?;
@@ -381,9 +390,14 @@ fn lower_array_push_x86_64(
     ctx: &mut FunctionContext<'_>,
     array: ValueId,
     value: ValueId,
+    elem_ty: &PhpType,
 ) -> Result<()> {
+    let value_ty = ctx.value_php_type(value)?;
+    if array_push_value_needs_mixed_box(elem_ty, &value_ty) {
+        return lower_mixed_array_push_x86_64(ctx, array, value, &value_ty);
+    }
     ctx.load_value_to_reg(array, "r11")?;
-    match ctx.value_php_type(value)? {
+    match value_ty {
         PhpType::Int | PhpType::Bool | PhpType::Callable => {
             ctx.load_value_to_reg(value, "rsi")?;
             ctx.emitter.instruction("mov rdi, r11");                            // pass the indexed-array receiver to the append helper
@@ -415,6 +429,48 @@ fn lower_array_push_x86_64(
             )));
         }
     }
+    Ok(())
+}
+
+/// Returns true when an append into a Mixed array must box a concrete value first.
+fn array_push_value_needs_mixed_box(elem_ty: &PhpType, value_ty: &PhpType) -> bool {
+    matches!(elem_ty.codegen_repr(), PhpType::Mixed)
+        && !matches!(value_ty.codegen_repr(), PhpType::Mixed | PhpType::Union(_))
+}
+
+/// Boxes a concrete AArch64 value and appends the owned Mixed cell to a Mixed array.
+fn lower_mixed_array_push_aarch64(
+    ctx: &mut FunctionContext<'_>,
+    array: ValueId,
+    value: ValueId,
+    value_ty: &PhpType,
+) -> Result<()> {
+    ctx.load_value_to_result(value)?;
+    emit_box_current_value_as_mixed(ctx.emitter, &value_ty.codegen_repr());
+    abi::emit_push_reg(ctx.emitter, "x0");
+    ctx.load_value_to_reg(array, "x9")?;
+    ctx.emitter.instruction("mov x1, x0");                                      // pass the boxed Mixed payload to the refcounted append helper
+    ctx.emitter.instruction("mov x0, x9");                                      // pass the indexed-array receiver to the refcounted append helper
+    abi::emit_call_label(ctx.emitter, "__rt_array_push_refcounted");
+    emit_release_pushed_refcounted_temp_after_array_push(ctx.emitter, &PhpType::Mixed);
+    Ok(())
+}
+
+/// Boxes a concrete x86_64 value and appends the owned Mixed cell to a Mixed array.
+fn lower_mixed_array_push_x86_64(
+    ctx: &mut FunctionContext<'_>,
+    array: ValueId,
+    value: ValueId,
+    value_ty: &PhpType,
+) -> Result<()> {
+    ctx.load_value_to_result(value)?;
+    emit_box_current_value_as_mixed(ctx.emitter, &value_ty.codegen_repr());
+    abi::emit_push_reg(ctx.emitter, "rax");
+    ctx.load_value_to_reg(array, "r11")?;
+    ctx.emitter.instruction("mov rsi, rax");                                    // pass the boxed Mixed payload to the refcounted append helper
+    ctx.emitter.instruction("mov rdi, r11");                                    // pass the indexed-array receiver to the refcounted append helper
+    abi::emit_call_label(ctx.emitter, "__rt_array_push_refcounted");
+    emit_release_pushed_refcounted_temp_after_array_push(ctx.emitter, &PhpType::Mixed);
     Ok(())
 }
 

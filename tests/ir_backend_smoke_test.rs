@@ -2090,6 +2090,24 @@ fn ir_backend_handles_basic_indexed_arrays() {
     );
 }
 
+/// Verifies appends into Mixed indexed arrays box concrete values before storage.
+#[test]
+fn ir_backend_handles_mixed_indexed_array_push() {
+    let source = r#"<?php
+$a = array_fill(0, 1, null);
+$a[] = 2;
+echo count($a);
+echo ":";
+echo is_null($a[0]) ? "N" : "bad";
+echo ":";
+echo $a[1];
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("mixed_indexed_array_push", source),
+        "2:N:2"
+    );
+}
+
 /// Verifies PHP indexed-array `+` preserves left keys and appends missing right suffixes.
 #[test]
 fn ir_backend_handles_indexed_array_union() {
