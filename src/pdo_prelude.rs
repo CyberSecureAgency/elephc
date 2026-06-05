@@ -24,7 +24,9 @@
 //!   plain method-local `$stmt`. The `$_` prefix also exempts them from the
 //!   unused-variable warning.
 
-use crate::parser::ast::{Program, Stmt};
+use crate::parser::ast::Program;
+
+mod detect;
 
 /// The elephc-PHP source implementing PDO over the driver-agnostic `elephc_pdo`
 /// bridge (SQLite + PostgreSQL + MySQL/MariaDB).
@@ -198,20 +200,39 @@ class PDO {
     }
 
     public function errorCode(): string {
+        // The driver's native result code as a string. This is the native code,
+        // not a 5-character SQLSTATE (see errorInfo()): no supported driver's
+        // client library exposes SQLSTATEs here.
         return (string) elephc_pdo_errcode($this->conn);
     }
 
     public function errorInfo(): array {
+        // PHP's errorInfo() is [SQLSTATE, driver-specific code, message]. The
+        // client libraries used here do not surface real 5-character SQLSTATEs
+        // (SQLite and MySQL expose native integer codes; the PostgreSQL client
+        // surfaces only a message, reported as a generic code), so the first
+        // element mirrors the native driver code as a string, not a true
+        // SQLSTATE.
         $_code = elephc_pdo_errcode($this->conn);
         return [(string) $_code, $_code, elephc_pdo_errmsg($this->conn)];
     }
 
     public function quote(string $string, int $type = 2): string {
-        // SQLite string literal quoting: wrap in single quotes and double any
-        // embedded single quote. The type argument is accepted for PHP signature
-        // compatibility; only string quoting is supported (as in the SQLite driver).
+        // SQLite-style string-literal quoting for every driver: wrap in single
+        // quotes and double any embedded single quote. The $type argument is
+        // accepted for PHP signature compatibility but ignored. This is not
+        // driver-aware (e.g. it does not apply MySQL backslash escaping), so
+        // prefer prepared statements — the recommended path for all drivers.
         $_unused = $type;
         return "'" . str_replace("'", "''", $string) . "'";
+    }
+
+    public function __destruct() {
+        // Release the bridge connection when the PDO object is collected. The
+        // bridge finalizes the connection's remaining statements before closing,
+        // and treats an already-closed handle as a no-op, so the order relative
+        // to any surviving PDOStatement destructors does not matter.
+        elephc_pdo_close($this->conn);
     }
 }
 
@@ -223,6 +244,7 @@ class PDOStatement implements Iterator {
     private array $boundValues;
     private array $boundTypes;
     private int $fetchColumn;
+    private int $rowCount;
     private $iterRow;
     private int $iterKey;
 
@@ -234,6 +256,7 @@ class PDOStatement implements Iterator {
         $this->boundValues = [];
         $this->boundTypes = [];
         $this->fetchColumn = 0;
+        $this->rowCount = 0;
         // Initialized to null (not false) so the inferred property type widens to
         // Mixed when rewind()/next() assign a fetched row; a bool initializer would
         // pin the type to bool and coerce stored rows away. rewind() always runs
@@ -322,6 +345,13 @@ class PDOStatement implements Iterator {
         if (elephc_pdo_column_count($this->stmt) == 0) {
             elephc_pdo_step($this->stmt);
         }
+        // Snapshot the affected-row count now, so rowCount() reports this
+        // statement's result even if another statement runs on the same
+        // connection afterward. The bridge's changes() is connection-wide, so
+        // reading it lazily in rowCount() would otherwise return a later
+        // statement's count (e.g. PostgreSQL/MySQL overwrite changes() with a
+        // SELECT's row count).
+        $this->rowCount = elephc_pdo_changes($this->conn);
         return true;
     }
 
@@ -406,7 +436,11 @@ class PDOStatement implements Iterator {
     }
 
     public function rowCount(): int {
-        return elephc_pdo_changes($this->conn);
+        // The affected-row count captured at execute() time. Reliable for DML
+        // (INSERT/UPDATE/DELETE); for SELECT it is driver-dependent, exactly as
+        // in PHP. Snapshotting keeps it stable against later statements sharing
+        // the connection.
+        return $this->rowCount;
     }
 
     public function columnCount(): int {
@@ -439,19 +473,16 @@ class PDOStatement implements Iterator {
         $this->iterRow = $this->fetch($this->fetchMode);
         $this->iterKey = $this->iterKey + 1;
     }
+
+    public function __destruct() {
+        // Finalize the prepared statement when the PDOStatement is collected. The
+        // bridge ignores an unknown/already-finalized handle, so this is safe even
+        // when the owning PDO connection was closed first (its close() already
+        // finalized this statement).
+        elephc_pdo_finalize($this->stmt);
+    }
 }
 "#;
-
-/// Returns whether the resolved program references PDO (so the prelude must be
-/// injected). Sound by construction: any real `PDO`/`PDOStatement`/`PDOException`
-/// reference appears in a statement's `Debug` form. A false positive from a
-/// `"PDO"` string literal only over-links harmlessly. Short-circuits on the first
-/// matching top-level statement.
-pub fn program_uses_pdo(program: &[Stmt]) -> bool {
-    program
-        .iter()
-        .any(|stmt| format!("{:?}", stmt).contains("PDO"))
-}
 
 /// Prepends the PDO prelude statements to `program` when it references PDO, so the
 /// classes and `elephc_pdo` externs compile through the normal pipeline only
@@ -461,7 +492,7 @@ pub fn program_uses_pdo(program: &[Stmt]) -> bool {
 /// tokenize/parse failure is a compiler bug and panics rather than silently
 /// degrading.
 pub fn inject_if_used(program: Program) -> Program {
-    if !program_uses_pdo(&program) {
+    if !detect::program_uses_pdo(&program) {
         return program;
     }
     let tokens = crate::lexer::tokenize(PDO_PRELUDE_SRC).expect("PDO prelude must tokenize");

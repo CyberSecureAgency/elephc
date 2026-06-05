@@ -201,8 +201,10 @@ try {
 }
 ```
 
-`PDO::errorCode()` returns the SQLite result code as a string and
-`PDO::errorInfo()` returns `[code, code, message]`.
+`PDO::errorCode()` returns the driver's native result code as a string and
+`PDO::errorInfo()` returns `[code, code, message]`. Note that the first element
+is the native driver code, not a real 5-character `SQLSTATE` — the client
+libraries used here do not expose `SQLSTATE`s (see Limitations).
 
 The error mode is configurable through `ATTR_ERRMODE`:
 
@@ -230,10 +232,16 @@ The mode can also be seeded from the constructor's options array:
 
 - **PDO**: `__construct`, `exec`, `query`, `prepare`, `quote`, `lastInsertId`,
   `beginTransaction`, `commit`, `rollBack`, `errorCode`, `errorInfo`,
-  `getAttribute`, `setAttribute`.
+  `getAttribute`, `setAttribute`, `__destruct`.
 - **PDOStatement**: `execute`, `bindValue`, `bindParam`, `setFetchMode`, `fetch`,
-  `fetchAll`, `fetchColumn`, `rowCount`, `columnCount`; Traversable, so a statement
-  can be walked with `foreach`.
+  `fetchAll`, `fetchColumn`, `rowCount`, `columnCount`, `__destruct`; Traversable,
+  so a statement can be walked with `foreach`.
+
+Connections and prepared statements release their underlying bridge resources
+automatically through `__destruct`: a `PDO` closes its connection (finalizing any
+remaining statements) and a `PDOStatement` finalizes itself when the object is
+released — at the end of its scope, when its variable is reassigned or `unset()`,
+or at program exit. You do not need to close them explicitly.
 - **Fetch modes**: `FETCH_ASSOC`, `FETCH_NUM`, `FETCH_BOTH`, `FETCH_OBJ`,
   `FETCH_COLUMN` (a single column as a scalar; the column index is the second
   argument to `setFetchMode(PDO::FETCH_COLUMN, $col)`).
@@ -247,9 +255,13 @@ The mode can also be seeded from the constructor's options array:
 - **SQLite, PostgreSQL, and MySQL / MariaDB.** Other PDO drivers (Oracle, SQL
   Server, …) are not implemented; the bridge is structured to add more behind the
   same prelude.
-- **`PDO::quote()`** applies standard SQL single-quote escaping; for MySQL it does
-  not escape backslashes, so prefer prepared statements (the recommended path for
-  every driver).
+- **`PDO::quote()`** applies SQLite-style single-quote escaping for every driver;
+  it is not driver-aware (for MySQL it does not escape backslashes), so prefer
+  prepared statements (the recommended path for every driver).
+- **`errorCode()` / `errorInfo()`** report the driver's *native* error code, not a
+  real 5-character `SQLSTATE`: SQLite and MySQL expose native integer codes, and
+  the PostgreSQL client surfaces only a message (reported as a generic code).
+  `errorInfo()[0]` therefore mirrors the native code rather than a true `SQLSTATE`.
 - **`bindParam()`** binds the current value, not a deferred by-reference read.
 - **`FETCH_CLASS` / `FETCH_INTO`** are not implemented.
 - **`FETCH_OBJ`** materializes the stdClass via a JSON round-trip, so a result

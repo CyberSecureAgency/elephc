@@ -494,3 +494,24 @@ echo ":" . (($db->exec("BAD") === false) ? "false" : "other");
     );
     assert_eq!(out, "0:false");
 }
+
+/// `rowCount()` is snapshotted per statement at execute() time: a later DML on
+/// the same connection (which moves the connection-wide change counter) must not
+/// change an earlier statement's reported count. Here the UPDATE affects 3 rows
+/// and the later DELETE affects 0; each statement keeps its own count.
+#[test]
+fn test_pdo_row_count_snapshot_is_per_statement() {
+    let out = compile_and_run(
+        r#"<?php
+$db = new PDO("sqlite::memory:");
+$db->exec("CREATE TABLE t (id INTEGER)");
+$db->exec("INSERT INTO t (id) VALUES (1), (2), (3)");
+$upd = $db->prepare("UPDATE t SET id = id + 10");
+$upd->execute();
+$del = $db->prepare("DELETE FROM t WHERE id < 0");
+$del->execute();
+echo $upd->rowCount() . ":" . $del->rowCount();
+"#,
+    );
+    assert_eq!(out, "3:0");
+}
