@@ -173,14 +173,7 @@ pub(super) fn lower_array_filter(ctx: &mut FunctionContext<'_>, inst: &Instructi
     let mode = inst.operands.get(2).copied();
     let elem_ty = array_filter_source_element_type(ctx.value_php_type(array)?)?;
     require_array_filter_result_type(&elem_ty, &inst.result_php_type.codegen_repr())?;
-    let callback_name = const_string_operand(ctx, callback, "array_filter callback")?;
-    let callee = ctx.callable_function_by_name(&callback_name).ok_or_else(|| {
-        CodegenIrError::unsupported(format!(
-            "array_filter callback '{}' is not a user function",
-            callback_name
-        ))
-    })?;
-    let callback_label = function_symbol(&callee.name);
+    let callback_label = static_user_function_callback_label(ctx, callback, "array_filter callback")?;
     let runtime_label = if array_filter_uses_refcounted_runtime(&elem_ty) {
         "__rt_array_filter_refcounted"
     } else {
@@ -569,15 +562,7 @@ fn lower_user_sort_static_callback(
     let array = expect_operand(inst, 0)?;
     let callback = expect_operand(inst, 1)?;
     require_indexed_int_sort_array(ctx.value_php_type(array)?, name)?;
-    let callback_name = const_string_operand(ctx, callback, "user-sort callback")?;
-    let callee = ctx.callable_function_by_name(&callback_name).ok_or_else(|| {
-        CodegenIrError::unsupported(format!(
-            "{} callback '{}' is not a user function",
-            name,
-            callback_name
-        ))
-    })?;
-    let callback_label = function_symbol(&callee.name);
+    let callback_label = static_user_function_callback_label(ctx, callback, &format!("{} callback", name))?;
     let source_local = source_load_local_slot(ctx, array)?;
     ensure_unique_sort_source(ctx, array)?;
     if let Some(slot) = source_local {
@@ -738,8 +723,25 @@ fn load_array_filter_mode(
     Ok(())
 }
 
-/// Returns a string literal operand attached to a `ConstStr` instruction.
-fn const_string_operand(
+/// Returns the function label for a static string or first-class user-function callback.
+fn static_user_function_callback_label(
+    ctx: &FunctionContext<'_>,
+    value: ValueId,
+    owner: &str,
+) -> Result<String> {
+    let callback_name = static_callback_name_operand(ctx, value, owner)?;
+    let callee = ctx.callable_function_by_name(&callback_name).ok_or_else(|| {
+        CodegenIrError::unsupported(format!(
+            "{} '{}' is not a user function",
+            owner,
+            callback_name
+        ))
+    })?;
+    Ok(function_symbol(&callee.name))
+}
+
+/// Returns a static callback name from a string literal or `foo(...)` descriptor instruction.
+fn static_callback_name_operand(
     ctx: &FunctionContext<'_>,
     value: ValueId,
     owner: &str,
@@ -749,16 +751,16 @@ fn const_string_operand(
     };
     let ValueDef::Instruction { inst, .. } = value_ref.def else {
         return Err(CodegenIrError::unsupported(format!(
-            "{} with non-literal string operand",
+            "{} with non-static callback operand",
             owner
         )));
     };
     let Some(inst_ref) = ctx.function.instruction(inst) else {
         return Err(CodegenIrError::missing_entry("instruction", inst.as_raw()));
     };
-    if inst_ref.op != Op::ConstStr {
+    if !matches!(inst_ref.op, Op::ConstStr | Op::FirstClassCallableNew) {
         return Err(CodegenIrError::unsupported(format!(
-            "{} with non-literal string operand",
+            "{} with non-static callback operand",
             owner
         )));
     }

@@ -410,6 +410,9 @@ echo "|";
 $mode = ARRAY_FILTER_USE_KEY;
 $dynamic = array_filter([10, 20, 30], "eir_filter_key", $mode);
 echo count($dynamic); echo ":"; echo $dynamic[0];
+echo "|";
+$fcc = array_filter([1, 2, 3], eir_filter_odd(...));
+echo count($fcc); echo ":"; echo $fcc[0]; echo ":"; echo $fcc[1];
 "#,
         &[],
     );
@@ -503,6 +506,18 @@ function eir_sort_asc(int $left, int $right): int {
 $uasorted = [30, 10, 20];
 uasort($uasorted, "eir_sort_asc");
 foreach ($uasorted as $value) { echo $value . ":"; }
+"#,
+        &[],
+    );
+    assert_backend_parity(
+        "static_usort_first_class_callback",
+        r#"<?php
+function eir_sort_asc(int $left, int $right): int {
+    return $left - $right;
+}
+$usorted = [3, 1, 2];
+usort($usorted, eir_sort_asc(...));
+foreach ($usorted as $value) { echo $value; }
 "#,
         &[],
     );
