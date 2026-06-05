@@ -620,3 +620,33 @@ echo count($arr) . "|" . $arr[2];
     );
     assert_eq!(out, "3|3.7");
 }
+
+/// Verifies `array_fill` with a non-zero start index produces keys `start..start+count-1`
+/// (a keyed array) instead of ignoring the start, and that a string fill value works (the
+/// scalar indexed path could not store a pointer+length). Covers int, string, float, and a
+/// negative start. Before the fix non-zero start gave keys 0,1,.. and string values crashed.
+#[test]
+fn test_array_fill_nonzero_start_and_string_value() {
+    let out = compile_and_run(
+        r#"<?php
+foreach (array_fill(5, 3, "x") as $k => $v) { echo "$k=$v,"; }
+echo "|";
+foreach (array_fill(0, 2, "s") as $k => $v) { echo "$k=$v,"; }
+echo "|";
+foreach (array_fill(-2, 2, 7) as $k => $v) { echo "$k=$v,"; }
+echo "|";
+foreach (array_fill(3, 2, 1.5) as $k => $v) { echo "$k=$v,"; }
+"#,
+    );
+    assert_eq!(out, "5=x,6=x,7=x,|0=s,1=s,|-2=7,-1=7,|3=1.5,4=1.5,");
+}
+
+/// Verifies `array_fill(0, n, scalar)` still builds a plain 0-based indexed array (the fast,
+/// unchanged path) and that its values and count are correct.
+#[test]
+fn test_array_fill_zero_start_scalar_stays_indexed() {
+    let out = compile_and_run(
+        r#"<?php $a = array_fill(0, 3, 9); echo count($a), ":", $a[0], $a[1], $a[2];"#,
+    );
+    assert_eq!(out, "3:999");
+}

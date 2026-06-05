@@ -218,6 +218,7 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter, features: RuntimeFeatures) {
     arrays::emit_array_unique_refcounted(emitter);
     arrays::emit_array_rand(emitter);
     arrays::emit_array_fill(emitter);
+    arrays::emit_array_fill_assoc(emitter);
     arrays::emit_array_fill_refcounted(emitter);
     arrays::emit_array_pad(emitter);
     arrays::emit_array_pad_refcounted(emitter);

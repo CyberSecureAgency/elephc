@@ -9,7 +9,7 @@
 //! - Signatures, callable aliases, optimizer effects, and codegen builtin dispatch must remain in lockstep.
 
 use crate::errors::CompileError;
-use crate::parser::ast::Expr;
+use crate::parser::ast::{Expr, ExprKind};
 use crate::types::{array_key_type_from_value_type, PhpType, TypeEnv};
 
 use super::super::Checker;
@@ -390,7 +390,17 @@ pub(super) fn check_builtin(
             checker.infer_type(&args[0], env)?;
             checker.infer_type(&args[1], env)?;
             let val_ty = checker.infer_type(&args[2], env)?;
-            Ok(Some(PhpType::Array(Box::new(val_ty))))
+            // A non-literal-zero start (keys start..start+count-1) or a string value builds a
+            // keyed Mixed-valued hash; both must match the codegen emitter and infer_local_type.
+            let start_is_literal_zero = matches!(args[0].kind, ExprKind::IntLiteral(0));
+            if !start_is_literal_zero || matches!(val_ty.codegen_repr(), PhpType::Str) {
+                Ok(Some(PhpType::AssocArray {
+                    key: Box::new(PhpType::Int),
+                    value: Box::new(PhpType::Mixed),
+                }))
+            } else {
+                Ok(Some(PhpType::Array(Box::new(val_ty))))
+            }
         }
         "array_slice" | "array_splice" => {
             if args.len() < 2 || args.len() > 3 {

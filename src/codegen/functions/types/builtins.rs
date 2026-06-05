@@ -123,6 +123,25 @@ pub(super) fn infer_function_call_type(
             .first()
             .map(|arg| infer_local_type(arg, sig, ctx))
             .unwrap_or_else(|| PhpType::Array(Box::new(PhpType::Int))),
+        "array_fill" => {
+            // Mirrors the emitter dispatch: a non-literal-zero start, or a string value,
+            // produces a keyed Mixed-valued hash (`__rt_array_fill_assoc`); otherwise a
+            // 0-based indexed array of the value type.
+            let value_ty = args
+                .get(2)
+                .map(|arg| infer_local_type(arg, sig, ctx))
+                .unwrap_or(PhpType::Int);
+            let start_is_literal_zero =
+                matches!(args.first().map(|arg| &arg.kind), Some(ExprKind::IntLiteral(0)));
+            if !start_is_literal_zero || matches!(value_ty.codegen_repr(), PhpType::Str) {
+                PhpType::AssocArray {
+                    key: Box::new(PhpType::Int),
+                    value: Box::new(PhpType::Mixed),
+                }
+            } else {
+                PhpType::Array(Box::new(value_ty))
+            }
+        }
         "explode"
         | "str_split"
         | "file"
@@ -134,7 +153,6 @@ pub(super) fn infer_function_call_type(
         | "array_unique"
         | "array_chunk"
         | "array_pad"
-        | "array_fill"
         | "array_diff"
         | "array_intersect"
         | "array_splice"

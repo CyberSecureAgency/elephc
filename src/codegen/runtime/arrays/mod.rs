@@ -22,6 +22,7 @@ mod array_diff_refcounted;
 mod array_diff_key;
 mod array_ensure_unique;
 mod array_fill;
+mod array_fill_assoc;
 mod array_fill_keys;
 mod array_fill_keys_refcounted;
 mod array_fill_refcounted;
@@ -161,6 +162,7 @@ pub use array_diff_key::emit_array_diff_key;
 pub use array_ensure_unique::emit_array_ensure_unique;
 /// Emit array uniqueness enforcement helper.
 pub use array_fill::emit_array_fill;
+pub use array_fill_assoc::emit_array_fill_assoc;
 /// Emit array fill helper.
 pub use array_fill_keys::emit_array_fill_keys;
 /// Emit array fill with keys helper.
