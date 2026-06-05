@@ -2307,6 +2307,35 @@ echo ($info instanceof Stringable) ? "I" : "x";
     );
 }
 
+/// Verifies `SplFileInfo` path and stat helpers lower through their builtin method bodies.
+#[test]
+fn ir_backend_handles_spl_file_info_path_stat_helpers() {
+    let source = r#"<?php
+mkdir("docs");
+file_put_contents("docs/a.txt", "one\ntwo\n");
+
+$info = new SplFileInfo("docs/a.txt");
+echo $info->getFilename();
+echo "|";
+echo $info->getExtension();
+echo "|";
+echo $info->getBasename(".txt");
+echo "|";
+echo $info->getPath();
+echo "|";
+echo $info->isFile() ? "file" : "no";
+echo "|";
+echo $info->getSize();
+
+unlink("docs/a.txt");
+rmdir("docs");
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("spl_file_info_path_stat_helpers", source),
+        "a.txt|txt|a|docs|file|8"
+    );
+}
+
 /// Verifies dynamic `SplFileInfo` factories lower class-string construction through EIR.
 #[test]
 fn ir_backend_handles_spl_file_info_dynamic_factories() {

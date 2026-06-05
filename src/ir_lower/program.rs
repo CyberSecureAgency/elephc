@@ -439,7 +439,17 @@ fn is_supported_builtin_spl_method(class_name: &str, method_key: &str) -> bool {
     class_name == "SplFileInfo"
         && matches!(
             method_key,
-            "__construct" | "__tostring" | "getpathname" | "getfileinfo" | "getpathinfo"
+            "__construct"
+                | "__tostring"
+                | "getpath"
+                | "getfilename"
+                | "getextension"
+                | "getbasename"
+                | "getpathname"
+                | "getsize"
+                | "isfile"
+                | "getfileinfo"
+                | "getpathinfo"
         )
 }
 

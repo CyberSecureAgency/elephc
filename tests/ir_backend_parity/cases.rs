@@ -689,6 +689,35 @@ echo ($info instanceof Stringable) ? "I" : "x";
     );
 }
 
+/// Verifies `SplFileInfo` path/stat helper methods match the legacy backend.
+#[test]
+fn parity_spl_file_info_path_stat_helpers() {
+    assert_backend_parity(
+        "spl_file_info_path_stat_helpers",
+        r#"<?php
+mkdir("docs");
+file_put_contents("docs/a.txt", "one\ntwo\n");
+
+$info = new SplFileInfo("docs/a.txt");
+echo $info->getFilename();
+echo "|";
+echo $info->getExtension();
+echo "|";
+echo $info->getBasename(".txt");
+echo "|";
+echo $info->getPath();
+echo "|";
+echo $info->isFile() ? "file" : "no";
+echo "|";
+echo $info->getSize();
+
+unlink("docs/a.txt");
+rmdir("docs");
+"#,
+        &[],
+    );
+}
+
 /// Verifies dynamic `SplFileInfo` factories match the legacy backend.
 #[test]
 fn parity_spl_file_info_dynamic_factories() {
