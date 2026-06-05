@@ -738,6 +738,25 @@ echo "U";
     assert_eq!(compile_and_run_ir_backend("sleep_builtins", source), "SU");
 }
 
+/// Verifies `exit()` and `die()` terminate execution before later statements.
+#[test]
+fn ir_backend_handles_exit_and_die() {
+    assert_eq!(
+        compile_and_run_ir_backend(
+            "exit_stops_execution",
+            r#"<?php echo "before"; exit(0); echo "after";"#
+        ),
+        "before"
+    );
+    assert_eq!(
+        compile_and_run_ir_backend(
+            "die_stops_execution",
+            r#"<?php echo "before"; die(); echo "after";"#
+        ),
+        "before"
+    );
+}
+
 /// Verifies environment and platform string helpers lower through the EIR backend.
 #[test]
 fn ir_backend_handles_environment_platform_builtins() {

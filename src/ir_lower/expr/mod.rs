@@ -1704,7 +1704,7 @@ fn builtin_return_type_override(name: &str) -> Option<PhpType> {
         | "getcwd" | "getenv" | "php_uname" | "readline" | "shell_exec" | "sys_get_temp_dir"
         | "fread" | "system" | "spl_autoload_extensions" | "tempnam" => Some(PhpType::Str),
         "microtime" => Some(PhpType::Float),
-        "clearstatcache" | "passthru" => Some(PhpType::Void),
+        "clearstatcache" | "exit" | "die" | "passthru" => Some(PhpType::Void),
         "fclose" | "feof" | "rewind" => Some(PhpType::Bool),
         "printf" | "array_rand" | "array_unshift" | "file_put_contents" | "filemtime"
         | "filesize" | "fpassthru" | "fputcsv" | "fseek" | "ftell" | "fwrite"

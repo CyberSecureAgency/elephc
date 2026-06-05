@@ -10,7 +10,7 @@
 //!   helpers rather than duplicating libc/syscall behavior in the EIR backend.
 
 use crate::codegen::abi;
-use crate::codegen::platform::Arch;
+use crate::codegen::platform::{Arch, Platform};
 use crate::codegen_ir::{CodegenIrError, Result};
 use crate::ir::{Instruction, ValueId};
 use crate::types::PhpType;
@@ -119,6 +119,18 @@ pub(super) fn lower_usleep(
     inst: &Instruction,
 ) -> Result<()> {
     lower_unary_blocking_c_call(ctx, inst, "usleep", "usleep microseconds")
+}
+
+/// Lowers `exit(status?)` and `die(status?)` by terminating the current process.
+pub(super) fn lower_exit(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    ensure_arg_count_between(inst, "exit", 0, 1)?;
+    let Some(status) = inst.operands.first().copied() else {
+        abi::emit_exit(ctx.emitter, 0);
+        return Ok(());
+    };
+    require_integer_like(ctx.load_value_to_result(status)?, "exit status")?;
+    emit_dynamic_exit(ctx);
+    Ok(())
 }
 
 /// Lowers `getenv(name)` through the target-aware environment lookup helper.
@@ -237,6 +249,23 @@ fn emit_empty_string_result(ctx: &mut FunctionContext<'_>) {
     let (ptr_reg, len_reg) = abi::string_result_regs(ctx.emitter);
     abi::emit_load_int_immediate(ctx.emitter, ptr_reg, 0);
     abi::emit_load_int_immediate(ctx.emitter, len_reg, 0);
+}
+
+/// Emits a process-exit sequence using the already-loaded integer result register.
+fn emit_dynamic_exit(ctx: &mut FunctionContext<'_>) {
+    match (ctx.emitter.target.platform, ctx.emitter.target.arch) {
+        (Platform::MacOS, Arch::AArch64) | (Platform::Linux, Arch::AArch64) => {
+            ctx.emitter.syscall(1);
+        }
+        (Platform::Linux, Arch::X86_64) => {
+            ctx.emitter.instruction("mov rdi, rax");                            // move the computed exit code into the SysV first-argument register
+            ctx.emitter.instruction("mov eax, 60");                             // Linux x86_64 syscall 60 = exit
+            ctx.emitter.instruction("syscall");                                 // terminate the process through the Linux x86_64 syscall ABI
+        }
+        (Platform::MacOS, Arch::X86_64) => {
+            panic!("exit() is not implemented yet for target macos-x86_64");
+        }
+    }
 }
 
 /// Emits the AArch64 persistent-copy path for `putenv()`.
