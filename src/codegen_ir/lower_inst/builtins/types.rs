@@ -76,6 +76,18 @@ pub(super) fn lower_is_a_relation(
     store_if_result(ctx, inst)
 }
 
+/// Lowers `get_declared_classes/interfaces/traits()` using the shared declaration registry.
+pub(super) fn lower_get_declared_names(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+    name: &str,
+) -> Result<()> {
+    super::ensure_arg_count(inst, name, 0)?;
+    let names = declared_names(ctx, name)?;
+    emit_string_array(ctx, &names)?;
+    store_if_result(ctx, inst)
+}
+
 /// Emits a static no-argument class-name result for the current method scope.
 fn emit_no_arg_class_name_lookup(ctx: &mut FunctionContext<'_>, name: &str) {
     let class_name = current_method_class(ctx).unwrap_or_default();
@@ -242,6 +254,91 @@ fn class_interfaces_contain(
             .iter()
             .any(|name| php_symbol_key(name.trim_start_matches('\\')) == target_key)
     })
+}
+
+/// Returns declaration names from legacy shared order metadata, falling back to EIR tables.
+fn declared_names(ctx: &FunctionContext<'_>, name: &str) -> Result<Vec<String>> {
+    let mut names = match name {
+        "get_declared_classes" => crate::codegen::declared_class_names(),
+        "get_declared_interfaces" => crate::codegen::declared_interface_names(),
+        "get_declared_traits" => crate::codegen::declared_trait_names(),
+        _ => {
+            return Err(CodegenIrError::unsupported(format!(
+                "declared-name builtin {}",
+                name
+            )));
+        }
+    };
+    if names.is_empty() {
+        names = match name {
+            "get_declared_classes" => ctx
+                .module
+                .class_table
+                .names
+                .iter()
+                .filter(|name| !super::is_internal_synthetic_class_name(name))
+                .cloned()
+                .collect(),
+            "get_declared_interfaces" => ctx.module.interface_table.names.clone(),
+            "get_declared_traits" => Vec::new(),
+            _ => unreachable!(),
+        };
+    }
+    Ok(names)
+}
+
+/// Allocates an indexed string array and appends every declaration name.
+fn emit_string_array(ctx: &mut FunctionContext<'_>, names: &[String]) -> Result<()> {
+    let capacity = names.len().max(1);
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            abi::emit_load_int_immediate(ctx.emitter, "x0", capacity as i64);
+            abi::emit_load_int_immediate(ctx.emitter, "x1", 16);
+        }
+        Arch::X86_64 => {
+            abi::emit_load_int_immediate(ctx.emitter, "rdi", capacity as i64);
+            abi::emit_load_int_immediate(ctx.emitter, "rsi", 16);
+        }
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_array_new");
+    if names.is_empty() {
+        return Ok(());
+    }
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => emit_string_array_fill_aarch64(ctx, names),
+        Arch::X86_64 => emit_string_array_fill_x86_64(ctx, names),
+    }
+    Ok(())
+}
+
+/// Appends declaration names to the current result array on AArch64.
+fn emit_string_array_fill_aarch64(ctx: &mut FunctionContext<'_>, names: &[String]) {
+    ctx.emitter.instruction("str x0, [sp, #-16]!");                             // park the declared-name array while appending names
+    for name in names {
+        let (label, len) = ctx.data.add_string(name.as_bytes());
+        ctx.emitter.instruction("ldr x0, [sp]");                                // reload the declared-name array for this append
+        abi::emit_symbol_address(ctx.emitter, "x1", &label);
+        abi::emit_load_int_immediate(ctx.emitter, "x2", len as i64);
+        abi::emit_call_label(ctx.emitter, "__rt_array_push_str");
+        ctx.emitter.instruction("str x0, [sp]");                                // preserve the possibly-grown declared-name array
+    }
+    ctx.emitter.instruction("ldr x0, [sp], #16");                               // restore the final declared-name array as the result
+}
+
+/// Appends declaration names to the current result array on x86_64.
+fn emit_string_array_fill_x86_64(ctx: &mut FunctionContext<'_>, names: &[String]) {
+    ctx.emitter.instruction("push rax");                                        // park the declared-name array while appending names
+    ctx.emitter.instruction("sub rsp, 8");                                      // keep stack alignment stable across append helper calls
+    for name in names {
+        let (label, len) = ctx.data.add_string(name.as_bytes());
+        ctx.emitter.instruction("mov rdi, QWORD PTR [rsp + 8]");                // reload the declared-name array for this append
+        abi::emit_symbol_address(ctx.emitter, "rsi", &label);
+        abi::emit_load_int_immediate(ctx.emitter, "rdx", len as i64);
+        abi::emit_call_label(ctx.emitter, "__rt_array_push_str");
+        ctx.emitter.instruction("mov QWORD PTR [rsp + 8], rax");                // preserve the possibly-grown declared-name array
+    }
+    ctx.emitter.instruction("add rsp, 8");                                      // drop the temporary alignment slot
+    ctx.emitter.instruction("pop rax");                                         // restore the final declared-name array as the result
 }
 
 /// Looks up a class by PHP-style case-insensitive name.

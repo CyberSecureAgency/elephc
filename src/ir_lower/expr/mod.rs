@@ -1715,7 +1715,8 @@ fn builtin_return_type_override(name: &str) -> Option<PhpType> {
             Some(PhpType::Mixed)
         }
         "spl_autoload_functions" => Some(PhpType::Array(Box::new(PhpType::Int))),
-        "explode" | "fgetcsv" | "file" | "glob" | "scandir" | "spl_classes" | "str_split" | "sscanf" => {
+        "explode" | "fgetcsv" | "file" | "get_declared_classes" | "get_declared_interfaces"
+        | "glob" | "scandir" | "spl_classes" | "str_split" | "sscanf" => {
             Some(PhpType::Array(Box::new(PhpType::Str)))
         }
         _ => None,

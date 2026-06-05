@@ -71,6 +71,21 @@ fn set_declared_name_order(classes: Vec<String>, interfaces: Vec<String>, traits
     DECLARED_TRAIT_NAMES.with(|names| *names.borrow_mut() = traits);
 }
 
+/// Prepares declaration-order registries shared by legacy and EIR introspection builtins.
+pub fn prepare_declared_name_order(
+    program: &Program,
+    classes: &HashMap<String, ClassInfo>,
+    interfaces: &HashMap<String, InterfaceInfo>,
+) {
+    let declared_trait_order = collect_declared_trait_names(program);
+    DECLARED_TRAIT_USES.with(|uses| *uses.borrow_mut() = collect_declared_trait_uses(program));
+    set_declared_name_order(
+        collect_declared_class_names(program, classes),
+        collect_declared_interface_names(program, interfaces),
+        declared_trait_order,
+    );
+}
+
 /// Returns the ordered list of class names declared in the program,
 /// including internal classes prepended by the compiler.
 pub(crate) fn declared_class_names() -> Vec<String> {
@@ -418,7 +433,11 @@ fn collect_program_declared_names<T>(
                     continue;
                 };
                 let key = crate::names::php_symbol_key(name);
-                if known.contains_key(name) && seen.insert(key) {
+                let is_known = known.contains_key(name)
+                    || known.keys().any(|candidate| {
+                        crate::names::php_symbol_key(candidate.trim_start_matches('\\')) == key
+                    });
+                if is_known && seen.insert(key) {
                     out.push(name.to_string());
                 }
             }

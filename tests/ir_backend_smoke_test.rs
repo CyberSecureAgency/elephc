@@ -3491,6 +3491,48 @@ echo is_subclass_of($dog, "EirAnimal") ? "S" : "n";
     );
 }
 
+/// Verifies declared class/interface introspection arrays lower through the EIR backend.
+#[test]
+fn ir_backend_handles_declared_name_builtins() {
+    let class_source = r#"<?php
+class EirDeclaredZebra {}
+class EirDeclaredAlpha {}
+$classes = get_declared_classes();
+$zebra = -1;
+$alpha = -1;
+$idx = 0;
+foreach ($classes as $name) {
+    if ($name === "EirDeclaredZebra") $zebra = $idx;
+    if ($name === "EirDeclaredAlpha") $alpha = $idx;
+    $idx = $idx + 1;
+}
+echo ($zebra >= 0 && $alpha >= 0 && $zebra < $alpha) ? "classes" : "bad";
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("declared_class_names", class_source),
+        "classes"
+    );
+
+    let interface_source = r#"<?php
+interface EirDeclaredZebraContract {}
+interface EirDeclaredAlphaContract {}
+$interfaces = get_declared_interfaces();
+$zebra_interface = -1;
+$alpha_interface = -1;
+$iface_idx = 0;
+foreach ($interfaces as $interface_name) {
+    if ($interface_name === "EirDeclaredZebraContract") $zebra_interface = $iface_idx;
+    if ($interface_name === "EirDeclaredAlphaContract") $alpha_interface = $iface_idx;
+    $iface_idx = $iface_idx + 1;
+}
+echo ($zebra_interface >= 0 && $alpha_interface >= 0 && $zebra_interface < $alpha_interface) ? "interfaces" : "bad";
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("declared_interface_names", interface_source),
+        "interfaces"
+    );
+}
+
 /// Verifies SPL object identity helpers lower through the EIR backend.
 #[test]
 fn ir_backend_handles_spl_object_identity_builtins() {

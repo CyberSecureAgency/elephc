@@ -146,6 +146,11 @@ pub(crate) fn compile(config: CliConfig) {
     for warning in &check_result.warnings {
         errors::report_warning(warning);
     }
+    codegen::prepare_declared_name_order(
+        &ast,
+        &check_result.classes,
+        &check_result.interfaces,
+    );
 
     if !target.supports_current_backend() {
         eprintln!(
