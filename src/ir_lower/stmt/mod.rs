@@ -791,13 +791,13 @@ fn lower_static_var(ctx: &mut LoweringContext<'_, '_>, name: &str, init: &Expr, 
     let value = lower_expr(ctx, init);
     let slot = ctx.declare_local_with_kind(name, ctx.builder.value_php_type(value.value), LocalKind::StaticLocal);
     ctx.builder.emit_with_effects(
-        Op::StoreStaticLocal,
+        Op::InitStaticLocal,
         vec![value.value],
         Some(Immediate::LocalSlot(slot)),
         IrType::Void,
         PhpType::Void,
         Ownership::NonHeap,
-        Op::StoreStaticLocal.default_effects(),
+        Op::InitStaticLocal.default_effects(),
         Some(span),
     );
 }

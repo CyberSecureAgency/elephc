@@ -182,6 +182,25 @@ fn ir_backend_calls_user_functions() {
     }
 }
 
+/// Verifies function static locals initialize once and persist across direct calls.
+#[test]
+fn ir_backend_handles_function_static_locals() {
+    for (name, source, expected) in [
+        (
+            "function_static_counter",
+            "<?php function counter() { static $i = 0; $i = $i + 1; echo $i; } counter(); counter(); counter();",
+            "123",
+        ),
+        (
+            "function_static_separate_slots",
+            "<?php function a() { static $x = 0; $x = $x + 1; echo $x; } function b() { static $x = 0; $x = $x + 10; echo $x; } a(); b(); a(); b();",
+            "110220",
+        ),
+    ] {
+        assert_eq!(compile_and_run_ir_backend(name, source), expected);
+    }
+}
+
 /// Verifies fatal terminators emitted for implicit `never` returns write the legacy diagnostic.
 #[test]
 fn ir_backend_handles_fatal_never_implicit_return() {

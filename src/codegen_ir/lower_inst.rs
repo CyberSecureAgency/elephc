@@ -36,6 +36,7 @@ mod ownership;
 mod pointers;
 mod predicates;
 mod strings;
+mod static_locals;
 mod static_properties;
 
 /// Lowers one EIR instruction by opcode.
@@ -118,6 +119,9 @@ pub(super) fn lower_instruction(ctx: &mut FunctionContext<'_>, inst_id: InstId) 
         Op::PropSet => objects::lower_prop_set(ctx, &inst),
         Op::InstanceOf => objects::lower_instanceof(ctx, &inst),
         Op::InstanceOfDynamic => objects::lower_instanceof_dynamic(ctx, &inst),
+        Op::LoadStaticLocal => static_locals::lower_load_static_local(ctx, &inst),
+        Op::StoreStaticLocal => static_locals::lower_store_static_local(ctx, &inst),
+        Op::InitStaticLocal => static_locals::lower_init_static_local(ctx, &inst),
         Op::LoadStaticProperty => static_properties::lower_load_static_property(ctx, &inst),
         Op::StoreStaticProperty => static_properties::lower_store_static_property(ctx, &inst),
         Op::Call => lower_direct_call(ctx, &inst),

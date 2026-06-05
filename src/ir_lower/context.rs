@@ -228,16 +228,21 @@ impl<'m, 'f> LoweringContext<'m, 'f> {
         let slot = self.declare_local(name, php_type.clone());
         let ir_type = value_ir_type(&php_type);
         let ownership = Ownership::for_php_type(&php_type);
+        let kind = self.local_kinds.get(name).copied().unwrap_or(LocalKind::PhpLocal);
+        let op = match kind {
+            LocalKind::StaticLocal => Op::LoadStaticLocal,
+            _ => Op::LoadLocal,
+        };
         let value = self
             .builder
             .emit_with_effects(
-                Op::LoadLocal,
+                op,
                 Vec::new(),
                 Some(Immediate::LocalSlot(slot)),
                 ir_type,
                 php_type,
                 ownership,
-                Op::LoadLocal.default_effects(),
+                op.default_effects(),
                 span,
             )
             .expect("load_local produces a value");
@@ -262,20 +267,30 @@ impl<'m, 'f> LoweringContext<'m, 'f> {
         } else {
             value
         };
-        self.store_slot(slot, value, span);
+        let op = match previous_kind {
+            LocalKind::StaticLocal => Op::StoreStaticLocal,
+            _ => Op::StoreLocal,
+        };
+        self.store_slot_with_op(slot, value, op, span);
         self.set_local_type(name, php_type);
     }
 
-    /// Emits a store to an already declared local slot.
-    pub(crate) fn store_slot(&mut self, slot: LocalSlotId, value: LoweredValue, span: Option<Span>) {
+    /// Emits a store opcode to an already declared local or static-local slot.
+    fn store_slot_with_op(
+        &mut self,
+        slot: LocalSlotId,
+        value: LoweredValue,
+        op: Op,
+        span: Option<Span>,
+    ) {
         self.builder.emit_with_effects(
-            Op::StoreLocal,
+            op,
             vec![value.value],
             Some(Immediate::LocalSlot(slot)),
             IrType::Void,
             PhpType::Void,
             Ownership::NonHeap,
-            Op::StoreLocal.default_effects(),
+            op.default_effects(),
             span,
         );
         self.initialized_slots.insert(slot);

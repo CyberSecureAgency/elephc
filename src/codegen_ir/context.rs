@@ -65,7 +65,12 @@ impl<'a> FunctionContext<'a> {
 
     /// Returns a unique local label with a readable prefix.
     pub(super) fn next_label(&mut self, prefix: &str) -> String {
-        let label = format!("_eir_{}_{}", prefix, self.label_counter);
+        let label = format!(
+            "_eir_{}_{}_{}",
+            label_fragment(&self.function.name),
+            label_fragment(prefix),
+            self.label_counter
+        );
         self.label_counter += 1;
         label
     }
