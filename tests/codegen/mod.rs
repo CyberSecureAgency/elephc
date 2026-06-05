@@ -36,6 +36,7 @@ mod system;
 mod json;
 mod regressions;
 mod objects;
+mod destructors;
 mod runtime_gc;
 mod math;
 mod misc;
