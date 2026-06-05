@@ -276,15 +276,27 @@ pub(super) fn lower_nullsafe_prop_get(
     store_if_result(ctx, inst)
 }
 
-/// Lowers a dynamic property read when the property expression is a literal string.
+/// Lowers a dynamic property read against declared slots on statically known objects.
 pub(super) fn lower_dynamic_prop_get(
     ctx: &mut FunctionContext<'_>,
     inst: &Instruction,
 ) -> Result<()> {
     let object = expect_operand(inst, 0)?;
     let property_value = expect_operand(inst, 1)?;
-    let property = const_string_operand(ctx, property_value)?.to_string();
-    let slot = resolve_property_slot(ctx, object, &property, inst)?;
+    if let Some(property) = const_string_operand(ctx, property_value)? {
+        return lower_const_dynamic_prop_get(ctx, object, property, inst);
+    }
+    lower_runtime_dynamic_declared_prop_get(ctx, object, property_value, inst)
+}
+
+/// Lowers a dynamic property read when the property expression is a literal string.
+fn lower_const_dynamic_prop_get(
+    ctx: &mut FunctionContext<'_>,
+    object: ValueId,
+    property: &str,
+    inst: &Instruction,
+) -> Result<()> {
+    let slot = resolve_property_slot(ctx, object, property, inst)?;
     let base_reg = abi::symbol_scratch_reg(ctx.emitter);
     ctx.load_value_to_reg(object, base_reg)?;
     if slot.is_declared {
@@ -297,6 +309,209 @@ pub(super) fn lower_dynamic_prop_get(
         emit_box_current_value_as_mixed(ctx.emitter, &slot.php_type.codegen_repr());
     }
     store_if_result(ctx, inst)
+}
+
+/// Lowers a runtime string dynamic property read by dispatching across declared slots.
+fn lower_runtime_dynamic_declared_prop_get(
+    ctx: &mut FunctionContext<'_>,
+    object: ValueId,
+    property_value: ValueId,
+    inst: &Instruction,
+) -> Result<()> {
+    let class_name = dynamic_property_object_class(ctx, object, inst)?;
+    ensure_runtime_dynamic_property_name(ctx, property_value, inst)?;
+    ensure_dynamic_property_miss_supported(inst)?;
+    let slots = declared_dynamic_property_slots(ctx, &class_name, inst)?;
+    ensure_dynamic_property_slot_results_supported(&slots, inst)?;
+    let match_labels = slots
+        .iter()
+        .map(|slot| ctx.next_label(&format!("dyn_prop_{}", label_fragment(&slot.property))))
+        .collect::<Vec<_>>();
+    let miss_label = ctx.next_label("dyn_prop_miss");
+    let done_label = ctx.next_label("dyn_prop_done");
+
+    let object_reg = abi::int_result_reg(ctx.emitter);
+    ctx.load_value_to_reg(object, object_reg)?;
+    abi::emit_push_reg(ctx.emitter, object_reg);
+    let (ptr_reg, len_reg) = abi::string_result_regs(ctx.emitter);
+    ctx.load_string_value_to_regs(property_value, ptr_reg, len_reg)?;
+    abi::emit_push_reg_pair(ctx.emitter, ptr_reg, len_reg);
+
+    for (slot, label) in slots.iter().zip(match_labels.iter()) {
+        emit_branch_if_dynamic_name_matches(ctx, &slot.property, label);
+    }
+    abi::emit_jump(ctx.emitter, &miss_label);
+
+    for (slot, label) in slots.iter().zip(match_labels.iter()) {
+        ctx.emitter.label(label);
+        let base_reg = abi::symbol_scratch_reg(ctx.emitter);
+        abi::emit_load_temporary_stack_slot(ctx.emitter, base_reg, 16);
+        if slot.is_declared {
+            emit_uninitialized_typed_property_guard(ctx, slot, base_reg);
+        }
+        emit_property_load(ctx, slot, base_reg)?;
+        if dynamic_property_result_needs_box(inst, &slot.php_type) {
+            emit_box_current_value_as_mixed(ctx.emitter, &slot.php_type.codegen_repr());
+        }
+        abi::emit_release_temporary_stack(ctx.emitter, 32);
+        abi::emit_jump(ctx.emitter, &done_label);
+    }
+
+    ctx.emitter.label(&miss_label);
+    abi::emit_release_temporary_stack(ctx.emitter, 32);
+    emit_dynamic_property_miss_result(ctx, inst);
+    ctx.emitter.label(&done_label);
+    store_if_result(ctx, inst)
+}
+
+/// Returns the normalized class name for object receivers supported by dynamic property dispatch.
+fn dynamic_property_object_class(
+    ctx: &FunctionContext<'_>,
+    object: ValueId,
+    inst: &Instruction,
+) -> Result<String> {
+    let object_ty = ctx.value_php_type(object)?;
+    let PhpType::Object(class_name) = object_ty else {
+        return Err(CodegenIrError::unsupported(format!(
+            "{} for runtime dynamic receiver PHP type {:?}",
+            inst.op.name(),
+            object_ty
+        )));
+    };
+    Ok(class_name.trim_start_matches('\\').to_string())
+}
+
+/// Verifies that the dynamic property name is already materialized as a string.
+fn ensure_runtime_dynamic_property_name(
+    ctx: &FunctionContext<'_>,
+    property_value: ValueId,
+    inst: &Instruction,
+) -> Result<()> {
+    let property_ty = ctx.value_php_type(property_value)?;
+    if property_ty == PhpType::Str {
+        return Ok(());
+    }
+    Err(CodegenIrError::unsupported(format!(
+        "{} with runtime property name PHP type {:?}",
+        inst.op.name(),
+        property_ty
+    )))
+}
+
+/// Resolves all declared property slots that a runtime dynamic property read may match.
+fn declared_dynamic_property_slots(
+    ctx: &FunctionContext<'_>,
+    class_name: &str,
+    inst: &Instruction,
+) -> Result<Vec<PropertySlot>> {
+    let normalized = class_name.trim_start_matches('\\');
+    let property_names = {
+        let class_info = ctx
+            .module
+            .class_infos
+            .get(normalized)
+            .ok_or_else(|| CodegenIrError::unsupported(format!("unknown class {}", normalized)))?;
+        class_info
+            .properties
+            .iter()
+            .map(|(property, _)| property.clone())
+            .collect::<Vec<_>>()
+    };
+    property_names
+        .iter()
+        .map(|property| resolve_property_slot_for_class(ctx, normalized, property, inst))
+        .collect()
+}
+
+/// Verifies that the EIR result type can receive every declared property candidate.
+fn ensure_dynamic_property_slot_results_supported(
+    slots: &[PropertySlot],
+    inst: &Instruction,
+) -> Result<()> {
+    let result_ty = inst.result_php_type.codegen_repr();
+    if result_ty == PhpType::Mixed {
+        return Ok(());
+    }
+    for slot in slots {
+        if slot.php_type.codegen_repr() != result_ty {
+            return Err(CodegenIrError::unsupported(format!(
+                "{} with declared property {}::${} PHP type {:?} and result PHP type {:?}",
+                inst.op.name(),
+                slot.class_name,
+                slot.property,
+                slot.php_type,
+                result_ty
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Verifies that a runtime miss can be materialized in the EIR result register shape.
+fn ensure_dynamic_property_miss_supported(inst: &Instruction) -> Result<()> {
+    match inst.result_php_type.codegen_repr() {
+        PhpType::Mixed | PhpType::Bool | PhpType::Int => Ok(()),
+        ty => Err(CodegenIrError::unsupported(format!(
+            "{} runtime miss for result PHP type {:?}",
+            inst.op.name(),
+            ty
+        ))),
+    }
+}
+
+/// Returns true when a loaded property value must be boxed for a `Mixed` EIR result.
+fn dynamic_property_result_needs_box(inst: &Instruction, source_ty: &PhpType) -> bool {
+    inst.result_php_type.codegen_repr() == PhpType::Mixed
+        && source_ty.codegen_repr() != PhpType::Mixed
+}
+
+/// Emits a PHP null value for a dynamic property lookup that matched no declared slot.
+fn emit_dynamic_property_miss_result(ctx: &mut FunctionContext<'_>, inst: &Instruction) {
+    if inst.result_php_type.codegen_repr() == PhpType::Mixed {
+        emit_boxed_null(ctx);
+        return;
+    }
+    abi::emit_load_int_immediate(
+        ctx.emitter,
+        abi::int_result_reg(ctx.emitter),
+        RUNTIME_NULL_SENTINEL,
+    );
+}
+
+/// Emits a runtime string comparison branch against one declared property name.
+fn emit_branch_if_dynamic_name_matches(
+    ctx: &mut FunctionContext<'_>,
+    property: &str,
+    target_label: &str,
+) {
+    let (label, len) = ctx.data.add_string(property.as_bytes());
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            abi::emit_load_temporary_stack_slot(ctx.emitter, "x1", 0);
+            abi::emit_load_temporary_stack_slot(ctx.emitter, "x2", 8);
+            abi::emit_symbol_address(ctx.emitter, "x3", &label);
+            abi::emit_load_int_immediate(ctx.emitter, "x4", len as i64);
+            ctx.emitter.instruction("bl __rt_str_eq");                          // compare the runtime property name against this declared property
+            ctx.emitter.instruction(&format!("cbnz x0, {}", target_label));     // dispatch to the declared property slot when the names match
+        }
+        Arch::X86_64 => {
+            abi::emit_load_temporary_stack_slot(ctx.emitter, "rdi", 0);
+            abi::emit_load_temporary_stack_slot(ctx.emitter, "rsi", 8);
+            abi::emit_symbol_address(ctx.emitter, "rdx", &label);
+            abi::emit_load_int_immediate(ctx.emitter, "rcx", len as i64);
+            ctx.emitter.instruction("call __rt_str_eq");                        // compare the runtime property name against this declared property
+            ctx.emitter.instruction("test rax, rax");                           // check whether the runtime string comparison matched
+            ctx.emitter.instruction(&format!("jne {}", target_label));          // dispatch to the declared property slot when the names match
+        }
+    }
+}
+
+/// Converts arbitrary names into assembly-label-safe fragments.
+fn label_fragment(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+        .collect()
 }
 
 /// Lowers a declared object property write for statically known object receivers.
@@ -527,24 +742,21 @@ pub(super) fn raw_value_php_type(ctx: &FunctionContext<'_>, value: ValueId) -> R
         .ok_or_else(|| CodegenIrError::missing_entry("value", value.as_raw()))
 }
 
-/// Returns the literal string payload for a value produced by `ConstStr`.
-fn const_string_operand<'a>(ctx: &FunctionContext<'a>, value: ValueId) -> Result<&'a str> {
+/// Returns the literal string payload for a value produced by `ConstStr`, when statically known.
+fn const_string_operand<'a>(ctx: &FunctionContext<'a>, value: ValueId) -> Result<Option<&'a str>> {
     let metadata = ctx
         .function
         .value(value)
         .ok_or_else(|| CodegenIrError::missing_entry("value", value.as_raw()))?;
     let ValueDef::Instruction { inst, .. } = metadata.def else {
-        return Err(CodegenIrError::unsupported("dynamic property name from non-instruction value"));
+        return Ok(None);
     };
     let instruction = ctx
         .function
         .instruction(inst)
         .ok_or_else(|| CodegenIrError::missing_entry("instruction", inst.as_raw()))?;
     if instruction.op != Op::ConstStr {
-        return Err(CodegenIrError::unsupported(format!(
-            "dynamic property name from opcode {}",
-            instruction.op.name()
-        )));
+        return Ok(None);
     }
     let Some(Immediate::Data(data)) = instruction.immediate else {
         return Err(CodegenIrError::invalid_module("const_str missing data immediate"));
@@ -554,6 +766,7 @@ fn const_string_operand<'a>(ctx: &FunctionContext<'a>, value: ValueId) -> Result
         .strings
         .get(data.as_raw() as usize)
         .map(String::as_str)
+        .map(Some)
         .ok_or_else(|| CodegenIrError::missing_entry("data string", data.as_raw()))
 }
 
