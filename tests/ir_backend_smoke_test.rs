@@ -3665,6 +3665,20 @@ echo sys_get_temp_dir();
     );
 }
 
+/// Verifies `tempnam()` creates a file and returns its generated path string.
+#[test]
+fn ir_backend_handles_tempnam() {
+    let source = r#"<?php
+$tmp = tempnam(".", "eir");
+echo strlen($tmp) > 0 ? "S" : "!";
+echo ":";
+echo file_exists($tmp) ? "E" : "!";
+echo ":";
+echo unlink($tmp) ? "U" : "!";
+"#;
+    assert_eq!(compile_and_run_ir_backend("tempnam", source), "S:E:U");
+}
+
 /// Verifies global constant declarations, references, and `defined()` lowering.
 #[test]
 fn ir_backend_handles_global_constants_and_defined() {

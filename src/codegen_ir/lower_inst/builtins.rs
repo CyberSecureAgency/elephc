@@ -136,6 +136,7 @@ pub(super) fn lower_builtin_call(ctx: &mut FunctionContext<'_>, inst: &Instructi
         "chdir" => io::lower_chdir(ctx, inst),
         "getcwd" => io::lower_getcwd(ctx, inst),
         "sys_get_temp_dir" => io::lower_sys_get_temp_dir(ctx, inst),
+        "tempnam" => io::lower_tempnam(ctx, inst),
         "filesize" => io::lower_filesize(ctx, inst),
         "filemtime" => io::lower_filemtime(ctx, inst),
         "linkinfo" => io::lower_linkinfo(ctx, inst),

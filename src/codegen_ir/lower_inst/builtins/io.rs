@@ -88,12 +88,17 @@ pub(super) fn lower_chdir(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> 
 
 /// Lowers `copy(source, dest)` through the target-aware runtime helper.
 pub(super) fn lower_copy(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
-    lower_binary_path_predicate(ctx, inst, "copy", "__rt_copy")
+    lower_binary_path_call(ctx, inst, "copy", "__rt_copy")
 }
 
 /// Lowers `rename(from, to)` through the target-aware runtime helper.
 pub(super) fn lower_rename(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
-    lower_binary_path_predicate(ctx, inst, "rename", "__rt_rename")
+    lower_binary_path_call(ctx, inst, "rename", "__rt_rename")
+}
+
+/// Lowers `tempnam(directory, prefix)` through the target-aware runtime helper.
+pub(super) fn lower_tempnam(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    lower_binary_path_call(ctx, inst, "tempnam", "__rt_tempnam")
 }
 
 /// Lowers `getcwd()` through the target-aware runtime helper.
@@ -142,12 +147,12 @@ pub(super) fn lower_linkinfo(
 
 /// Lowers `symlink(target, link)` through the target-aware libc wrapper.
 pub(super) fn lower_symlink(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
-    lower_binary_path_predicate(ctx, inst, "symlink", "__rt_symlink")
+    lower_binary_path_call(ctx, inst, "symlink", "__rt_symlink")
 }
 
 /// Lowers `link(oldpath, newpath)` through the target-aware libc wrapper.
 pub(super) fn lower_link(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
-    lower_binary_path_predicate(ctx, inst, "link", "__rt_link")
+    lower_binary_path_call(ctx, inst, "link", "__rt_link")
 }
 
 /// Lowers `readlink(path)` and boxes the owned runtime string-or-false result.
@@ -319,8 +324,8 @@ fn lower_unary_path_int(
     store_if_result(ctx, inst)
 }
 
-/// Loads two path strings into the runtime ABI, calls a boolean helper, and stores it.
-fn lower_binary_path_predicate(
+/// Loads two path strings into the runtime ABI, calls a helper, and stores its result.
+fn lower_binary_path_call(
     ctx: &mut FunctionContext<'_>,
     inst: &Instruction,
     name: &str,

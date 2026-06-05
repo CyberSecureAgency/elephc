@@ -1680,7 +1680,7 @@ fn builtin_return_type_override(name: &str) -> Option<PhpType> {
         | "is_readable" | "is_writeable" | "is_writable" | "symlink" | "unlink" => {
             Some(PhpType::Bool)
         }
-        "date" | "getcwd" | "sys_get_temp_dir" => Some(PhpType::Str),
+        "date" | "getcwd" | "sys_get_temp_dir" | "tempnam" => Some(PhpType::Str),
         "microtime" => Some(PhpType::Float),
         "clearstatcache" => Some(PhpType::Void),
         "printf" | "array_rand" | "array_unshift" | "file_put_contents" | "filemtime"
