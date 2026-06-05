@@ -1297,6 +1297,92 @@ echo $holder->value();
     );
 }
 
+/// Verifies lexical `self::` static method return metadata survives object property stores.
+#[test]
+fn ir_backend_uses_self_static_method_object_return_type() {
+    let source = r#"<?php
+class Box {
+    public int $value;
+
+    public function __construct(int $value) {
+        $this->value = $value;
+    }
+}
+
+class Holder {
+    public $box;
+
+    public function __construct() {
+        $this->box = 0;
+    }
+
+    public static function make(): Box {
+        return new Box(11);
+    }
+
+    public function load(): void {
+        $this->box = self::make();
+    }
+
+    public function value(): int {
+        return $this->box->value;
+    }
+}
+
+$holder = new Holder();
+$holder->load();
+echo $holder->value();
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("self_static_method_object_return_type", source),
+        "11"
+    );
+}
+
+/// Verifies lexical `parent::` static method return metadata survives object property stores.
+#[test]
+fn ir_backend_uses_parent_static_method_object_return_type() {
+    let source = r#"<?php
+class Box {
+    public int $value;
+
+    public function __construct(int $value) {
+        $this->value = $value;
+    }
+}
+
+class BaseHolder {
+    public static function make(): Box {
+        return new Box(13);
+    }
+}
+
+class Holder extends BaseHolder {
+    public $box;
+
+    public function __construct() {
+        $this->box = 0;
+    }
+
+    public function load(): void {
+        $this->box = parent::make();
+    }
+
+    public function value(): int {
+        return $this->box->value;
+    }
+}
+
+$holder = new Holder();
+$holder->load();
+echo $holder->value();
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("parent_static_method_object_return_type", source),
+        "13"
+    );
+}
+
 /// Verifies lexical `self::` and `parent::` static-method receivers lower in class methods.
 #[test]
 fn ir_backend_calls_lexical_static_method_receivers() {

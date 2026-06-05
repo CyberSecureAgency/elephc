@@ -1529,11 +1529,10 @@ fn static_property_result_type(
     property: &str,
     expr: &Expr,
 ) -> PhpType {
-    let StaticReceiver::Named(name) = receiver else {
+    let Some(class_name) = static_receiver_class_name(ctx, receiver) else {
         return fallback_expr_type(expr);
     };
-    let normalized = name.as_str().trim_start_matches('\\');
-    let Some(class_info) = ctx.classes.get(normalized) else {
+    let Some(class_info) = ctx.classes.get(class_name.as_str()) else {
         return fallback_expr_type(expr);
     };
     let Some((_, property_ty)) = class_info
@@ -1628,16 +1627,31 @@ fn static_method_call_result_type(
     method: &str,
     expr: &Expr,
 ) -> PhpType {
-    let StaticReceiver::Named(name) = receiver else {
+    let Some(class_name) = static_receiver_class_name(ctx, receiver) else {
         return fallback_expr_type(expr);
     };
-    let normalized = name.as_str().trim_start_matches('\\');
     let key = php_symbol_key(method);
     ctx.classes
-        .get(normalized)
+        .get(class_name.as_str())
         .and_then(|class_info| class_info.static_methods.get(&key))
         .map(|signature| normalize_value_php_type(signature.return_type.codegen_repr()))
         .unwrap_or_else(|| fallback_expr_type(expr))
+}
+
+/// Resolves a static receiver to a concrete class name when lexical metadata is available.
+fn static_receiver_class_name(
+    ctx: &LoweringContext<'_, '_>,
+    receiver: &StaticReceiver,
+) -> Option<String> {
+    match receiver {
+        StaticReceiver::Named(name) => Some(name.as_str().trim_start_matches('\\').to_string()),
+        StaticReceiver::Self_ => ctx.current_class.clone(),
+        StaticReceiver::Parent => {
+            let current = ctx.current_class.as_deref()?;
+            ctx.classes.get(current).and_then(|class_info| class_info.parent.clone())
+        }
+        StaticReceiver::Static => None,
+    }
 }
 
 /// Lowers first-class callable creation.

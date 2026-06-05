@@ -44,6 +44,7 @@ pub(crate) fn lower_main(
         &check_result.interfaces,
         &check_result.packed_classes,
         constants,
+        None,
         PhpType::Void,
         &[],
     );
@@ -81,6 +82,7 @@ pub(crate) fn lower_user_function(
         &check_result.interfaces,
         &check_result.packed_classes,
         constants,
+        None,
         signature.return_type.clone(),
         &signature.params,
     );
@@ -144,6 +146,7 @@ pub(crate) fn lower_class_method(
         &check_result.interfaces,
         &check_result.packed_classes,
         constants,
+        Some(class_name.to_string()),
         signature.return_type.clone(),
         &body_params,
     );
@@ -163,6 +166,7 @@ fn lower_body_into_function(
     interfaces: &std::collections::HashMap<String, crate::types::InterfaceInfo>,
     packed_classes: &std::collections::HashMap<String, PackedClassInfo>,
     constants: &std::collections::HashMap<String, (ExprKind, PhpType)>,
+    current_class: Option<String>,
     return_php_type: PhpType,
     params: &[(String, PhpType)],
 ) {
@@ -181,6 +185,7 @@ fn lower_body_into_function(
         interfaces,
         packed_classes,
         constants,
+        current_class,
         return_php_type,
     );
     for (name, php_type) in params {

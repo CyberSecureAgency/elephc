@@ -53,6 +53,7 @@ pub(crate) struct LoweringContext<'m, 'f> {
     pub interfaces: &'m HashMap<String, InterfaceInfo>,
     pub packed_classes: &'m HashMap<String, PackedClassInfo>,
     pub constants: HashMap<String, (ExprKind, PhpType)>,
+    pub current_class: Option<String>,
     pub loop_stack: Vec<LoopFrame>,
     pub return_type: IrType,
     pub return_php_type: PhpType,
@@ -72,6 +73,7 @@ impl<'m, 'f> LoweringContext<'m, 'f> {
         interfaces: &'m HashMap<String, InterfaceInfo>,
         packed_classes: &'m HashMap<String, PackedClassInfo>,
         constants: &'m HashMap<String, (ExprKind, PhpType)>,
+        current_class: Option<String>,
         return_php_type: PhpType,
     ) -> Self {
         let return_type = return_ir_type(&return_php_type);
@@ -89,6 +91,7 @@ impl<'m, 'f> LoweringContext<'m, 'f> {
             interfaces,
             packed_classes,
             constants: constants.clone(),
+            current_class,
             loop_stack: Vec::new(),
             return_type,
             return_php_type,
