@@ -1420,6 +1420,41 @@ echo BaseBag::size() . ":" . ChildBag::size();
     );
 }
 
+/// Verifies inherited static methods return the implementation ABI shape for late-bound Mixed arrays.
+#[test]
+fn ir_backend_handles_late_bound_static_mixed_array_returns() {
+    let source = r#"<?php
+class BaseBag {
+    public static array $items = [];
+
+    public static function add($value) {
+        static::$items[] = $value;
+    }
+
+    public static function replaceFirst($value) {
+        static::$items[0] = $value;
+    }
+
+    public static function first() {
+        return static::$items[0];
+    }
+}
+
+class ChildBag extends BaseBag {
+    public static array $items = [];
+}
+
+BaseBag::add(1);
+ChildBag::add(2);
+ChildBag::replaceFirst(7);
+echo BaseBag::first() . ":" . ChildBag::first();
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("late_bound_static_mixed_array_returns", source),
+        "1:7"
+    );
+}
+
 /// Verifies supported literal static-property defaults are initialized before main user code.
 #[test]
 fn ir_backend_handles_literal_static_property_defaults() {

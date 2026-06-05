@@ -150,6 +150,7 @@ pub(super) fn lower_instruction(ctx: &mut FunctionContext<'_>, inst_id: InstId) 
         Op::IncludeOnceGuard => lower_include_once_guard(ctx, &inst),
         Op::FunctionVariantDispatch => Ok(()),
         Op::FunctionVariantMark => lower_function_variant_mark(ctx, &inst),
+        Op::RuntimeCall => lower_runtime_call(ctx, &inst),
         Op::Nop => Ok(()),
         _ => Err(CodegenIrError::unsupported(format!("opcode {}", inst.op.name()))),
     }
@@ -211,6 +212,42 @@ fn include_once_label(ctx: &FunctionContext<'_>, inst: &Instruction) -> Result<S
 fn lower_runtime_void_call(ctx: &mut FunctionContext<'_>, label: &str) -> Result<()> {
     abi::emit_call_label(ctx.emitter, label);
     Ok(())
+}
+
+/// Lowers high-level runtime fallback casts that Phase 04 can identify by type.
+fn lower_runtime_call(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    if inst.operands.len() != 1 {
+        return Err(CodegenIrError::unsupported(format!(
+            "runtime_call with {} operands returning PHP type {:?}",
+            inst.operands.len(),
+            inst.result_php_type
+        )));
+    }
+    let value = expect_operand(inst, 0)?;
+    let source_ty = ctx.value_php_type(value)?.codegen_repr();
+    if matches!(source_ty, PhpType::Mixed | PhpType::Union(_)) {
+        let result_ty = inst.result_php_type.codegen_repr();
+        load_value_to_first_int_arg(ctx, value)?;
+        match result_ty {
+            PhpType::Str => abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_string"),
+            PhpType::Float => abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_float"),
+            PhpType::Int => abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_int"),
+            PhpType::Bool => abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_bool"),
+            other => {
+                return Err(CodegenIrError::unsupported(format!(
+                    "runtime_call from PHP type {:?} to PHP type {:?}",
+                    source_ty,
+                    other
+                )))
+            }
+        }
+        return store_if_result(ctx, inst);
+    }
+    Err(CodegenIrError::unsupported(format!(
+        "runtime_call from PHP type {:?} to PHP type {:?}",
+        source_ty,
+        inst.result_php_type
+    )))
 }
 
 /// Lowers expression-form `throw` through the same runtime path as throw terminators.
@@ -385,13 +422,23 @@ fn lower_static_method_call(ctx: &mut FunctionContext<'_>, inst: &Instruction) -
     let (receiver_label, method_name) = parse_static_method_target(&target)?;
     let receiver = resolve_static_method_receiver(ctx, receiver_label)?;
     let called_class_id = resolve_static_called_class_arg(ctx, receiver_label, &receiver)?;
-    let class_info = ctx
+    let receiver_info = ctx
         .module
         .class_infos
         .get(receiver.as_str())
         .ok_or_else(|| CodegenIrError::unsupported(format!("static method call on unknown class {}", receiver)))?;
     let method_key = php_symbol_key(method_name);
-    let callee_sig = class_info
+    let impl_class = receiver_info
+        .static_method_impl_classes
+        .get(&method_key)
+        .map(String::as_str)
+        .unwrap_or(receiver.as_str());
+    let impl_info = ctx
+        .module
+        .class_infos
+        .get(impl_class)
+        .ok_or_else(|| CodegenIrError::unsupported(format!("static method implementation on unknown class {}", impl_class)))?;
+    let callee_sig = impl_info
         .static_methods
         .get(&method_key)
         .ok_or_else(|| CodegenIrError::unsupported(format!("static method call to unknown method {}", target)))?;
@@ -403,11 +450,6 @@ fn lower_static_method_call(ctx: &mut FunctionContext<'_>, inst: &Instruction) -
             callee_sig.params.len()
         )));
     }
-    let impl_class = class_info
-        .static_method_impl_classes
-        .get(&method_key)
-        .map(String::as_str)
-        .unwrap_or(receiver.as_str());
     let param_types = callee_sig
         .params
         .iter()

@@ -2073,11 +2073,14 @@ fn lower_static_method_call(
     args: &[Expr],
     expr: &Expr,
 ) -> LoweredValue {
-    let sig = static_method_signature(ctx, receiver, method).cloned();
+    let sig = static_method_implementation_signature(ctx, receiver, method).cloned();
     let operands = lower_args_with_signature(ctx, sig.as_ref(), args);
     let name = format!("{}::{}", receiver_name(receiver), method);
     let data = ctx.intern_string(&name);
-    let result_type = static_method_call_result_type(ctx, receiver, method, expr);
+    let result_type = sig
+        .as_ref()
+        .map(|signature| normalize_value_php_type(signature.return_type.codegen_repr()))
+        .unwrap_or_else(|| fallback_expr_type(expr));
     ctx.emit_value(
         Op::StaticMethodCall,
         operands,
@@ -2088,35 +2091,23 @@ fn lower_static_method_call(
     )
 }
 
-/// Returns the checked signature for a static method call when metadata is available.
-fn static_method_signature<'a>(
+/// Returns the implementation signature used by the static method symbol that will run.
+fn static_method_implementation_signature<'a>(
     ctx: &'a LoweringContext<'_, '_>,
     receiver: &StaticReceiver,
     method: &str,
 ) -> Option<&'a FunctionSig> {
     let class_name = static_receiver_class_name(ctx, receiver)?;
     let key = php_symbol_key(method);
+    let receiver_info = ctx.classes.get(class_name.as_str())?;
+    let impl_class = receiver_info
+        .static_method_impl_classes
+        .get(&key)
+        .map(String::as_str)
+        .unwrap_or(class_name.as_str());
     ctx.classes
-        .get(class_name.as_str())
+        .get(impl_class)
         .and_then(|class_info| class_info.static_methods.get(&key))
-}
-
-/// Returns the checked return type for a static method call when metadata is available.
-fn static_method_call_result_type(
-    ctx: &LoweringContext<'_, '_>,
-    receiver: &StaticReceiver,
-    method: &str,
-    expr: &Expr,
-) -> PhpType {
-    let Some(class_name) = static_receiver_class_name(ctx, receiver) else {
-        return fallback_expr_type(expr);
-    };
-    let key = php_symbol_key(method);
-    ctx.classes
-        .get(class_name.as_str())
-        .and_then(|class_info| class_info.static_methods.get(&key))
-        .map(|signature| normalize_value_php_type(signature.return_type.codegen_repr()))
-        .unwrap_or_else(|| fallback_expr_type(expr))
 }
 
 /// Resolves a static receiver to a concrete class name when lexical metadata is available.
