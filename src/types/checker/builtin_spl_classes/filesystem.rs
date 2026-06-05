@@ -216,7 +216,7 @@ fn spl_file_object_properties() -> Vec<ClassProperty> {
     vec![
         protected_storage_property("backingPath", TypeExpr::Str),
         protected_storage_property("stream", mixed_type()),
-        protected_storage_property("lines", string_array_type()),
+        protected_storage_property("lines", array_type()),
         protected_storage_property("lineNumber", TypeExpr::Int),
         protected_storage_property("flags", TypeExpr::Int),
         protected_storage_property("delimiter", TypeExpr::Str),
@@ -1235,15 +1235,19 @@ fn spl_temp_file_object_should_spill_expr() -> Expr {
 
 /// Builds statements that refresh inherited line storage from the memory buffer.
 fn spl_temp_file_object_reload_lines_from_buffer_body() -> Vec<Stmt> {
-    vec![if_stmt(
-        binary_expr(function_call("strlen", vec![temp_buffer_arg_expr()]), BinOp::StrictEq, int_expr(0)),
-        vec![property_assign_stmt(this_expr(), "lines", empty_array_expr())],
-        Some(vec![property_assign_stmt(
-            this_expr(),
-            "lines",
-            function_call("explode", vec![string_expr("\n"), temp_buffer_arg_expr()]),
-        )]),
-    )]
+    vec![
+        property_assign_stmt(this_expr(), "lines", empty_array_expr()),
+        if_stmt(
+            binary_expr(function_call("strlen", vec![temp_buffer_arg_expr()]), BinOp::StrictEq, int_expr(0)),
+            Vec::new(),
+            Some(vec![foreach_stmt(
+                function_call("explode", vec![string_expr("\n"), temp_buffer_arg_expr()]),
+                None,
+                "line",
+                vec![property_array_push_stmt(this_expr(), "lines", var_expr("line"))],
+            )]),
+        ),
+    ]
 }
 
 /// Builds SplFileObject current() with lightweight READ_CSV support.
