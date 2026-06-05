@@ -121,6 +121,36 @@ pub(super) fn lower_usleep(
     lower_unary_blocking_c_call(ctx, inst, "usleep", "usleep microseconds")
 }
 
+/// Lowers `getenv(name)` through the target-aware environment lookup helper.
+pub(super) fn lower_getenv(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+) -> Result<()> {
+    super::ensure_arg_count(inst, "getenv", 1)?;
+    let name = expect_operand(inst, 0)?;
+    require_string(ctx.load_value_to_result(name)?.codegen_repr(), "getenv name")?;
+    abi::emit_call_label(ctx.emitter, "__rt_getenv");
+    store_if_result(ctx, inst)
+}
+
+/// Lowers `php_uname(mode?)` through the target-aware uname runtime helper.
+pub(super) fn lower_php_uname(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+) -> Result<()> {
+    ensure_arg_count_between(inst, "php_uname", 0, 1)?;
+    if let Some(mode) = inst.operands.first().copied() {
+        require_string(ctx.load_value_to_result(mode)?.codegen_repr(), "php_uname mode")?;
+    } else {
+        let (label, len) = ctx.data.add_string(b"a");
+        let (ptr_reg, len_reg) = abi::string_result_regs(ctx.emitter);
+        abi::emit_symbol_address(ctx.emitter, ptr_reg, &label);
+        abi::emit_load_int_immediate(ctx.emitter, len_reg, len as i64);
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_php_uname");
+    store_if_result(ctx, inst)
+}
+
 /// Lowers a one-argument blocking libc call that receives an integer duration.
 fn lower_unary_blocking_c_call(
     ctx: &mut FunctionContext<'_>,

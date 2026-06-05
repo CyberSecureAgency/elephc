@@ -201,6 +201,8 @@ pub(super) fn lower_builtin_call(ctx: &mut FunctionContext<'_>, inst: &Instructi
         "strtotime" => system::lower_strtotime(ctx, inst),
         "time" => system::lower_time(ctx, inst),
         "usleep" => system::lower_usleep(ctx, inst),
+        "getenv" => system::lower_getenv(ctx, inst),
+        "php_uname" => system::lower_php_uname(ctx, inst),
         "json_decode" => json::lower_json_decode(ctx, inst),
         "json_encode" => json::lower_json_encode(ctx, inst),
         "json_last_error" => json::lower_json_last_error(ctx, inst),

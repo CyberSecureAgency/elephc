@@ -738,6 +738,28 @@ echo "U";
     assert_eq!(compile_and_run_ir_backend("sleep_builtins", source), "SU");
 }
 
+/// Verifies environment and platform string helpers lower through the EIR backend.
+#[test]
+fn ir_backend_handles_environment_platform_builtins() {
+    let source = r#"<?php
+$home = getenv("HOME");
+echo strlen($home) > 0 ? "H" : "!";
+echo ":";
+echo strlen(getenv("ELEPHC_NONEXISTENT_VAR_XYZ"));
+echo ":";
+$default = php_uname();
+$explicit = php_uname("a");
+$sys = php_uname("s");
+echo ($default === $explicit ? "U" : "!");
+echo ":";
+echo strlen($sys) > 0 ? "S" : "!";
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("environment_platform_builtins", source),
+        "H:0:U:S"
+    );
+}
+
 /// Verifies JSON validation builtins update and expose runtime JSON error state.
 #[test]
 fn ir_backend_handles_json_validation_builtins() {
