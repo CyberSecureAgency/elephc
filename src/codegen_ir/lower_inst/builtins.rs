@@ -129,6 +129,7 @@ pub(super) fn lower_builtin_call(ctx: &mut FunctionContext<'_>, inst: &Instructi
         "file_exists" => io::lower_file_exists(ctx, inst),
         "filesize" => io::lower_filesize(ctx, inst),
         "filemtime" => io::lower_filemtime(ctx, inst),
+        "linkinfo" => io::lower_linkinfo(ctx, inst),
         "fileatime" => io::lower_fileatime(ctx, inst),
         "filectime" => io::lower_filectime(ctx, inst),
         "fileperms" => io::lower_fileperms(ctx, inst),

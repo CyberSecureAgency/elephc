@@ -72,6 +72,14 @@ pub(super) fn lower_filemtime(
     lower_unary_path_int(ctx, inst, "filemtime", "__rt_filemtime")
 }
 
+/// Lowers `linkinfo(path)` through the target-aware runtime lstat helper.
+pub(super) fn lower_linkinfo(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+) -> Result<()> {
+    lower_unary_path_int(ctx, inst, "linkinfo", "__rt_linkinfo")
+}
+
 /// Lowers `fileatime(path)` and boxes the runtime integer-or-false result.
 pub(super) fn lower_fileatime(
     ctx: &mut FunctionContext<'_>,

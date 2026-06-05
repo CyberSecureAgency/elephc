@@ -3563,6 +3563,21 @@ echo "ok";
     );
 }
 
+/// Verifies `linkinfo()` returns a device id for existing paths and -1 on failure.
+#[test]
+fn ir_backend_handles_linkinfo() {
+    let source = r#"<?php
+file_put_contents("plain.txt", "x");
+echo linkinfo("plain.txt") > 0 ? "dev" : "bad";
+echo ":";
+echo linkinfo("missing.txt") === -1 ? "missing" : "bad";
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("linkinfo", source),
+        "dev:missing"
+    );
+}
+
 /// Verifies global constant declarations, references, and `defined()` lowering.
 #[test]
 fn ir_backend_handles_global_constants_and_defined() {

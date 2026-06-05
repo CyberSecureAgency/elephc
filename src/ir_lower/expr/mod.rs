@@ -1681,7 +1681,9 @@ fn builtin_return_type_override(name: &str) -> Option<PhpType> {
         "microtime" => Some(PhpType::Float),
         "clearstatcache" => Some(PhpType::Void),
         "printf" | "array_rand" | "array_unshift" | "file_put_contents" | "filemtime"
-        | "filesize" | "mktime" | "sleep" | "strtotime" | "time" => Some(PhpType::Int),
+        | "filesize" | "linkinfo" | "mktime" | "sleep" | "strtotime" | "time" => {
+            Some(PhpType::Int)
+        }
         "usleep" => Some(PhpType::Void),
         "file_get_contents" | "fileatime" | "filectime" | "filegroup" | "fileinode"
         | "fileowner" | "fileperms" | "filetype" | "strpos" | "strrpos" => {
