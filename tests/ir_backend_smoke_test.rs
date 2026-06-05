@@ -182,6 +182,49 @@ fn ir_backend_calls_user_functions() {
     }
 }
 
+/// Verifies positional calls append omitted optional parameter defaults before EIR call emission.
+#[test]
+fn ir_backend_handles_positional_default_parameters() {
+    let source = r#"<?php
+function add_ten(int $value = 10): int {
+    return $value + 10;
+}
+class Box {
+    public int $id;
+    public function __construct(int $id = 42) {
+        $this->id = $id;
+    }
+    public function add(int $value = 10): int {
+        return $value + 1;
+    }
+    public static function stat(int $value = 20): int {
+        return $value + 2;
+    }
+}
+echo add_ten();
+echo "|";
+echo add_ten(5);
+echo "|";
+$box = new Box();
+echo $box->id;
+echo "|";
+$other = new Box(7);
+echo $other->id;
+echo "|";
+echo $box->add();
+echo "|";
+echo $box->add(4);
+echo "|";
+echo Box::stat();
+echo "|";
+echo Box::stat(5);
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("positional_default_parameters", source),
+        "20|15|42|7|11|5|22|7"
+    );
+}
+
 /// Verifies pipe calls with static first-class callable targets lower to direct EIR calls.
 #[test]
 fn ir_backend_handles_static_pipe_calls() {
@@ -190,6 +233,11 @@ fn ir_backend_handles_static_pipe_calls() {
             "pipe_user_function",
             "<?php function double($x) { return $x * 2; } echo 3 |> double(...);",
             "6",
+        ),
+        (
+            "pipe_user_function_default",
+            "<?php function suffix($value, $tail = \"!\") { return $value . $tail; } echo \"go\" |> suffix(...);",
+            "go!",
         ),
         ("pipe_builtin", "<?php echo \"abc\" |> strlen(...);", "3"),
         (

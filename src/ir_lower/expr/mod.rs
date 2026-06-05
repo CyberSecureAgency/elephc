@@ -23,7 +23,7 @@ use crate::parser::ast::{
 };
 use crate::types::{
     array_key_type_from_value_type, checker::infer_expr_type_syntactic,
-    merge_array_key_types, normalized_array_key_type, PhpType,
+    merge_array_key_types, normalized_array_key_type, FunctionSig, PhpType,
 };
 
 mod constants;
@@ -835,7 +835,12 @@ fn lower_function_call(ctx: &mut LoweringContext<'_, '_>, name: &Name, args: &[E
             return value;
         }
     }
-    let operands = lower_args(ctx, args);
+    let call_args = if let Some(sig) = ctx.functions.get(canonical) {
+        positional_args_with_defaults(sig, args)
+    } else {
+        args.to_vec()
+    };
+    let operands = lower_args(ctx, &call_args);
     let php_type = call_return_type(ctx, canonical, &operands);
     if ctx.extern_functions.contains_key(canonical) {
         let data = ctx.intern_function_name(canonical);
@@ -891,6 +896,30 @@ fn lower_unset_locals(
 /// Lowers positional/named/spread call arguments in source order.
 fn lower_args(ctx: &mut LoweringContext<'_, '_>, args: &[Expr]) -> Vec<crate::ir::ValueId> {
     args.iter().map(|arg| lower_expr(ctx, arg).value).collect()
+}
+
+/// Returns positional call arguments with omitted optional defaults appended.
+fn positional_args_with_defaults(sig: &FunctionSig, args: &[Expr]) -> Vec<Expr> {
+    if args.iter().any(is_named_or_spread_arg) {
+        return args.to_vec();
+    }
+    let regular_param_count = crate::types::call_args::regular_param_count(sig);
+    if args.len() >= regular_param_count {
+        return args.to_vec();
+    }
+    let mut normalized = args.to_vec();
+    for idx in args.len()..regular_param_count {
+        let Some(Some(default)) = sig.defaults.get(idx) else {
+            break;
+        };
+        normalized.push(default.clone());
+    }
+    normalized
+}
+
+/// Returns true when a call argument needs full named/spread planning.
+fn is_named_or_spread_arg(arg: &Expr) -> bool {
+    matches!(arg.kind, ExprKind::NamedArg { .. } | ExprKind::Spread(_))
 }
 
 /// Returns the best available return type for a function-like call.
@@ -1440,7 +1469,8 @@ fn lower_expr_call(ctx: &mut LoweringContext<'_, '_>, callee: &Expr, args: &[Exp
 
 /// Lowers fixed-class object construction.
 fn lower_new_object(ctx: &mut LoweringContext<'_, '_>, class_name: &Name, args: &[Expr], expr: &Expr) -> LoweredValue {
-    let operands = lower_args(ctx, args);
+    let call_args = constructor_call_args(ctx, class_name, args);
+    let operands = lower_args(ctx, &call_args);
     let php_type = PhpType::Object(class_name.as_str().to_string());
     let data = ctx.intern_class_name(class_name.as_str());
     ctx.emit_value(
@@ -1474,6 +1504,20 @@ fn lower_new_dynamic_object(
         Op::DynamicObjectNew.default_effects(),
         Some(expr.span),
     )
+}
+
+/// Returns constructor call arguments with positional defaults when metadata is available.
+fn constructor_call_args(
+    ctx: &LoweringContext<'_, '_>,
+    class_name: &Name,
+    args: &[Expr],
+) -> Vec<Expr> {
+    let key = php_symbol_key("__construct");
+    ctx.classes
+        .get(class_name.as_str().trim_start_matches('\\'))
+        .and_then(|class_info| class_info.methods.get(&key))
+        .map(|sig| positional_args_with_defaults(sig, args))
+        .unwrap_or_else(|| args.to_vec())
 }
 
 /// Lowers an object property read.
@@ -1613,7 +1657,8 @@ fn lower_method_call(
     let object = lower_expr(ctx, object);
     let result_type = method_call_result_type(ctx, object.value, method, op, expr);
     let mut operands = vec![object.value];
-    operands.extend(lower_args(ctx, args));
+    let call_args = method_call_args(ctx, object.value, method, args);
+    operands.extend(lower_args(ctx, &call_args));
     let data = ctx.intern_string(method);
     ctx.emit_value(
         op,
@@ -1716,7 +1761,8 @@ fn lower_method_call_with_receiver(
 ) -> LoweredValue {
     let result_type = method_call_result_type(ctx, object.value, method, op, expr);
     let mut operands = vec![object.value];
-    operands.extend(lower_args(ctx, args));
+    let call_args = method_call_args(ctx, object.value, method, args);
+    operands.extend(lower_args(ctx, &call_args));
     let data = ctx.intern_string(method);
     ctx.emit_value(
         op,
@@ -1726,6 +1772,33 @@ fn lower_method_call_with_receiver(
         op.default_effects(),
         Some(expr.span),
     )
+}
+
+/// Returns instance-method call arguments with positional defaults when metadata is available.
+fn method_call_args(
+    ctx: &LoweringContext<'_, '_>,
+    object: crate::ir::ValueId,
+    method: &str,
+    args: &[Expr],
+) -> Vec<Expr> {
+    method_signature(ctx, object, method)
+        .map(|sig| positional_args_with_defaults(sig, args))
+        .unwrap_or_else(|| args.to_vec())
+}
+
+/// Returns the checked signature for an instance method call when metadata is available.
+fn method_signature<'a>(
+    ctx: &'a LoweringContext<'_, '_>,
+    object: crate::ir::ValueId,
+    method: &str,
+) -> Option<&'a FunctionSig> {
+    let object_ty = ctx.builder.value_php_type(object);
+    let (class_name, _) = singular_object_class(&object_ty)?;
+    let normalized = class_name.trim_start_matches('\\');
+    let key = php_symbol_key(method);
+    ctx.classes
+        .get(normalized)
+        .and_then(|class_info| class_info.methods.get(&key))
 }
 
 /// Returns the checked return type for an instance method call when metadata is available.
@@ -1765,7 +1838,8 @@ fn lower_static_method_call(
     args: &[Expr],
     expr: &Expr,
 ) -> LoweredValue {
-    let operands = lower_args(ctx, args);
+    let call_args = static_method_call_args(ctx, receiver, method, args);
+    let operands = lower_args(ctx, &call_args);
     let name = format!("{}::{}", receiver_name(receiver), method);
     let data = ctx.intern_string(&name);
     let result_type = static_method_call_result_type(ctx, receiver, method, expr);
@@ -1777,6 +1851,32 @@ fn lower_static_method_call(
         Op::StaticMethodCall.default_effects(),
         Some(expr.span),
     )
+}
+
+/// Returns static-method call arguments with positional defaults when metadata is available.
+fn static_method_call_args(
+    ctx: &LoweringContext<'_, '_>,
+    receiver: &StaticReceiver,
+    method: &str,
+    args: &[Expr],
+) -> Vec<Expr> {
+    let Some(sig) = static_method_signature(ctx, receiver, method) else {
+        return args.to_vec();
+    };
+    positional_args_with_defaults(sig, args)
+}
+
+/// Returns the checked signature for a static method call when metadata is available.
+fn static_method_signature<'a>(
+    ctx: &'a LoweringContext<'_, '_>,
+    receiver: &StaticReceiver,
+    method: &str,
+) -> Option<&'a FunctionSig> {
+    let class_name = static_receiver_class_name(ctx, receiver)?;
+    let key = php_symbol_key(method);
+    ctx.classes
+        .get(class_name.as_str())
+        .and_then(|class_info| class_info.static_methods.get(&key))
 }
 
 /// Returns the checked return type for a static method call when metadata is available.
