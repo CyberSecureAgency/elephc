@@ -3098,6 +3098,45 @@ echo $fn();
     );
 }
 
+/// Verifies instance-method first-class callables work with `call_user_func*`.
+#[test]
+fn ir_backend_handles_instance_method_call_user_func_callbacks() {
+    let source = r#"<?php
+class StoredCallUserFuncBox {
+    public int $base = 0;
+
+    public function add(int $value): int {
+        return $this->base + $value;
+    }
+
+    public function combine(int $left, int $right): int {
+        return $this->base + $left * 10 + $right;
+    }
+}
+
+class InlineCallUserFuncGreeter {
+    public function greet(string $name): string {
+        return "Hi " . $name;
+    }
+}
+
+$box = new StoredCallUserFuncBox();
+$box->base = 7;
+$add = $box->add(...);
+$combine = $box->combine(...);
+echo call_user_func($add, 5);
+echo ":";
+echo call_user_func_array($combine, [3, 4]);
+echo ":";
+$greeter = new InlineCallUserFuncGreeter();
+echo call_user_func($greeter->greet(...), "Ada");
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("instance_method_call_user_func_callbacks", source),
+        "12:41:Hi Ada"
+    );
+}
+
 /// Verifies stored instance-method callbacks keep their receiver in `array_filter()`.
 #[test]
 fn ir_backend_handles_stored_instance_method_array_filter_callbacks() {

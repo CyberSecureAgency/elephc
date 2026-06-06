@@ -1008,19 +1008,59 @@ fn lower_static_call_user_func(
 ) -> Option<LoweredValue> {
     match php_symbol_key(name.trim_start_matches('\\')).as_str() {
         "call_user_func" => {
-            let callback = static_call_user_func_callback(ctx, args.first()?)?;
+            let callback_expr = args.first()?;
+            if let Some(callback) = instance_call_user_func_callback(ctx, callback_expr) {
+                return lower_instance_callable_call_user_func(
+                    ctx,
+                    callback_expr,
+                    callback,
+                    &args[1..],
+                    expr,
+                );
+            }
+            let callback = static_call_user_func_callback(ctx, callback_expr)?;
             lower_static_callable_call(ctx, callback, &args[1..], expr)
         }
         "call_user_func_array" => {
             let [callback_arg, arg_array] = args else {
                 return None;
             };
-            let callback = static_call_user_func_callback(ctx, callback_arg)?;
             let callback_args = static_call_user_func_array_args(arg_array)?;
+            if let Some(callback) = instance_call_user_func_callback(ctx, callback_arg) {
+                return lower_instance_callable_call_user_func(
+                    ctx,
+                    callback_arg,
+                    callback,
+                    &callback_args,
+                    expr,
+                );
+            }
+            let callback = static_call_user_func_callback(ctx, callback_arg)?;
             lower_static_callable_call(ctx, callback, &callback_args, expr)
         }
         _ => None,
     }
+}
+
+/// Lowers `call_user_func*` for receiver-bound first-class callables through `expr_call`.
+fn lower_instance_callable_call_user_func(
+    ctx: &mut LoweringContext<'_, '_>,
+    callback_expr: &Expr,
+    callback: StaticCallableBinding,
+    callback_args: &[Expr],
+    expr: &Expr,
+) -> Option<LoweredValue> {
+    let result_type = static_callable_return_type(ctx, &callback);
+    let mut operands = vec![lower_expr(ctx, callback_expr).value];
+    operands.extend(lower_args(ctx, callback_args));
+    Some(ctx.emit_value(
+        Op::ExprCall,
+        operands,
+        None,
+        result_type,
+        Op::ExprCall.default_effects(),
+        Some(expr.span),
+    ))
 }
 
 /// Lowers `array_map()` for a static callback and indexed array literal source.
@@ -1262,6 +1302,25 @@ fn static_call_user_func_callback(
             .and_then(direct_static_callable_binding),
         ExprKind::ArrayLiteral(items) => static_array_callable_target(ctx, items),
         _ => None,
+    }
+}
+
+/// Resolves `call_user_func*` callbacks that must keep descriptor receiver state.
+fn instance_call_user_func_callback(
+    ctx: &LoweringContext<'_, '_>,
+    callback: &Expr,
+) -> Option<StaticCallableBinding> {
+    let target = match &callback.kind {
+        ExprKind::FirstClassCallable(CallableTarget::Method { .. }) => {
+            static_callable_binding_for_expr(ctx, callback)
+        }
+        ExprKind::Variable(name) => ctx.static_callable_local(name),
+        _ => None,
+    }?;
+    if matches!(target, StaticCallableBinding::InstanceMethod { .. }) {
+        Some(target)
+    } else {
+        None
     }
 }
 

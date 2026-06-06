@@ -927,6 +927,45 @@ echo $fn();
     );
 }
 
+/// Verifies instance-method first-class callable `call_user_func*` output matches legacy.
+#[test]
+fn parity_instance_method_call_user_func_callbacks() {
+    assert_backend_parity(
+        "instance_method_call_user_func_callbacks",
+        r#"<?php
+class StoredCallUserFuncBox {
+    public int $base = 0;
+
+    public function add(int $value): int {
+        return $this->base + $value;
+    }
+
+    public function combine(int $left, int $right): int {
+        return $this->base + $left * 10 + $right;
+    }
+}
+
+class InlineCallUserFuncGreeter {
+    public function greet(string $name): string {
+        return "Hi " . $name;
+    }
+}
+
+$box = new StoredCallUserFuncBox();
+$box->base = 7;
+$add = $box->add(...);
+$combine = $box->combine(...);
+echo call_user_func($add, 5);
+echo ":";
+echo call_user_func_array($combine, [3, 4]);
+echo ":";
+$greeter = new InlineCallUserFuncGreeter();
+echo call_user_func($greeter->greet(...), "Ada");
+"#,
+        &[],
+    );
+}
+
 /// Verifies stored instance-method `array_filter()` callbacks keep legacy receiver capture.
 #[test]
 fn parity_stored_instance_method_array_filter_callbacks() {
