@@ -178,7 +178,11 @@ pub(crate) fn lower_user_function(
 ) {
     let fallback = signature_from_ast(params, return_type);
     let signature = check_result.functions.get(name).unwrap_or(&fallback);
-    let eir_signature = eir_signature_with_php_param_contracts(signature);
+    let eir_signature = eir_signature_with_php_param_contracts(
+        name,
+        signature,
+        &check_result.callable_param_sigs,
+    );
     let mut function = Function::new(
         name.to_string(),
         return_ir_type(&eir_signature.return_type),
@@ -614,14 +618,25 @@ fn function_params(signature: &FunctionSig) -> Vec<FunctionParam> {
         .collect()
 }
 
-/// Returns an EIR ABI signature that keeps non-by-ref, non-variadic untyped PHP parameters dynamic.
-fn eir_signature_with_php_param_contracts(signature: &FunctionSig) -> FunctionSig {
+/// Returns an EIR ABI signature that keeps dynamic untyped PHP parameters boxed.
+fn eir_signature_with_php_param_contracts(
+    owner_name: &str,
+    signature: &FunctionSig,
+    callable_param_sigs: &std::collections::HashMap<(String, String), FunctionSig>,
+) -> FunctionSig {
     let mut eir_signature = signature.clone();
     let mut has_dynamic_untyped_param = false;
     for (index, (name, php_type)) in eir_signature.params.iter_mut().enumerate() {
         let declared = signature.declared_params.get(index).copied().unwrap_or(false);
         let by_ref = signature.ref_params.get(index).copied().unwrap_or(false);
         let variadic = signature.variadic.as_deref() == Some(name.as_str());
+        if !declared
+            && !by_ref
+            && !variadic
+            && callable_param_sigs.contains_key(&(owner_name.to_string(), name.clone()))
+        {
+            continue;
+        }
         if !declared && !by_ref && !variadic {
             *php_type = PhpType::Mixed;
             has_dynamic_untyped_param = true;
