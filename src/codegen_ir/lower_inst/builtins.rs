@@ -101,6 +101,8 @@ pub(super) fn lower_builtin_call(ctx: &mut FunctionContext<'_>, inst: &Instructi
         "array_reverse" => arrays::lower_array_reverse(ctx, inst),
         "array_unique" => arrays::lower_array_unique(ctx, inst),
         "array_filter" => arrays::lower_array_filter(ctx, inst),
+        "array_reduce" => arrays::lower_array_reduce(ctx, inst),
+        "array_walk" => arrays::lower_array_walk(ctx, inst),
         "array_merge" => arrays::lower_array_merge(ctx, inst),
         "array_diff" => arrays::lower_array_diff(ctx, inst),
         "array_intersect" => arrays::lower_array_intersect(ctx, inst),

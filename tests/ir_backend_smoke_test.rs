@@ -2941,6 +2941,32 @@ foreach ($uasorted as $value) { echo $value; }
     );
 }
 
+/// Verifies instance-method callbacks preserve receivers in reduce and walk runtimes.
+#[test]
+fn ir_backend_handles_instance_method_reduce_and_walk_callbacks() {
+    let source = r#"<?php
+class CallbackBox {
+    public function add_offset(int $carry, int $item): int {
+        return $carry + $item + 10;
+    }
+
+    public function show(int $item): void {
+        echo $item + 5;
+        echo ":";
+    }
+}
+
+$box = new CallbackBox();
+echo array_reduce([1, 2], $box->add_offset(...), 0);
+echo "|";
+array_walk([1, 2], $box->show(...));
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("instance_method_reduce_and_walk_callbacks", source),
+        "23|6:7:"
+    );
+}
+
 /// Verifies fixed-class object construction calls `__construct` through the EIR method ABI.
 #[test]
 fn ir_backend_calls_simple_constructor() {

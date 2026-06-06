@@ -775,6 +775,32 @@ foreach ($uasorted as $value) { echo $value; }
     );
 }
 
+/// Verifies instance-method reduce and walk callbacks match legacy receiver dispatch.
+#[test]
+fn parity_instance_method_reduce_and_walk_callbacks() {
+    assert_backend_parity(
+        "instance_method_reduce_and_walk_callbacks",
+        r#"<?php
+class CallbackBox {
+    public function add_offset(int $carry, int $item): int {
+        return $carry + $item + 10;
+    }
+
+    public function show(int $item): void {
+        echo $item + 5;
+        echo ":";
+    }
+}
+
+$box = new CallbackBox();
+echo array_reduce([1, 2], $box->add_offset(...), 0);
+echo "|";
+array_walk([1, 2], $box->show(...));
+"#,
+        &[],
+    );
+}
+
 /// Verifies reflection attribute owner metadata matches the legacy backend.
 #[test]
 fn parity_reflection_owner_attributes() {

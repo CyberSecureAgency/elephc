@@ -10,7 +10,7 @@
 //!   because they read 8-byte integer payloads directly.
 //! - Associative key filters require hash operands because their runtime helpers copy hash entries.
 
-use crate::codegen::abi;
+use crate::codegen::{abi, emit_box_current_value_as_mixed};
 use crate::codegen::platform::Arch;
 use crate::codegen_ir::{CodegenIrError, Result};
 use crate::ir::{Immediate, Instruction, LocalSlotId, Op, ValueDef, ValueId};
@@ -197,6 +197,59 @@ pub(super) fn lower_array_filter(ctx: &mut FunctionContext<'_>, inst: &Instructi
     }
     abi::emit_call_label(ctx.emitter, runtime_label);
     store_if_result(ctx, inst)
+}
+
+/// Lowers `array_reduce()` through the callback-driven runtime helper.
+pub(super) fn lower_array_reduce(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    super::ensure_arg_count(inst, "array_reduce", 3)?;
+    let array = expect_operand(inst, 0)?;
+    let callback = expect_operand(inst, 1)?;
+    let initial = expect_operand(inst, 2)?;
+    let elem_ty = eight_byte_callback_array_element_type(ctx.value_php_type(array)?, "array_reduce")?;
+    let initial_ty = eight_byte_callback_value_type(ctx.value_php_type(initial)?, "array_reduce initial")?;
+    let callback_binding = static_sort_callback_binding(
+        ctx,
+        callback,
+        "array_reduce callback",
+        Some(&[initial_ty.clone(), elem_ty]),
+    )?;
+    let env_bytes = reserve_static_callback_env(ctx, callback_binding.env_source)?;
+    let callback_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 0);
+    let array_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 1);
+    let initial_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 2);
+    let env_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 3);
+    abi::emit_symbol_address(ctx.emitter, callback_arg_reg, &callback_binding.label);
+    ctx.load_value_to_reg(array, array_arg_reg)?;
+    ctx.load_value_to_reg(initial, initial_arg_reg)?;
+    load_static_callback_env_arg(ctx, env_arg_reg, env_bytes);
+    abi::emit_call_label(ctx.emitter, "__rt_array_reduce");
+    if env_bytes != 0 {
+        abi::emit_release_temporary_stack(ctx.emitter, env_bytes);
+    }
+    box_int_result_for_mixed_builtin(ctx, inst);
+    store_if_result(ctx, inst)
+}
+
+/// Lowers `array_walk()` through the callback-driven runtime helper.
+pub(super) fn lower_array_walk(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    super::ensure_arg_count(inst, "array_walk", 2)?;
+    let array = expect_operand(inst, 0)?;
+    let callback = expect_operand(inst, 1)?;
+    let elem_ty = eight_byte_callback_array_element_type(ctx.value_php_type(array)?, "array_walk")?;
+    let callback_binding =
+        static_sort_callback_binding(ctx, callback, "array_walk callback", Some(&[elem_ty]))?;
+    let env_bytes = reserve_static_callback_env(ctx, callback_binding.env_source)?;
+    let callback_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 0);
+    let array_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 1);
+    let env_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 2);
+    abi::emit_symbol_address(ctx.emitter, callback_arg_reg, &callback_binding.label);
+    ctx.load_value_to_reg(array, array_arg_reg)?;
+    load_static_callback_env_arg(ctx, env_arg_reg, env_bytes);
+    abi::emit_call_label(ctx.emitter, "__rt_array_walk");
+    if env_bytes != 0 {
+        abi::emit_release_temporary_stack(ctx.emitter, env_bytes);
+    }
+    store_void_builtin_result(ctx, inst)
 }
 
 /// Lowers `array_merge()` for two compatible indexed arrays with 8-byte payload slots.
@@ -767,6 +820,58 @@ fn static_array_filter_mode(ctx: &FunctionContext<'_>, mode: Option<ValueId>) ->
         ));
     };
     Ok(Some(value))
+}
+
+/// Returns an indexed-array element type compatible with callback runtime helpers.
+fn eight_byte_callback_array_element_type(ty: PhpType, name: &str) -> Result<PhpType> {
+    match ty.codegen_repr() {
+        PhpType::Array(elem) => eight_byte_callback_value_type(*elem, name),
+        other => Err(CodegenIrError::unsupported(format!("{} for PHP type {:?}", name, other))),
+    }
+}
+
+/// Returns a scalar callback value type that fits in one integer ABI register.
+fn eight_byte_callback_value_type(ty: PhpType, name: &str) -> Result<PhpType> {
+    let ty = ty.codegen_repr();
+    if matches!(ty, PhpType::Int | PhpType::Bool | PhpType::Void | PhpType::Never) {
+        Ok(ty)
+    } else {
+        Err(CodegenIrError::unsupported(format!(
+            "{} PHP type {:?}",
+            name,
+            ty
+        )))
+    }
+}
+
+/// Boxes the integer runtime result when the EIR builtin result slot is Mixed-like.
+fn box_int_result_for_mixed_builtin(ctx: &mut FunctionContext<'_>, inst: &Instruction) {
+    if inst.result.is_some()
+        && matches!(
+            inst.result_php_type.codegen_repr(),
+            PhpType::Mixed | PhpType::Union(_)
+        )
+    {
+        emit_box_current_value_as_mixed(ctx.emitter, &PhpType::Int);
+    }
+}
+
+/// Stores the void sentinel, boxing it when the EIR builtin result slot is Mixed-like.
+fn store_void_builtin_result(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    abi::emit_load_int_immediate(
+        ctx.emitter,
+        abi::int_result_reg(ctx.emitter),
+        0x7fff_ffff_ffff_fffe,
+    );
+    if inst.result.is_some()
+        && matches!(
+            inst.result_php_type.codegen_repr(),
+            PhpType::Mixed | PhpType::Union(_)
+        )
+    {
+        emit_box_current_value_as_mixed(ctx.emitter, &PhpType::Void);
+    }
+    store_if_result(ctx, inst)
 }
 
 /// Returns the entry label for a static string or first-class callback.
