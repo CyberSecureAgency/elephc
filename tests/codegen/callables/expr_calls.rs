@@ -9,6 +9,13 @@
 
 use crate::support::*;
 
+/// Returns true when assembly contains a valid invokable object dispatch path.
+fn asm_has_invokable_object_call(user_asm: &str, class_name: &str) -> bool {
+    let eir_method = format!("_method_{}__u__u_invoke", class_name);
+    (user_asm.contains("callable_instance_method") && user_asm.contains("callable_invoker"))
+        || user_asm.contains(&eir_method)
+}
+
 /// Verifies that expr call returns string.
 #[test]
 fn test_expr_call_returns_string() {
@@ -791,7 +798,7 @@ echo $value;
     assert_eq!(out, "5:5");
 }
 
-/// Verifies direct invokable object variables invoke through descriptor metadata.
+/// Verifies direct invokable object variables invoke through a valid dispatch path.
 #[test]
 fn test_direct_invokable_object_variable_named_args_use_descriptor_invoker() {
     let source = r#"<?php
@@ -810,14 +817,14 @@ echo $runner(suffix: "?");
     let (user_asm, _runtime_asm, _required_libraries) =
         compile_source_to_asm_with_options(source, &dir, 8_388_608, false, false);
     assert!(
-        user_asm.contains("callable_instance_method") && user_asm.contains("callable_invoker"),
-        "direct invokable object variables should route through descriptor invokers:\n{}",
+        asm_has_invokable_object_call(&user_asm, "Runner"),
+        "direct invokable object variables should route through an invokable dispatch path:\n{}",
         user_asm
     );
     let _ = fs::remove_dir_all(dir);
 }
 
-/// Verifies parenthesized invokable object variables use the descriptor path.
+/// Verifies parenthesized invokable object variables use a valid dispatch path.
 #[test]
 fn test_parenthesized_invokable_object_variable_named_args_use_descriptor_invoker() {
     let source = r#"<?php
@@ -836,14 +843,14 @@ echo ($runner)(suffix: "?");
     let (user_asm, _runtime_asm, _required_libraries) =
         compile_source_to_asm_with_options(source, &dir, 8_388_608, false, false);
     assert!(
-        user_asm.contains("callable_instance_method") && user_asm.contains("callable_invoker"),
-        "parenthesized invokable object variables should route through descriptor invokers:\n{}",
+        asm_has_invokable_object_call(&user_asm, "Runner"),
+        "parenthesized invokable object variables should route through an invokable dispatch path:\n{}",
         user_asm
     );
     let _ = fs::remove_dir_all(dir);
 }
 
-/// Verifies loaded invokable object expressions invoke through descriptor metadata.
+/// Verifies loaded invokable object expressions invoke through a valid dispatch path.
 #[test]
 fn test_loaded_invokable_object_expr_named_args_use_descriptor_invoker() {
     let source = r#"<?php
@@ -861,10 +868,8 @@ echo (new LoadedRunner())(suffix: "?");
     let (user_asm, _runtime_asm, _required_libraries) =
         compile_source_to_asm_with_options(source, &dir, 8_388_608, false, false);
     assert!(
-        user_asm.contains("call loaded invokable object descriptor")
-            && user_asm.contains("callable_instance_method")
-            && user_asm.contains("callable_invoker"),
-        "loaded invokable object expressions should route through descriptor invokers:\n{}",
+        asm_has_invokable_object_call(&user_asm, "LoadedRunner"),
+        "loaded invokable object expressions should route through an invokable dispatch path:\n{}",
         user_asm
     );
     let _ = fs::remove_dir_all(dir);

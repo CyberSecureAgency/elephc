@@ -1994,6 +1994,10 @@ fn instance_callable_object_class(
         ExprKind::NewDynamicObject { fallback_class, .. } => {
             normalized_class_name(fallback_class.as_str())
         }
+        ExprKind::FunctionCall { name, .. } => ctx
+            .functions
+            .get(name.as_str())
+            .and_then(|sig| class_name_from_php_type(&sig.return_type)),
         _ => class_name_from_php_type(&infer_expr_type_syntactic(object)),
     }
 }
@@ -4690,6 +4694,9 @@ fn lower_closure_with_context(
 
 /// Lowers a closure variable call.
 fn lower_closure_call(ctx: &mut LoweringContext<'_, '_>, var: &str, args: &[Expr], expr: &Expr) -> LoweredValue {
+    if let Some(value) = lower_invokable_object_variable_call(ctx, var, args, expr) {
+        return value;
+    }
     let mut result_type = None;
     let mut instance_signature = None;
     if let Some(target) = ctx.static_callable_local(var) {
@@ -4706,8 +4713,45 @@ fn lower_closure_call(ctx: &mut LoweringContext<'_, '_>, var: &str, args: &[Expr
     ctx.emit_value(Op::ClosureCall, operands, None, result_type, Op::ClosureCall.default_effects(), Some(expr.span))
 }
 
+/// Lowers `$object(...)` when the local object has an `__invoke` method.
+fn lower_invokable_object_variable_call(
+    ctx: &mut LoweringContext<'_, '_>,
+    var: &str,
+    args: &[Expr],
+    expr: &Expr,
+) -> Option<LoweredValue> {
+    let object = Expr::new(ExprKind::Variable(var.to_string()), expr.span);
+    lower_invokable_object_expr_call(ctx, &object, args, expr)
+}
+
+/// Lowers invokable object calls through the normal method-call path.
+fn lower_invokable_object_expr_call(
+    ctx: &mut LoweringContext<'_, '_>,
+    callee: &Expr,
+    args: &[Expr],
+    expr: &Expr,
+) -> Option<LoweredValue> {
+    if !is_invokable_object_expr(ctx, callee) {
+        return None;
+    }
+    Some(lower_method_call(ctx, callee, "__invoke", args, Op::MethodCall, expr))
+}
+
+/// Returns true when an expression is known to evaluate to an object with `__invoke`.
+fn is_invokable_object_expr(
+    ctx: &LoweringContext<'_, '_>,
+    callee: &Expr,
+) -> bool {
+    instance_callable_object_class(ctx, callee)
+        .and_then(|class_name| class_method_signature(ctx, &class_name, "__invoke"))
+        .is_some()
+}
+
 /// Lowers an expression call.
 fn lower_expr_call(ctx: &mut LoweringContext<'_, '_>, callee: &Expr, args: &[Expr], expr: &Expr) -> LoweredValue {
+    if let Some(value) = lower_invokable_object_expr_call(ctx, callee, args, expr) {
+        return value;
+    }
     if let Some(value) = lower_first_class_callable_expr_call(ctx, callee, args, expr) {
         return value;
     }
