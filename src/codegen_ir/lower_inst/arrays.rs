@@ -74,6 +74,97 @@ pub(super) fn lower_array_to_mixed(ctx: &mut FunctionContext<'_>, inst: &Instruc
     store_if_result(ctx, inst)
 }
 
+/// Lowers indexed-array promotion to associative hash storage.
+pub(super) fn lower_array_to_hash(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    if inst.operands.len() != 1 {
+        return Err(CodegenIrError::invalid_module(format!(
+            "{} expects exactly one operand",
+            inst.op.name()
+        )));
+    }
+    let array = expect_operand(inst, 0)?;
+    require_indexed_array(ctx.value_php_type(array)?.codegen_repr(), inst)?;
+    let result_value_ty = require_array_to_hash_result(&inst.result_php_type.codegen_repr(), inst)?;
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            let already_hash = ctx.next_label("array_to_hash_already_hash");
+            let convert = ctx.next_label("array_to_hash_convert");
+            let done = ctx.next_label("array_to_hash_done");
+            ctx.load_value_to_reg(array, "x0")?;
+            abi::emit_push_reg(ctx.emitter, "x0");
+            abi::emit_call_label(ctx.emitter, "__rt_heap_kind");
+            ctx.emitter.instruction("cmp x0, #3");                              // check whether the source is already associative hash storage
+            ctx.emitter.instruction(&format!("b.eq {}", already_hash));         // reuse already-promoted hashes without reinterpreting them as indexed arrays
+            ctx.emitter.instruction("cmp x0, #2");                              // check whether the source is still indexed-array storage
+            ctx.emitter.instruction(&format!("b.eq {}", convert));              // convert indexed arrays to hash storage
+            ctx.emitter.label(&already_hash);
+            abi::emit_pop_reg(ctx.emitter, "x0");
+            if result_value_ty == PhpType::Mixed {
+                abi::emit_call_label(ctx.emitter, "__rt_hash_to_mixed");
+            }
+            ctx.emitter.instruction(&format!("b {}", done));                    // finish after reusing an existing hash payload
+            ctx.emitter.label(&convert);
+            abi::emit_pop_reg(ctx.emitter, "x0");
+            abi::emit_push_reg(ctx.emitter, "x0");
+            abi::emit_load_int_immediate(ctx.emitter, "x0", 16);
+            abi::emit_load_int_immediate(ctx.emitter, "x1", runtime_value_tag(&PhpType::Mixed) as i64);
+            abi::emit_call_label(ctx.emitter, "__rt_hash_new");
+            ctx.emitter.instruction("mov x1, x0");                              // pass the empty temporary hash as the right union operand
+            abi::emit_pop_reg(ctx.emitter, "x0");
+            abi::emit_push_reg(ctx.emitter, "x1");
+            abi::emit_call_label(ctx.emitter, "__rt_array_hash_union");
+            abi::emit_pop_reg(ctx.emitter, "x1");
+            abi::emit_push_reg(ctx.emitter, "x0");
+            ctx.emitter.instruction("mov x0, x1");                              // release the empty temporary hash after the union copy
+            abi::emit_call_label(ctx.emitter, "__rt_decref_hash");
+            abi::emit_pop_reg(ctx.emitter, "x0");
+            if result_value_ty == PhpType::Mixed {
+                abi::emit_call_label(ctx.emitter, "__rt_hash_to_mixed");
+            }
+            ctx.emitter.label(&done);
+        }
+        Arch::X86_64 => {
+            let already_hash = ctx.next_label("array_to_hash_already_hash");
+            let convert = ctx.next_label("array_to_hash_convert");
+            let done = ctx.next_label("array_to_hash_done");
+            ctx.load_value_to_reg(array, "rax")?;
+            abi::emit_push_reg(ctx.emitter, "rax");
+            abi::emit_call_label(ctx.emitter, "__rt_heap_kind");
+            ctx.emitter.instruction("cmp rax, 3");                              // check whether the source is already associative hash storage
+            ctx.emitter.instruction(&format!("je {}", already_hash));           // reuse already-promoted hashes without reinterpreting them as indexed arrays
+            ctx.emitter.instruction("cmp rax, 2");                              // check whether the source is still indexed-array storage
+            ctx.emitter.instruction(&format!("je {}", convert));                // convert indexed arrays to hash storage
+            ctx.emitter.label(&already_hash);
+            abi::emit_pop_reg(ctx.emitter, "rax");
+            if result_value_ty == PhpType::Mixed {
+                ctx.emitter.instruction("mov rdi, rax");                        // pass the existing hash to the Mixed-entry conversion helper
+                abi::emit_call_label(ctx.emitter, "__rt_hash_to_mixed");
+            }
+            ctx.emitter.instruction(&format!("jmp {}", done));                  // finish after reusing an existing hash payload
+            ctx.emitter.label(&convert);
+            abi::emit_pop_reg(ctx.emitter, "rdi");
+            abi::emit_push_reg(ctx.emitter, "rdi");
+            abi::emit_load_int_immediate(ctx.emitter, "rdi", 16);
+            abi::emit_load_int_immediate(ctx.emitter, "rsi", runtime_value_tag(&PhpType::Mixed) as i64);
+            abi::emit_call_label(ctx.emitter, "__rt_hash_new");
+            ctx.emitter.instruction("mov rsi, rax");                            // pass the empty temporary hash as the right union operand
+            abi::emit_pop_reg(ctx.emitter, "rdi");
+            abi::emit_push_reg(ctx.emitter, "rsi");
+            abi::emit_call_label(ctx.emitter, "__rt_array_hash_union");
+            abi::emit_pop_reg(ctx.emitter, "rdi");
+            abi::emit_push_reg(ctx.emitter, "rax");
+            ctx.emitter.instruction("mov rax, rdi");                            // release the empty temporary hash after the union copy
+            abi::emit_call_label(ctx.emitter, "__rt_decref_hash");
+            abi::emit_pop_reg(ctx.emitter, "rax");
+            if result_value_ty == PhpType::Mixed {
+                ctx.emitter.instruction("mov rdi, rax");                        // pass the promoted hash to the Mixed-entry conversion helper
+                abi::emit_call_label(ctx.emitter, "__rt_hash_to_mixed");
+            }
+        }
+    }
+    store_if_result(ctx, inst)
+}
+
 /// Lowers an indexed-array element read with PHP null-sentinel fallback on misses.
 pub(super) fn lower_array_get(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     let array = expect_operand(inst, 0)?;
@@ -650,6 +741,18 @@ fn require_array_get_result(elem_ty: &PhpType, inst: &Instruction) -> Result<()>
 fn require_array_to_mixed_result(result_ty: &PhpType, inst: &Instruction) -> Result<()> {
     match result_ty {
         PhpType::Array(elem_ty) if elem_ty.codegen_repr() == PhpType::Mixed => Ok(()),
+        other => Err(CodegenIrError::unsupported(format!(
+            "{} result PHP type {:?}",
+            inst.op.name(),
+            other
+        ))),
+    }
+}
+
+/// Verifies that `array_to_hash` produces associative-array storage.
+fn require_array_to_hash_result(result_ty: &PhpType, inst: &Instruction) -> Result<PhpType> {
+    match result_ty {
+        PhpType::AssocArray { value, .. } => Ok(value.codegen_repr()),
         other => Err(CodegenIrError::unsupported(format!(
             "{} result PHP type {:?}",
             inst.op.name(),

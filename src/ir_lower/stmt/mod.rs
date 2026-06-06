@@ -249,7 +249,7 @@ fn lower_assign(ctx: &mut LoweringContext<'_, '_>, name: &str, value: &Expr, spa
     let static_callable = static_callable_binding_for_expr(ctx, value);
     let lowered = lower_closure_for_assignment(ctx, name, value)
         .unwrap_or_else(|| lower_expr(ctx, value));
-    let php_type = ctx.builder.value_php_type(lowered.value);
+    let (lowered, php_type) = contextualize_array_assignment(ctx, name, value, lowered, span);
     ctx.store_local(name, lowered, php_type, Some(span));
     let callable_result = if direct_closure {
         ctx.take_pending_static_callable_result()
@@ -260,6 +260,36 @@ fn lower_assign(ctx: &mut LoweringContext<'_, '_>, name: &str, value: &Expr, spa
     if let Some(target) = static_callable.or(callable_result) {
         ctx.bind_static_callable_local(name, target);
     }
+}
+
+/// Converts indexed array literals to hash storage when checker facts require an assoc local.
+fn contextualize_array_assignment(
+    ctx: &mut LoweringContext<'_, '_>,
+    name: &str,
+    value: &Expr,
+    lowered: LoweredValue,
+    span: Span,
+) -> (LoweredValue, PhpType) {
+    let php_type = ctx.builder.value_php_type(lowered.value);
+    if !matches!(value.kind, ExprKind::ArrayLiteral(_)) {
+        return (lowered, php_type);
+    }
+    if !matches!(php_type.codegen_repr(), PhpType::Array(_)) {
+        return (lowered, php_type);
+    }
+    let contextual_ty = ctx.local_type(name).codegen_repr();
+    if !matches!(contextual_ty, PhpType::AssocArray { .. }) {
+        return (lowered, php_type);
+    }
+    let hash = ctx.emit_value(
+        Op::ArrayToHash,
+        vec![lowered.value],
+        None,
+        contextual_ty.clone(),
+        Op::ArrayToHash.default_effects(),
+        Some(span),
+    );
+    (hash, contextual_ty)
 }
 
 /// Lowers a by-reference assignment as a conservative local rebinding.
@@ -475,6 +505,10 @@ fn lower_array_assign(
     let index = lower_expr(ctx, index);
     let value = lower_expr(ctx, value);
     let op = array_set_op(array_value.ir_type);
+    if op == Op::ArraySet && index.ir_type == IrType::Str {
+        lower_string_key_array_promotion(ctx, array, array_value, index, value, span);
+        return;
+    }
     if op == Op::ArraySet {
         let (array_value, updated_ty, needs_storeback) =
             prepare_indexed_array_local_write(ctx, array_value, value, span);
@@ -489,6 +523,59 @@ fn lower_array_assign(
         return;
     }
     ctx.emit_void(op, vec![array_value.value, index.value, value.value], None, op.default_effects(), Some(span));
+}
+
+/// Promotes an indexed local array to a Mixed-valued associative array for string-key writes.
+fn lower_string_key_array_promotion(
+    ctx: &mut LoweringContext<'_, '_>,
+    array: &str,
+    array_value: LoweredValue,
+    index: LoweredValue,
+    value: LoweredValue,
+    span: Span,
+) {
+    let current_ty = ctx.builder.value_php_type(array_value.value);
+    let value_ty = ctx.builder.value_php_type(value.value);
+    let assoc_ty = promoted_assoc_array_type(current_ty, value_ty);
+    let hash = ctx.emit_value(
+        Op::ArrayToHash,
+        vec![array_value.value],
+        None,
+        assoc_ty.clone(),
+        Op::ArrayToHash.default_effects(),
+        Some(span),
+    );
+    ctx.emit_void(
+        Op::HashSet,
+        vec![hash.value, index.value, value.value],
+        None,
+        Op::HashSet.default_effects(),
+        Some(span),
+    );
+    ctx.store_mutated_local(array, hash, assoc_ty, Some(span));
+}
+
+/// Returns the associative type produced by a string-key write to an indexed array.
+fn promoted_assoc_array_type(current_ty: PhpType, value_ty: PhpType) -> PhpType {
+    let value_ty = normalize_materialized_element_type(value_ty.codegen_repr());
+    let assoc_value_ty = match current_ty.codegen_repr() {
+        PhpType::Array(elem_ty) if is_empty_indexed_array_element(elem_ty.as_ref()) => {
+            value_ty
+        }
+        PhpType::Array(elem_ty) => {
+            let elem_ty = normalize_materialized_element_type(elem_ty.codegen_repr());
+            if elem_ty == value_ty {
+                elem_ty
+            } else {
+                PhpType::Mixed
+            }
+        }
+        _ => PhpType::Mixed,
+    };
+    PhpType::AssocArray {
+        key: Box::new(PhpType::Mixed),
+        value: Box::new(assoc_value_ty),
+    }
 }
 
 /// Lowers a nested array assignment that already carries an expression target.

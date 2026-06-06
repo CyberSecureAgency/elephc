@@ -45,6 +45,29 @@ pub(super) fn lower_hash_len(ctx: &mut FunctionContext<'_>, inst: &Instruction) 
     store_if_result(ctx, inst)
 }
 
+/// Lowers associative-array widening to boxed Mixed entry payloads.
+pub(super) fn lower_hash_to_mixed(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    if inst.operands.len() != 1 {
+        return Err(CodegenIrError::invalid_module(format!(
+            "{} expects exactly one operand",
+            inst.op.name()
+        )));
+    }
+    let hash = expect_operand(inst, 0)?;
+    require_hash(ctx.value_php_type(hash)?.codegen_repr(), inst)?;
+    require_hash_to_mixed_result(&inst.result_php_type.codegen_repr(), inst)?;
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.load_value_to_reg(hash, "x0")?;
+        }
+        Arch::X86_64 => {
+            ctx.load_value_to_reg(hash, "rdi")?;
+        }
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_hash_to_mixed");
+    store_if_result(ctx, inst)
+}
+
 /// Lowers an associative-array lookup with PHP null-sentinel fallback on misses.
 pub(super) fn lower_hash_get(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     let hash = expect_operand(inst, 0)?;
@@ -473,6 +496,18 @@ fn require_hash_get_result(value_ty: &PhpType, inst: &Instruction) -> Result<()>
         "hash_get value PHP type {:?} with result PHP type {:?}",
         value_ty, inst.result_php_type
     )))
+}
+
+/// Verifies that `hash_to_mixed` produces a Mixed-valued associative array.
+fn require_hash_to_mixed_result(result_ty: &PhpType, inst: &Instruction) -> Result<()> {
+    match result_ty {
+        PhpType::AssocArray { value, .. } if value.codegen_repr() == PhpType::Mixed => Ok(()),
+        other => Err(CodegenIrError::unsupported(format!(
+            "{} result PHP type {:?}",
+            inst.op.name(),
+            other
+        ))),
+    }
 }
 
 /// Rejects hash write payload types that do not have Phase 04 storage lowering yet.
