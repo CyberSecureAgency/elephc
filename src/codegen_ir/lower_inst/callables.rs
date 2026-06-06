@@ -8,11 +8,13 @@
 //! Key details:
 //! - Runtime string callable dispatch preserves the callable name while
 //!   comparing candidates, then reuses direct-call ABI materialization.
-//! - This slice supports compatible user-function targets only; closures with
-//!   captures, callable arrays, object `__invoke`, and builtin string names
-//!   remain explicit unsupported paths.
+//! - Callable descriptors use a uniform invoker ABI with Mixed argument arrays;
+//!   signature-dependent direct dispatch stays on explicit guarded paths.
 
-use crate::codegen::{abi, callable_descriptor, emit_box_current_value_as_mixed};
+use crate::codegen::{
+    abi, callable_descriptor, emit_box_current_owned_value_as_mixed,
+    emit_box_current_value_as_mixed, emit_release_pushed_refcounted_temp_after_array_push,
+};
 use crate::codegen::platform::Arch;
 use crate::ir::{Instruction, ValueId};
 use crate::names::function_symbol;
@@ -59,20 +61,14 @@ pub(super) fn lower_expr_call(ctx: &mut FunctionContext<'_>, inst: &Instruction)
     }
 }
 
-/// Lowers a zero-argument callable descriptor call through its uniform invoker slot.
+/// Lowers a callable descriptor call through its uniform invoker slot.
 fn lower_descriptor_invoker_call(
     ctx: &mut FunctionContext<'_>,
     inst: &Instruction,
     callable: ValueId,
     op_name: &str,
 ) -> Result<()> {
-    if inst.operands.len() != 1 {
-        return Err(CodegenIrError::unsupported(format!(
-            "{} descriptor invocation with {} visible args",
-            op_name,
-            inst.operands.len().saturating_sub(1)
-        )));
-    }
+    let visible_args = inst.operands.iter().skip(1).copied().collect::<Vec<_>>();
     let descriptor_reg = abi::nested_call_reg(ctx.emitter);
     let invoker_reg = abi::symbol_scratch_reg(ctx.emitter);
     ctx.load_value_to_reg(callable, descriptor_reg)?;
@@ -82,8 +78,8 @@ fn lower_descriptor_invoker_call(
     emit_missing_descriptor_invoker_fatal(ctx, op_name);
 
     ctx.emitter.label(&ready_label);
-    emit_empty_invoker_arg_mixed(ctx);
-    abi::emit_push_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));          // preserve the empty Mixed argument array across descriptor register setup
+    emit_invoker_arg_mixed(ctx, &visible_args)?;
+    abi::emit_push_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));          // preserve the boxed Mixed argument array across descriptor register setup
     move_reg_to_arg(ctx, descriptor_reg, 0);
     let arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 1);
     abi::emit_load_temporary_stack_slot(ctx.emitter, arg_reg, 0);
@@ -137,23 +133,94 @@ fn emit_missing_descriptor_invoker_fatal(ctx: &mut FunctionContext<'_>, op_name:
     }
 }
 
-/// Creates an empty indexed array and boxes it as the descriptor-invoker argument container.
-fn emit_empty_invoker_arg_mixed(ctx: &mut FunctionContext<'_>) {
+/// Creates an indexed argument array and boxes it as the descriptor-invoker container.
+fn emit_invoker_arg_mixed(ctx: &mut FunctionContext<'_>, args: &[ValueId]) -> Result<()> {
+    emit_invoker_arg_array(ctx, args)?;
+    emit_box_current_owned_value_as_mixed(
+        ctx.emitter,
+        &PhpType::Array(Box::new(PhpType::Mixed)),
+    );
+    Ok(())
+}
+
+/// Creates the indexed array consumed by runtime callable descriptor invokers.
+fn emit_invoker_arg_array(ctx: &mut FunctionContext<'_>, args: &[ValueId]) -> Result<()> {
+    emit_new_invoker_arg_array(ctx, args.len());
+    if args.is_empty() {
+        return Ok(());
+    }
+    abi::emit_push_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));          // preserve the in-progress invoker argument array across element boxing
+    for arg in args {
+        emit_box_invoker_arg(ctx, *arg)?;
+        abi::emit_push_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));      // preserve the boxed argument while loading the invoker array
+        emit_append_boxed_invoker_arg(ctx);
+        emit_release_pushed_refcounted_temp_after_array_push(ctx.emitter, &PhpType::Mixed);
+        emit_store_result_to_top_stack_slot(ctx);
+    }
+    abi::emit_load_temporary_stack_slot(
+        ctx.emitter,
+        abi::int_result_reg(ctx.emitter),
+        0,
+    );
+    abi::emit_release_temporary_stack(ctx.emitter, 16);
+    Ok(())
+}
+
+/// Allocates the raw indexed array used to pass visible arguments to descriptor invokers.
+fn emit_new_invoker_arg_array(ctx: &mut FunctionContext<'_>, arg_count: usize) {
     match ctx.emitter.target.arch {
         Arch::AArch64 => {
-            abi::emit_load_int_immediate(ctx.emitter, "x0", 0);
+            abi::emit_load_int_immediate(ctx.emitter, "x0", arg_count as i64);
             abi::emit_load_int_immediate(ctx.emitter, "x1", 8);
         }
         Arch::X86_64 => {
-            abi::emit_load_int_immediate(ctx.emitter, "rdi", 0);
+            abi::emit_load_int_immediate(ctx.emitter, "rdi", arg_count as i64);
             abi::emit_load_int_immediate(ctx.emitter, "rsi", 8);
         }
     }
     abi::emit_call_label(ctx.emitter, "__rt_array_new");
-    emit_box_current_value_as_mixed(
-        ctx.emitter,
-        &PhpType::Array(Box::new(PhpType::Mixed)),
-    );
+}
+
+/// Boxes or retains a visible descriptor-invoker argument as an owned Mixed cell.
+fn emit_box_invoker_arg(ctx: &mut FunctionContext<'_>, arg: ValueId) -> Result<()> {
+    let arg_ty = ctx.value_php_type(arg)?.codegen_repr();
+    ctx.load_value_to_result(arg)?;
+    if matches!(arg_ty, PhpType::Mixed | PhpType::Union(_)) {
+        abi::emit_incref_if_refcounted(ctx.emitter, &arg_ty);
+    } else if ctx.value_can_own_mixed_box_source(arg)? {
+        emit_box_current_owned_value_as_mixed(ctx.emitter, &arg_ty);
+    } else {
+        emit_box_current_value_as_mixed(ctx.emitter, &arg_ty);
+    }
+    Ok(())
+}
+
+/// Appends the boxed top-of-stack Mixed cell into the saved invoker argument array.
+fn emit_append_boxed_invoker_arg(ctx: &mut FunctionContext<'_>) {
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            abi::emit_load_temporary_stack_slot(ctx.emitter, "x9", 16);
+            ctx.emitter.instruction("mov x1, x0");                              // pass the boxed visible argument to the invoker array append helper
+            ctx.emitter.instruction("mov x0, x9");                              // pass the saved invoker argument array to the append helper
+        }
+        Arch::X86_64 => {
+            abi::emit_load_temporary_stack_slot(ctx.emitter, "rdi", 16);
+            ctx.emitter.instruction("mov rsi, rax");                            // pass the boxed visible argument to the invoker array append helper
+        }
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_array_push_refcounted");
+}
+
+/// Stores the current single-register result into the temporary stack slot at `sp`.
+fn emit_store_result_to_top_stack_slot(ctx: &mut FunctionContext<'_>) {
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction("str x0, [sp]");                            // update the saved invoker argument array after append growth
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("mov QWORD PTR [rsp], rax");                // update the saved invoker argument array after append growth
+        }
+    }
 }
 
 /// Moves a general-purpose register into an ABI argument register.

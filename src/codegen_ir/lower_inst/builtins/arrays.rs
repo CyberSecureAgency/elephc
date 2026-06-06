@@ -10,7 +10,9 @@
 //!   because they read 8-byte integer payloads directly.
 //! - Associative key filters require hash operands because their runtime helpers copy hash entries.
 
-use crate::codegen::{abi, emit_box_current_owned_value_as_mixed, emit_box_current_value_as_mixed};
+use crate::codegen::{
+    abi, callable_dispatch, emit_box_current_owned_value_as_mixed, emit_box_current_value_as_mixed,
+};
 use crate::codegen::context::DeferredCallbackWrapper;
 use crate::codegen::platform::Arch;
 use crate::codegen_ir::{CodegenIrError, Result};
@@ -19,7 +21,7 @@ use crate::names::{function_symbol, method_symbol, php_symbol_key, static_method
 use crate::types::{array_key_type_from_value_type, PhpType};
 
 use super::super::super::context::FunctionContext;
-use super::super::{expect_operand, store_if_result};
+use super::super::{expect_operand, legacy_context_from_eir_module, store_if_result};
 
 mod column;
 mod key_exists;
@@ -181,15 +183,78 @@ pub(super) fn lower_array_filter(ctx: &mut FunctionContext<'_>, inst: &Instructi
     let mode = inst.operands.get(2).copied();
     let elem_ty = array_filter_source_element_type(ctx.value_php_type(array)?)?;
     require_array_filter_result_type(&elem_ty, &inst.result_php_type.codegen_repr())?;
-    let callback_arg_types = array_filter_callback_arg_types(ctx, mode, &elem_ty)?;
-    let callback_binding =
-        static_sort_callback_binding(ctx, callback, "array_filter callback", callback_arg_types.as_deref())?;
-    let env_bytes = reserve_static_callback_env(ctx, callback_binding.env_source)?;
     let runtime_label = if array_filter_uses_refcounted_runtime(&elem_ty) {
         "__rt_array_filter_refcounted"
     } else {
         "__rt_array_filter"
     };
+    let callback_arg_types = array_filter_callback_arg_types(ctx, mode, &elem_ty)?;
+    if let Some(visible_arg_types) = callback_arg_types.clone() {
+        match ctx.value_php_type(callback)?.codegen_repr() {
+            PhpType::Callable => {
+                lower_descriptor_callback_runtime(
+                    ctx,
+                    callback,
+                    visible_arg_types,
+                    PhpType::Bool,
+                    |ctx, wrapper_label, env_bytes| {
+                        match ctx.emitter.target.arch {
+                            Arch::AArch64 => {
+                                abi::emit_symbol_address(ctx.emitter, "x0", wrapper_label);
+                                ctx.load_value_to_reg(array, "x1")?;
+                                load_static_callback_env_arg(ctx, "x2", env_bytes);
+                                load_array_filter_mode(ctx, mode, "x3")?;
+                            }
+                            Arch::X86_64 => {
+                                abi::emit_symbol_address(ctx.emitter, "rdi", wrapper_label);
+                                ctx.load_value_to_reg(array, "rsi")?;
+                                load_static_callback_env_arg(ctx, "rdx", env_bytes);
+                                load_array_filter_mode(ctx, mode, "rcx")?;
+                            }
+                        }
+                        abi::emit_call_label(ctx.emitter, runtime_label);
+                        Ok(())
+                    },
+                )?;
+                store_if_result(ctx, inst)?;
+                return Ok(());
+            }
+            PhpType::Str => {
+                lower_runtime_string_descriptor_callback(
+                    ctx,
+                    callback,
+                    Some(&PhpType::Array(Box::new(elem_ty.clone()))),
+                    visible_arg_types,
+                    PhpType::Bool,
+                    "array_filter",
+                    |ctx, wrapper_label, env_bytes| {
+                        match ctx.emitter.target.arch {
+                            Arch::AArch64 => {
+                                abi::emit_symbol_address(ctx.emitter, "x0", wrapper_label);
+                                ctx.load_value_to_reg(array, "x1")?;
+                                load_static_callback_env_arg(ctx, "x2", env_bytes);
+                                load_array_filter_mode(ctx, mode, "x3")?;
+                            }
+                            Arch::X86_64 => {
+                                abi::emit_symbol_address(ctx.emitter, "rdi", wrapper_label);
+                                ctx.load_value_to_reg(array, "rsi")?;
+                                load_static_callback_env_arg(ctx, "rdx", env_bytes);
+                                load_array_filter_mode(ctx, mode, "rcx")?;
+                            }
+                        }
+                        abi::emit_call_label(ctx.emitter, runtime_label);
+                        Ok(())
+                    },
+                )?;
+                store_if_result(ctx, inst)?;
+                return Ok(());
+            }
+            _ => {}
+        }
+    }
+    let callback_binding =
+        static_sort_callback_binding(ctx, callback, "array_filter callback", callback_arg_types.as_deref())?;
+    let env_bytes = reserve_static_callback_env(ctx, callback_binding.env_source)?;
     match ctx.emitter.target.arch {
         Arch::AArch64 => {
             abi::emit_symbol_address(ctx.emitter, "x0", &callback_binding.label);
@@ -217,6 +282,48 @@ pub(super) fn lower_array_map(ctx: &mut FunctionContext<'_>, inst: &Instruction)
     let callback = expect_operand(inst, 0)?;
     let array = expect_operand(inst, 1)?;
     let elem_ty = array_map_callback_array_element_type(ctx.value_php_type(array)?)?;
+    match ctx.value_php_type(callback)?.codegen_repr() {
+        PhpType::Callable => {
+            let callback_elem_ty = array_map_descriptor_callback_result_element_type(inst)?;
+            let result_elem_ty = array_map_result_element_type(inst, &callback_elem_ty)?;
+            return lower_array_map_descriptor_callback(
+                ctx,
+                inst,
+                callback,
+                array,
+                &elem_ty,
+                &callback_elem_ty,
+                &result_elem_ty,
+            );
+        }
+        PhpType::Str => {
+            let callback_elem_ty = PhpType::Mixed;
+            let result_elem_ty = array_map_result_element_type(inst, &callback_elem_ty)?;
+            lower_runtime_string_descriptor_callback(
+                ctx,
+                callback,
+                Some(&PhpType::Array(Box::new(elem_ty.clone()))),
+                vec![elem_ty.clone()],
+                PhpType::Mixed,
+                "array_map",
+                |ctx, wrapper_label, env_bytes| {
+                    let callback_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 0);
+                    let array_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 1);
+                    let env_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 2);
+                    abi::emit_symbol_address(ctx.emitter, callback_arg_reg, wrapper_label);
+                    ctx.load_value_to_reg(array, array_arg_reg)?;
+                    load_static_callback_env_arg(ctx, env_arg_reg, env_bytes);
+                    abi::emit_call_label(ctx.emitter, array_map_runtime_label(&callback_elem_ty, env_bytes));
+                    Ok(())
+                },
+            )?;
+            normalize_indexed_array_result(ctx, "array_map", &callback_elem_ty, &result_elem_ty)?;
+            box_array_result_for_mixed_builtin(ctx, inst, &result_elem_ty);
+            store_if_result(ctx, inst)?;
+            return Ok(());
+        }
+        _ => {}
+    }
     if descriptor_callback_local_without_same_block_store(ctx, callback)? {
         let callback_elem_ty = array_map_descriptor_callback_result_element_type(inst)?;
         let result_elem_ty = array_map_result_element_type(inst, &callback_elem_ty)?;
@@ -334,8 +441,161 @@ fn reserve_descriptor_callback_env(
     Ok(16)
 }
 
+/// Calls a descriptor-backed array callback runtime using a callable descriptor value.
+fn lower_descriptor_callback_runtime<F>(
+    ctx: &mut FunctionContext<'_>,
+    callback: ValueId,
+    visible_arg_types: Vec<PhpType>,
+    return_ty: PhpType,
+    mut emit_call: F,
+) -> Result<()>
+where
+    F: FnMut(&mut FunctionContext<'_>, &str, usize) -> Result<()>,
+{
+    let wrapper_label = emit_descriptor_callback_wrapper(ctx, visible_arg_types, return_ty);
+    let env_bytes = reserve_descriptor_callback_env(ctx, callback)?;
+    emit_call(ctx, &wrapper_label, env_bytes)?;
+    abi::emit_release_temporary_stack(ctx.emitter, env_bytes);
+    Ok(())
+}
+
+/// Dispatches a runtime string callback name to a descriptor-backed array callback runtime.
+fn lower_runtime_string_descriptor_callback<F>(
+    ctx: &mut FunctionContext<'_>,
+    callback: ValueId,
+    source_arg_ty: Option<&PhpType>,
+    visible_arg_types: Vec<PhpType>,
+    return_ty: PhpType,
+    owner: &str,
+    mut emit_call: F,
+) -> Result<()>
+where
+    F: FnMut(&mut FunctionContext<'_>, &str, usize) -> Result<()>,
+{
+    let callback_ty = ctx.load_value_to_result(callback)?;
+    if callback_ty.codegen_repr() != PhpType::Str {
+        return Err(CodegenIrError::invalid_module(format!(
+            "{} runtime string callback has PHP type {:?}",
+            owner, callback_ty
+        )));
+    }
+
+    let (ptr_reg, len_reg) = abi::string_result_regs(ctx.emitter);
+    abi::emit_push_reg_pair(ctx.emitter, ptr_reg, len_reg);
+
+    let call_reg = abi::nested_call_reg(ctx.emitter);
+    let mut legacy_ctx = legacy_context_from_eir_module(ctx.module);
+    legacy_ctx.functions.retain(|name, _| {
+        ctx.module
+            .functions
+            .iter()
+            .any(|function| !function.flags.is_main && function.name == *name)
+    });
+    let cases = callable_dispatch::runtime_callable_cases(&mut legacy_ctx, ctx.data, &[], source_arg_ty);
+    emit_legacy_deferred_runtime_callable_support(ctx, &mut legacy_ctx);
+
+    let done_label = ctx.next_label(&format!("{}_runtime_string_callback_done", owner));
+    let selector = callable_dispatch::RuntimeCallableSelector::StringNameStack {
+        ptr_offset: 0,
+        len_offset: 8,
+        call_reg,
+    };
+    for case in &cases {
+        let next_case = ctx.next_label(&format!("{}_runtime_string_callback_next", owner));
+        callable_dispatch::emit_branch_if_callable_case_mismatch(
+            &selector,
+            case,
+            &next_case,
+            ctx.emitter,
+            &mut legacy_ctx,
+            ctx.data,
+        );
+        let wrapper_label = emit_descriptor_callback_wrapper(
+            ctx,
+            visible_arg_types.clone(),
+            return_ty.clone(),
+        );
+        let env_bytes = reserve_descriptor_callback_env_from_reg(ctx, call_reg);
+        emit_call(ctx, &wrapper_label, env_bytes)?;
+        abi::emit_release_temporary_stack(ctx.emitter, env_bytes);
+        abi::emit_jump(ctx.emitter, &done_label);
+        ctx.emitter.label(&next_case);
+    }
+
+    emit_dynamic_string_callback_abort(ctx, owner);
+    ctx.emitter.label(&done_label);
+    abi::emit_release_temporary_stack(ctx.emitter, 16);
+    Ok(())
+}
+
+/// Emits legacy deferred callable wrappers/invokers inline and branches around them.
+fn emit_legacy_deferred_runtime_callable_support(
+    ctx: &mut FunctionContext<'_>,
+    legacy_ctx: &mut crate::codegen::context::Context,
+) {
+    if legacy_ctx.deferred_closures.is_empty()
+        && legacy_ctx.deferred_fiber_wrappers.is_empty()
+        && legacy_ctx.deferred_callback_wrappers.is_empty()
+        && legacy_ctx.deferred_extern_callback_trampolines.is_empty()
+        && legacy_ctx.deferred_runtime_callable_invokers.is_empty()
+    {
+        return;
+    }
+    let done_label = ctx.next_label("runtime_callable_support_done");
+    abi::emit_jump(ctx.emitter, &done_label);
+    crate::codegen::emit_deferred_closures(ctx.emitter, ctx.data, legacy_ctx);
+    ctx.emitter.label(&done_label);
+}
+
+/// Reserves a descriptor callback environment using a descriptor already held in a register.
+fn reserve_descriptor_callback_env_from_reg(
+    ctx: &mut FunctionContext<'_>,
+    descriptor_reg: &str,
+) -> usize {
+    abi::emit_reserve_temporary_stack(ctx.emitter, 16);
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction(&format!("str {}, [sp]", descriptor_reg));  // store the selected runtime string descriptor for the descriptor callback wrapper
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction(&format!("mov QWORD PTR [rsp], {}", descriptor_reg)); // store the selected runtime string descriptor for the descriptor callback wrapper
+        }
+    }
+    16
+}
+
+/// Emits a fatal diagnostic for runtime callback names that do not resolve to descriptors.
+fn emit_dynamic_string_callback_abort(ctx: &mut FunctionContext<'_>, owner: &str) {
+    let message = format!(
+        "Fatal error: {} callback string does not name a supported callable\n",
+        owner
+    );
+    let (message_label, message_len) = ctx.data.add_string(message.as_bytes());
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction("mov x0, #2");                              // write the unresolved runtime callback diagnostic to stderr
+            ctx.emitter.adrp("x1", &message_label);                             // load the runtime callback diagnostic page
+            ctx.emitter.add_lo12("x1", "x1", &message_label);                  // resolve the runtime callback diagnostic address
+            ctx.emitter.instruction(&format!("mov x2, #{}", message_len));      // pass the runtime callback diagnostic byte length to write
+            ctx.emitter.syscall(4);
+            abi::emit_exit(ctx.emitter, 1);
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("mov edi, 2");                              // write the unresolved runtime callback diagnostic to Linux stderr
+            abi::emit_symbol_address(ctx.emitter, "rsi", &message_label);
+            ctx.emitter.instruction(&format!("mov edx, {}", message_len));      // pass the runtime callback diagnostic byte length to write
+            ctx.emitter.instruction("mov eax, 1");                              // Linux x86_64 syscall 1 = write
+            ctx.emitter.instruction("syscall");                                 // emit the fatal diagnostic before terminating
+            abi::emit_exit(ctx.emitter, 1);
+        }
+    }
+}
+
 /// Returns the runtime helper selected for an `array_map()` callback result shape.
 fn array_map_runtime_label(callback_elem_ty: &PhpType, env_bytes: usize) -> &'static str {
+    if callback_elem_ty == &PhpType::Mixed {
+        return "__rt_array_map_mixed";
+    }
     if callback_elem_ty == &PhpType::Str {
         if env_bytes == 0 {
             "__rt_array_map_str"
@@ -355,6 +615,57 @@ pub(super) fn lower_array_reduce(ctx: &mut FunctionContext<'_>, inst: &Instructi
     let initial = expect_operand(inst, 2)?;
     let elem_ty = eight_byte_callback_array_element_type(ctx.value_php_type(array)?, "array_reduce")?;
     let initial_ty = eight_byte_callback_value_type(ctx.value_php_type(initial)?, "array_reduce initial")?;
+    match ctx.value_php_type(callback)?.codegen_repr() {
+        PhpType::Callable => {
+            lower_descriptor_callback_runtime(
+                ctx,
+                callback,
+                vec![initial_ty.clone(), elem_ty.clone()],
+                PhpType::Int,
+                |ctx, wrapper_label, env_bytes| {
+                    let callback_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 0);
+                    let array_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 1);
+                    let initial_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 2);
+                    let env_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 3);
+                    abi::emit_symbol_address(ctx.emitter, callback_arg_reg, wrapper_label);
+                    ctx.load_value_to_reg(array, array_arg_reg)?;
+                    ctx.load_value_to_reg(initial, initial_arg_reg)?;
+                    load_static_callback_env_arg(ctx, env_arg_reg, env_bytes);
+                    abi::emit_call_label(ctx.emitter, "__rt_array_reduce");
+                    Ok(())
+                },
+            )?;
+            box_int_result_for_mixed_builtin(ctx, inst);
+            store_if_result(ctx, inst)?;
+            return Ok(());
+        }
+        PhpType::Str => {
+            lower_runtime_string_descriptor_callback(
+                ctx,
+                callback,
+                Some(&PhpType::Array(Box::new(elem_ty.clone()))),
+                vec![initial_ty.clone(), elem_ty.clone()],
+                PhpType::Int,
+                "array_reduce",
+                |ctx, wrapper_label, env_bytes| {
+                    let callback_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 0);
+                    let array_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 1);
+                    let initial_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 2);
+                    let env_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 3);
+                    abi::emit_symbol_address(ctx.emitter, callback_arg_reg, wrapper_label);
+                    ctx.load_value_to_reg(array, array_arg_reg)?;
+                    ctx.load_value_to_reg(initial, initial_arg_reg)?;
+                    load_static_callback_env_arg(ctx, env_arg_reg, env_bytes);
+                    abi::emit_call_label(ctx.emitter, "__rt_array_reduce");
+                    Ok(())
+                },
+            )?;
+            box_int_result_for_mixed_builtin(ctx, inst);
+            store_if_result(ctx, inst)?;
+            return Ok(());
+        }
+        _ => {}
+    }
     let callback_binding = static_sort_callback_binding(
         ctx,
         callback,
@@ -384,6 +695,51 @@ pub(super) fn lower_array_walk(ctx: &mut FunctionContext<'_>, inst: &Instruction
     let array = expect_operand(inst, 0)?;
     let callback = expect_operand(inst, 1)?;
     let elem_ty = eight_byte_callback_array_element_type(ctx.value_php_type(array)?, "array_walk")?;
+    match ctx.value_php_type(callback)?.codegen_repr() {
+        PhpType::Callable => {
+            lower_descriptor_callback_runtime(
+                ctx,
+                callback,
+                vec![elem_ty.clone()],
+                PhpType::Void,
+                |ctx, wrapper_label, env_bytes| {
+                    let callback_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 0);
+                    let array_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 1);
+                    let env_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 2);
+                    abi::emit_symbol_address(ctx.emitter, callback_arg_reg, wrapper_label);
+                    ctx.load_value_to_reg(array, array_arg_reg)?;
+                    load_static_callback_env_arg(ctx, env_arg_reg, env_bytes);
+                    abi::emit_call_label(ctx.emitter, "__rt_array_walk");
+                    Ok(())
+                },
+            )?;
+            store_void_builtin_result(ctx, inst)?;
+            return Ok(());
+        }
+        PhpType::Str => {
+            lower_runtime_string_descriptor_callback(
+                ctx,
+                callback,
+                Some(&PhpType::Array(Box::new(elem_ty.clone()))),
+                vec![elem_ty.clone()],
+                PhpType::Void,
+                "array_walk",
+                |ctx, wrapper_label, env_bytes| {
+                    let callback_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 0);
+                    let array_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 1);
+                    let env_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 2);
+                    abi::emit_symbol_address(ctx.emitter, callback_arg_reg, wrapper_label);
+                    ctx.load_value_to_reg(array, array_arg_reg)?;
+                    load_static_callback_env_arg(ctx, env_arg_reg, env_bytes);
+                    abi::emit_call_label(ctx.emitter, "__rt_array_walk");
+                    Ok(())
+                },
+            )?;
+            store_void_builtin_result(ctx, inst)?;
+            return Ok(());
+        }
+        _ => {}
+    }
     let callback_binding =
         static_sort_callback_binding(ctx, callback, "array_walk callback", Some(&[elem_ty]))?;
     let env_bytes = reserve_static_callback_env(ctx, callback_binding.env_source)?;
@@ -798,13 +1154,68 @@ fn lower_user_sort_static_callback(
     let array = expect_operand(inst, 0)?;
     let callback = expect_operand(inst, 1)?;
     require_indexed_int_sort_array(ctx.value_php_type(array)?, name)?;
-    let callback_binding =
-        static_sort_callback_binding(ctx, callback, &format!("{} callback", name), Some(&[PhpType::Int, PhpType::Int]))?;
     let source_local = source_load_local_slot(ctx, array)?;
     ensure_unique_sort_source(ctx, array)?;
     if let Some(slot) = source_local {
         ctx.store_value_to_local(slot, array)?;
     }
+    match ctx.value_php_type(callback)?.codegen_repr() {
+        PhpType::Callable => {
+            lower_descriptor_callback_runtime(
+                ctx,
+                callback,
+                vec![PhpType::Int, PhpType::Int],
+                PhpType::Int,
+                |ctx, wrapper_label, env_bytes| {
+                    let callback_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 0);
+                    let array_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 1);
+                    let env_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 2);
+                    abi::emit_symbol_address(ctx.emitter, callback_arg_reg, wrapper_label);
+                    ctx.load_value_to_reg(array, array_arg_reg)?;
+                    load_static_callback_env_arg(ctx, env_arg_reg, env_bytes);
+                    abi::emit_call_label(ctx.emitter, "__rt_usort");
+                    Ok(())
+                },
+            )?;
+            abi::emit_load_int_immediate(
+                ctx.emitter,
+                abi::int_result_reg(ctx.emitter),
+                0x7fff_ffff_ffff_fffe,
+            );
+            store_if_result(ctx, inst)?;
+            return Ok(());
+        }
+        PhpType::Str => {
+            lower_runtime_string_descriptor_callback(
+                ctx,
+                callback,
+                Some(&PhpType::Array(Box::new(PhpType::Int))),
+                vec![PhpType::Int, PhpType::Int],
+                PhpType::Int,
+                name,
+                |ctx, wrapper_label, env_bytes| {
+                    let callback_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 0);
+                    let array_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 1);
+                    let env_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 2);
+                    abi::emit_symbol_address(ctx.emitter, callback_arg_reg, wrapper_label);
+                    ctx.load_value_to_reg(array, array_arg_reg)?;
+                    load_static_callback_env_arg(ctx, env_arg_reg, env_bytes);
+                    abi::emit_call_label(ctx.emitter, "__rt_usort");
+                    Ok(())
+                },
+            )?;
+            abi::emit_load_int_immediate(
+                ctx.emitter,
+                abi::int_result_reg(ctx.emitter),
+                0x7fff_ffff_ffff_fffe,
+            );
+            store_if_result(ctx, inst)?;
+            return Ok(());
+        }
+        _ => {}
+    }
+    let callback_binding =
+        static_sort_callback_binding(ctx, callback, &format!("{} callback", name), Some(&[PhpType::Int, PhpType::Int]))?;
     let env_bytes = reserve_static_callback_env(ctx, callback_binding.env_source)?;
     let callback_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 0);
     let array_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 1);
@@ -1152,7 +1563,7 @@ fn array_map_descriptor_callback_result_element_type(inst: &Instruction) -> Resu
     match inst.result_php_type.codegen_repr() {
         PhpType::Array(elem) => {
             let elem = elem.codegen_repr();
-            if matches!(elem, PhpType::Int | PhpType::Bool | PhpType::Str) {
+            if matches!(elem, PhpType::Int | PhpType::Bool | PhpType::Str | PhpType::Mixed) {
                 Ok(elem)
             } else {
                 Err(CodegenIrError::unsupported(format!(
@@ -1161,6 +1572,7 @@ fn array_map_descriptor_callback_result_element_type(inst: &Instruction) -> Resu
                 )))
             }
         }
+        PhpType::Mixed | PhpType::Union(_) => Ok(PhpType::Mixed),
         other => Err(CodegenIrError::unsupported(format!(
             "array_map descriptor callback result PHP type {:?}",
             other
@@ -1221,7 +1633,10 @@ fn static_sort_callback_binding(
     owner: &str,
     visible_arg_types: Option<&[PhpType]>,
 ) -> Result<StaticSortCallbackBinding> {
-    let callback = static_callback_name_operand(ctx, value, owner)?;
+    let callback = match static_callable_array_callback_name(ctx, value, owner)? {
+        Some(callback) => callback,
+        None => static_callback_name_operand(ctx, value, owner)?,
+    };
     if let Some(callee) = ctx.callable_function_by_name(&callback.name) {
         return Ok(StaticSortCallbackBinding {
             label: function_symbol(&callee.name),
@@ -1256,6 +1671,270 @@ fn static_sort_callback_binding(
         owner,
         callback.name
     )))
+}
+
+/// Recovers a static `[class, method]` callable array as a static-method callback name.
+fn static_callable_array_callback_name(
+    ctx: &FunctionContext<'_>,
+    value: ValueId,
+    owner: &str,
+) -> Result<Option<StaticCallbackName>> {
+    let Some((array, block, limit_index)) = static_callable_array_source(ctx, value, owner)? else {
+        return Ok(None);
+    };
+    let items = static_callable_array_items(ctx, array, block, limit_index)?;
+    let [receiver, method] = items.as_slice() else {
+        return Ok(None);
+    };
+    let Some(method_name) = static_callback_const_string(ctx, *method)? else {
+        return Ok(None);
+    };
+    if static_callback_object_receiver(ctx, *receiver)? {
+        return Ok(Some(StaticCallbackName {
+            name: format!("object::{}", method_name),
+            kind: StaticCallbackOperandKind::FirstClassCallable,
+            receiver: Some(*receiver),
+        }));
+    }
+    let Some(class_name) = static_callback_const_string(ctx, *receiver)? else {
+        return Ok(None);
+    };
+    Ok(Some(StaticCallbackName {
+        name: format!("{}::{}", class_name, method_name),
+        kind: StaticCallbackOperandKind::FirstClassCallable,
+        receiver: None,
+    }))
+}
+
+/// Returns the backing array value for a same-block static callable-array operand.
+fn static_callable_array_source(
+    ctx: &FunctionContext<'_>,
+    value: ValueId,
+    owner: &str,
+) -> Result<Option<(ValueId, BlockId, u32)>> {
+    let Some(value_ref) = ctx.function.value(value) else {
+        return Err(CodegenIrError::missing_entry("value", value.as_raw()));
+    };
+    let ValueDef::Instruction { block, index, inst } = value_ref.def else {
+        return Ok(None);
+    };
+    let Some(inst_ref) = ctx.function.instruction(inst) else {
+        return Err(CodegenIrError::missing_entry("instruction", inst.as_raw()));
+    };
+    let candidate = if inst_ref.op == Op::LoadLocal {
+        let Some(stored) = static_callback_local_stored_value(ctx, block, index, inst_ref, owner)? else {
+            return Ok(None);
+        };
+        stored
+    } else {
+        value
+    };
+    let array = strip_static_callback_acquire(ctx, candidate)?;
+    if value_defining_op(ctx, array)? == Some(Op::ArrayNew) {
+        let (array_block, _) = value_instruction_location(ctx, array)?;
+        let limit_index = if array_block == block { index } else { u32::MAX };
+        Ok(Some((array, array_block, limit_index)))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Resolves the last same-block local store before a callback local load.
+fn static_callback_local_stored_value(
+    ctx: &FunctionContext<'_>,
+    block: BlockId,
+    load_index: u32,
+    load_inst: &Instruction,
+    owner: &str,
+) -> Result<Option<ValueId>> {
+    let Some(Immediate::LocalSlot(slot)) = load_inst.immediate else {
+        return Err(CodegenIrError::invalid_module(format!(
+            "{} load_local callback has no local slot",
+            owner
+        )));
+    };
+    let block_ref = ctx
+        .function
+        .block(block)
+        .ok_or_else(|| CodegenIrError::missing_entry("block", block.as_raw()))?;
+    let mut stored = None;
+    for (index, inst_id) in block_ref.instructions.iter().enumerate() {
+        if index as u32 >= load_index {
+            break;
+        }
+        let inst_ref = ctx
+            .function
+            .instruction(*inst_id)
+            .ok_or_else(|| CodegenIrError::missing_entry("instruction", inst_id.as_raw()))?;
+        if inst_ref.op == Op::StoreLocal
+            && matches!(inst_ref.immediate, Some(Immediate::LocalSlot(candidate)) if candidate == slot)
+        {
+            stored = inst_ref.operands.first().copied();
+        }
+    }
+    if stored.is_none() {
+        stored = unique_static_callback_local_store(ctx, slot)?;
+    }
+    Ok(stored)
+}
+
+/// Returns the stored value for a callback local only when the function writes it once.
+fn unique_static_callback_local_store(
+    ctx: &FunctionContext<'_>,
+    slot: LocalSlotId,
+) -> Result<Option<ValueId>> {
+    let mut stored = None;
+    for block in &ctx.function.blocks {
+        for inst_id in &block.instructions {
+            let inst_ref = ctx
+                .function
+                .instruction(*inst_id)
+                .ok_or_else(|| CodegenIrError::missing_entry("instruction", inst_id.as_raw()))?;
+            if inst_ref.op == Op::StoreLocal
+                && matches!(inst_ref.immediate, Some(Immediate::LocalSlot(candidate)) if candidate == slot)
+            {
+                if stored.is_some() {
+                    return Ok(None);
+                }
+                stored = inst_ref.operands.first().copied();
+            }
+        }
+    }
+    Ok(stored)
+}
+
+/// Removes a refcount acquire wrapper from a static callback-array value.
+fn strip_static_callback_acquire(ctx: &FunctionContext<'_>, value: ValueId) -> Result<ValueId> {
+    let Some(value_ref) = ctx.function.value(value) else {
+        return Err(CodegenIrError::missing_entry("value", value.as_raw()));
+    };
+    let ValueDef::Instruction { inst, .. } = value_ref.def else {
+        return Ok(value);
+    };
+    let Some(inst_ref) = ctx.function.instruction(inst) else {
+        return Err(CodegenIrError::missing_entry("instruction", inst.as_raw()));
+    };
+    if inst_ref.op == Op::Acquire {
+        Ok(inst_ref.operands.first().copied().unwrap_or(value))
+    } else {
+        Ok(value)
+    }
+}
+
+/// Returns the defining opcode for an SSA value when it comes from an instruction.
+fn value_defining_op(ctx: &FunctionContext<'_>, value: ValueId) -> Result<Option<Op>> {
+    let (inst, _) = match value_instruction(ctx, value)? {
+        Some(location) => location,
+        None => return Ok(None),
+    };
+    Ok(Some(inst.op))
+}
+
+/// Returns the instruction and block location that define an SSA value.
+fn value_instruction<'a>(
+    ctx: &'a FunctionContext<'_>,
+    value: ValueId,
+) -> Result<Option<(&'a Instruction, BlockId)>> {
+    let Some(value_ref) = ctx.function.value(value) else {
+        return Err(CodegenIrError::missing_entry("value", value.as_raw()));
+    };
+    let ValueDef::Instruction { block, inst, .. } = value_ref.def else {
+        return Ok(None);
+    };
+    let inst_ref = ctx
+        .function
+        .instruction(inst)
+        .ok_or_else(|| CodegenIrError::missing_entry("instruction", inst.as_raw()))?;
+    Ok(Some((inst_ref, block)))
+}
+
+/// Returns the block and instruction index that define an instruction-backed SSA value.
+fn value_instruction_location(
+    ctx: &FunctionContext<'_>,
+    value: ValueId,
+) -> Result<(BlockId, u32)> {
+    let Some(value_ref) = ctx.function.value(value) else {
+        return Err(CodegenIrError::missing_entry("value", value.as_raw()));
+    };
+    let ValueDef::Instruction { block, index, .. } = value_ref.def else {
+        return Err(CodegenIrError::invalid_module(
+            "static callable-array source is not instruction-backed",
+        ));
+    };
+    Ok((block, index))
+}
+
+/// Collects item values pushed into a static callable-array literal before use.
+fn static_callable_array_items(
+    ctx: &FunctionContext<'_>,
+    array: ValueId,
+    block: BlockId,
+    limit_index: u32,
+) -> Result<Vec<ValueId>> {
+    let block_ref = ctx
+        .function
+        .block(block)
+        .ok_or_else(|| CodegenIrError::missing_entry("block", block.as_raw()))?;
+    let mut items = Vec::new();
+    for (index, inst_id) in block_ref.instructions.iter().enumerate() {
+        if index as u32 >= limit_index {
+            break;
+        }
+        let inst_ref = ctx
+            .function
+            .instruction(*inst_id)
+            .ok_or_else(|| CodegenIrError::missing_entry("instruction", inst_id.as_raw()))?;
+        if inst_ref.op == Op::ArrayPush && inst_ref.operands.first().copied() == Some(array) {
+            let Some(item) = inst_ref.operands.get(1).copied() else {
+                return Err(CodegenIrError::invalid_module(
+                    "callable array push missing value operand",
+                ));
+            };
+            items.push(item);
+        }
+    }
+    Ok(items)
+}
+
+/// Returns true when a callable-array receiver item is a statically typed object value.
+fn static_callback_object_receiver(ctx: &FunctionContext<'_>, value: ValueId) -> Result<bool> {
+    Ok(matches!(
+        ctx.value_php_type(value)?.codegen_repr(),
+        PhpType::Object(_)
+    ))
+}
+
+/// Returns a constant string value used by a static callable-array item.
+fn static_callback_const_string(
+    ctx: &FunctionContext<'_>,
+    value: ValueId,
+) -> Result<Option<String>> {
+    let value = strip_static_callback_acquire(ctx, value)?;
+    let Some(value_ref) = ctx.function.value(value) else {
+        return Err(CodegenIrError::missing_entry("value", value.as_raw()));
+    };
+    let ValueDef::Instruction { inst, .. } = value_ref.def else {
+        return Ok(None);
+    };
+    let inst_ref = ctx
+        .function
+        .instruction(inst)
+        .ok_or_else(|| CodegenIrError::missing_entry("instruction", inst.as_raw()))?;
+    if inst_ref.op != Op::ConstStr {
+        return Ok(None);
+    }
+    let Some(Immediate::Data(data)) = inst_ref.immediate else {
+        return Err(CodegenIrError::invalid_module(
+            "callable array const_str item has no data id",
+        ));
+    };
+    ctx.module
+        .data
+        .strings
+        .get(data.as_raw() as usize)
+        .cloned()
+        .map(Some)
+        .ok_or_else(|| CodegenIrError::missing_entry("data string", data.as_raw()))
 }
 
 /// Static callback operand metadata recovered from a literal-producing EIR instruction.

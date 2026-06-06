@@ -229,7 +229,7 @@ pub(super) fn emit_static_property_initializers(
 }
 
 /// Emits all deferred closures, fiber wrappers, and callback wrappers into the output.
-pub(super) fn emit_deferred_closures(
+pub(crate) fn emit_deferred_closures(
     emitter: &mut Emitter,
     data: &mut DataSection,
     ctx: &mut Context,

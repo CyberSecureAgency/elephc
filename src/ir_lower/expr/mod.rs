@@ -978,6 +978,9 @@ fn lower_function_call(ctx: &mut LoweringContext<'_, '_>, name: &Name, args: &[E
     if let Some(value) = lower_static_call_user_func(ctx, canonical, args, expr) {
         return value;
     }
+    if let Some(value) = lower_dynamic_call_user_func(ctx, canonical, args, expr) {
+        return value;
+    }
     if let Some(value) = lower_static_array_map(ctx, canonical, args, expr) {
         return value;
     }
@@ -1134,6 +1137,32 @@ fn lower_instance_callable_call_user_func(
     ))
 }
 
+/// Lowers dynamic `call_user_func()` callbacks through the same EIR path as `$callable(...)`.
+fn lower_dynamic_call_user_func(
+    ctx: &mut LoweringContext<'_, '_>,
+    name: &str,
+    args: &[Expr],
+    expr: &Expr,
+) -> Option<LoweredValue> {
+    if php_symbol_key(name.trim_start_matches('\\')) != "call_user_func" || args.is_empty() {
+        return None;
+    }
+    if crate::types::call_args::has_named_args(args) || args.iter().any(is_spread_arg) {
+        return None;
+    }
+    let mut operands = Vec::with_capacity(args.len());
+    operands.push(lower_expr(ctx, &args[0]).value);
+    operands.extend(lower_args(ctx, &args[1..]));
+    Some(ctx.emit_value(
+        Op::ExprCall,
+        operands,
+        None,
+        PhpType::Mixed,
+        Op::ExprCall.default_effects(),
+        Some(expr.span),
+    ))
+}
+
 /// Lowers `array_map()` for a static callback and indexed array literal source.
 fn lower_static_array_map(
     ctx: &mut LoweringContext<'_, '_>,
@@ -1145,6 +1174,9 @@ fn lower_static_array_map(
         return None;
     }
     if crate::types::call_args::has_named_args(args) || args.iter().any(is_spread_arg) {
+        return None;
+    }
+    if matches!(args[0].kind, ExprKind::Variable(_)) {
         return None;
     }
     let callback = static_call_user_func_callback(ctx, &args[0])?;
@@ -1186,6 +1218,9 @@ fn lower_static_array_reduce(
     if crate::types::call_args::has_named_args(args) || args.iter().any(is_spread_arg) {
         return None;
     }
+    if matches!(args[1].kind, ExprKind::Variable(_)) {
+        return None;
+    }
     let ExprKind::ArrayLiteral(items) = &args[0].kind else {
         return None;
     };
@@ -1222,6 +1257,9 @@ fn lower_static_array_walk(
         return None;
     }
     if crate::types::call_args::has_named_args(args) || args.iter().any(is_spread_arg) {
+        return None;
+    }
+    if matches!(args[1].kind, ExprKind::Variable(_)) {
         return None;
     }
     let ExprKind::ArrayLiteral(items) = &args[0].kind else {
@@ -2754,13 +2792,17 @@ fn indexed_array_literal_element_type(array_ty: &PhpType) -> Option<PhpType> {
 }
 
 /// Releases an inserted temporary when the container retained or copied its payload.
+/// Callable arrays keep raw descriptor pointers today, so the inserted owner stays alive.
 fn release_value_after_retaining_insert(
     ctx: &mut LoweringContext<'_, '_>,
     container_elem_ty: Option<&PhpType>,
     value: LoweredValue,
     span: crate::span::Span,
 ) {
-    if matches!(container_elem_ty.map(PhpType::codegen_repr), Some(PhpType::Mixed)) {
+    if matches!(
+        container_elem_ty.map(PhpType::codegen_repr),
+        Some(PhpType::Mixed | PhpType::Callable)
+    ) {
         return;
     }
     if ctx.value_is_owning_temporary(value) {
