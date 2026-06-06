@@ -29,7 +29,8 @@ use super::{
 };
 use crate::codegen_ir::fibers;
 use crate::codegen_ir::literal_defaults::{
-    emit_array_literal_default_to_result, literal_default_value, LiteralDefaultValue,
+    emit_array_literal_default_to_result, emit_boxed_null_literal_to_result,
+    emit_empty_assoc_array_literal_to_result, literal_default_value, LiteralDefaultValue,
 };
 use crate::codegen_ir::{CodegenIrError, Result};
 
@@ -790,12 +791,28 @@ fn emit_property_default(
             abi::emit_store_to_address(ctx.emitter, ptr_reg, object_reg, default.offset);
             abi::emit_store_to_address(ctx.emitter, len_reg, object_reg, default.offset + 8);
         }
+        LiteralDefaultValue::BoxedNull => {
+            abi::emit_push_reg(ctx.emitter, object_reg);
+            emit_boxed_null_literal_to_result(ctx);
+            abi::emit_pop_reg(ctx.emitter, object_reg);
+            let int_reg = abi::int_result_reg(ctx.emitter);
+            abi::emit_store_to_address(ctx.emitter, int_reg, object_reg, default.offset);
+            abi::emit_store_zero_to_address(ctx.emitter, object_reg, default.offset + 8);
+        }
         LiteralDefaultValue::Array {
             elem_type,
             elements,
         } => {
             abi::emit_push_reg(ctx.emitter, object_reg);
             emit_array_literal_default_to_result(ctx, elem_type, elements)?;
+            abi::emit_pop_reg(ctx.emitter, object_reg);
+            let int_reg = abi::int_result_reg(ctx.emitter);
+            abi::emit_store_to_address(ctx.emitter, int_reg, object_reg, default.offset);
+            abi::emit_store_zero_to_address(ctx.emitter, object_reg, default.offset + 8);
+        }
+        LiteralDefaultValue::EmptyAssocArray { value_type } => {
+            abi::emit_push_reg(ctx.emitter, object_reg);
+            emit_empty_assoc_array_literal_to_result(ctx, value_type);
             abi::emit_pop_reg(ctx.emitter, object_reg);
             let int_reg = abi::int_result_reg(ctx.emitter);
             abi::emit_store_to_address(ctx.emitter, int_reg, object_reg, default.offset);
@@ -1590,6 +1607,9 @@ fn ensure_property_value_supported(
     if is_empty_array_for_array_property(value_ty, &slot.php_type) {
         return Ok(());
     }
+    if can_box_value_for_mixed_property(value_ty, &slot.php_type) {
+        return Ok(());
+    }
     if can_coerce_mixed_to_scalar_property(value_ty, &slot.php_type) {
         return Ok(());
     }
@@ -1601,6 +1621,11 @@ fn ensure_property_value_supported(
         slot.property,
         slot.php_type
     )))
+}
+
+/// Returns true when a concrete value can be boxed into Mixed-shaped property storage.
+fn can_box_value_for_mixed_property(value_ty: &PhpType, slot_ty: &PhpType) -> bool {
+    slot_ty.codegen_repr() == PhpType::Mixed && value_ty.codegen_repr() != PhpType::Mixed
 }
 
 /// Returns true when a boxed Mixed value can be coerced before a scalar typed-property store.
@@ -1758,7 +1783,7 @@ fn emit_property_store(
         ty if is_pointer_sized_property_type(ty) => {
             let int_reg = abi::int_result_reg(ctx.emitter);
             abi::emit_push_reg(ctx.emitter, base_reg);
-            ctx.load_value_to_reg(value, int_reg)?;
+            load_property_store_value_to_result(ctx, value, &slot.php_type)?;
             abi::emit_pop_reg(ctx.emitter, base_reg);
             abi::emit_store_to_address(ctx.emitter, int_reg, base_reg, slot.offset);
             abi::emit_store_zero_to_address(ctx.emitter, base_reg, slot.offset + 8);
@@ -1778,6 +1803,11 @@ fn load_property_store_value_to_result(
     slot_ty: &PhpType,
 ) -> Result<()> {
     let value_ty = ctx.value_php_type(value)?;
+    if can_box_value_for_mixed_property(&value_ty, slot_ty) {
+        let loaded_ty = ctx.load_value_to_result(value)?.codegen_repr();
+        emit_box_current_value_as_mixed(ctx.emitter, &loaded_ty);
+        return Ok(());
+    }
     if matches!(value_ty.codegen_repr(), PhpType::Mixed | PhpType::Union(_)) {
         load_value_to_first_int_arg(ctx, value)?;
         match slot_ty.codegen_repr() {

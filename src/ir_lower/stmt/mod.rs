@@ -1279,7 +1279,16 @@ fn lower_property_assign(
     span: Span,
 ) {
     let object = lower_expr(ctx, object);
-    let value = lower_expr(ctx, value);
+    let value_expr = value;
+    let lowered_value = lower_expr(ctx, value_expr);
+    let value = contextualize_property_array_assignment(
+        ctx,
+        object.value,
+        property,
+        lowered_value,
+        value_expr,
+        span,
+    );
     let data = ctx.intern_string(property);
     ctx.emit_void(
         Op::PropSet,
@@ -1288,6 +1297,39 @@ fn lower_property_assign(
         Op::PropSet.default_effects(),
         Some(span),
     );
+}
+
+/// Converts array literals to hash storage when a declared object property requires assoc storage.
+fn contextualize_property_array_assignment(
+    ctx: &mut LoweringContext<'_, '_>,
+    object: crate::ir::ValueId,
+    property: &str,
+    lowered: LoweredValue,
+    value_expr: &Expr,
+    span: Span,
+) -> LoweredValue {
+    let php_type = ctx.builder.value_php_type(lowered.value);
+    if !matches!(value_expr.kind, ExprKind::ArrayLiteral(_)) {
+        return lowered;
+    }
+    if !matches!(php_type.codegen_repr(), PhpType::Array(_)) {
+        return lowered;
+    }
+    let Some(contextual_ty) = object_property_type(ctx, object, property) else {
+        return lowered;
+    };
+    let contextual_ty = contextual_ty.codegen_repr();
+    if !matches!(contextual_ty, PhpType::AssocArray { .. }) {
+        return lowered;
+    }
+    ctx.emit_value(
+        Op::ArrayToHash,
+        vec![lowered.value],
+        None,
+        contextual_ty,
+        Op::ArrayToHash.default_effects(),
+        Some(span),
+    )
 }
 
 /// Lowers a static property write.
@@ -1454,6 +1496,36 @@ fn lower_property_array_assign(
             vec![property_value.value, index.value, value.value],
             None,
             Op::ArraySet.default_effects(),
+            Some(span),
+        );
+        ctx.emit_void(
+            Op::PropSet,
+            vec![object.value, property_value.value],
+            Some(Immediate::Data(data)),
+            Op::PropSet.default_effects(),
+            Some(span),
+        );
+        return;
+    }
+    if let Some(property_ty) =
+        object_property_type(ctx, object.value, property).filter(is_assoc_array_type)
+    {
+        let data = ctx.intern_string(property);
+        let property_value = ctx.emit_value(
+            Op::PropGet,
+            vec![object.value],
+            Some(Immediate::Data(data)),
+            property_ty,
+            Op::PropGet.default_effects(),
+            Some(span),
+        );
+        let index = lower_expr(ctx, index);
+        let value = lower_expr(ctx, value);
+        ctx.emit_void(
+            Op::HashSet,
+            vec![property_value.value, index.value, value.value],
+            None,
+            Op::HashSet.default_effects(),
             Some(span),
         );
         ctx.emit_void(
@@ -1844,6 +1916,11 @@ fn object_property_type(
 /// Returns true when a property type uses concrete indexed-array storage.
 fn is_indexed_array_type(php_type: &PhpType) -> bool {
     matches!(php_type.codegen_repr(), PhpType::Array(_))
+}
+
+/// Returns true when a property type uses concrete associative-array storage.
+fn is_assoc_array_type(php_type: &PhpType) -> bool {
+    matches!(php_type.codegen_repr(), PhpType::AssocArray { .. })
 }
 
 /// Normalizes non-materializable statement metadata to the EIR null sentinel type.

@@ -1115,6 +1115,13 @@ fn lower_runtime_call(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Resu
             PhpType::Float => abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_float"),
             PhpType::Int => abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_int"),
             PhpType::Bool => abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_bool"),
+            PhpType::Array(_)
+            | PhpType::AssocArray { .. }
+            | PhpType::Iterable
+            | PhpType::Object(_) => {
+                abi::emit_call_label(ctx.emitter, "__rt_mixed_unbox");
+                move_reg_to_int_result(ctx, mixed_unbox_low_payload_reg(ctx));
+            }
             other => {
                 return Err(CodegenIrError::unsupported(format!(
                     "runtime_call from PHP type {:?} to PHP type {:?}",

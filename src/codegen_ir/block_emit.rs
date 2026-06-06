@@ -31,7 +31,8 @@ use super::fibers;
 use super::frame;
 use super::function_variants;
 use super::literal_defaults::{
-    emit_array_literal_default_to_result, literal_default_value, LiteralDefaultValue,
+    emit_array_literal_default_to_result, emit_boxed_null_literal_to_result,
+    emit_empty_assoc_array_literal_to_result, literal_default_value, LiteralDefaultValue,
 };
 use super::lower_inst;
 use super::lower_term;
@@ -489,7 +490,14 @@ fn ensure_static_property_default_type_supported(
     php_type: &PhpType,
 ) -> Result<()> {
     match php_type {
-        PhpType::Bool | PhpType::Int | PhpType::Float | PhpType::Str | PhpType::Array(_) => Ok(()),
+        PhpType::Bool
+        | PhpType::Int
+        | PhpType::Float
+        | PhpType::Str
+        | PhpType::Mixed
+        | PhpType::Array(_)
+        | PhpType::AssocArray { .. }
+        | PhpType::Union(_) => Ok(()),
         _ => Err(CodegenIrError::unsupported(format!(
             "static property initializer for {}::${} with PHP type {:?}",
             class_name, property, php_type
@@ -525,11 +533,17 @@ fn emit_static_property_default_value(
             abi::emit_symbol_address(ctx.emitter, ptr_reg, &label);
             abi::emit_load_int_immediate(ctx.emitter, len_reg, len as i64);
         }
+        LiteralDefaultValue::BoxedNull => {
+            emit_boxed_null_literal_to_result(ctx);
+        }
         LiteralDefaultValue::Array {
             elem_type,
             elements,
         } => {
             emit_array_literal_default_to_result(ctx, elem_type, elements)?;
+        }
+        LiteralDefaultValue::EmptyAssocArray { value_type } => {
+            emit_empty_assoc_array_literal_to_result(ctx, value_type);
         }
     }
     let symbol = static_property_symbol(class_name, property);

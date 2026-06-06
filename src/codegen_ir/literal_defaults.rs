@@ -8,8 +8,8 @@
 //!
 //! Key details:
 //! - This is intentionally narrower than full PHP expression lowering: only
-//!   scalar, string, null, and indexed-array literals with scalar/string/null
-//!   elements land here.
+//!   scalar, string, null, indexed-array literals with scalar/string/null
+//!   elements, and empty associative arrays land here.
 
 use crate::codegen::platform::Arch;
 use crate::codegen::{
@@ -27,9 +27,13 @@ pub(crate) enum LiteralDefaultValue {
     Bool(bool),
     Float(f64),
     Str(String),
+    BoxedNull,
     Array {
         elem_type: PhpType,
         elements: Vec<LiteralArrayElement>,
+    },
+    EmptyAssocArray {
+        value_type: PhpType,
     },
 }
 
@@ -67,6 +71,12 @@ pub(crate) fn literal_default_value(
             _ => Err(unsupported_literal_default(context, php_type, op_name)),
         },
         (PhpType::Str, ExprKind::StringLiteral(value)) => Ok(LiteralDefaultValue::Str(value.clone())),
+        (PhpType::Mixed | PhpType::Union(_), ExprKind::Null) => Ok(LiteralDefaultValue::BoxedNull),
+        (PhpType::AssocArray { value, .. }, ExprKind::ArrayLiteral(items)) if items.is_empty() => {
+            Ok(LiteralDefaultValue::EmptyAssocArray {
+                value_type: value.as_ref().codegen_repr(),
+            })
+        }
         (PhpType::Array(elem_type), ExprKind::ArrayLiteral(items)) => {
             let elem_type = elem_type.codegen_repr();
             let elements = items
@@ -80,6 +90,32 @@ pub(crate) fn literal_default_value(
         }
         _ => Err(unsupported_literal_default(context, php_type, op_name)),
     }
+}
+
+/// Emits an empty associative-array literal default into the canonical result register.
+pub(crate) fn emit_empty_assoc_array_literal_to_result(
+    ctx: &mut FunctionContext<'_>,
+    value_type: &PhpType,
+) {
+    let capacity_reg = abi::int_arg_reg_name(ctx.emitter.target, 0);
+    let value_tag_reg = abi::int_arg_reg_name(ctx.emitter.target, 1);
+    abi::emit_load_int_immediate(ctx.emitter, capacity_reg, 16);
+    abi::emit_load_int_immediate(
+        ctx.emitter,
+        value_tag_reg,
+        crate::codegen::runtime_value_tag(&value_type.codegen_repr()) as i64,
+    );
+    abi::emit_call_label(ctx.emitter, "__rt_hash_new");
+}
+
+/// Emits a boxed PHP null default into the canonical result register.
+pub(crate) fn emit_boxed_null_literal_to_result(ctx: &mut FunctionContext<'_>) {
+    abi::emit_load_int_immediate(
+        ctx.emitter,
+        abi::int_result_reg(ctx.emitter),
+        0x7fff_ffff_ffff_fffe,
+    );
+    emit_box_current_value_as_mixed(ctx.emitter, &PhpType::Void);
 }
 
 /// Emits an indexed-array literal default into the canonical result register.

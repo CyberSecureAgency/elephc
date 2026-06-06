@@ -3489,20 +3489,20 @@ fn property_get_result_type(
     expr: &Expr,
 ) -> PhpType {
     let object_ty = ctx.builder.value_php_type(object);
-    if matches!(object_ty.codegen_repr(), PhpType::Mixed | PhpType::Union(_)) {
-        return PhpType::Mixed;
-    }
-    if let PhpType::Packed(class_name) = object_ty.codegen_repr() {
-        let normalized = class_name.trim_start_matches('\\');
-        let Some(class_info) = ctx.packed_classes.get(normalized) else {
-            return fallback_expr_type(expr);
-        };
-        let Some(field) = class_info.fields.iter().find(|field| field.name == property) else {
-            return fallback_expr_type(expr);
-        };
-        return normalize_value_php_type(field.php_type.codegen_repr());
-    }
     let Some((class_name, nullable)) = singular_object_class(&object_ty) else {
+        if matches!(object_ty.codegen_repr(), PhpType::Mixed | PhpType::Union(_)) {
+            return PhpType::Mixed;
+        }
+        if let PhpType::Packed(class_name) = object_ty.codegen_repr() {
+            let normalized = class_name.trim_start_matches('\\');
+            let Some(class_info) = ctx.packed_classes.get(normalized) else {
+                return fallback_expr_type(expr);
+            };
+            let Some(field) = class_info.fields.iter().find(|field| field.name == property) else {
+                return fallback_expr_type(expr);
+            };
+            return normalize_value_php_type(field.php_type.codegen_repr());
+        }
         return fallback_expr_type(expr);
     };
     let normalized = class_name.trim_start_matches('\\');
@@ -3512,11 +3512,24 @@ fn property_get_result_type(
     let Some((_, property_ty)) = class_info.properties.iter().find(|(name, _)| name == property) else {
         return fallback_expr_type(expr);
     };
-    let property_ty = normalize_value_php_type(property_ty.codegen_repr());
+    let property_ty = normalize_value_php_type(property_ty.clone());
     if op == Op::NullsafePropGet && nullable {
-        PhpType::Union(vec![property_ty, PhpType::Void]).codegen_repr()
+        nullable_result_type(property_ty)
     } else {
         property_ty
+    }
+}
+
+/// Adds nullability to a result type without nesting existing union metadata.
+fn nullable_result_type(php_type: PhpType) -> PhpType {
+    match php_type {
+        PhpType::Union(mut members) => {
+            if !members.iter().any(|member| matches!(member, PhpType::Void)) {
+                members.push(PhpType::Void);
+            }
+            PhpType::Union(members)
+        }
+        other => PhpType::Union(vec![other, PhpType::Void]),
     }
 }
 
@@ -3776,12 +3789,12 @@ fn method_call_result_type(
         return fallback_expr_type(expr);
     };
     let Some(return_ty) = method_signature(ctx, object, method)
-        .map(|signature| normalize_value_php_type(signature.return_type.codegen_repr()))
+        .map(|signature| normalize_value_php_type(signature.return_type.clone()))
     else {
         return fallback_expr_type(expr);
     };
     if op == Op::NullsafeMethodCall && nullable {
-        PhpType::Union(vec![return_ty, PhpType::Void]).codegen_repr()
+        nullable_result_type(return_ty)
     } else {
         return_ty
     }
