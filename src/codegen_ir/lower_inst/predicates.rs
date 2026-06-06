@@ -20,7 +20,7 @@ use crate::codegen_ir::{CodegenIrError, Result};
 /// Lowers scalar PHP truthiness into a concrete boolean integer result.
 pub(super) fn lower_is_truthy(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     let value = expect_operand(inst, 0)?;
-    match ctx.value_php_type(value)? {
+    match ctx.raw_value_php_type(value)? {
         PhpType::Bool | PhpType::Int => {
             ctx.load_value_to_result(value)?;
             emit_int_result_nonzero_bool(ctx);
@@ -39,6 +39,9 @@ pub(super) fn lower_is_truthy(ctx: &mut FunctionContext<'_>, inst: &Instruction)
         PhpType::Mixed | PhpType::Union(_) => {
             ctx.load_value_to_result(value)?;
             abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_bool");
+        }
+        PhpType::Resource(_) => {
+            abi::emit_load_int_immediate(ctx.emitter, abi::int_result_reg(ctx.emitter), 1);
         }
         other => {
             return Err(CodegenIrError::unsupported(format!(

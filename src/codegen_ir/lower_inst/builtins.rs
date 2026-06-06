@@ -496,7 +496,7 @@ fn lower_pi(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
 fn lower_gettype(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     ensure_arg_count(inst, "gettype", 1)?;
     let value = expect_operand(inst, 0)?;
-    let ty = ctx.value_php_type(value)?;
+    let ty = ctx.raw_value_php_type(value)?;
     if matches!(ty, PhpType::Mixed | PhpType::Union(_)) {
         emit_mixed_gettype(ctx, value)?;
         return store_if_result(ctx, inst);

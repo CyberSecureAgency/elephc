@@ -10,6 +10,7 @@
 //! - String numeric parsing delegates to the shared runtime routines used by the legacy backend paths.
 
 use crate::codegen::abi;
+use crate::codegen::platform::Arch;
 use crate::ir::{Immediate, Instruction, IrType};
 use crate::types::PhpType;
 
@@ -64,7 +65,7 @@ pub(super) fn lower_cast(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> R
 /// Lowers an explicit cast to PHP int for concrete scalar operands.
 fn lower_cast_to_int(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     let value = expect_operand(inst, 0)?;
-    match ctx.value_php_type(value)? {
+    match ctx.raw_value_php_type(value)? {
         PhpType::Int | PhpType::Bool => {
             ctx.load_value_to_result(value)?;
         }
@@ -78,6 +79,10 @@ fn lower_cast_to_int(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Resul
         PhpType::Str => {
             ctx.load_value_to_result(value)?;
             abi::emit_call_label(ctx.emitter, "__rt_str_to_int");
+        }
+        PhpType::Resource(_) => {
+            ctx.load_value_to_result(value)?;
+            emit_resource_display_id_to_int(ctx);
         }
         PhpType::Mixed | PhpType::Union(_) => {
             load_value_to_first_int_arg(ctx, value)?;
@@ -99,12 +104,17 @@ fn lower_cast_to_int(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Resul
 /// Lowers an explicit cast to PHP float for concrete scalar operands.
 fn lower_cast_to_float(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     let value = expect_operand(inst, 0)?;
-    match ctx.value_php_type(value)? {
+    match ctx.raw_value_php_type(value)? {
         PhpType::Float => {
             ctx.load_value_to_result(value)?;
         }
         PhpType::Int | PhpType::Bool => {
             ctx.load_value_to_result(value)?;
+            abi::emit_int_result_to_float_result(ctx.emitter);
+        }
+        PhpType::Resource(_) => {
+            ctx.load_value_to_result(value)?;
+            emit_resource_display_id_to_int(ctx);
             abi::emit_int_result_to_float_result(ctx.emitter);
         }
         PhpType::Void | PhpType::Never => {
@@ -132,7 +142,7 @@ fn lower_cast_to_float(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Res
 /// Lowers an explicit cast to PHP string for concrete scalar operands.
 fn lower_cast_to_string(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     let value = expect_operand(inst, 0)?;
-    match ctx.value_php_type(value)? {
+    match ctx.raw_value_php_type(value)? {
         PhpType::Str => {
             ctx.load_value_to_result(value)?;
             store_if_result(ctx, inst)
@@ -141,10 +151,27 @@ fn lower_cast_to_string(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Re
         PhpType::Int | PhpType::Bool | PhpType::Void | PhpType::Never => {
             strings::lower_int_like_to_string(ctx, inst)
         }
+        PhpType::Resource(_) => {
+            ctx.load_value_to_result(value)?;
+            abi::emit_call_label(ctx.emitter, "__rt_resource_to_string");
+            store_if_result(ctx, inst)
+        }
         other => Err(CodegenIrError::unsupported(format!(
             "string cast for PHP type {:?}",
             other
         ))),
+    }
+}
+
+/// Converts the loaded native resource payload into PHP's one-based display id.
+fn emit_resource_display_id_to_int(ctx: &mut FunctionContext<'_>) {
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction("add x0, x0, #1");                          // convert native resource payload to PHP's one-based display id
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("add rax, 1");                              // convert native resource payload to PHP's one-based display id
+        }
     }
 }
 

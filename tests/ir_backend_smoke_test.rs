@@ -4830,6 +4830,35 @@ echo fwrite(STDOUT, "direct");
     );
 }
 
+/// Verifies standard stream resources keep PHP resource semantics through EIR lowering.
+#[test]
+fn ir_backend_preserves_standard_stream_resource_semantics() {
+    let source = r#"<?php
+echo gettype(STDOUT);
+echo "|";
+echo STDOUT;
+echo "|";
+echo (string)STDOUT;
+echo "|";
+echo (bool)STDOUT ? "T" : "F";
+echo "|";
+echo (int)STDOUT;
+echo "|";
+echo (float)STDOUT;
+function show_mixed(mixed $value) {
+    echo "|";
+    echo gettype($value);
+    echo "|";
+    echo $value;
+}
+show_mixed(STDOUT);
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("standard_stream_resource_semantics", source),
+        "resource|Resource id #2|Resource id #2|T|2|2|resource|Resource id #2"
+    );
+}
+
 /// Verifies boxed false stream values fail before being treated as file descriptors.
 #[test]
 fn ir_backend_rejects_false_stream_handles() {

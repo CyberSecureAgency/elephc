@@ -680,7 +680,8 @@ fn lower_fiber_start(
     let assignments =
         abi::build_outgoing_arg_assignments_for_target(ctx.emitter.target, &param_types, 1);
     for value in &args {
-        let source_ty = ctx.load_value_to_result(*value)?;
+        ctx.load_value_to_result(*value)?;
+        let source_ty = ctx.raw_value_php_type(*value)?;
         let push_ty = materialize_direct_call_arg_for_param(ctx, &source_ty, &PhpType::Mixed)?;
         abi::emit_push_result_value(ctx.emitter, &push_ty);
     }
@@ -882,7 +883,8 @@ fn fiber_visible_args(
 /// Leaves a boxed Mixed value in the integer result register, using null when omitted.
 fn emit_optional_mixed_arg(ctx: &mut FunctionContext<'_>, value: Option<ValueId>) -> Result<()> {
     if let Some(value) = value {
-        let source_ty = ctx.load_value_to_result(value)?;
+        ctx.load_value_to_result(value)?;
+        let source_ty = ctx.raw_value_php_type(value)?;
         materialize_direct_call_arg_for_param(ctx, &source_ty, &PhpType::Mixed)?;
         return Ok(());
     }
@@ -1379,7 +1381,8 @@ pub(super) fn materialize_direct_call_args(
     let assignments =
         abi::build_outgoing_arg_assignments_for_target(ctx.emitter.target, param_types, 0);
     for (value, param_ty) in args.iter().zip(param_types.iter()) {
-        let source_ty = ctx.load_value_to_result(*value)?;
+        ctx.load_value_to_result(*value)?;
+        let source_ty = ctx.raw_value_php_type(*value)?;
         let push_ty = materialize_direct_call_arg_for_param(ctx, &source_ty, param_ty)?;
         abi::emit_push_result_value(ctx.emitter, &push_ty);
     }
@@ -1408,7 +1411,8 @@ fn materialize_static_method_call_args(
     materialize_called_class_id(ctx, called_class_id)?;
     abi::emit_push_result_value(ctx.emitter, &PhpType::Int);
     for (value, param_ty) in args.iter().zip(param_types.iter()) {
-        let source_ty = ctx.load_value_to_result(*value)?;
+        ctx.load_value_to_result(*value)?;
+        let source_ty = ctx.raw_value_php_type(*value)?;
         let push_ty = materialize_direct_call_arg_for_param(ctx, &source_ty, param_ty)?;
         abi::emit_push_result_value(ctx.emitter, &push_ty);
     }
@@ -1449,7 +1453,7 @@ fn materialize_direct_call_arg_for_param(
 ) -> Result<PhpType> {
     match param_ty.codegen_repr() {
         PhpType::Mixed if source_ty.codegen_repr() != PhpType::Mixed => {
-            emit_box_current_value_as_mixed(ctx.emitter, &source_ty.codegen_repr());
+            emit_box_current_value_as_mixed(ctx.emitter, source_ty);
             Ok(PhpType::Mixed)
         }
         target_ty => Ok(target_ty),
@@ -1476,7 +1480,8 @@ fn materialize_method_call_args_with_receiver_reg(
     move_reg_to_int_result(ctx, receiver_reg);
     abi::emit_push_result_value(ctx.emitter, receiver_ty);
     for (value, param_ty) in operands.iter().skip(1).zip(param_types.iter().skip(1)) {
-        let source_ty = ctx.load_value_to_result(*value)?;
+        ctx.load_value_to_result(*value)?;
+        let source_ty = ctx.raw_value_php_type(*value)?;
         let push_ty = materialize_direct_call_arg_for_param(ctx, &source_ty, param_ty)?;
         abi::emit_push_result_value(ctx.emitter, &push_ty);
     }
@@ -1698,7 +1703,13 @@ fn lower_const_null(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result
 fn lower_mixed_box(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     let value = expect_operand(inst, 0)?;
     let source_ty = ctx.load_value_to_result(value)?;
-    emit_box_current_value_as_mixed(ctx.emitter, &source_ty);
+    let raw_source_ty = ctx.raw_value_php_type(value)?;
+    let box_ty = if matches!(raw_source_ty, PhpType::Resource(_)) {
+        raw_source_ty
+    } else {
+        source_ty
+    };
+    emit_box_current_value_as_mixed(ctx.emitter, &box_ty);
     store_if_result(ctx, inst)
 }
 
@@ -1706,7 +1717,13 @@ fn lower_mixed_box(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<
 fn lower_echo_value(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     let value = expect_operand(inst, 0)?;
     let ty = ctx.load_value_to_result(value)?;
-    emit_loaded_value_to_stdout(ctx, &ty)
+    let raw_ty = ctx.raw_value_php_type(value)?;
+    let output_ty = if matches!(raw_ty, PhpType::Resource(_)) {
+        raw_ty
+    } else {
+        ty
+    };
+    emit_loaded_value_to_stdout(ctx, &output_ty)
 }
 
 /// Lowers PHP `print` output for a previously computed SSA value.
@@ -1750,6 +1767,7 @@ fn emit_loaded_value_to_stdout(ctx: &mut FunctionContext<'_>, ty: &PhpType) -> R
         | PhpType::Mixed
         | PhpType::Union(_)
         | PhpType::Iterable
+        | PhpType::Resource(_)
         | PhpType::Pointer(_)
         | PhpType::Array(_)
         | PhpType::AssocArray { .. } => {
