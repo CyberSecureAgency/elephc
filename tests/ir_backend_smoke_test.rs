@@ -454,6 +454,25 @@ fn ir_backend_calls_assigned_closure_literals_with_captures() {
     }
 }
 
+/// Verifies captured closure callbacks keep hidden params in static callback paths.
+#[test]
+fn ir_backend_passes_captures_to_static_closure_callbacks() {
+    for (name, source, expected) in [
+        (
+            "captured_closure_call_user_func",
+            "<?php $x = 4; $f = function($n) use ($x) { return $x + $n; }; $x = 99; echo call_user_func($f, 1);",
+            "5",
+        ),
+        (
+            "captured_closure_array_map",
+            "<?php $inc = 3; $f = function($n) use ($inc) { return $n + $inc; }; $inc = 99; $out = array_map($f, [1, 2]); echo $out[0]; echo ':'; echo $out[1];",
+            "4:5",
+        ),
+    ] {
+        assert_eq!(compile_and_run_ir_backend(name, source), expected);
+    }
+}
+
 /// Verifies Fiber construction routes through the runtime-managed EIR object path.
 #[test]
 fn ir_backend_constructs_fibers() {
