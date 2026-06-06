@@ -11,6 +11,7 @@
 //! - Associative key filters require hash operands because their runtime helpers copy hash entries.
 
 use crate::codegen::{abi, emit_box_current_value_as_mixed};
+use crate::codegen::context::DeferredCallbackWrapper;
 use crate::codegen::platform::Arch;
 use crate::codegen_ir::{CodegenIrError, Result};
 use crate::ir::{BlockId, Immediate, Instruction, LocalSlotId, Op, ValueDef, ValueId};
@@ -209,6 +210,19 @@ pub(super) fn lower_array_map(ctx: &mut FunctionContext<'_>, inst: &Instruction)
     let callback = expect_operand(inst, 0)?;
     let array = expect_operand(inst, 1)?;
     let elem_ty = array_map_callback_array_element_type(ctx.value_php_type(array)?)?;
+    if descriptor_callback_local_without_same_block_store(ctx, callback)? {
+        let callback_elem_ty = array_map_descriptor_callback_result_element_type(inst)?;
+        let result_elem_ty = array_map_result_element_type(inst, &callback_elem_ty)?;
+        return lower_array_map_descriptor_callback(
+            ctx,
+            inst,
+            callback,
+            array,
+            &elem_ty,
+            &callback_elem_ty,
+            &result_elem_ty,
+        );
+    }
     let callback_binding =
         static_sort_callback_binding(ctx, callback, "array_map callback", Some(&[elem_ty]))?;
     let callback_elem_ty = array_map_callback_result_element_type(&callback_binding.return_ty)?;
@@ -236,6 +250,94 @@ pub(super) fn lower_array_map(ctx: &mut FunctionContext<'_>, inst: &Instruction)
     normalize_indexed_array_result(ctx, "array_map", &callback_elem_ty, &result_elem_ty)?;
     box_array_result_for_mixed_builtin(ctx, inst, &result_elem_ty);
     store_if_result(ctx, inst)
+}
+
+/// Lowers `array_map()` through a descriptor-backed callback wrapper.
+fn lower_array_map_descriptor_callback(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+    callback: ValueId,
+    array: ValueId,
+    elem_ty: &PhpType,
+    callback_elem_ty: &PhpType,
+    result_elem_ty: &PhpType,
+) -> Result<()> {
+    let wrapper_label = emit_descriptor_callback_wrapper(
+        ctx,
+        vec![elem_ty.clone()],
+        callback_elem_ty.clone(),
+    );
+    let env_bytes = reserve_descriptor_callback_env(ctx, callback)?;
+    let callback_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 0);
+    let array_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 1);
+    let env_arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 2);
+    abi::emit_symbol_address(ctx.emitter, callback_arg_reg, &wrapper_label);
+    ctx.load_value_to_reg(array, array_arg_reg)?;
+    load_static_callback_env_arg(ctx, env_arg_reg, env_bytes);
+    abi::emit_call_label(ctx.emitter, array_map_runtime_label(callback_elem_ty, env_bytes));
+    abi::emit_release_temporary_stack(ctx.emitter, env_bytes);
+    normalize_indexed_array_result(ctx, "array_map", callback_elem_ty, result_elem_ty)?;
+    box_array_result_for_mixed_builtin(ctx, inst, result_elem_ty);
+    store_if_result(ctx, inst)
+}
+
+/// Emits a descriptor callback wrapper next to the current EIR function body.
+fn emit_descriptor_callback_wrapper(
+    ctx: &mut FunctionContext<'_>,
+    visible_arg_types: Vec<PhpType>,
+    return_ty: PhpType,
+) -> String {
+    let wrapper_label = ctx.next_label("array_map_descriptor_callback_wrapper");
+    let done_label = ctx.next_label("array_map_descriptor_callback_after_wrapper");
+    let wrapper = DeferredCallbackWrapper {
+        label: wrapper_label.clone(),
+        visible_arg_types,
+        target_visible_arg_types: None,
+        capture_types: Vec::new(),
+        descriptor_prefix_types: Vec::new(),
+        descriptor_return_type: Some(return_ty),
+    };
+    abi::emit_jump(ctx.emitter, &done_label);
+    crate::codegen::emit_callback_wrapper(ctx.emitter, &wrapper);
+    ctx.emitter.label(&done_label);
+    wrapper_label
+}
+
+/// Reserves a one-slot callback environment containing the runtime callable descriptor.
+fn reserve_descriptor_callback_env(
+    ctx: &mut FunctionContext<'_>,
+    callback: ValueId,
+) -> Result<usize> {
+    abi::emit_reserve_temporary_stack(ctx.emitter, 16);
+    let callback_ty = ctx.load_value_to_result(callback)?;
+    if callback_ty != PhpType::Callable {
+        return Err(CodegenIrError::invalid_module(format!(
+            "descriptor callback operand has PHP type {:?}",
+            callback_ty
+        )));
+    }
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction("str x0, [sp]");                            // store the runtime callable descriptor for the descriptor callback wrapper
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("mov QWORD PTR [rsp], rax");                // store the runtime callable descriptor for the descriptor callback wrapper
+        }
+    }
+    Ok(16)
+}
+
+/// Returns the runtime helper selected for an `array_map()` callback result shape.
+fn array_map_runtime_label(callback_elem_ty: &PhpType, env_bytes: usize) -> &'static str {
+    if callback_elem_ty == &PhpType::Str {
+        if env_bytes == 0 {
+            "__rt_array_map_str"
+        } else {
+            "__rt_array_map_str_owned"
+        }
+    } else {
+        "__rt_array_map"
+    }
 }
 
 /// Lowers `array_reduce()` through the callback-driven runtime helper.
@@ -1005,6 +1107,27 @@ fn array_map_callback_result_element_type(return_ty: &PhpType) -> Result<PhpType
     }
 }
 
+/// Returns the descriptor callback result element type from the EIR result slot metadata.
+fn array_map_descriptor_callback_result_element_type(inst: &Instruction) -> Result<PhpType> {
+    match inst.result_php_type.codegen_repr() {
+        PhpType::Array(elem) => {
+            let elem = elem.codegen_repr();
+            if matches!(elem, PhpType::Int | PhpType::Bool | PhpType::Str) {
+                Ok(elem)
+            } else {
+                Err(CodegenIrError::unsupported(format!(
+                    "array_map descriptor callback result element PHP type {:?}",
+                    elem
+                )))
+            }
+        }
+        other => Err(CodegenIrError::unsupported(format!(
+            "array_map descriptor callback result PHP type {:?}",
+            other
+        ))),
+    }
+}
+
 /// Returns the element type expected by the EIR `array_map()` result slot.
 fn array_map_result_element_type(inst: &Instruction, callback_elem_ty: &PhpType) -> Result<PhpType> {
     match inst.result_php_type.codegen_repr() {
@@ -1160,6 +1283,62 @@ fn static_callback_source_instruction<'a>(
         return static_callback_local_source_instruction(ctx, block, index, inst_ref, owner);
     }
     require_static_callback_source(inst_ref, owner)
+}
+
+/// Returns true when a callback operand is a dynamic callable local, such as a parameter.
+fn descriptor_callback_local_without_same_block_store(
+    ctx: &FunctionContext<'_>,
+    value: ValueId,
+) -> Result<bool> {
+    let Some(value_ref) = ctx.function.value(value) else {
+        return Err(CodegenIrError::missing_entry("value", value.as_raw()));
+    };
+    let ValueDef::Instruction { block, index, inst } = value_ref.def else {
+        return Ok(false);
+    };
+    let Some(inst_ref) = ctx.function.instruction(inst) else {
+        return Err(CodegenIrError::missing_entry("instruction", inst.as_raw()));
+    };
+    if inst_ref.op != Op::LoadLocal {
+        return Ok(false);
+    }
+    let Some(Immediate::LocalSlot(slot)) = inst_ref.immediate else {
+        return Err(CodegenIrError::invalid_module(
+            "array_map callback load_local has no local slot",
+        ));
+    };
+    if same_block_store_before(ctx, block, index, slot)? {
+        return Ok(false);
+    }
+    Ok(ctx.local_php_type(slot)? == PhpType::Callable)
+}
+
+/// Returns true when the selected local slot is stored earlier in the same EIR block.
+fn same_block_store_before(
+    ctx: &FunctionContext<'_>,
+    block: BlockId,
+    load_index: u32,
+    slot: LocalSlotId,
+) -> Result<bool> {
+    let block_ref = ctx
+        .function
+        .block(block)
+        .ok_or_else(|| CodegenIrError::missing_entry("block", block.as_raw()))?;
+    for (index, inst_id) in block_ref.instructions.iter().enumerate() {
+        if index as u32 >= load_index {
+            break;
+        }
+        let inst_ref = ctx
+            .function
+            .instruction(*inst_id)
+            .ok_or_else(|| CodegenIrError::missing_entry("instruction", inst_id.as_raw()))?;
+        if inst_ref.op == Op::StoreLocal
+            && matches!(inst_ref.immediate, Some(Immediate::LocalSlot(candidate)) if candidate == slot)
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// Resolves a local callback load to the last same-block store before that load.

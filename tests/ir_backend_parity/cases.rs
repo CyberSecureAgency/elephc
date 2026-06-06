@@ -873,6 +873,36 @@ echo $mapped[1];
     );
 }
 
+/// Verifies callable-parameter `array_map()` callbacks keep legacy descriptor receivers.
+#[test]
+fn parity_instance_method_array_map_callable_parameter() {
+    assert_backend_parity(
+        "instance_method_array_map_callable_parameter",
+        r#"<?php
+class ParamMapperBox {
+    public function __construct(private int $base) {}
+
+    public function add(int $item): int {
+        return $this->base + $item;
+    }
+}
+
+function run_map(callable $cb): void {
+    $mapped = array_map($cb, [1, 2]);
+    echo $mapped[0];
+    echo ":";
+    echo $mapped[1];
+}
+
+$box = new ParamMapperBox(10);
+$fn = $box->add(...);
+$box = new ParamMapperBox(100);
+run_map($fn);
+"#,
+        &[],
+    );
+}
+
 /// Verifies stored instance-method reduce and walk callbacks keep legacy receiver capture.
 #[test]
 fn parity_stored_instance_method_reduce_and_walk_callbacks() {

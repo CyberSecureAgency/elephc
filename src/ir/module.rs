@@ -16,7 +16,7 @@ use crate::codegen::RuntimeFeatures;
 use crate::ir::function::{Function, FunctionId};
 use crate::ir::types::IrType;
 use crate::types::{
-    ClassInfo, EnumInfo, ExternClassInfo, InterfaceInfo, PackedClassInfo, PhpType,
+    ClassInfo, EnumInfo, ExternClassInfo, FunctionSig, InterfaceInfo, PackedClassInfo, PhpType,
 };
 
 /// Data-pool identifier shared by string, float, and name tables.
@@ -48,6 +48,7 @@ pub struct Module {
     pub runtime_callable_invokers: Vec<Function>,
     pub data: DataPool,
     pub extern_decls: Vec<ExternDecl>,
+    pub callable_param_sigs: HashMap<(String, String), FunctionSig>,
     pub class_table: ClassTable,
     pub enum_table: EnumTable,
     pub interface_table: InterfaceTable,
@@ -75,6 +76,7 @@ impl Module {
             runtime_callable_invokers: Vec::new(),
             data: DataPool::default(),
             extern_decls: Vec::new(),
+            callable_param_sigs: HashMap::new(),
             class_table: ClassTable::default(),
             enum_table: EnumTable::default(),
             interface_table: InterfaceTable::default(),

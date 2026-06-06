@@ -72,6 +72,7 @@ pub(crate) struct LoweringContext<'m, 'f> {
     initialized_slots: HashSet<LocalSlotId>,
     pub functions: &'m HashMap<String, FunctionSig>,
     pub extern_functions: &'m HashMap<String, ExternFunctionSig>,
+    pub callable_param_sigs: &'m HashMap<(String, String), FunctionSig>,
     pub classes: &'m HashMap<String, ClassInfo>,
     pub enums: &'m HashMap<String, EnumInfo>,
     pub interfaces: &'m HashMap<String, InterfaceInfo>,
@@ -100,6 +101,7 @@ impl<'m, 'f> LoweringContext<'m, 'f> {
         env: TypeEnv,
         functions: &'m HashMap<String, FunctionSig>,
         extern_functions: &'m HashMap<String, ExternFunctionSig>,
+        callable_param_sigs: &'m HashMap<(String, String), FunctionSig>,
         classes: &'m HashMap<String, ClassInfo>,
         enums: &'m HashMap<String, EnumInfo>,
         interfaces: &'m HashMap<String, InterfaceInfo>,
@@ -122,6 +124,7 @@ impl<'m, 'f> LoweringContext<'m, 'f> {
             initialized_slots: HashSet::new(),
             functions,
             extern_functions,
+            callable_param_sigs,
             classes,
             enums,
             interfaces,
@@ -492,6 +495,12 @@ impl<'m, 'f> LoweringContext<'m, 'f> {
     /// Returns the compile-time callable currently associated with a local, if any.
     pub(crate) fn static_callable_local(&self, name: &str) -> Option<StaticCallableBinding> {
         self.static_callable_locals.get(name).cloned()
+    }
+
+    /// Returns the specialized signature inferred for a callable parameter in this scope.
+    pub(crate) fn callable_param_signature(&self, name: &str) -> Option<&FunctionSig> {
+        self.callable_param_sigs
+            .get(&(self.owner_name.clone(), name.to_string()))
     }
 
     /// Clears the compile-time callable association for one local.

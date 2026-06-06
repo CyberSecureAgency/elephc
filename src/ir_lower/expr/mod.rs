@@ -937,7 +937,8 @@ fn lower_function_call(ctx: &mut LoweringContext<'_, '_>, name: &Name, args: &[E
     } else {
         lower_builtin_call_args(ctx, canonical, sig.as_ref(), args)
     };
-    let php_type = call_return_type(ctx, canonical, &operands);
+    let php_type = call_return_type_for_args(ctx, canonical, args, &operands)
+        .unwrap_or_else(|| call_return_type(ctx, canonical, &operands));
     if is_extern {
         let data = ctx.intern_function_name(canonical);
         return ctx.emit_value(
@@ -2085,6 +2086,51 @@ fn call_return_type(
         PhpType::Mixed
     };
     normalize_value_php_type(php_type)
+}
+
+/// Returns argument-sensitive builtin result metadata when AST operands are still available.
+fn call_return_type_for_args(
+    ctx: &LoweringContext<'_, '_>,
+    name: &str,
+    args: &[Expr],
+    operands: &[crate::ir::ValueId],
+) -> Option<PhpType> {
+    match php_symbol_key(name.trim_start_matches('\\')).as_str() {
+        "array_map" => array_map_builtin_return_type(ctx, args, operands),
+        _ => None,
+    }
+}
+
+/// Returns the EIR result metadata for `array_map()` when a callable param signature is known.
+fn array_map_builtin_return_type(
+    ctx: &LoweringContext<'_, '_>,
+    args: &[Expr],
+    operands: &[crate::ir::ValueId],
+) -> Option<PhpType> {
+    if args.len() != 2 {
+        return None;
+    }
+    let callback_sig = callable_expr_signature(ctx, &args[0])?;
+    let return_ty = normalize_value_php_type(callback_sig.return_type.codegen_repr());
+    if return_ty == PhpType::Mixed {
+        return None;
+    }
+    let array = operands.get(1)?;
+    match ctx.builder.value_php_type(*array).codegen_repr() {
+        PhpType::Array(_) => Some(PhpType::Array(Box::new(return_ty))),
+        _ => None,
+    }
+}
+
+/// Resolves callable expression metadata tracked during type checking and lowering.
+fn callable_expr_signature<'a>(
+    ctx: &'a LoweringContext<'_, '_>,
+    callback: &Expr,
+) -> Option<&'a FunctionSig> {
+    match &callback.kind {
+        ExprKind::Variable(name) => ctx.callable_param_signature(name),
+        _ => None,
+    }
 }
 
 /// Returns precise return metadata for pointer-extension builtins.

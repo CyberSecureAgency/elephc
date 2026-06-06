@@ -10,7 +10,10 @@
 //! - Unsupported opcodes fail explicitly instead of falling back to legacy AST codegen.
 
 use crate::codegen::{abi, callable_descriptor, emit_box_current_value_as_mixed, runtime};
-use crate::codegen::context::{TRY_HANDLER_DIAG_DEPTH_OFFSET, TRY_HANDLER_JMP_BUF_OFFSET};
+use crate::codegen::context::{
+    Context as LegacyContext, DeferredRuntimeCallableInvoker, TRY_HANDLER_DIAG_DEPTH_OFFSET,
+    TRY_HANDLER_JMP_BUF_OFFSET,
+};
 use crate::codegen::platform::Arch;
 use crate::ir::{
     BlockId, CmpPredicate, Immediate, InstId, Instruction, LocalSlotId, Op, Ownership, ValueDef,
@@ -301,19 +304,23 @@ fn lower_first_class_callable_new(ctx: &mut FunctionContext<'_>, inst: &Instruct
     if emit_instance_method_first_class_callable(ctx, inst, &target)? {
         return store_if_result(ctx, inst);
     }
-    if let Some((entry_label, kind, invocation)) = first_class_callable_descriptor(ctx, &target) {
-        callable_descriptor::emit_load_descriptor_address_with_meta(
-            ctx.emitter,
+    if let Some(descriptor) = first_class_callable_descriptor(ctx, &target) {
+        let invoker_label = descriptor
+            .sig
+            .as_ref()
+            .map(|sig| emit_runtime_callable_invoker_inline(ctx, sig, &[]));
+        let descriptor_label = callable_descriptor::static_descriptor_with_optional_invoker_meta(
             ctx.data,
-            abi::int_result_reg(ctx.emitter),
-            &entry_label,
+            &descriptor.entry_label,
             Some(&target),
-            kind,
-            None,
+            descriptor.kind,
+            descriptor.sig.as_ref(),
             &[],
             &[],
-            invocation,
+            descriptor.invocation,
+            invoker_label.as_deref(),
         );
+        abi::emit_symbol_address(ctx.emitter, abi::int_result_reg(ctx.emitter), &descriptor_label);
     } else {
         abi::emit_load_int_immediate(ctx.emitter, abi::int_result_reg(ctx.emitter), 0);
     }
@@ -378,9 +385,11 @@ fn emit_instance_method_first_class_callable(
     }
     let receiver_ty = PhpType::Object(normalized_class.clone());
     let captures = vec![("receiver".to_string(), receiver_ty.clone(), false)];
-    let descriptor_label = callable_descriptor::static_descriptor_with_meta(
+    let entry_label = emit_instance_method_descriptor_entry_wrapper(ctx, &impl_class, &method_key, &sig)?;
+    let invoker_label = emit_runtime_callable_invoker_inline(ctx, &sig, &captures);
+    let descriptor_label = callable_descriptor::static_descriptor_with_optional_invoker_meta(
         ctx.data,
-        &method_symbol(&impl_class, &method_key),
+        &entry_label,
         Some(target),
         callable_descriptor::CALLABLE_DESC_KIND_FIRST_CLASS,
         Some(&sig),
@@ -391,9 +400,237 @@ fn emit_instance_method_first_class_callable(
             Some(normalized_class),
             method_name,
         ),
+        Some(&invoker_label),
     );
     emit_runtime_descriptor_with_receiver_capture(ctx, &descriptor_label, receiver, &receiver_ty)?;
     Ok(true)
+}
+
+/// Emits an entry wrapper that receives visible args followed by the captured receiver.
+fn emit_instance_method_descriptor_entry_wrapper(
+    ctx: &mut FunctionContext<'_>,
+    class_name: &str,
+    method_key: &str,
+    sig: &FunctionSig,
+) -> Result<String> {
+    let visible_arg_types = descriptor_visible_arg_types(sig);
+    require_instance_descriptor_wrapper_arg_types(class_name, method_key, &visible_arg_types)?;
+    let wrapper_label = ctx.next_label("instance_method_descriptor_entry");
+    let done_label = ctx.next_label("instance_method_descriptor_entry_done");
+    abi::emit_jump(ctx.emitter, &done_label);
+    ctx.emitter.label(&wrapper_label);
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            emit_instance_method_descriptor_entry_wrapper_aarch64(
+                ctx,
+                class_name,
+                method_key,
+                &visible_arg_types,
+            );
+        }
+        Arch::X86_64 => {
+            emit_instance_method_descriptor_entry_wrapper_x86_64(
+                ctx,
+                class_name,
+                method_key,
+                &visible_arg_types,
+            );
+        }
+    }
+    ctx.emitter.label(&done_label);
+    Ok(wrapper_label)
+}
+
+/// Returns codegen-representation parameter types for a descriptor entry wrapper.
+fn descriptor_visible_arg_types(sig: &FunctionSig) -> Vec<PhpType> {
+    sig.params
+        .iter()
+        .map(|(_, ty)| ty.codegen_repr())
+        .collect()
+}
+
+/// Verifies the descriptor entry wrapper can forward this method's visible ABI shape.
+fn require_instance_descriptor_wrapper_arg_types(
+    class_name: &str,
+    method_key: &str,
+    visible_arg_types: &[PhpType],
+) -> Result<()> {
+    if visible_arg_types.len() > 2 {
+        return Err(CodegenIrError::unsupported(format!(
+            "first-class instance method {}::{} with {} descriptor wrapper args",
+            class_name,
+            method_key,
+            visible_arg_types.len()
+        )));
+    }
+    if visible_arg_types
+        .iter()
+        .any(|ty| matches!(ty.codegen_repr(), PhpType::Str))
+        && !(visible_arg_types.len() == 1
+            && matches!(visible_arg_types[0].codegen_repr(), PhpType::Str))
+    {
+        return Err(CodegenIrError::unsupported(format!(
+            "first-class instance method {}::{} with string descriptor wrapper args outside the one-argument ABI",
+            class_name, method_key
+        )));
+    }
+    for ty in visible_arg_types {
+        if !matches!(
+            ty.codegen_repr(),
+            PhpType::Int | PhpType::Bool | PhpType::Str | PhpType::Void | PhpType::Never
+        ) {
+            return Err(CodegenIrError::unsupported(format!(
+                "first-class instance method {}::{} descriptor wrapper arg PHP type {:?}",
+                class_name,
+                method_key,
+                ty.codegen_repr()
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Emits the AArch64 receiver-prefix adapter used as a descriptor entry.
+fn emit_instance_method_descriptor_entry_wrapper_aarch64(
+    ctx: &mut FunctionContext<'_>,
+    class_name: &str,
+    method_key: &str,
+    visible_arg_types: &[PhpType],
+) {
+    let receiver_reg = abi::int_arg_reg_name(ctx.emitter.target, callback_arg_abi_slots(visible_arg_types));
+    ctx.emitter.instruction("sub sp, sp, #16");                                 // reserve wrapper spill space for the descriptor entry return address
+    ctx.emitter.instruction("str x30, [sp, #8]");                               // preserve the descriptor invoker return address across the method call
+    ctx.emitter.instruction(&format!("mov x3, {}", receiver_reg));              // keep the captured receiver while shifting visible callback args
+    shift_callback_args_after_hidden_aarch64(ctx, visible_arg_types);
+    ctx.emitter.instruction("mov x0, x3");                                      // pass the captured receiver as the method receiver
+    abi::emit_call_label(ctx.emitter, &method_symbol(class_name, method_key));
+    ctx.emitter.instruction("ldr x30, [sp, #8]");                               // restore the descriptor invoker return address after the method call
+    ctx.emitter.instruction("add sp, sp, #16");                                 // release descriptor entry wrapper spill space
+    ctx.emitter.instruction("ret");                                             // return the method result to the descriptor invoker
+}
+
+/// Emits the x86_64 receiver-prefix adapter used as a descriptor entry.
+fn emit_instance_method_descriptor_entry_wrapper_x86_64(
+    ctx: &mut FunctionContext<'_>,
+    class_name: &str,
+    method_key: &str,
+    visible_arg_types: &[PhpType],
+) {
+    let receiver_reg = abi::int_arg_reg_name(ctx.emitter.target, callback_arg_abi_slots(visible_arg_types));
+    ctx.emitter.instruction("push rbp");                                        // preserve the descriptor invoker frame pointer for the method call
+    ctx.emitter.instruction("mov rbp, rsp");                                    // establish a wrapper frame while shifting descriptor args
+    ctx.emitter.instruction(&format!("mov rcx, {}", receiver_reg));             // keep the captured receiver while shifting visible callback args
+    shift_callback_args_after_hidden_x86_64(ctx, visible_arg_types);
+    ctx.emitter.instruction("mov rdi, rcx");                                    // pass the captured receiver as the method receiver
+    abi::emit_call_label(ctx.emitter, &method_symbol(class_name, method_key));
+    ctx.emitter.instruction("pop rbp");                                         // restore the descriptor invoker frame pointer before returning
+    ctx.emitter.instruction("ret");                                             // return the method result to the descriptor invoker
+}
+
+/// Counts integer ABI slots consumed by visible callback arguments.
+fn callback_arg_abi_slots(visible_arg_types: &[PhpType]) -> usize {
+    visible_arg_types
+        .iter()
+        .map(|ty| {
+            if matches!(ty.codegen_repr(), PhpType::Str) {
+                2
+            } else {
+                1
+            }
+        })
+        .sum()
+}
+
+/// Shifts AArch64 visible arguments right by one slot for a prepended receiver.
+fn shift_callback_args_after_hidden_aarch64(
+    ctx: &mut FunctionContext<'_>,
+    visible_arg_types: &[PhpType],
+) {
+    match visible_arg_types {
+        [ty] if matches!(ty.codegen_repr(), PhpType::Str) => {
+            ctx.emitter.instruction("mov x2, x1");                              // shift the callback string length after the hidden receiver
+            ctx.emitter.instruction("mov x1, x0");                              // shift the callback string pointer after the hidden receiver
+        }
+        [_] => {
+            ctx.emitter.instruction("mov x1, x0");                              // shift the scalar callback argument after the hidden receiver
+        }
+        [_, _] => {
+            ctx.emitter.instruction("mov x2, x1");                              // shift the second scalar callback argument after the hidden receiver
+            ctx.emitter.instruction("mov x1, x0");                              // shift the first scalar callback argument after the hidden receiver
+        }
+        _ => {}
+    }
+}
+
+/// Shifts x86_64 visible arguments right by one slot for a prepended receiver.
+fn shift_callback_args_after_hidden_x86_64(
+    ctx: &mut FunctionContext<'_>,
+    visible_arg_types: &[PhpType],
+) {
+    match visible_arg_types {
+        [ty] if matches!(ty.codegen_repr(), PhpType::Str) => {
+            ctx.emitter.instruction("mov rdx, rsi");                            // shift the callback string length after the hidden receiver
+            ctx.emitter.instruction("mov rsi, rdi");                            // shift the callback string pointer after the hidden receiver
+        }
+        [_] => {
+            ctx.emitter.instruction("mov rsi, rdi");                            // shift the scalar callback argument after the hidden receiver
+        }
+        [_, _] => {
+            ctx.emitter.instruction("mov rdx, rsi");                            // shift the second scalar callback argument after the hidden receiver
+            ctx.emitter.instruction("mov rsi, rdi");                            // shift the first scalar callback argument after the hidden receiver
+        }
+        _ => {}
+    }
+}
+
+/// Emits a descriptor invoker inline and branches around its global entry body.
+fn emit_runtime_callable_invoker_inline(
+    ctx: &mut FunctionContext<'_>,
+    sig: &FunctionSig,
+    captures: &[(String, PhpType, bool)],
+) -> String {
+    let label = ctx.next_label("callable_invoker");
+    let done_label = ctx.next_label("callable_invoker_done");
+    let parent_ctx = legacy_context_from_eir_module(ctx.module);
+    let invoker = DeferredRuntimeCallableInvoker {
+        label: label.clone(),
+        sig: sig.clone(),
+        captures: captures.to_vec(),
+    };
+    abi::emit_jump(ctx.emitter, &done_label);
+    crate::codegen::runtime_callable_invoker::emit_runtime_callable_invoker(
+        ctx.emitter,
+        ctx.data,
+        &parent_ctx,
+        &invoker,
+    );
+    ctx.emitter.label(&done_label);
+    label
+}
+
+/// Builds the legacy metadata context needed by reused descriptor-invoker emitters.
+fn legacy_context_from_eir_module(module: &crate::ir::Module) -> LegacyContext {
+    let mut ctx = LegacyContext::new();
+    for function in module
+        .functions
+        .iter()
+        .chain(module.class_methods.iter())
+        .chain(module.closures.iter())
+    {
+        ctx.functions
+            .insert(function.name.clone(), function_signature_from_eir(function));
+    }
+    ctx.function_variant_groups = super::function_variants::collect_dispatch_groups(module)
+        .into_iter()
+        .map(|group| group.name)
+        .collect();
+    ctx.callable_param_sigs = module.callable_param_sigs.clone();
+    ctx.classes = module.class_infos.clone();
+    ctx.interfaces = module.interface_infos.clone();
+    ctx.enums = module.enum_infos.clone();
+    ctx.packed_classes = module.packed_class_infos.clone();
+    ctx.extern_classes = module.extern_class_infos.clone();
+    ctx
 }
 
 /// Returns true when the EIR module contains the concrete instance-method body.
@@ -443,33 +680,43 @@ fn emit_runtime_descriptor_with_receiver_capture(
     Ok(())
 }
 
+/// Descriptor metadata for a compile-time first-class callable target.
+struct FirstClassCallableDescriptor {
+    entry_label: String,
+    kind: u64,
+    sig: Option<FunctionSig>,
+    invocation: callable_descriptor::CallableDescriptorInvocation,
+}
+
 /// Returns static descriptor metadata for compile-time callable targets supported by EIR.
 fn first_class_callable_descriptor(
     ctx: &FunctionContext<'_>,
     target: &str,
-) -> Option<(String, u64, callable_descriptor::CallableDescriptorInvocation)> {
+) -> Option<FirstClassCallableDescriptor> {
     if let Some((receiver_label, method_name)) = target.rsplit_once("::") {
         return first_class_static_method_descriptor(ctx, receiver_label, method_name);
     }
     if let Some(callee) = ctx.callable_function_by_name(target) {
-        return Some((
-            function_symbol(&callee.name),
-            callable_descriptor::CALLABLE_DESC_KIND_FUNCTION,
-            callable_descriptor::CallableDescriptorInvocation::named(
+        return Some(FirstClassCallableDescriptor {
+            entry_label: function_symbol(&callee.name),
+            kind: callable_descriptor::CALLABLE_DESC_KIND_FUNCTION,
+            sig: Some(function_signature_from_eir(callee)),
+            invocation: callable_descriptor::CallableDescriptorInvocation::named(
                 callable_descriptor::CallableDescriptorShape::Function,
                 callee.name.clone(),
             ),
-        ));
+        });
     }
     if ctx.has_extern_function(target) {
-        return Some((
-            ctx.emitter.target.extern_symbol(target),
-            callable_descriptor::CALLABLE_DESC_KIND_EXTERN,
-            callable_descriptor::CallableDescriptorInvocation::named(
+        return Some(FirstClassCallableDescriptor {
+            entry_label: ctx.emitter.target.extern_symbol(target),
+            kind: callable_descriptor::CALLABLE_DESC_KIND_EXTERN,
+            sig: None,
+            invocation: callable_descriptor::CallableDescriptorInvocation::named(
                 callable_descriptor::CallableDescriptorShape::Extern,
                 target.to_string(),
             ),
-        ));
+        });
     }
     None
 }
@@ -479,7 +726,7 @@ fn first_class_static_method_descriptor(
     ctx: &FunctionContext<'_>,
     receiver_label: &str,
     method_name: &str,
-) -> Option<(String, u64, callable_descriptor::CallableDescriptorInvocation)> {
+) -> Option<FirstClassCallableDescriptor> {
     if matches!(receiver_label.trim_start_matches('\\'), "static" | "object") {
         return None;
     }
@@ -496,15 +743,16 @@ fn first_class_static_method_descriptor(
         .get(impl_class)?
         .static_methods
         .get(&method_key)?;
-    Some((
-        static_method_symbol(impl_class, &method_key),
-        callable_descriptor::CALLABLE_DESC_KIND_STATIC_METHOD,
-        callable_descriptor::CallableDescriptorInvocation::method(
+    Some(FirstClassCallableDescriptor {
+        entry_label: static_method_symbol(impl_class, &method_key),
+        kind: callable_descriptor::CALLABLE_DESC_KIND_STATIC_METHOD,
+        sig: None,
+        invocation: callable_descriptor::CallableDescriptorInvocation::method(
             callable_descriptor::CallableDescriptorShape::StaticMethod,
             Some(receiver),
             method_key,
         ),
-    ))
+    })
 }
 
 /// Returns the callable-target string attached to `first_class_callable_new`.

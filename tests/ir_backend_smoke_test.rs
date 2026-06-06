@@ -3039,6 +3039,36 @@ echo $mapped[1];
     );
 }
 
+/// Verifies callable parameters keep descriptor receiver captures in `array_map()`.
+#[test]
+fn ir_backend_handles_instance_method_array_map_callable_parameter() {
+    let source = r#"<?php
+class ParamMapperBox {
+    public function __construct(private int $base) {}
+
+    public function add(int $item): int {
+        return $this->base + $item;
+    }
+}
+
+function run_map(callable $cb): void {
+    $mapped = array_map($cb, [1, 2]);
+    echo $mapped[0];
+    echo ":";
+    echo $mapped[1];
+}
+
+$box = new ParamMapperBox(10);
+$fn = $box->add(...);
+$box = new ParamMapperBox(100);
+run_map($fn);
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("instance_method_array_map_callable_parameter", source),
+        "11:12"
+    );
+}
+
 /// Verifies stored instance-method callbacks keep their receiver in reduce and walk runtimes.
 #[test]
 fn ir_backend_handles_stored_instance_method_reduce_and_walk_callbacks() {
