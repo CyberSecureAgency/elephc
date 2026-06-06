@@ -2788,7 +2788,7 @@ fn builtin_return_type_override(name: &str) -> Option<PhpType> {
         "chdir" | "chgrp" | "chmod" | "chown" | "class_exists" | "copy" | "define" | "defined"
         | "empty" | "file_exists" | "fnmatch" | "function_exists" | "is_a" | "is_callable"
         | "fdatasync" | "fflush" | "flock" | "fsync" | "ftruncate" | "interface_exists" | "is_dir"
-        | "is_executable" | "is_file" | "is_link" | "is_numeric" | "link" | "mkdir" | "rename"
+        | "in_array" | "is_executable" | "is_file" | "is_link" | "is_numeric" | "link" | "mkdir" | "rename"
         | "enum_exists" | "trait_exists" | "putenv" | "rmdir" | "is_readable"
         | "is_subclass_of" | "is_writeable" | "is_writable" | "spl_autoload_register"
         | "spl_autoload_unregister" | "symlink" | "touch" | "unlink" => {
@@ -2802,7 +2802,7 @@ fn builtin_return_type_override(name: &str) -> Option<PhpType> {
         "fclose" | "feof" | "rewind" => Some(PhpType::Bool),
         "printf" | "array_rand" | "array_unshift" | "file_put_contents" | "filemtime"
         | "filesize" | "fpassthru" | "fputcsv" | "fseek" | "ftell" | "fwrite"
-        | "in_array" | "isset" | "linkinfo" | "mktime" | "sleep" | "spl_object_id" | "strtotime" | "time" | "umask" => {
+        | "isset" | "linkinfo" | "mktime" | "sleep" | "spl_object_id" | "strtotime" | "time" | "umask" => {
             Some(PhpType::Int)
         }
         "spl_object_hash" => Some(PhpType::Str),

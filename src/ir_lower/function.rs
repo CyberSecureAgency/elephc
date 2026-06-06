@@ -614,13 +614,14 @@ fn function_params(signature: &FunctionSig) -> Vec<FunctionParam> {
         .collect()
 }
 
-/// Returns an EIR ABI signature that keeps non-by-ref untyped PHP parameters dynamically typed.
+/// Returns an EIR ABI signature that keeps non-by-ref, non-variadic untyped PHP parameters dynamic.
 fn eir_signature_with_php_param_contracts(signature: &FunctionSig) -> FunctionSig {
     let mut eir_signature = signature.clone();
-    for (index, (_, php_type)) in eir_signature.params.iter_mut().enumerate() {
+    for (index, (name, php_type)) in eir_signature.params.iter_mut().enumerate() {
         let declared = signature.declared_params.get(index).copied().unwrap_or(false);
         let by_ref = signature.ref_params.get(index).copied().unwrap_or(false);
-        if !declared && !by_ref {
+        let variadic = signature.variadic.as_deref() == Some(name.as_str());
+        if !declared && !by_ref && !variadic {
             *php_type = PhpType::Mixed;
         }
     }
