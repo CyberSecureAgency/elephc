@@ -1008,14 +1008,20 @@ fn lower_assignment_expr(
         ExprKind::Variable(name) => Some(name.as_str()),
         _ => None,
     };
+    let static_callable = assigned_name.and_then(|_| static_callable_binding_for_expr(ctx, value));
+    let callable_array = assigned_name
+        .and_then(|_| lower_callable_array_for_assignment(ctx, value, static_callable.as_ref()));
     let lowered = assigned_name
-        .and_then(|name| lower_closure_for_assignment(ctx, name, value))
+        .and_then(|_| callable_array.as_ref().map(|assignment| assignment.value))
+        .or_else(|| assigned_name.and_then(|name| lower_closure_for_assignment(ctx, name, value)))
         .unwrap_or_else(|| lower_expr(ctx, value));
     let mut result = lowered;
     if let ExprKind::Variable(name) = &target.kind {
-        let static_callable = static_callable_binding_for_expr(ctx, value);
         let php_type = ctx.builder.value_php_type(lowered.value);
         result = ctx.store_local(name, lowered, php_type, Some(expr.span));
+        let static_callable = callable_array
+            .map(|assignment| assignment.target)
+            .or(static_callable);
         if let Some(target) = static_callable {
             ctx.bind_static_callable_local(name, target);
         }
@@ -1666,7 +1672,8 @@ fn static_call_user_func_callback(
         ExprKind::Variable(name) => ctx
             .static_callable_local(name)
             .and_then(direct_static_callable_binding),
-        ExprKind::ArrayLiteral(items) => static_array_callable_descriptor_target(ctx, items),
+        ExprKind::ArrayLiteral(items) => static_array_callable_descriptor_target(ctx, items)
+            .or_else(|| instance_array_callable_target(ctx, items)),
         _ => None,
     }
 }
@@ -1693,7 +1700,7 @@ fn instance_call_user_func_callback(
 /// Returns signature metadata for receiver-bound callables that still need descriptor state.
 fn instance_callable_signature(target: &StaticCallableBinding) -> Option<&FunctionSig> {
     match target {
-        StaticCallableBinding::InstanceMethod { signature } => Some(signature),
+        StaticCallableBinding::InstanceMethod { signature, .. } => Some(signature),
         _ => None,
     }
 }
@@ -1711,13 +1718,91 @@ pub(crate) fn static_callable_binding_for_expr(
         ExprKind::FirstClassCallable(CallableTarget::StaticMethod { receiver, method }) => {
             resolve_static_method_callable(ctx, receiver.clone(), method.clone())
         }
-        ExprKind::ArrayLiteral(items) => static_array_callable_descriptor_target(ctx, items),
+        ExprKind::ArrayLiteral(items) => static_array_callable_descriptor_target(ctx, items)
+            .or_else(|| instance_array_callable_target(ctx, items)),
         ExprKind::FirstClassCallable(CallableTarget::Method { object, method }) => {
-            resolve_instance_method_callable(ctx, object, method.clone())
+            resolve_instance_method_callable(ctx, object, method.clone(), false)
         }
         ExprKind::Variable(name) => ctx.static_callable_local(name),
         _ => None,
     }
+}
+
+/// EIR value and callable binding produced by a callable-array assignment.
+pub(crate) struct LoweredCallableArrayAssignment {
+    pub(crate) value: LoweredValue,
+    pub(crate) target: StaticCallableBinding,
+}
+
+/// Lowers a callable-array assignment while preserving its PHP array value.
+pub(crate) fn lower_callable_array_for_assignment(
+    ctx: &mut LoweringContext<'_, '_>,
+    value: &Expr,
+    target: Option<&StaticCallableBinding>,
+) -> Option<LoweredCallableArrayAssignment> {
+    let ExprKind::ArrayLiteral(items) = &value.kind else {
+        return None;
+    };
+    let StaticCallableBinding::InstanceMethod {
+        object,
+        method,
+        signature,
+        ..
+    } = target? else {
+        return None;
+    };
+    let receiver = lower_expr(ctx, object);
+    let receiver_ty = ctx.builder.value_php_type(receiver.value);
+    let hidden_name = ctx.declare_hidden_temp(receiver_ty.clone());
+    let receiver = ctx.store_local(&hidden_name, receiver, receiver_ty, Some(object.span));
+    let array = lower_callable_array_literal_with_receiver(ctx, items, value, receiver);
+    let hidden_object = Expr::new(ExprKind::Variable(hidden_name), object.span);
+    let target = StaticCallableBinding::InstanceMethod {
+        object: Box::new(hidden_object),
+        method: method.clone(),
+        signature: signature.clone(),
+        direct_call: true,
+    };
+    Some(LoweredCallableArrayAssignment { value: array, target })
+}
+
+/// Lowers a callable-array literal after its receiver has already been captured.
+fn lower_callable_array_literal_with_receiver(
+    ctx: &mut LoweringContext<'_, '_>,
+    items: &[Expr],
+    expr: &Expr,
+    receiver: LoweredValue,
+) -> LoweredValue {
+    let array_ty = array_literal_type_for_ir(ctx, items, expr);
+    let elem_ty = indexed_array_literal_element_type(&array_ty);
+    let array = ctx.emit_value(
+        Op::ArrayNew,
+        Vec::new(),
+        Some(Immediate::Capacity(items.len() as u32)),
+        array_ty,
+        Op::ArrayNew.default_effects(),
+        Some(expr.span),
+    );
+    ctx.emit_void(
+        Op::ArrayPush,
+        vec![array.value, receiver.value],
+        None,
+        Op::ArrayPush.default_effects(),
+        Some(expr.span),
+    );
+    release_value_after_retaining_insert(ctx, elem_ty.as_ref(), receiver, expr.span);
+    for item in items.iter().skip(1) {
+        let value = lower_expr(ctx, item);
+        ctx.emit_void(
+            Op::ArrayPush,
+            vec![array.value, value.value],
+            None,
+            Op::ArrayPush.default_effects(),
+            Some(item.span),
+        );
+        release_value_after_retaining_insert(ctx, elem_ty.as_ref(), value, item.span);
+    }
+    array
 }
 
 /// Resolves a static `[class, method]` callback array literal.
@@ -1738,6 +1823,20 @@ fn static_array_callable_descriptor_target(
     static_array_callable_parts(ctx, items).map(|(receiver, method)| {
         StaticCallableBinding::StaticMethodDescriptor { receiver, method }
     })
+}
+
+/// Resolves a literal `[$object, "method"]` callable array as an instance method.
+fn instance_array_callable_target(
+    ctx: &LoweringContext<'_, '_>,
+    items: &[Expr],
+) -> Option<StaticCallableBinding> {
+    let [object, method_expr] = items else {
+        return None;
+    };
+    let ExprKind::StringLiteral(method) = &method_expr.kind else {
+        return None;
+    };
+    resolve_instance_method_callable(ctx, object, method.clone(), true)
 }
 
 /// Resolves the named static receiver and method from a static callable array literal.
@@ -1916,6 +2015,12 @@ fn lower_static_callable_call(
                 expr,
             ))
         }
+        StaticCallableBinding::InstanceMethod {
+            object,
+            method,
+            direct_call: true,
+            ..
+        } => Some(lower_method_call(ctx, &object, &method, callback_args, Op::MethodCall, expr)),
         StaticCallableBinding::InstanceMethod { .. } => None,
     }
 }
@@ -1963,11 +2068,17 @@ fn resolve_instance_method_callable(
     ctx: &LoweringContext<'_, '_>,
     object: &Expr,
     method: String,
+    direct_call: bool,
 ) -> Option<StaticCallableBinding> {
     let class_name = instance_callable_object_class(ctx, object)?;
     let method_key = php_symbol_key(&method);
     let signature = class_method_signature(ctx, &class_name, &method_key)?.clone();
-    Some(StaticCallableBinding::InstanceMethod { signature })
+    Some(StaticCallableBinding::InstanceMethod {
+        object: Box::new(object.clone()),
+        method,
+        signature,
+        direct_call,
+    })
 }
 
 /// Returns a static callable only when it can be lowered without descriptor state.
@@ -4771,6 +4882,11 @@ fn lower_expr_call(ctx: &mut LoweringContext<'_, '_>, callee: &Expr, args: &[Exp
             static_array_callable_target(ctx, items)
         {
             return lower_static_method_call(ctx, &receiver, &method, args, expr);
+        }
+        if let Some(StaticCallableBinding::InstanceMethod { object, method, .. }) =
+            instance_array_callable_target(ctx, items)
+        {
+            return lower_method_call(ctx, &object, &method, args, Op::MethodCall, expr);
         }
     }
     let lowered_callee = lower_expr(ctx, callee);

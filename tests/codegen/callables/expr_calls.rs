@@ -508,6 +508,24 @@ echo $callback(suffix: "?");
     assert_eq!(out, "old:Ada?");
 }
 
+/// Verifies assigned instance-method callable arrays remain PHP array values.
+#[test]
+fn test_callable_array_instance_method_assignment_remains_array_value() {
+    let out = compile_and_run(
+        r#"<?php
+class InspectableMethod {
+    public function call(): string {
+        return "called";
+    }
+}
+$target = new InspectableMethod();
+$callback = [$target, "call"];
+echo $callback[1];
+"#,
+    );
+    assert_eq!(out, "call");
+}
+
 /// Verifies direct instance-method callable arrays preserve by-reference arguments.
 #[test]
 fn test_direct_callable_array_instance_method_preserves_by_ref_argument() {

@@ -13,7 +13,8 @@ use crate::ir::{BlockId, Immediate, IrType, LocalKind, Op, Ownership, SwitchCase
 use crate::ir_lower::context::{FinallyFrame, LoopFrame, LoweredValue, LoweringContext};
 use crate::ir_lower::effects_lookup;
 use crate::ir_lower::expr::{
-    lower_closure_for_assignment, lower_expr, static_callable_binding_for_expr,
+    lower_callable_array_for_assignment, lower_closure_for_assignment, lower_expr,
+    static_callable_binding_for_expr,
 };
 use crate::parser::ast::{CatchClause, Expr, ExprKind, StaticReceiver, Stmt, StmtKind};
 use crate::span::Span;
@@ -247,7 +248,11 @@ fn lower_assign(ctx: &mut LoweringContext<'_, '_>, name: &str, value: &Expr, spa
     let direct_closure = matches!(value.kind, ExprKind::Closure { .. });
     ctx.clear_pending_static_callable_result();
     let static_callable = static_callable_binding_for_expr(ctx, value);
-    let lowered = lower_closure_for_assignment(ctx, name, value)
+    let callable_array = lower_callable_array_for_assignment(ctx, value, static_callable.as_ref());
+    let lowered = callable_array
+        .as_ref()
+        .map(|assignment| assignment.value)
+        .or_else(|| lower_closure_for_assignment(ctx, name, value))
         .unwrap_or_else(|| lower_expr(ctx, value));
     let (lowered, php_type) = contextualize_array_assignment(ctx, name, value, lowered, span);
     ctx.store_local(name, lowered, php_type, Some(span));
@@ -257,7 +262,11 @@ fn lower_assign(ctx: &mut LoweringContext<'_, '_>, name: &str, value: &Expr, spa
         ctx.clear_pending_static_callable_result();
         None
     };
-    if let Some(target) = static_callable.or(callable_result) {
+    let static_callable = callable_array
+        .map(|assignment| assignment.target)
+        .or(static_callable)
+        .or(callable_result);
+    if let Some(target) = static_callable {
         ctx.bind_static_callable_local(name, target);
     }
 }
@@ -741,7 +750,11 @@ fn lower_typed_assign(
     ctx.clear_pending_static_callable_result();
     let php_type = ctx.type_expr_to_php_type_for_value(type_expr);
     let static_callable = static_callable_binding_for_expr(ctx, value);
-    let lowered = lower_expr(ctx, value);
+    let callable_array = lower_callable_array_for_assignment(ctx, value, static_callable.as_ref());
+    let lowered = callable_array
+        .as_ref()
+        .map(|assignment| assignment.value)
+        .unwrap_or_else(|| lower_expr(ctx, value));
     ctx.declare_local(name, php_type.clone());
     ctx.store_local(name, lowered, php_type, Some(span));
     let callable_result = if direct_closure {
@@ -750,7 +763,11 @@ fn lower_typed_assign(
         ctx.clear_pending_static_callable_result();
         None
     };
-    if let Some(target) = static_callable.or(callable_result) {
+    let static_callable = callable_array
+        .map(|assignment| assignment.target)
+        .or(static_callable)
+        .or(callable_result);
+    if let Some(target) = static_callable {
         ctx.bind_static_callable_local(name, target);
     }
 }

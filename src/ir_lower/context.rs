@@ -18,7 +18,7 @@ use crate::ir::{
     Ownership, ValueId, Function,
 };
 use crate::names::php_symbol_key;
-use crate::parser::ast::{ExprKind, StaticReceiver, Stmt, TypeExpr};
+use crate::parser::ast::{Expr, ExprKind, StaticReceiver, Stmt, TypeExpr};
 use crate::span::Span;
 use crate::types::{
     ClassInfo, EnumInfo, ExternFunctionSig, FunctionSig, InterfaceInfo, PackedClassInfo, PhpType,
@@ -66,7 +66,12 @@ pub(crate) enum StaticCallableBinding {
         receiver: StaticReceiver,
         method: String,
     },
-    InstanceMethod { signature: FunctionSig },
+    InstanceMethod {
+        object: Box<Expr>,
+        method: String,
+        signature: FunctionSig,
+        direct_call: bool,
+    },
 }
 
 /// Captured closure value recorded at closure creation time for static calls.
