@@ -717,13 +717,25 @@ fn closure_signature_from_ast(
         signature.return_type = PhpType::Object("Generator".to_string());
         return signature;
     }
-    if return_type.is_none()
-        && !crate::types::checker::yield_validation::body_contains_yield(body)
-        && !body_contains_value_return(body)
-    {
-        signature.return_type = PhpType::Void;
+    if return_type.is_none() {
+        if let Some(return_ty) = direct_closure_return_type(body) {
+            signature.return_type = return_ty;
+        } else if !body_contains_value_return(body) {
+            signature.return_type = PhpType::Void;
+        }
     }
     signature
+}
+
+/// Infers a closure return type for the no-fallthrough `return <expr>;` shape.
+fn direct_closure_return_type(body: &[Stmt]) -> Option<PhpType> {
+    let [stmt] = body else {
+        return None;
+    };
+    let StmtKind::Return(Some(expr)) = &stmt.kind else {
+        return None;
+    };
+    Some(crate::types::checker::infer_expr_type_syntactic(expr))
 }
 
 /// Returns true when a statement list contains a `return <expr>` for its own function body.
