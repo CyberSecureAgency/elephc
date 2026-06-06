@@ -4001,7 +4001,7 @@ fn ir_backend_handles_basic_indexed_arrays() {
         ("array_set_string", "<?php $a = [\"a\", \"b\"]; $a[1] = \"z\"; echo $a[1];", "z"),
         ("array_set_extends_int", "<?php $a = [1]; $a[3] = 9; echo count($a); echo \":\"; echo $a[0];", "4:1"),
         ("array_set_extends_string", "<?php $a = [\"a\"]; $a[2] = \"z\"; echo count($a); echo \":\"; echo $a[2];", "3:z"),
-        ("array_set_empty_count", "<?php $a = []; $a[2] = 7; echo count($a);", "3"),
+        ("array_set_empty_sparse_count", "<?php $a = []; $a[2] = 7; echo count($a);", "1"),
         (
             "array_push_builtin_mutates_local",
             "<?php $a = [10]; array_push($a, 20); echo count($a); echo ' '; echo $a[1];",
