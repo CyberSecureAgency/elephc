@@ -182,7 +182,7 @@ fn lower_closure_capture(_ctx: &mut FunctionContext<'_>, _inst: &Instruction) ->
     Ok(())
 }
 
-/// Materializes an EIR closure literal as a static callable descriptor pointer.
+/// Materializes an EIR closure literal as a callable descriptor pointer.
 fn lower_closure_new(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     let closure_name = callable_target_data(ctx, inst)?.to_string();
     let closure = ctx
@@ -191,44 +191,232 @@ fn lower_closure_new(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Resul
         .iter()
         .find(|function| function.name == closure_name)
         .ok_or_else(|| CodegenIrError::missing_entry("closure", 0))?;
-    let signature = function_signature_from_eir(closure);
-    callable_descriptor::emit_load_descriptor_address_with_meta(
-        ctx.emitter,
+    if inst.operands.len() > closure.params.len() {
+        return Err(CodegenIrError::invalid_module(format!(
+            "closure_new for {} has {} captures but only {} params",
+            closure.name,
+            inst.operands.len(),
+            closure.params.len()
+        )));
+    }
+    let visible_param_count = closure.params.len() - inst.operands.len();
+    let signature = function_signature_from_eir_with_param_count(closure, visible_param_count);
+    let captures = closure_capture_params_from_eir(closure, inst.operands.len());
+    let invoker_label = emit_runtime_callable_invoker_inline(ctx, &signature, &captures);
+    let descriptor_label = callable_descriptor::static_descriptor_with_optional_invoker_meta(
         ctx.data,
-        abi::int_result_reg(ctx.emitter),
         &function_symbol(&closure.name),
         Some(&closure.name),
         callable_descriptor::CALLABLE_DESC_KIND_CLOSURE,
         Some(&signature),
-        &[],
-        &[],
+        &captures,
+        &captures,
         callable_descriptor::CallableDescriptorInvocation::new(
             callable_descriptor::CallableDescriptorShape::Closure,
         ),
+        Some(&invoker_label),
     );
+    if captures.is_empty() {
+        abi::emit_symbol_address(ctx.emitter, abi::int_result_reg(ctx.emitter), &descriptor_label);
+    } else {
+        emit_runtime_closure_descriptor_with_captures(
+            ctx,
+            &descriptor_label,
+            &captures,
+            &inst.operands,
+        )?;
+    }
     store_if_result(ctx, inst)
+}
+
+/// Returns the hidden closure capture params from the tail of the EIR closure ABI.
+fn closure_capture_params_from_eir(
+    closure: &crate::ir::Function,
+    capture_count: usize,
+) -> Vec<(String, PhpType, bool)> {
+    closure
+        .params
+        .iter()
+        .rev()
+        .take(capture_count)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .map(|param| (param.name.clone(), param.php_type.clone(), param.by_ref))
+        .collect()
+}
+
+/// Allocates a runtime closure descriptor and stores capture operands into its environment.
+fn emit_runtime_closure_descriptor_with_captures(
+    ctx: &mut FunctionContext<'_>,
+    descriptor_label: &str,
+    captures: &[(String, PhpType, bool)],
+    operands: &[ValueId],
+) -> Result<()> {
+    let result_reg = abi::int_result_reg(ctx.emitter);
+    let descriptor_reg = abi::nested_call_reg(ctx.emitter);
+    let total_bytes =
+        callable_descriptor::CALLABLE_DESC_RUNTIME_CAPTURE_OFFSET + captures.len() * 16;
+    abi::emit_load_int_immediate(ctx.emitter, result_reg, total_bytes as i64);
+    abi::emit_call_label(ctx.emitter, "__rt_heap_alloc");
+    ctx.emitter.instruction(&format!("mov {}, {}", descriptor_reg, result_reg)); // keep the runtime closure descriptor while storing captures
+    callable_descriptor::emit_copy_static_descriptor_to_runtime(
+        ctx.emitter,
+        descriptor_reg,
+        descriptor_label,
+    );
+    for (idx, ((_, capture_ty, by_ref), operand)) in captures.iter().zip(operands.iter()).enumerate() {
+        if *by_ref {
+            let slot = local_slot_for_loaded_value(ctx, *operand)?;
+            promote_local_slot_for_ref_capture(ctx, slot, capture_ty)?;
+            materialize_local_ref_arg_address(ctx, *operand)?;
+            callable_descriptor::emit_store_current_result_to_runtime_capture(
+                ctx.emitter,
+                descriptor_reg,
+                idx,
+                &PhpType::Int,
+            );
+            continue;
+        }
+        ctx.load_value_to_result(*operand)?;
+        if ctx.value_ownership(*operand)? != Ownership::Owned {
+            abi::emit_incref_if_refcounted(ctx.emitter, capture_ty);
+        }
+        callable_descriptor::emit_store_current_result_to_runtime_capture(
+            ctx.emitter,
+            descriptor_reg,
+            idx,
+            capture_ty,
+        );
+    }
+    if descriptor_reg != result_reg {
+        ctx.emitter.instruction(&format!("mov {}, {}", result_reg, descriptor_reg)); // return the runtime closure descriptor pointer
+    }
+    Ok(())
+}
+
+/// Promotes a normal local slot to a heap ref-cell for an escaping by-reference capture.
+fn promote_local_slot_for_ref_capture(
+    ctx: &mut FunctionContext<'_>,
+    slot: LocalSlotId,
+    capture_ty: &PhpType,
+) -> Result<()> {
+    if local_slot_stores_ref_cell_pointer(ctx, slot) {
+        return Ok(());
+    }
+    reject_multiword_ref_param_local(capture_ty, "capture")?;
+    let local_ty = ctx.local_php_type(slot)?;
+    let offset = ctx.local_offset(slot)?;
+    abi::emit_load(ctx.emitter, &local_ty, offset);
+    retain_promoted_ref_cell_value(ctx, &local_ty);
+    abi::emit_push_result_value(ctx.emitter, &local_ty);
+    abi::emit_load_int_immediate(ctx.emitter, abi::int_result_reg(ctx.emitter), 16);
+    abi::emit_call_label(ctx.emitter, "__rt_heap_alloc");
+    let cell_reg = abi::symbol_scratch_reg(ctx.emitter);
+    ctx.emitter.instruction(&format!("mov {}, {}", cell_reg, abi::int_result_reg(ctx.emitter))); // keep the promoted closure capture cell while restoring its value
+    pop_result_value(ctx, &local_ty);
+    store_current_result_to_ref_cell(ctx, cell_reg, &local_ty);
+    abi::store_at_offset(ctx.emitter, cell_reg, offset);
+    ctx.mark_promoted_ref_cell(slot);
+    Ok(())
+}
+
+/// Retains or persists a value before it is moved into a promoted ref-cell.
+fn retain_promoted_ref_cell_value(ctx: &mut FunctionContext<'_>, local_ty: &PhpType) {
+    match local_ty.codegen_repr() {
+        PhpType::Str => {
+            abi::emit_call_label(ctx.emitter, "__rt_str_persist");
+        }
+        PhpType::Callable => {
+            callable_descriptor::emit_retain_current_descriptor(ctx.emitter);
+        }
+        other if other.is_refcounted() => {
+            abi::emit_incref_if_refcounted(ctx.emitter, &other);
+        }
+        _ => {}
+    }
+}
+
+/// Pops a previously saved result value back into the target result registers.
+fn pop_result_value(ctx: &mut FunctionContext<'_>, local_ty: &PhpType) {
+    match local_ty.codegen_repr() {
+        PhpType::Float => {
+            abi::emit_pop_float_reg(ctx.emitter, abi::float_result_reg(ctx.emitter));
+        }
+        PhpType::Str => {
+            let (ptr_reg, len_reg) = abi::string_result_regs(ctx.emitter);
+            abi::emit_pop_reg_pair(ctx.emitter, ptr_reg, len_reg);
+        }
+        PhpType::Void | PhpType::Never => {}
+        _ => {
+            abi::emit_pop_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));
+        }
+    }
+}
+
+/// Stores the current result registers into a two-word heap ref-cell.
+fn store_current_result_to_ref_cell(
+    ctx: &mut FunctionContext<'_>,
+    cell_reg: &str,
+    local_ty: &PhpType,
+) {
+    match local_ty.codegen_repr() {
+        PhpType::Float => {
+            abi::emit_store_to_address(ctx.emitter, abi::float_result_reg(ctx.emitter), cell_reg, 0);
+            abi::emit_store_zero_to_address(ctx.emitter, cell_reg, 8);
+        }
+        PhpType::Str => {
+            let (ptr_reg, len_reg) = abi::string_result_regs(ctx.emitter);
+            abi::emit_store_to_address(ctx.emitter, ptr_reg, cell_reg, 0);
+            abi::emit_store_to_address(ctx.emitter, len_reg, cell_reg, 8);
+        }
+        PhpType::Void | PhpType::Never => {
+            abi::emit_store_zero_to_address(ctx.emitter, cell_reg, 0);
+            abi::emit_store_zero_to_address(ctx.emitter, cell_reg, 8);
+        }
+        _ => {
+            abi::emit_store_to_address(ctx.emitter, abi::int_result_reg(ctx.emitter), cell_reg, 0);
+            abi::emit_store_zero_to_address(ctx.emitter, cell_reg, 8);
+        }
+    }
 }
 
 /// Reconstructs callable signature metadata from an emitted EIR function.
 fn function_signature_from_eir(function: &crate::ir::Function) -> FunctionSig {
+    function_signature_from_eir_with_param_count(function, function.params.len())
+}
+
+/// Reconstructs signature metadata from the first `param_count` EIR params.
+fn function_signature_from_eir_with_param_count(
+    function: &crate::ir::Function,
+    param_count: usize,
+) -> FunctionSig {
     FunctionSig {
         params: function
             .params
             .iter()
+            .take(param_count)
             .map(|param| (param.name.clone(), param.php_type.clone()))
             .collect(),
-        defaults: function.params.iter().map(|_| None).collect(),
+        defaults: function.params.iter().take(param_count).map(|_| None).collect(),
         return_type: function.return_php_type.clone(),
         declared_return: !matches!(function.return_php_type, PhpType::Mixed),
-        ref_params: function.params.iter().map(|param| param.by_ref).collect(),
+        ref_params: function
+            .params
+            .iter()
+            .take(param_count)
+            .map(|param| param.by_ref)
+            .collect(),
         declared_params: function
             .params
             .iter()
+            .take(param_count)
             .map(|param| !matches!(param.php_type, PhpType::Mixed))
             .collect(),
         variadic: function
             .params
             .iter()
+            .take(param_count)
             .find(|param| param.variadic)
             .map(|param| param.name.clone()),
         deprecation: None,
@@ -2181,7 +2369,7 @@ fn store_current_scalar_result_to_ref_source(
     ctx: &mut FunctionContext<'_>,
     writeback: &RefArgWriteback,
 ) -> Result<()> {
-    if local_slot_is_by_ref_param(ctx, writeback.source_slot) {
+    if local_slot_stores_ref_cell_pointer(ctx, writeback.source_slot) {
         let offset = ctx.local_offset(writeback.source_slot)?;
         let pointer_reg = abi::symbol_scratch_reg(ctx.emitter);
         abi::load_at_offset(ctx.emitter, pointer_reg, offset);
@@ -2200,7 +2388,7 @@ fn materialize_local_ref_arg_address(
 ) -> Result<()> {
     let slot = local_slot_for_loaded_value(ctx, value)?;
     let offset = ctx.local_offset(slot)?;
-    if local_slot_is_by_ref_param(ctx, slot) {
+    if local_slot_stores_ref_cell_pointer(ctx, slot) {
         abi::load_at_offset(ctx.emitter, abi::int_result_reg(ctx.emitter), offset);
     } else {
         abi::emit_frame_slot_address(ctx.emitter, abi::int_result_reg(ctx.emitter), offset);
@@ -2239,12 +2427,9 @@ fn local_slot_for_loaded_value(
     Ok(slot)
 }
 
-/// Returns whether a local slot stores an incoming by-reference pointer.
-fn local_slot_is_by_ref_param(ctx: &FunctionContext<'_>, slot: LocalSlotId) -> bool {
-    ctx.function
-        .params
-        .get(slot.as_raw() as usize)
-        .is_some_and(|param| param.by_ref)
+/// Returns true when a local slot stores a ref-cell pointer instead of a raw value.
+fn local_slot_stores_ref_cell_pointer(ctx: &FunctionContext<'_>, slot: LocalSlotId) -> bool {
+    ctx.local_stores_ref_cell_pointer(slot)
 }
 
 /// Moves a scratch integer register into the canonical integer result register.
@@ -2327,7 +2512,7 @@ fn lower_load_local(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result
     let result = inst.result.ok_or_else(|| {
         CodegenIrError::invalid_module("load_local missing result value")
     })?;
-    let source_ty = if local_slot_is_by_ref_param(ctx, slot) {
+    let source_ty = if local_slot_stores_ref_cell_pointer(ctx, slot) {
         load_ref_param_local_to_result(ctx, slot)?
     } else {
         ctx.load_local_to_result(slot)?
@@ -2430,7 +2615,7 @@ fn local_load_types_share_storage(source_ty: &PhpType, result_ty: &PhpType) -> b
 fn lower_store_local(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     let slot = expect_local_slot(inst)?;
     let value = expect_operand(inst, 0)?;
-    if local_slot_is_by_ref_param(ctx, slot) {
+    if local_slot_stores_ref_cell_pointer(ctx, slot) {
         store_value_to_ref_param_local(ctx, slot, value)
     } else {
         ctx.store_value_to_local(slot, value)

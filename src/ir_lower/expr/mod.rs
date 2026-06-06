@@ -2956,6 +2956,10 @@ fn lower_closure_with_context(
         )
     };
     let data = ctx.intern_string(&name);
+    let closure_operands = captured_values
+        .iter()
+        .map(|capture| capture.value)
+        .collect::<Vec<_>>();
     ctx.set_pending_static_callable_result(StaticCallableBinding::Closure {
         name,
         signature,
@@ -2963,7 +2967,7 @@ fn lower_closure_with_context(
     });
     ctx.emit_value(
         Op::ClosureNew,
-        Vec::new(),
+        closure_operands,
         Some(Immediate::Data(data)),
         PhpType::Callable,
         Op::ClosureNew.default_effects(),

@@ -36,7 +36,8 @@ pub(super) fn lower_closure_call(ctx: &mut FunctionContext<'_>, inst: &Instructi
     let callable = expect_operand(inst, 0)?;
     match ctx.value_php_type(callable)?.codegen_repr() {
         PhpType::Str => lower_runtime_string_call(ctx, inst, callable, "closure_call"),
-        PhpType::Callable => instance_expr::lower_instance_method_closure_call(ctx, inst, callable),
+        PhpType::Callable => instance_expr::lower_instance_method_closure_call(ctx, inst, callable)
+            .or_else(|_| lower_descriptor_invoker_call(ctx, inst, callable, "closure_call")),
         other => Err(CodegenIrError::unsupported(format!(
             "closure_call for callable PHP type {:?}",
             other
@@ -49,12 +50,186 @@ pub(super) fn lower_expr_call(ctx: &mut FunctionContext<'_>, inst: &Instruction)
     let callable = expect_operand(inst, 0)?;
     match ctx.value_php_type(callable)?.codegen_repr() {
         PhpType::Str => lower_runtime_string_call(ctx, inst, callable, "expr_call"),
-        PhpType::Callable => instance_expr::lower_instance_method_expr_call(ctx, inst, callable),
+        PhpType::Callable => instance_expr::lower_instance_method_expr_call(ctx, inst, callable)
+            .or_else(|_| lower_descriptor_invoker_call(ctx, inst, callable, "expr_call")),
         other => Err(CodegenIrError::unsupported(format!(
             "expr_call for callable PHP type {:?}",
             other
         ))),
     }
+}
+
+/// Lowers a zero-argument callable descriptor call through its uniform invoker slot.
+fn lower_descriptor_invoker_call(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+    callable: ValueId,
+    op_name: &str,
+) -> Result<()> {
+    if inst.operands.len() != 1 {
+        return Err(CodegenIrError::unsupported(format!(
+            "{} descriptor invocation with {} visible args",
+            op_name,
+            inst.operands.len().saturating_sub(1)
+        )));
+    }
+    let descriptor_reg = abi::nested_call_reg(ctx.emitter);
+    let invoker_reg = abi::symbol_scratch_reg(ctx.emitter);
+    ctx.load_value_to_reg(callable, descriptor_reg)?;
+    callable_descriptor::emit_load_invoker_from_descriptor(ctx.emitter, invoker_reg, descriptor_reg);
+    let ready_label = ctx.next_label(&format!("{}_descriptor_invoker_ready", op_name));
+    emit_branch_if_invoker_present(ctx, invoker_reg, &ready_label);
+    emit_missing_descriptor_invoker_fatal(ctx, op_name);
+
+    ctx.emitter.label(&ready_label);
+    emit_empty_invoker_arg_mixed(ctx);
+    abi::emit_push_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));          // preserve the empty Mixed argument array across descriptor register setup
+    move_reg_to_arg(ctx, descriptor_reg, 0);
+    let arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 1);
+    abi::emit_load_temporary_stack_slot(ctx.emitter, arg_reg, 0);
+    callable_descriptor::emit_load_invoker_from_descriptor(ctx.emitter, invoker_reg, descriptor_reg);
+    abi::emit_call_reg(ctx.emitter, invoker_reg);
+    release_invoker_arg_preserving_result(ctx);
+    store_descriptor_invoker_result(ctx, inst)
+}
+
+/// Branches to `ready_label` when a callable descriptor has a uniform invoker.
+fn emit_branch_if_invoker_present(
+    ctx: &mut FunctionContext<'_>,
+    invoker_reg: &str,
+    ready_label: &str,
+) {
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction(&format!("cbnz {}, {}", invoker_reg, ready_label)); // continue when the callable descriptor has a uniform invoker
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction(&format!("test {}, {}", invoker_reg, invoker_reg)); // check whether the callable descriptor has a uniform invoker
+            ctx.emitter.instruction(&format!("jnz {}", ready_label));           // continue when the callable descriptor has a uniform invoker
+        }
+    }
+}
+
+/// Emits a fatal diagnostic for callable descriptors without a uniform invoker.
+fn emit_missing_descriptor_invoker_fatal(ctx: &mut FunctionContext<'_>, op_name: &str) {
+    let message = format!(
+        "Fatal error: Unsupported EIR {} callable descriptor without invoker\n",
+        op_name
+    );
+    let (message_label, message_len) = ctx.data.add_string(message.as_bytes());
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction("mov x0, #2");                              // write the missing descriptor-invoker diagnostic to stderr
+            ctx.emitter.adrp("x1", &message_label);                             // load the missing descriptor-invoker diagnostic page
+            ctx.emitter.add_lo12("x1", "x1", &message_label);                  // resolve the missing descriptor-invoker diagnostic address
+            ctx.emitter.instruction(&format!("mov x2, #{}", message_len));      // pass the descriptor-invoker diagnostic byte length to write
+            ctx.emitter.syscall(4);
+            abi::emit_exit(ctx.emitter, 1);
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("mov edi, 2");                              // write the missing descriptor-invoker diagnostic to stderr
+            abi::emit_symbol_address(ctx.emitter, "rsi", &message_label);
+            ctx.emitter.instruction(&format!("mov edx, {}", message_len));      // pass the descriptor-invoker diagnostic byte length to write
+            ctx.emitter.instruction("mov eax, 1");                              // Linux x86_64 syscall 1 = write
+            ctx.emitter.instruction("syscall");                                 // emit the missing descriptor-invoker diagnostic before terminating
+            abi::emit_exit(ctx.emitter, 1);
+        }
+    }
+}
+
+/// Creates an empty indexed array and boxes it as the descriptor-invoker argument container.
+fn emit_empty_invoker_arg_mixed(ctx: &mut FunctionContext<'_>) {
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            abi::emit_load_int_immediate(ctx.emitter, "x0", 0);
+            abi::emit_load_int_immediate(ctx.emitter, "x1", 8);
+        }
+        Arch::X86_64 => {
+            abi::emit_load_int_immediate(ctx.emitter, "rdi", 0);
+            abi::emit_load_int_immediate(ctx.emitter, "rsi", 8);
+        }
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_array_new");
+    emit_box_current_value_as_mixed(
+        ctx.emitter,
+        &PhpType::Array(Box::new(PhpType::Mixed)),
+    );
+}
+
+/// Moves a general-purpose register into an ABI argument register.
+fn move_reg_to_arg(ctx: &mut FunctionContext<'_>, source_reg: &str, arg_index: usize) {
+    let arg_reg = abi::int_arg_reg_name(ctx.emitter.target, arg_index);
+    if source_reg == arg_reg {
+        return;
+    }
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction(&format!("mov {}, {}", arg_reg, source_reg)); // move the callable descriptor into the invoker ABI argument
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction(&format!("mov {}, {}", arg_reg, source_reg)); // move the callable descriptor into the invoker ABI argument
+        }
+    }
+}
+
+/// Releases the temporary invoker argument while preserving the Mixed call result.
+fn release_invoker_arg_preserving_result(ctx: &mut FunctionContext<'_>) {
+    abi::emit_push_result_value(ctx.emitter, &PhpType::Mixed);
+    abi::emit_load_temporary_stack_slot(ctx.emitter, abi::int_result_reg(ctx.emitter), 16);
+    abi::emit_decref_if_refcounted(ctx.emitter, &PhpType::Mixed);
+    abi::emit_pop_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));
+    abi::emit_release_temporary_stack(ctx.emitter, 16);
+}
+
+/// Stores the Mixed descriptor-invoker result using the EIR result type.
+fn store_descriptor_invoker_result(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+) -> Result<()> {
+    let Some(result) = inst.result else {
+        return Ok(());
+    };
+    match ctx.value_php_type(result)?.codegen_repr() {
+        PhpType::Mixed | PhpType::Union(_) => ctx.store_result_value(result),
+        PhpType::Void | PhpType::Never => {
+            abi::emit_load_int_immediate(
+                ctx.emitter,
+                abi::int_result_reg(ctx.emitter),
+                0x7fff_ffff_ffff_fffe,
+            );
+            ctx.store_result_value(result)
+        }
+        PhpType::Int => {
+            move_result_to_arg(ctx, 0);
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_int");
+            ctx.store_result_value(result)
+        }
+        PhpType::Bool => {
+            move_result_to_arg(ctx, 0);
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_bool");
+            ctx.store_result_value(result)
+        }
+        PhpType::Float => {
+            move_result_to_arg(ctx, 0);
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_float");
+            ctx.store_result_value(result)
+        }
+        PhpType::Str => {
+            move_result_to_arg(ctx, 0);
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_string");
+            ctx.store_result_value(result)
+        }
+        other => Err(CodegenIrError::unsupported(format!(
+            "descriptor invoker result for PHP type {:?}",
+            other
+        ))),
+    }
+}
+
+/// Moves the current integer result register into an ABI argument register.
+fn move_result_to_arg(ctx: &mut FunctionContext<'_>, arg_index: usize) {
+    let result_reg = abi::int_result_reg(ctx.emitter);
+    move_reg_to_arg(ctx, result_reg, arg_index);
 }
 
 /// Lowers `value |> $callable` when `$callable` is a first-class user-function descriptor.

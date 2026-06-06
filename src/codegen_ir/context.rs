@@ -10,7 +10,7 @@
 //! - Phase 04 stores every SSA value in a stack slot and reloads result registers at use sites.
 //! - The context delegates target-specific movement to `crate::codegen::abi`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::codegen::{abi, emit_box_current_value_as_mixed};
 use crate::codegen::data_section::DataSection;
@@ -30,6 +30,7 @@ pub(super) struct FunctionContext<'a> {
     pub(super) data: &'a mut DataSection,
     pub(super) placement: ValuePlacement,
     local_offsets: HashMap<LocalSlotId, usize>,
+    promoted_ref_cells: HashSet<LocalSlotId>,
     try_handler_offsets: HashMap<i64, usize>,
     pub(super) frame_size: usize,
     pub(super) epilogue_emitted: bool,
@@ -60,6 +61,7 @@ impl<'a> FunctionContext<'a> {
             data,
             placement: layout.value_placement,
             local_offsets: layout.local_offsets,
+            promoted_ref_cells: HashSet::new(),
             try_handler_offsets: layout.try_handler_offsets,
             frame_size: layout.frame_size,
             epilogue_emitted: false,
@@ -174,6 +176,29 @@ impl<'a> FunctionContext<'a> {
             .map(|local| local.id)
     }
 
+    /// Marks a local slot as storing a heap reference cell pointer instead of its raw value.
+    pub(super) fn mark_promoted_ref_cell(&mut self, slot: LocalSlotId) {
+        self.promoted_ref_cells.insert(slot);
+    }
+
+    /// Returns true when a local slot has been promoted to a heap reference cell.
+    pub(super) fn is_promoted_ref_cell(&self, slot: LocalSlotId) -> bool {
+        self.promoted_ref_cells.contains(&slot)
+    }
+
+    /// Returns true when a local slot stores a heap reference-cell pointer.
+    pub(super) fn local_stores_ref_cell_pointer(&self, slot: LocalSlotId) -> bool {
+        self.is_by_ref_param_slot(slot) || self.is_promoted_ref_cell(slot)
+    }
+
+    /// Returns true when the local slot is the storage slot for a by-reference parameter.
+    fn is_by_ref_param_slot(&self, slot: LocalSlotId) -> bool {
+        self.function
+            .params
+            .get(slot.as_raw() as usize)
+            .is_some_and(|param| param.by_ref)
+    }
+
     /// Loads a stored SSA value into the target's canonical result register(s).
     pub(super) fn load_value_to_result(&mut self, value: ValueId) -> Result<PhpType> {
         let ty = self.value_php_type(value)?;
@@ -212,9 +237,30 @@ impl<'a> FunctionContext<'a> {
 
     /// Loads a local slot into the target's canonical result register(s).
     pub(super) fn load_local_to_result(&mut self, slot: LocalSlotId) -> Result<PhpType> {
+        if self.local_stores_ref_cell_pointer(slot) {
+            return self.load_ref_cell_local_to_result(slot);
+        }
         let ty = self.local_php_type(slot)?;
         let offset = self.local_offset(slot)?;
         abi::emit_load(self.emitter, &ty, offset);
+        Ok(ty)
+    }
+
+    /// Loads the value pointed to by a local ref-cell pointer slot.
+    fn load_ref_cell_local_to_result(&mut self, slot: LocalSlotId) -> Result<PhpType> {
+        let ty = self.local_php_type(slot)?;
+        reject_multiword_ref_cell_local(&ty, "load")?;
+        let offset = self.local_offset(slot)?;
+        let pointer_reg = abi::symbol_scratch_reg(self.emitter);
+        abi::load_at_offset(self.emitter, pointer_reg, offset);
+        match ty.codegen_repr() {
+            PhpType::Float => {
+                abi::emit_load_from_address(self.emitter, abi::float_result_reg(self.emitter), pointer_reg, 0);
+            }
+            _ => {
+                abi::emit_load_from_address(self.emitter, abi::int_result_reg(self.emitter), pointer_reg, 0);
+            }
+        }
         Ok(ty)
     }
 
@@ -228,6 +274,9 @@ impl<'a> FunctionContext<'a> {
 
     /// Stores an SSA value into an addressable local slot.
     pub(super) fn store_value_to_local(&mut self, slot: LocalSlotId, value: ValueId) -> Result<()> {
+        if self.local_stores_ref_cell_pointer(slot) {
+            return self.store_value_to_ref_cell_local(slot, value);
+        }
         let source_ty = self.load_value_to_result(value)?;
         let target_ty = self.local_php_type(slot)?;
         if target_ty == PhpType::Mixed && source_ty != PhpType::Mixed {
@@ -235,6 +284,28 @@ impl<'a> FunctionContext<'a> {
         }
         let offset = self.local_offset(slot)?;
         self.store_current_result_at_offset(&target_ty, offset);
+        Ok(())
+    }
+
+    /// Stores an SSA value through a local ref-cell pointer slot.
+    fn store_value_to_ref_cell_local(&mut self, slot: LocalSlotId, value: ValueId) -> Result<()> {
+        let source_ty = self.load_value_to_result(value)?;
+        let target_ty = self.local_php_type(slot)?;
+        reject_multiword_ref_cell_local(&target_ty, "store")?;
+        if target_ty == PhpType::Mixed && source_ty != PhpType::Mixed {
+            emit_box_current_value_as_mixed(self.emitter, &source_ty);
+        }
+        let offset = self.local_offset(slot)?;
+        let pointer_reg = abi::symbol_scratch_reg(self.emitter);
+        abi::load_at_offset(self.emitter, pointer_reg, offset);
+        match target_ty.codegen_repr() {
+            PhpType::Float => {
+                abi::emit_store_to_address(self.emitter, abi::float_result_reg(self.emitter), pointer_reg, 0);
+            }
+            _ => {
+                abi::emit_store_to_address(self.emitter, abi::int_result_reg(self.emitter), pointer_reg, 0);
+            }
+        }
         Ok(())
     }
 
@@ -338,6 +409,17 @@ impl<'a> FunctionContext<'a> {
             .copied()
             .ok_or_else(|| CodegenIrError::invalid_module(format!("missing try handler token {}", token)))
     }
+}
+
+/// Rejects local ref-cell operations whose frame representation spans multiple words.
+fn reject_multiword_ref_cell_local(ty: &PhpType, action: &str) -> Result<()> {
+    if matches!(ty.codegen_repr(), PhpType::Str) {
+        return Err(CodegenIrError::unsupported(format!(
+            "by-reference string local {}",
+            action
+        )));
+    }
+    Ok(())
 }
 
 /// Converts arbitrary names into assembly-label-safe fragments.
