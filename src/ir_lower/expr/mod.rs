@@ -1574,7 +1574,7 @@ fn resolve_instance_method_callable(
 ) -> Option<StaticCallableBinding> {
     let class_name = instance_callable_object_class(ctx, object)?;
     let method_key = php_symbol_key(&method);
-    let signature = ctx.classes.get(&class_name)?.methods.get(&method_key)?.clone();
+    let signature = class_method_signature(ctx, &class_name, &method_key)?.clone();
     Some(StaticCallableBinding::InstanceMethod { signature })
 }
 
@@ -3126,14 +3126,31 @@ fn method_signature<'a>(
     let (class_name, _) = singular_object_class(&object_ty)?;
     let normalized = class_name.trim_start_matches('\\');
     let key = php_symbol_key(method);
-    ctx.classes
+    class_method_signature(ctx, normalized, &key)
+}
+
+/// Returns a class/interface method signature, preferring the implementing class metadata.
+fn class_method_signature<'a>(
+    ctx: &'a LoweringContext<'_, '_>,
+    class_name: &str,
+    method_key: &str,
+) -> Option<&'a FunctionSig> {
+    let normalized = class_name.trim_start_matches('\\');
+    if let Some(class_info) = ctx.classes.get(normalized) {
+        let impl_class = class_info
+            .method_impl_classes
+            .get(method_key)
+            .map(String::as_str)
+            .unwrap_or(normalized);
+        return ctx
+            .classes
+            .get(impl_class)
+            .and_then(|impl_info| impl_info.methods.get(method_key))
+            .or_else(|| class_info.methods.get(method_key));
+    }
+    ctx.interfaces
         .get(normalized)
-        .and_then(|class_info| class_info.methods.get(&key))
-        .or_else(|| {
-            ctx.interfaces
-                .get(normalized)
-                .and_then(|interface_info| interface_info.methods.get(&key))
-        })
+        .and_then(|interface_info| interface_info.methods.get(method_key))
 }
 
 /// Returns the checked return type for an instance method call when metadata is available.
