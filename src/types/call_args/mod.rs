@@ -16,8 +16,7 @@ mod static_spread;
 
 pub(crate) use matching::{named_param_index, regular_param_count};
 pub(crate) use plan::{
-    CallArgPlan, CallArgPlanError, PlannedRegularArg, PlannedSourceValue, PlannedVariadicArg,
-    SpreadBoundsCheck,
+    CallArgPlan, CallArgPlanError, PlannedRegularArg, PlannedSourceValue, SpreadBoundsCheck,
 };
 pub(crate) use planner::{
     plan_call_args, plan_call_args_with_regular_param_count_and_assoc_spreads,

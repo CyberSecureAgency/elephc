@@ -2456,10 +2456,6 @@ fn lower_named_args_with_signature(
         let normalized = plan.normalized_args();
         return lower_args(ctx, &normalized);
     }
-    if plan.variadic_args.iter().any(|arg| arg.key.is_some()) {
-        return lower_args(ctx, args);
-    }
-
     let mut source_values = Vec::with_capacity(plan.source_args.len());
     for source_arg in &plan.source_args {
         source_values.push(lower_call_source_arg(ctx, source_arg));
@@ -2480,7 +2476,7 @@ fn lower_named_args_with_signature(
         }
     }
     if sig.variadic.is_some() {
-        operands.push(lower_named_variadic_tail_array(ctx, sig, &plan.variadic_args).value);
+        operands.push(lower_named_variadic_tail_array(ctx, sig, &plan.source_values, &source_values).value);
     }
     operands
 }
@@ -2882,36 +2878,105 @@ fn lower_call_source_arg(ctx: &mut LoweringContext<'_, '_>, arg: &Expr) -> crate
 fn lower_named_variadic_tail_array(
     ctx: &mut LoweringContext<'_, '_>,
     sig: &FunctionSig,
-    tail: &[crate::types::call_args::PlannedVariadicArg],
+    tail: &[crate::types::call_args::PlannedSourceValue],
+    source_values: &[crate::ir::ValueId],
 ) -> LoweredValue {
+    if tail.iter().any(|source| source.key().is_some()) {
+        return lower_named_variadic_tail_hash(ctx, sig, tail, source_values);
+    }
     let span = tail
         .first()
-        .map(|arg| arg.expr.span)
+        .map(|arg| arg.expr().span)
         .unwrap_or_else(crate::span::Span::dummy);
+    let variadic_count = tail.iter().filter(|source| source.param_idx().is_none()).count();
     let array_ty = variadic_array_type(sig);
     let array = ctx.emit_value(
         Op::ArrayNew,
         Vec::new(),
-        Some(Immediate::Capacity(tail.len() as u32)),
+        Some(Immediate::Capacity(variadic_count as u32)),
         array_ty.clone(),
         Op::ArrayNew.default_effects(),
         Some(span),
     );
-    for item in tail {
-        if item.key.is_some() {
+    for source in tail {
+        if source.param_idx().is_some() {
             continue;
         }
-        let value = lower_expr(ctx, &item.expr);
-        let value = coerce_variadic_tail_value(ctx, value, &array_ty, item.expr.span);
+        let value = source_values[source.source_index()];
+        let value = lowered_value_from_id(ctx, value);
+        let value = coerce_variadic_tail_value(ctx, value, &array_ty, source.expr().span);
         ctx.emit_void(
             Op::ArrayPush,
             vec![array.value, value.value],
             None,
             Op::ArrayPush.default_effects(),
-            Some(item.expr.span),
+            Some(source.expr().span),
         );
     }
     array
+}
+
+/// Builds an associative variadic tail when unknown named args must keep string keys.
+fn lower_named_variadic_tail_hash(
+    ctx: &mut LoweringContext<'_, '_>,
+    sig: &FunctionSig,
+    tail: &[crate::types::call_args::PlannedSourceValue],
+    source_values: &[crate::ir::ValueId],
+) -> LoweredValue {
+    let span = tail
+        .first()
+        .map(|arg| arg.expr().span)
+        .unwrap_or_else(crate::span::Span::dummy);
+    let value_ty = variadic_tail_value_type(sig);
+    let variadic_count = tail.iter().filter(|source| source.param_idx().is_none()).count();
+    let hash_ty = PhpType::AssocArray {
+        key: Box::new(PhpType::Mixed),
+        value: Box::new(value_ty.clone()),
+    };
+    let hash = ctx.emit_value(
+        Op::HashNew,
+        Vec::new(),
+        Some(Immediate::Capacity(variadic_count as u32)),
+        hash_ty,
+        Op::HashNew.default_effects(),
+        Some(span),
+    );
+    let mut next_positional_key = 0usize;
+    for source in tail {
+        if source.param_idx().is_some() {
+            continue;
+        }
+        let key = if let Some(key) = source.key() {
+            lower_string_literal(ctx, key, source.expr())
+        } else {
+            let key = emit_i64_at_span(ctx, next_positional_key as i64, source.expr().span);
+            next_positional_key += 1;
+            key
+        };
+        let value = source_values[source.source_index()];
+        let value = lowered_value_from_id(ctx, value);
+        let array_ty = PhpType::Array(Box::new(value_ty.clone()));
+        let value = coerce_variadic_tail_value(ctx, value, &array_ty, source.expr().span);
+        ctx.emit_void(
+            Op::HashSet,
+            vec![hash.value, key.value, value.value],
+            None,
+            Op::HashSet.default_effects(),
+            Some(source.expr().span),
+        );
+    }
+    hash
+}
+
+/// Rebuilds lowering metadata for an already emitted value.
+fn lowered_value_from_id(
+    ctx: &LoweringContext<'_, '_>,
+    value: crate::ir::ValueId,
+) -> LoweredValue {
+    LoweredValue {
+        value,
+        ir_type: ctx.builder.value_type(value),
+    }
 }
 
 /// Lowers the synthetic variadic tail array using the variadic parameter's storage type.
@@ -2945,6 +3010,21 @@ fn lower_variadic_tail_array(
         );
     }
     array
+}
+
+/// Returns the element type expected inside a variadic tail container.
+fn variadic_tail_value_type(sig: &FunctionSig) -> PhpType {
+    let Some(variadic_name) = sig.variadic.as_ref() else {
+        return PhpType::Mixed;
+    };
+    sig.params
+        .iter()
+        .find(|(name, _)| name == variadic_name)
+        .map(|(_, ty)| match ty.codegen_repr() {
+            PhpType::Array(elem_ty) => *elem_ty,
+            other => other,
+        })
+        .unwrap_or(PhpType::Mixed)
 }
 
 /// Returns the runtime array type used for a variadic parameter slot.
