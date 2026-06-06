@@ -238,6 +238,28 @@ pub(super) fn lower_array_union(ctx: &mut FunctionContext<'_>, inst: &Instructio
     store_if_result(ctx, inst)
 }
 
+/// Lowers indexed+associative array union through the shared hash runtime helper.
+pub(super) fn lower_array_hash_union(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    let left = expect_operand(inst, 0)?;
+    let right = expect_operand(inst, 1)?;
+    require_indexed_array(ctx.value_php_type(left)?, inst)?;
+    require_assoc_union_hash_operand(ctx.value_php_type(right)?, inst)?;
+    let result_value_ty = require_array_to_hash_result(&inst.result_php_type.codegen_repr(), inst)?;
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.load_value_to_reg(left, "x0")?;
+            ctx.load_value_to_reg(right, "x1")?;
+        }
+        Arch::X86_64 => {
+            ctx.load_value_to_reg(left, "rdi")?;
+            ctx.load_value_to_reg(right, "rsi")?;
+        }
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_array_hash_union");
+    convert_hash_union_result_to_mixed_if_needed(ctx, &result_value_ty);
+    store_if_result(ctx, inst)
+}
+
 /// Lowers an indexed-array element read for AArch64 targets.
 fn lower_array_get_aarch64(
     ctx: &mut FunctionContext<'_>,
@@ -758,6 +780,37 @@ fn require_array_to_hash_result(result_ty: &PhpType, inst: &Instruction) -> Resu
             inst.op.name(),
             other
         ))),
+    }
+}
+
+/// Verifies that a cross-array union operand uses associative hash storage.
+fn require_assoc_union_hash_operand(ty: PhpType, inst: &Instruction) -> Result<()> {
+    if matches!(ty.codegen_repr(), PhpType::AssocArray { .. }) {
+        return Ok(());
+    }
+    Err(CodegenIrError::unsupported(format!(
+        "{} hash operand PHP type {:?}",
+        inst.op.name(),
+        ty
+    )))
+}
+
+/// Converts a just-returned hash union result to boxed Mixed entries when required.
+fn convert_hash_union_result_to_mixed_if_needed(
+    ctx: &mut FunctionContext<'_>,
+    result_value_ty: &PhpType,
+) {
+    if result_value_ty != &PhpType::Mixed {
+        return;
+    }
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            abi::emit_call_label(ctx.emitter, "__rt_hash_to_mixed");
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("mov rdi, rax");                            // pass the hash result to the Mixed-entry conversion helper
+            abi::emit_call_label(ctx.emitter, "__rt_hash_to_mixed");
+        }
     }
 }
 

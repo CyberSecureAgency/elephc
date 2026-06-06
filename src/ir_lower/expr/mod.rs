@@ -262,13 +262,13 @@ fn lower_numeric_binary(
     let lhs = lower_expr(ctx, left);
     let rhs = lower_expr(ctx, right);
     if matches!(op, BinOp::Add) {
-        if let Some(result_ty) = indexed_array_union_result_type(ctx, lhs.value, rhs.value) {
+        if let Some((op, result_ty)) = array_union_plan(ctx, lhs.value, rhs.value) {
             return ctx.emit_value(
-                Op::ArrayUnion,
+                op,
                 vec![lhs.value, rhs.value],
                 None,
                 result_ty,
-                Op::ArrayUnion.default_effects(),
+                op.default_effects(),
                 Some(expr.span),
             );
         }
@@ -339,18 +339,52 @@ fn lower_numeric_binary(
     )
 }
 
-/// Returns the indexed-array result type for PHP array union operands.
-fn indexed_array_union_result_type(
+/// Returns the EIR opcode and result type for PHP array union operands.
+fn array_union_plan(
     ctx: &LoweringContext<'_, '_>,
     lhs: ValueId,
     rhs: ValueId,
-) -> Option<PhpType> {
+) -> Option<(Op, PhpType)> {
     let lhs_ty = ctx.builder.value_php_type(lhs).codegen_repr();
     let rhs_ty = ctx.builder.value_php_type(rhs).codegen_repr();
     match (&lhs_ty, &rhs_ty) {
         (PhpType::Array(left_elem), PhpType::Array(right_elem)) => {
             indexed_array_union_element_type(left_elem, right_elem)
-                .map(|elem_ty| PhpType::Array(Box::new(elem_ty)))
+                .map(|elem_ty| (Op::ArrayUnion, PhpType::Array(Box::new(elem_ty))))
+        }
+        (
+            PhpType::AssocArray {
+                key: left_key,
+                value: left_value,
+            },
+            PhpType::AssocArray {
+                key: right_key,
+                value: right_value,
+            },
+        ) => Some((
+            Op::HashUnion,
+            PhpType::AssocArray {
+                key: Box::new(assoc_union_key_type(left_key, right_key)),
+                value: Box::new(array_union_value_type(left_value, right_value)),
+            },
+        )),
+        (PhpType::Array(left_elem), PhpType::AssocArray { key, value }) => {
+            Some((
+                Op::ArrayHashUnion,
+                PhpType::AssocArray {
+                    key: Box::new(merge_array_key_types(PhpType::Int, key.codegen_repr())),
+                    value: Box::new(array_union_value_type(left_elem, value)),
+                },
+            ))
+        }
+        (PhpType::AssocArray { key, value }, PhpType::Array(right_elem)) => {
+            Some((
+                Op::HashArrayUnion,
+                PhpType::AssocArray {
+                    key: Box::new(merge_array_key_types(key.codegen_repr(), PhpType::Int)),
+                    value: Box::new(array_union_value_type(value, right_elem)),
+                },
+            ))
         }
         _ => None,
     }
@@ -373,6 +407,32 @@ fn indexed_array_union_element_type(left: &PhpType, right: &PhpType) -> Option<P
         return Some(left);
     }
     None
+}
+
+/// Returns the merged key type for associative-array union operands.
+fn assoc_union_key_type(left: &PhpType, right: &PhpType) -> PhpType {
+    let left = left.codegen_repr();
+    let right = right.codegen_repr();
+    if left == right {
+        left
+    } else {
+        PhpType::Mixed
+    }
+}
+
+/// Returns the merged value type for array union operands.
+fn array_union_value_type(left: &PhpType, right: &PhpType) -> PhpType {
+    let left = left.codegen_repr();
+    let right = right.codegen_repr();
+    if left == right {
+        left
+    } else if matches!(left, PhpType::Never) {
+        right
+    } else if matches!(right, PhpType::Never) {
+        left
+    } else {
+        PhpType::Mixed
+    }
 }
 
 /// Returns true when runtime mixed numeric dispatch is needed before float coercion.

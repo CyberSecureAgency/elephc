@@ -384,6 +384,9 @@ fn validate_opcode_rules(function: &Function, inst_id: InstId, inst: &Instructio
         MixedTagOf | MixedUnbox | MixedCastBool | MixedCastInt | MixedCastFloat
         | MixedCastString => check_heap_unary(function, inst_id, inst, IrHeapKind::Mixed, "Heap(Mixed)"),
         ArrayUnion => check_binary(function, inst_id, inst, IrType::Heap(IrHeapKind::Array), "Heap(Array)"),
+        HashUnion => check_binary(function, inst_id, inst, IrType::Heap(IrHeapKind::Hash), "Heap(Hash)"),
+        ArrayHashUnion => check_array_hash_union(function, inst_id, inst),
+        HashArrayUnion => check_hash_array_union(function, inst_id, inst),
         ArrayLen | ArrayGet | ArraySet | ArrayPush | ArrayEnsureUnique | ArrayCloneShallow
         | ArrayToHash => check_first_heap(function, inst_id, inst, IrHeapKind::Array, "Heap(Array)"),
         HashLen | HashGet | HashSet | HashAppend | HashEnsureUnique | HashCloneShallow => {
@@ -400,6 +403,28 @@ fn validate_opcode_rules(function: &Function, inst_id: InstId, inst: &Instructio
         }
         _ => Ok(()),
     }
+}
+
+/// Validates the operand shape for indexed+associative array union.
+fn check_array_hash_union(
+    function: &Function,
+    inst_id: InstId,
+    inst: &Instruction,
+) -> Result<(), ValidationError> {
+    check_count(inst_id, inst, 2, "2")?;
+    check_operand_type(function, inst_id, inst, 0, IrType::Heap(IrHeapKind::Array), "Heap(Array)")?;
+    check_operand_type(function, inst_id, inst, 1, IrType::Heap(IrHeapKind::Hash), "Heap(Hash)")
+}
+
+/// Validates the operand shape for associative+indexed array union.
+fn check_hash_array_union(
+    function: &Function,
+    inst_id: InstId,
+    inst: &Instruction,
+) -> Result<(), ValidationError> {
+    check_count(inst_id, inst, 2, "2")?;
+    check_operand_type(function, inst_id, inst, 0, IrType::Heap(IrHeapKind::Hash), "Heap(Hash)")?;
+    check_operand_type(function, inst_id, inst, 1, IrType::Heap(IrHeapKind::Array), "Heap(Array)")
 }
 
 /// Validates one exact operand count.
