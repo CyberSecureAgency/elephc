@@ -352,6 +352,15 @@ impl<'m, 'f> LoweringContext<'m, 'f> {
         name
     }
 
+    /// Declares a parser-reserved hidden temporary slot.
+    pub(crate) fn declare_hidden_temp_with_name(
+        &mut self,
+        name: &str,
+        php_type: PhpType,
+    ) -> LocalSlotId {
+        self.declare_local_with_kind(name, php_type, LocalKind::HiddenTemp)
+    }
+
     /// Declares a hidden owner slot for a promoted local ref-cell pointer.
     fn declare_ref_cell_owner(&mut self, variable: &str, php_type: PhpType) -> LocalSlotId {
         let name = format!("__eir_ref_owner{}_{}", self.hidden_temp_counter, variable);

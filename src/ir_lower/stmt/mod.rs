@@ -557,13 +557,13 @@ fn lower_string_key_array_promotion(
 
 /// Returns the associative type produced by a string-key write to an indexed array.
 fn promoted_assoc_array_type(current_ty: PhpType, value_ty: PhpType) -> PhpType {
-    let value_ty = normalize_materialized_element_type(value_ty.codegen_repr());
+    let value_ty = normalize_array_write_element_type(value_ty.codegen_repr());
     let assoc_value_ty = match current_ty.codegen_repr() {
         PhpType::Array(elem_ty) if is_empty_indexed_array_element(elem_ty.as_ref()) => {
             value_ty
         }
         PhpType::Array(elem_ty) => {
-            let elem_ty = normalize_materialized_element_type(elem_ty.codegen_repr());
+            let elem_ty = normalize_array_write_element_type(elem_ty.codegen_repr());
             if elem_ty == value_ty {
                 elem_ty
             } else {
@@ -696,12 +696,12 @@ pub(super) fn finish_indexed_array_local_write(
 fn indexed_array_write_updated_type(current_ty: PhpType, value_ty: PhpType) -> Option<PhpType> {
     match current_ty.codegen_repr() {
         PhpType::Array(elem_ty) if is_empty_indexed_array_element(elem_ty.as_ref()) => {
-            Some(PhpType::Array(Box::new(normalize_materialized_element_type(value_ty))))
+            Some(PhpType::Array(Box::new(normalize_array_write_element_type(value_ty))))
         }
         PhpType::Array(elem_ty) if elem_ty.codegen_repr() == PhpType::Mixed => None,
         PhpType::Array(elem_ty) => {
             let elem_ty = elem_ty.codegen_repr();
-            let value_ty = normalize_materialized_element_type(value_ty.codegen_repr());
+            let value_ty = normalize_array_write_element_type(value_ty.codegen_repr());
             if elem_ty == value_ty {
                 None
             } else {
@@ -722,7 +722,6 @@ fn indexed_array_write_needs_mixed_conversion(current_ty: &PhpType, updated_ty: 
     };
     updated_elem.codegen_repr() == PhpType::Mixed
         && current_elem.codegen_repr() != PhpType::Mixed
-        && !is_empty_indexed_array_element(current_elem.as_ref())
 }
 
 /// Returns true for the placeholder element type used by empty indexed arrays.
@@ -1455,6 +1454,16 @@ fn normalize_materialized_element_type(item_type: PhpType) -> PhpType {
     match item_type {
         PhpType::Never => PhpType::Void,
         other => other,
+    }
+}
+
+/// Normalizes indexed-array write payloads to storage shapes Phase 04 can lower.
+fn normalize_array_write_element_type(item_type: PhpType) -> PhpType {
+    let item_type = normalize_materialized_element_type(item_type);
+    if item_type.is_refcounted() && !matches!(item_type, PhpType::Str) {
+        PhpType::Mixed
+    } else {
+        item_type
     }
 }
 

@@ -78,9 +78,31 @@ pub(super) fn emit_is_null_result(ctx: &mut FunctionContext<'_>, value: ValueId)
             abi::emit_load_int_immediate(ctx.emitter, abi::int_result_reg(ctx.emitter), 1);
             Ok(())
         }
+        PhpType::Int | PhpType::Bool | PhpType::Callable => {
+            ctx.load_value_to_result(value)?;
+            emit_int_result_null_sentinel_bool(ctx);
+            Ok(())
+        }
         _ => {
             abi::emit_load_int_immediate(ctx.emitter, abi::int_result_reg(ctx.emitter), 0);
             Ok(())
+        }
+    }
+}
+
+/// Compares the loaded integer result against elephc's scalar null sentinel.
+fn emit_int_result_null_sentinel_bool(ctx: &mut FunctionContext<'_>) {
+    let sentinel_reg = abi::secondary_scratch_reg(ctx.emitter);
+    abi::emit_load_int_immediate(ctx.emitter, sentinel_reg, 0x7fff_ffff_ffff_fffe);
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction(&format!("cmp x0, {}", sentinel_reg));      // compare the scalar value with the runtime null sentinel
+            ctx.emitter.instruction("cset x0, eq");                             // materialize true when the scalar carries the null sentinel
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction(&format!("cmp rax, {}", sentinel_reg));     // compare the scalar value with the runtime null sentinel
+            ctx.emitter.instruction("sete al");                                 // materialize true when the scalar carries the null sentinel
+            ctx.emitter.instruction("movzx rax, al");                           // widen the boolean byte into the integer result register
         }
     }
 }

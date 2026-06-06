@@ -399,6 +399,9 @@ fn emit_array_get_in_bounds_aarch64(
     elem_ty: &PhpType,
 ) -> Result<()> {
     match elem_ty {
+        PhpType::Void | PhpType::Never => {
+            abi::emit_load_int_immediate(ctx.emitter, index_reg, 0x7fff_ffff_ffff_fffe);
+        }
         PhpType::Int | PhpType::Bool | PhpType::Callable => {
             ctx.emitter.instruction(&format!("add {}, {}, #24", array_reg, array_reg)); // skip the indexed-array header to reach element payloads
             ctx.emitter.instruction(&format!("ldr {}, [{}, {}, lsl #3]", index_reg, array_reg, index_reg)); // load the selected pointer-sized indexed-array element
@@ -437,6 +440,9 @@ fn emit_array_get_in_bounds_x86_64(
     elem_ty: &PhpType,
 ) -> Result<()> {
     match elem_ty {
+        PhpType::Void | PhpType::Never => {
+            abi::emit_load_int_immediate(ctx.emitter, index_reg, 0x7fff_ffff_ffff_fffe);
+        }
         PhpType::Int | PhpType::Bool | PhpType::Callable => {
             ctx.emitter.instruction(&format!("lea {}, [{} + 24]", array_reg, array_reg)); // skip the indexed-array header to reach element payloads
             ctx.emitter.instruction(&format!("mov {}, QWORD PTR [{} + {} * 8]", index_reg, array_reg, index_reg)); // load the selected pointer-sized indexed-array element
@@ -752,6 +758,11 @@ fn require_array_get_result(elem_ty: &PhpType, inst: &Instruction) -> Result<()>
         return Ok(());
     }
     if elem_ty.is_refcounted() && result_ty == *elem_ty {
+        return Ok(());
+    }
+    if matches!(elem_ty, PhpType::Void | PhpType::Never)
+        && matches!(result_ty, PhpType::Void | PhpType::Never)
+    {
         return Ok(());
     }
     Err(CodegenIrError::unsupported(format!(

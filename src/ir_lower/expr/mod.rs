@@ -22,8 +22,9 @@ use crate::ir_lower::function;
 use crate::names::{php_symbol_key, Name};
 use crate::parser::ast::{
     BinOp, CallableTarget, CastType, Expr, ExprKind, InstanceOfTarget, MagicConstant,
-    StaticReceiver, TypeExpr, Visibility,
+    StaticReceiver, Stmt, StmtKind, TypeExpr, Visibility,
 };
+use crate::span::Span;
 use crate::types::checker::builtins::canonical_builtin_function_name;
 use crate::types::{
     array_key_type_from_value_type, checker::infer_expr_type_syntactic,
@@ -63,8 +64,16 @@ pub(crate) fn lower_expr(ctx: &mut LoweringContext<'_, '_>, expr: &Expr) -> Lowe
             value,
             result_target,
             prelude,
-            conditional_value_temp: _,
-        } => lower_assignment_expr(ctx, target, value, result_target.as_deref(), prelude, expr),
+            conditional_value_temp,
+        } => lower_assignment_expr(
+            ctx,
+            target,
+            value,
+            result_target.as_deref(),
+            prelude,
+            conditional_value_temp.as_deref(),
+            expr,
+        ),
         ExprKind::PreIncrement(name) => lower_inc_dec(ctx, name, true, false, expr),
         ExprKind::PostIncrement(name) => lower_inc_dec(ctx, name, true, true, expr),
         ExprKind::PreDecrement(name) => lower_inc_dec(ctx, name, false, false, expr),
@@ -803,7 +812,7 @@ fn null_coalesce_result_type(
     default: &Expr,
 ) -> PhpType {
     let value_ty = strip_void_from_union(ctx.builder.value_php_type(value)).codegen_repr();
-    let default_ty = fallback_expr_type(default).codegen_repr();
+    let default_ty = materialized_expr_type_for_merge(ctx, default).codegen_repr();
     wider_type_for_merge(&value_ty, &default_ty)
 }
 
@@ -961,10 +970,23 @@ fn lower_assignment_expr(
     value: &Expr,
     result_target: Option<&Expr>,
     prelude: &[crate::parser::ast::Stmt],
+    conditional_value_temp: Option<&str>,
     expr: &Expr,
 ) -> LoweredValue {
     for stmt in prelude {
         crate::ir_lower::stmt::lower_stmt(ctx, stmt);
+    }
+    if let Some(temp_name) = conditional_value_temp {
+        if let Some(result) = lower_conditional_non_local_null_coalesce_assignment(
+            ctx,
+            temp_name,
+            target,
+            value,
+            result_target,
+            expr,
+        ) {
+            return result;
+        }
     }
     let assigned_name = match &target.kind {
         ExprKind::Variable(name) => Some(name.as_str()),
@@ -981,11 +1003,123 @@ fn lower_assignment_expr(
         if let Some(target) = static_callable {
             ctx.bind_static_callable_local(name, target);
         }
+    } else {
+        lower_non_local_assignment_write(ctx, target, value, expr.span);
     }
     if let Some(result_target) = result_target {
         return lower_expr(ctx, result_target);
     }
     result
+}
+
+/// Lowers a non-local `??=` assignment expression with lazy RHS evaluation.
+fn lower_conditional_non_local_null_coalesce_assignment(
+    ctx: &mut LoweringContext<'_, '_>,
+    temp_name: &str,
+    target: &Expr,
+    value: &Expr,
+    _result_target: Option<&Expr>,
+    expr: &Expr,
+) -> Option<LoweredValue> {
+    let ExprKind::NullCoalesce {
+        value: current,
+        default,
+    } = &value.kind
+    else {
+        return None;
+    };
+    let current = lower_expr(ctx, current);
+    let is_null = ctx.emit_value(
+        Op::IsNull,
+        vec![current.value],
+        None,
+        PhpType::Bool,
+        Op::IsNull.default_effects(),
+        Some(expr.span),
+    );
+    let result_type = null_coalesce_result_type(ctx, current.value, default);
+    ctx.declare_hidden_temp_with_name(temp_name, result_type.clone());
+    let assign_block = ctx.builder.create_named_block("coalesce_assign.default", Vec::new());
+    let keep_block = ctx.builder.create_named_block("coalesce_assign.value", Vec::new());
+    let merge = ctx.builder.create_named_block("coalesce_assign.merge", Vec::new());
+    ctx.builder.terminate(Terminator::CondBr {
+        cond: is_null.value,
+        then_target: assign_block,
+        then_args: Vec::new(),
+        else_target: keep_block,
+        else_args: Vec::new(),
+    });
+
+    ctx.builder.position_at_end(assign_block);
+    store_expr_into_temp(ctx, temp_name, result_type.clone(), default, expr.span);
+    let temp_value = Expr::new(ExprKind::Variable(temp_name.to_string()), expr.span);
+    lower_non_local_assignment_write(ctx, target, &temp_value, expr.span);
+    branch_to(ctx, merge);
+
+    ctx.builder.position_at_end(keep_block);
+    store_value_into_temp(ctx, temp_name, result_type, current, expr.span);
+    branch_to(ctx, merge);
+
+    ctx.builder.position_at_end(merge);
+    Some(ctx.load_local(temp_name, Some(expr.span)))
+}
+
+/// Emits the write side of an assignment expression whose target is not a local variable.
+fn lower_non_local_assignment_write(
+    ctx: &mut LoweringContext<'_, '_>,
+    target: &Expr,
+    value: &Expr,
+    span: Span,
+) {
+    let Some(kind) = non_local_assignment_stmt_kind(target, value) else {
+        lower_expr(ctx, value);
+        return;
+    };
+    crate::ir_lower::stmt::lower_stmt(ctx, &Stmt::new(kind, span));
+}
+
+/// Builds the statement form that already owns lowering for non-local writes.
+fn non_local_assignment_stmt_kind(target: &Expr, value: &Expr) -> Option<StmtKind> {
+    match &target.kind {
+        ExprKind::ArrayAccess { array, index } => match &array.kind {
+            ExprKind::Variable(array) => Some(StmtKind::ArrayAssign {
+                array: array.clone(),
+                index: (**index).clone(),
+                value: value.clone(),
+            }),
+            ExprKind::PropertyAccess { object, property } => Some(StmtKind::PropertyArrayAssign {
+                object: object.clone(),
+                property: property.clone(),
+                index: (**index).clone(),
+                value: value.clone(),
+            }),
+            ExprKind::StaticPropertyAccess { receiver, property } => {
+                Some(StmtKind::StaticPropertyArrayAssign {
+                    receiver: receiver.clone(),
+                    property: property.clone(),
+                    index: (**index).clone(),
+                    value: value.clone(),
+                })
+            }
+            _ => Some(StmtKind::NestedArrayAssign {
+                target: target.clone(),
+                value: value.clone(),
+            }),
+        },
+        ExprKind::PropertyAccess { object, property } => Some(StmtKind::PropertyAssign {
+            object: object.clone(),
+            property: property.clone(),
+            value: value.clone(),
+        }),
+        ExprKind::StaticPropertyAccess { receiver, property } => {
+            Some(StmtKind::StaticPropertyAssign {
+                receiver: receiver.clone(),
+                property: property.clone(),
+                value: value.clone(),
+            })
+        }
+        _ => None,
+    }
 }
 
 /// Lowers pre/post increment and decrement expressions.

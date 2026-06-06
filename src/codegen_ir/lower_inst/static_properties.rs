@@ -12,7 +12,7 @@
 //! - Typed static properties use the same high-word uninitialized sentinel as
 //!   the legacy backend before reads.
 
-use crate::codegen::abi;
+use crate::codegen::{abi, emit_box_current_value_as_mixed};
 use crate::codegen::platform::Arch;
 use crate::codegen::UNINITIALIZED_TYPED_PROPERTY_SENTINEL;
 use crate::ir::{Instruction, ValueDef, ValueId};
@@ -67,6 +67,7 @@ pub(super) fn lower_store_static_property(ctx: &mut FunctionContext<'_>, inst: &
     let value_ty = ctx.value_php_type(value)?;
     ensure_static_property_value_supported(&slot, &value_ty, inst)?;
     ctx.load_value_to_result(value)?;
+    box_static_property_value_if_needed(ctx, &slot.php_type, &value_ty);
     let release_previous = !value_is_same_static_property_load(ctx, value, &slot)?;
     if slot.late_bound && !slot.branches.is_empty() {
         let class_id_reg = class_id_work_reg(ctx.emitter);
@@ -484,7 +485,14 @@ fn static_property_is_visible(
 /// Verifies that this slice knows how to represent the static property type.
 fn ensure_static_property_type_supported(php_type: &PhpType, inst: &Instruction) -> Result<()> {
     match php_type {
-        PhpType::Bool | PhpType::Int | PhpType::Float | PhpType::Str | PhpType::Array(_) => Ok(()),
+        PhpType::Bool
+        | PhpType::Int
+        | PhpType::Float
+        | PhpType::Str
+        | PhpType::Mixed
+        | PhpType::Union(_)
+        | PhpType::Array(_)
+        | PhpType::AssocArray { .. } => Ok(()),
         _ => Err(CodegenIrError::unsupported(format!(
             "{} for static property PHP type {:?}",
             inst.op.name(),
@@ -502,6 +510,9 @@ fn ensure_static_property_value_supported(
     if value_ty == &slot.php_type {
         return Ok(());
     }
+    if matches!(slot.php_type.codegen_repr(), PhpType::Mixed | PhpType::Union(_)) {
+        return Ok(());
+    }
     Err(CodegenIrError::unsupported(format!(
         "{} assigning PHP type {:?} to {}::${} with PHP type {:?}",
         inst.op.name(),
@@ -510,6 +521,19 @@ fn ensure_static_property_value_supported(
         slot.property,
         slot.php_type
     )))
+}
+
+/// Boxes concrete values when the static property storage is Mixed/Union.
+fn box_static_property_value_if_needed(
+    ctx: &mut FunctionContext<'_>,
+    slot_ty: &PhpType,
+    value_ty: &PhpType,
+) {
+    if matches!(slot_ty.codegen_repr(), PhpType::Mixed | PhpType::Union(_))
+        && !matches!(value_ty.codegen_repr(), PhpType::Mixed | PhpType::Union(_))
+    {
+        emit_box_current_value_as_mixed(ctx.emitter, &value_ty.codegen_repr());
+    }
 }
 
 /// Emits a fatal guard for reads from uninitialized typed static properties.
