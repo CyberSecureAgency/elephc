@@ -29,7 +29,7 @@ pub(crate) const UNINITIALIZED_TYPED_PROPERTY_SENTINEL: i64 = 0x7fff_ffff_ffff_f
 /// Emits a write syscall for a labeled literal string to stderr, using the given
 /// label (from the data section) and its byte length. Handles target-specific
 /// register conventions for the write syscall arguments.
-pub(super) fn emit_write_literal_stderr(emitter: &mut Emitter, label: &str, len: usize) {
+pub(crate) fn emit_write_literal_stderr(emitter: &mut Emitter, label: &str, len: usize) {
     match emitter.target.arch {
         Arch::AArch64 => {
             emitter.adrp("x1", label);                                          // load the page address of the stderr literal on AArch64
@@ -50,7 +50,7 @@ pub(super) fn emit_write_literal_stderr(emitter: &mut Emitter, label: &str, len:
 
 /// Emits a write syscall for the current string in result registers to stderr.
 /// Loads pointer/length from the appropriate ABI registers for the target.
-pub(super) fn emit_write_current_string_stderr(emitter: &mut Emitter) {
+pub(crate) fn emit_write_current_string_stderr(emitter: &mut Emitter) {
     match emitter.target.arch {
         Arch::AArch64 => {
             emitter.instruction("mov x0, #2");                                  // target the stderr file descriptor on AArch64

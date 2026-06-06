@@ -34,6 +34,8 @@ pub(super) struct FunctionContext<'a> {
     pub(super) frame_size: usize,
     pub(super) epilogue_emitted: bool,
     pub(super) is_main: bool,
+    pub(super) gc_stats: bool,
+    pub(super) heap_debug: bool,
     pub(super) epilogue_label: Option<String>,
     label_counter: usize,
 }
@@ -47,6 +49,8 @@ impl<'a> FunctionContext<'a> {
         data: &'a mut DataSection,
         layout: FrameLayout,
         is_main: bool,
+        gc_stats: bool,
+        heap_debug: bool,
         epilogue_label: Option<String>,
     ) -> Self {
         Self {
@@ -60,6 +64,8 @@ impl<'a> FunctionContext<'a> {
             frame_size: layout.frame_size,
             epilogue_emitted: false,
             is_main,
+            gc_stats,
+            heap_debug,
             epilogue_label,
             label_counter: 0,
         }

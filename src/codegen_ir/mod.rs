@@ -81,19 +81,12 @@ pub fn generate_user_asm_from_ir(
     gc_stats: bool,
     heap_debug: bool,
 ) -> Result<String> {
-    if gc_stats {
-        return Err(CodegenIrError::unsupported("--gc-stats on the EIR backend"));
-    }
-    if heap_debug {
-        return Err(CodegenIrError::unsupported("--heap-debug on the EIR backend"));
-    }
-
     let mut emitter = Emitter::new(module.target);
     if module.target.arch == Arch::X86_64 {
         emitter.emit_text_prelude();
     }
     let mut data = DataSection::new();
-    block_emit::emit_module(module, &mut emitter, &mut data)?;
+    block_emit::emit_module(module, &mut emitter, &mut data, gc_stats, heap_debug)?;
     Ok(finalize_user_asm(module, emitter, data))
 }
 

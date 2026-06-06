@@ -44,6 +44,8 @@ pub(super) fn emit_module(
     module: &Module,
     emitter: &mut Emitter,
     data: &mut DataSection,
+    gc_stats: bool,
+    heap_debug: bool,
 ) -> Result<()> {
     function_variants::emit_dispatchers(module, emitter, data);
     for function in module.functions.iter().filter(|function| !is_main(function)) {
@@ -61,7 +63,7 @@ pub(super) fn emit_module(
         .iter()
         .find(|function| is_main(function))
         .ok_or_else(|| CodegenIrError::invalid_module("EIR module has no main function"))?;
-    emit_main_function(module, main, emitter, data)
+    emit_main_function(module, main, emitter, data, gc_stats, heap_debug)
 }
 
 /// Emits the static EIR Fiber wrappers needed for closure callbacks.
@@ -127,6 +129,8 @@ fn emit_user_function(
         data,
         layout,
         false,
+        false,
+        false,
         Some(epilogue_label),
     );
     frame::emit_function_prologue(&mut ctx)?;
@@ -151,6 +155,8 @@ fn emit_class_method(
         emitter,
         data,
         layout,
+        false,
+        false,
         false,
         Some(epilogue_label),
     );
@@ -182,9 +188,21 @@ fn emit_main_function(
     function: &Function,
     emitter: &mut Emitter,
     data: &mut DataSection,
+    gc_stats: bool,
+    heap_debug: bool,
 ) -> Result<()> {
     let layout = frame::layout_for_function(function);
-    let mut ctx = FunctionContext::new(module, function, emitter, data, layout, true, None);
+    let mut ctx = FunctionContext::new(
+        module,
+        function,
+        emitter,
+        data,
+        layout,
+        true,
+        gc_stats,
+        heap_debug,
+        None,
+    );
     frame::emit_main_prologue(&mut ctx);
     emit_enum_singleton_initializers(&mut ctx);
     emit_static_property_initializers(&mut ctx)?;

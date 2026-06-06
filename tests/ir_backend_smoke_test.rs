@@ -1346,6 +1346,38 @@ fn ir_backend_handles_unset_locals() {
     }
 }
 
+/// Verifies `--gc-stats` is honored by the EIR backend main epilogue.
+#[test]
+fn ir_backend_emits_gc_stats_when_requested() {
+    let run = compile_ir_backend_and_run_with_compile_args(
+        "gc_stats",
+        "<?php echo \"ok\";",
+        &["--gc-stats"],
+        &[],
+    );
+    assert!(run.status.success(), "IR backend binary failed for gc_stats");
+    assert_eq!(String::from_utf8(run.stdout).unwrap(), "ok");
+    let stderr = String::from_utf8(run.stderr).unwrap();
+    assert!(stderr.contains("GC: allocs="), "{stderr}");
+    assert!(stderr.contains(" frees="), "{stderr}");
+}
+
+/// Verifies `--heap-debug` enables the shared runtime heap-debug report for EIR.
+#[test]
+fn ir_backend_emits_heap_debug_report_when_requested() {
+    let run = compile_ir_backend_and_run_with_compile_args(
+        "heap_debug",
+        "<?php echo \"ok\";",
+        &["--heap-debug"],
+        &[],
+    );
+    assert!(run.status.success(), "IR backend binary failed for heap_debug");
+    assert_eq!(String::from_utf8(run.stdout).unwrap(), "ok");
+    let stderr = String::from_utf8(run.stderr).unwrap();
+    assert!(stderr.contains("HEAP DEBUG: allocs="), "{stderr}");
+    assert!(stderr.contains("HEAP DEBUG: leak summary:"), "{stderr}");
+}
+
 /// Verifies diagnostic output builtins lowered by the EIR backend for concrete values.
 #[test]
 fn ir_backend_handles_debug_output_builtins() {
@@ -5643,6 +5675,16 @@ fn compile_and_run_ir_backend_with_stdin(name: &str, source: &str, stdin: &str) 
 
 /// Compiles `source` with `--ir-backend`, runs the binary, and returns raw process output.
 fn compile_ir_backend_and_run(name: &str, source: &str, args: &[&str]) -> Output {
+    compile_ir_backend_and_run_with_compile_args(name, source, &[], args)
+}
+
+/// Compiles `source` with `--ir-backend` plus extra compiler flags, then runs the binary.
+fn compile_ir_backend_and_run_with_compile_args(
+    name: &str,
+    source: &str,
+    compile_args: &[&str],
+    run_args: &[&str],
+) -> Output {
     let dir = std::env::temp_dir().join(format!(
         "elephc_ir_backend_{}_{}_{}",
         name,
@@ -5657,6 +5699,7 @@ fn compile_ir_backend_and_run(name: &str, source: &str, args: &[&str]) -> Output
         .env("XDG_CACHE_HOME", dir.join("cache-root"))
         .current_dir(&dir)
         .arg("--ir-backend")
+        .args(compile_args)
         .arg(&php_path)
         .output()
         .expect("failed to run elephc CLI with --ir-backend");
@@ -5668,7 +5711,7 @@ fn compile_ir_backend_and_run(name: &str, source: &str, args: &[&str]) -> Output
 
     let run = Command::new(dir.join("main"))
         .current_dir(&dir)
-        .args(args)
+        .args(run_args)
         .output()
         .expect("failed to run IR backend binary");
 

@@ -12,6 +12,7 @@
 use std::collections::HashMap;
 
 use crate::codegen::abi;
+use crate::codegen::{emit_write_current_string_stderr, emit_write_literal_stderr};
 use crate::codegen::context::TRY_HANDLER_SLOT_SIZE;
 use crate::codegen::platform::Arch;
 use crate::ir::{Function, Immediate, LocalSlotId, Op};
@@ -85,6 +86,10 @@ pub(super) fn emit_main_prologue(ctx: &mut FunctionContext<'_>) {
     abi::emit_frame_prologue(ctx.emitter, ctx.frame_size);
     ctx.emitter.comment("save argc/argv to globals");
     abi::emit_store_process_args_to_globals(ctx.emitter);
+    if ctx.heap_debug {
+        ctx.emitter.comment("enable heap debug flag");
+        abi::emit_enable_heap_debug_flag(ctx.emitter);
+    }
     store_argc_local_if_present(ctx);
 }
 
@@ -129,8 +134,33 @@ pub(super) fn emit_main_epilogue(ctx: &mut FunctionContext<'_>) {
     ctx.emitter.blank();
     ctx.emitter.comment("epilogue + exit(0)");
     abi::emit_frame_restore(ctx.emitter, ctx.frame_size);
+    if ctx.gc_stats {
+        emit_gc_stats(ctx);
+    }
+    if ctx.heap_debug {
+        ctx.emitter.comment("heap-debug: print allocator summary and leak report to stderr");
+        abi::emit_call_label(ctx.emitter, "__rt_heap_debug_report");
+    }
     abi::emit_exit(ctx.emitter, 0);
     ctx.epilogue_emitted = true;
+}
+
+/// Emits allocation/free totals to stderr using the shared runtime counters.
+fn emit_gc_stats(ctx: &mut FunctionContext<'_>) {
+    ctx.emitter.comment("gc-stats: print allocation statistics to stderr");
+    let (allocs_label, allocs_len) = ctx.data.add_string(b"GC: allocs=");
+    emit_write_literal_stderr(ctx.emitter, &allocs_label, allocs_len);
+    let int_result_reg = abi::int_result_reg(ctx.emitter);
+    abi::emit_load_symbol_to_reg(ctx.emitter, int_result_reg, "_gc_allocs", 0);
+    abi::emit_call_label(ctx.emitter, "__rt_itoa");
+    emit_write_current_string_stderr(ctx.emitter);
+    let (frees_label, frees_len) = ctx.data.add_string(b" frees=");
+    emit_write_literal_stderr(ctx.emitter, &frees_label, frees_len);
+    abi::emit_load_symbol_to_reg(ctx.emitter, int_result_reg, "_gc_frees", 0);
+    abi::emit_call_label(ctx.emitter, "__rt_itoa");
+    emit_write_current_string_stderr(ctx.emitter);
+    let (newline_label, _) = ctx.data.add_string(b"\n");
+    emit_write_literal_stderr(ctx.emitter, &newline_label, 1);
 }
 
 /// Emits the shared epilogue for a direct-callable user function.
