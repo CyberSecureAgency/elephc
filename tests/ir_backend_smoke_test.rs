@@ -84,6 +84,11 @@ fn ir_backend_handles_scalar_ops_and_string_coercions() {
             "02",
         ),
         ("null_coalesce", "<?php $x = null; echo $x ?? 5;", "5"),
+        (
+            "null_integer_arithmetic",
+            "<?php $x = null; echo $x + 5; echo ':'; $x += 2; echo $x;",
+            "5:2",
+        ),
         ("concat_int", "<?php echo $argc . \"x\";", "1x"),
         ("concat_false", "<?php echo false . \"x\";", "x"),
         ("concat_null", "<?php echo null . \"x\";", "x"),

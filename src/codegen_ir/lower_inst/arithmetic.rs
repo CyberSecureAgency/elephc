@@ -29,8 +29,8 @@ pub(super) fn lower_int_binop(
     let rhs = expect_operand(inst, 1)?;
     let result_reg = abi::int_result_reg(ctx.emitter);
     let rhs_reg = abi::secondary_scratch_reg(ctx.emitter);
-    require_integer_like(ctx.load_value_to_reg(lhs, result_reg)?, inst)?;
-    require_integer_like(ctx.load_value_to_reg(rhs, rhs_reg)?, inst)?;
+    load_integer_operand(ctx, lhs, result_reg, inst)?;
+    load_integer_operand(ctx, rhs, rhs_reg, inst)?;
     match ctx.emitter.target.arch {
         Arch::AArch64 => {
             ctx.emitter.instruction(&format!("{} {}, {}, {}", aarch64_mnemonic, result_reg, result_reg, rhs_reg)); // compute the integer arithmetic result from both SSA operands
@@ -48,8 +48,8 @@ pub(super) fn lower_int_mod(ctx: &mut FunctionContext<'_>, inst: &Instruction) -
     let rhs = expect_operand(inst, 1)?;
     let result_reg = abi::int_result_reg(ctx.emitter);
     let rhs_reg = abi::secondary_scratch_reg(ctx.emitter);
-    require_integer_like(ctx.load_value_to_reg(lhs, result_reg)?, inst)?;
-    require_integer_like(ctx.load_value_to_reg(rhs, rhs_reg)?, inst)?;
+    load_integer_operand(ctx, lhs, result_reg, inst)?;
+    load_integer_operand(ctx, rhs, rhs_reg, inst)?;
     let zero_label = ctx.next_label("mod_zero");
     let done_label = ctx.next_label("mod_done");
     match ctx.emitter.target.arch {
@@ -87,8 +87,8 @@ pub(super) fn lower_int_div_to_float(
     let rhs = expect_operand(inst, 1)?;
     let lhs_reg = abi::secondary_scratch_reg(ctx.emitter);
     let rhs_reg = abi::tertiary_scratch_reg(ctx.emitter);
-    require_integer_like(ctx.load_value_to_reg(lhs, lhs_reg)?, inst)?;
-    require_integer_like(ctx.load_value_to_reg(rhs, rhs_reg)?, inst)?;
+    load_integer_operand(ctx, lhs, lhs_reg, inst)?;
+    load_integer_operand(ctx, rhs, rhs_reg, inst)?;
     match ctx.emitter.target.arch {
         Arch::AArch64 => {
             ctx.emitter.instruction(&format!("scvtf d0, {}", lhs_reg));         // promote the integer dividend into the float result register
@@ -113,7 +113,7 @@ pub(super) fn lower_int_unary(
 ) -> Result<()> {
     let value = expect_operand(inst, 0)?;
     let result_reg = abi::int_result_reg(ctx.emitter);
-    require_integer_like(ctx.load_value_to_reg(value, result_reg)?, inst)?;
+    load_integer_operand(ctx, value, result_reg, inst)?;
     match ctx.emitter.target.arch {
         Arch::AArch64 => {
             ctx.emitter.instruction(&format!("{} {}, {}", aarch64_mnemonic, result_reg, result_reg)); // apply the integer unary operation to the loaded operand
@@ -136,8 +136,8 @@ pub(super) fn lower_int_shift(
     let rhs = expect_operand(inst, 1)?;
     let result_reg = abi::int_result_reg(ctx.emitter);
     let rhs_reg = abi::secondary_scratch_reg(ctx.emitter);
-    require_integer_like(ctx.load_value_to_reg(lhs, result_reg)?, inst)?;
-    require_integer_like(ctx.load_value_to_reg(rhs, rhs_reg)?, inst)?;
+    load_integer_operand(ctx, lhs, result_reg, inst)?;
+    load_integer_operand(ctx, rhs, rhs_reg, inst)?;
     match ctx.emitter.target.arch {
         Arch::AArch64 => {
             ctx.emitter.instruction(&format!("{} {}, {}, {}", aarch64_mnemonic, result_reg, result_reg, rhs_reg)); // shift the integer operand by the EIR count operand
@@ -148,6 +148,25 @@ pub(super) fn lower_int_shift(
         }
     }
     store_if_result(ctx, inst)
+}
+
+/// Loads an integer arithmetic operand, coercing PHP null to integer zero.
+fn load_integer_operand(
+    ctx: &mut FunctionContext<'_>,
+    value: ValueId,
+    reg: &str,
+    inst: &Instruction,
+) -> Result<()> {
+    match ctx.value_php_type(value)? {
+        PhpType::Void | PhpType::Never => {
+            abi::emit_load_int_immediate(ctx.emitter, reg, 0);
+            Ok(())
+        }
+        _ => {
+            require_integer_like(ctx.load_value_to_reg(value, reg)?, inst)?;
+            Ok(())
+        }
+    }
 }
 
 /// Lowers a dynamic mixed numeric add/sub/mul through the boxed-Mixed runtime helpers.
