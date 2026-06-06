@@ -1483,6 +1483,8 @@ fn class_interfaces_require_missing_method_symbols(
             return true;
         };
         if interface_requires_missing_method_symbol(
+            ctx,
+            interface_name,
             class_name,
             class_info,
             interface_info,
@@ -1497,12 +1499,20 @@ fn class_interfaces_require_missing_method_symbols(
 
 /// Returns true when one interface table entry would point at an unavailable symbol.
 fn interface_requires_missing_method_symbol(
+    ctx: &FunctionContext<'_>,
+    interface_name: &str,
     fallback_class: &str,
     class_info: &ClassInfo,
     interface_info: &InterfaceInfo,
     emitted_methods: &HashSet<(String, String)>,
 ) -> bool {
     for method_name in &interface_info.method_order {
+        if super::is_throwable_standard_method_key(method_name)
+            && (super::is_throwable_like_class(ctx, fallback_class)
+                || super::is_throwable_like_class(ctx, interface_name))
+        {
+            continue;
+        }
         let impl_class = class_info
             .method_impl_classes
             .get(method_name)

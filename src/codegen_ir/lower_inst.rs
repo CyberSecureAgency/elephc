@@ -1345,7 +1345,7 @@ fn lower_try_push_handler(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> 
     Ok(())
 }
 
-/// Pops an EIR exception handler by restoring its saved previous handler pointer.
+/// Pops an EIR exception handler and restores the saved diagnostic-suppression depth.
 fn lower_try_pop_handler(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     let token = expect_i64(inst)?;
     let handler_offset = ctx.try_handler_offset(token)?;
@@ -1353,6 +1353,12 @@ fn lower_try_pop_handler(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> R
     ctx.emitter.comment("pop EIR exception handler");
     abi::load_at_offset(ctx.emitter, scratch, handler_offset);
     abi::emit_store_reg_to_symbol(ctx.emitter, scratch, "_exc_handler_top", 0);
+    abi::load_at_offset(
+        ctx.emitter,
+        scratch,
+        handler_offset - TRY_HANDLER_DIAG_DEPTH_OFFSET,
+    );
+    abi::emit_store_reg_to_symbol(ctx.emitter, scratch, "_rt_diag_suppression", 0);
     Ok(())
 }
 
@@ -1427,8 +1433,8 @@ fn lower_method_call(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Resul
     if is_fiber_get_return_call(&class_name, &method_name) {
         return lower_fiber_noarg_runtime_method(ctx, inst, object, "__rt_fiber_get_return");
     }
-    if is_throwable_payload_getter_call(ctx, &class_name, &method_name) {
-        return lower_throwable_payload_getter(ctx, inst, object, &method_name);
+    if is_throwable_standard_method_call(ctx, &class_name, &method_name) {
+        return lower_throwable_standard_method(ctx, inst, object, &method_name);
     }
     let target = resolve_method_call_target(ctx, &class_name, &method_name, inst.operands.len())?;
     let mut param_types = Vec::with_capacity(target.params.len() + 1);
@@ -1574,20 +1580,38 @@ fn generator_intrinsic_return_type(intrinsic: IntrinsicCall) -> PhpType {
     }
 }
 
-/// Returns true when a direct method call can read PHP's compact Throwable payload.
-fn is_throwable_payload_getter_call(
+/// Returns true when a direct method call can be satisfied from the compact Throwable payload.
+fn is_throwable_standard_method_call(
     ctx: &FunctionContext<'_>,
     class_name: &str,
     method_name: &str,
 ) -> bool {
-    matches!(php_symbol_key(method_name).as_str(), "getmessage" | "getcode")
+    is_throwable_standard_method_key(&php_symbol_key(method_name))
         && is_throwable_like_class(ctx, class_name)
+}
+
+/// Returns true for method keys supplied by PHP's built-in `Throwable` surface.
+fn is_throwable_standard_method_key(method_key: &str) -> bool {
+    matches!(
+        method_key,
+        "getmessage"
+            | "getcode"
+            | "getfile"
+            | "getline"
+            | "gettrace"
+            | "gettraceasstring"
+            | "getprevious"
+            | "__tostring"
+    )
 }
 
 /// Returns true when class metadata says the receiver is Throwable-compatible.
 fn is_throwable_like_class(ctx: &FunctionContext<'_>, class_name: &str) -> bool {
     let class_name = class_name.trim_start_matches('\\');
     if matches!(class_name, "Throwable") {
+        return true;
+    }
+    if interface_extends_throwable(ctx, class_name) {
         return true;
     }
     let mut current = Some(class_name);
@@ -1603,8 +1627,22 @@ fn is_throwable_like_class(ctx: &FunctionContext<'_>, class_name: &str) -> bool 
     false
 }
 
-/// Lowers compact Throwable getters without requiring synthetic EIR method bodies.
-fn lower_throwable_payload_getter(
+/// Returns true when an interface is `Throwable` or transitively extends it.
+fn interface_extends_throwable(ctx: &FunctionContext<'_>, interface_name: &str) -> bool {
+    if interface_name == "Throwable" {
+        return true;
+    }
+    let Some(interface_info) = ctx.module.interface_infos.get(interface_name) else {
+        return false;
+    };
+    interface_info.parents.iter().any(|parent| {
+        let parent = parent.trim_start_matches('\\');
+        parent == "Throwable" || interface_extends_throwable(ctx, parent)
+    })
+}
+
+/// Lowers compact Throwable methods without requiring synthetic EIR method bodies.
+fn lower_throwable_standard_method(
     ctx: &mut FunctionContext<'_>,
     inst: &Instruction,
     object: ValueId,
@@ -1622,6 +1660,11 @@ fn lower_throwable_payload_getter(
     let return_ty = match php_symbol_key(method_name).as_str() {
         "getmessage" => lower_throwable_get_message(ctx, object_reg),
         "getcode" => lower_throwable_get_code(ctx, object_reg),
+        "getfile" | "gettraceasstring" => lower_throwable_empty_string(ctx),
+        "getline" => lower_throwable_zero_int(ctx),
+        "gettrace" => lower_throwable_empty_trace_array(ctx),
+        "getprevious" => lower_throwable_null_previous(ctx, inst),
+        "__tostring" => lower_throwable_get_message(ctx, object_reg),
         _ => Err(CodegenIrError::unsupported(format!(
             "Throwable intrinsic method {}",
             method_name
@@ -1649,6 +1692,56 @@ fn lower_throwable_get_code(ctx: &mut FunctionContext<'_>, object_reg: &str) -> 
     let result_reg = abi::int_result_reg(ctx.emitter);
     abi::emit_load_from_address(ctx.emitter, result_reg, object_reg, 24);
     Ok(PhpType::Int)
+}
+
+/// Materializes the synthetic empty-string result used by Throwable file/trace methods.
+fn lower_throwable_empty_string(ctx: &mut FunctionContext<'_>) -> Result<PhpType> {
+    let (ptr_reg, len_reg) = abi::string_result_regs(ctx.emitter);
+    let (label, len) = ctx.data.add_string(b"");
+    abi::emit_symbol_address(ctx.emitter, ptr_reg, &label);
+    abi::emit_load_int_immediate(ctx.emitter, len_reg, len as i64);
+    Ok(PhpType::Str)
+}
+
+/// Materializes the synthetic zero integer used by `Throwable::getLine()`.
+fn lower_throwable_zero_int(ctx: &mut FunctionContext<'_>) -> Result<PhpType> {
+    abi::emit_load_int_immediate(ctx.emitter, abi::int_result_reg(ctx.emitter), 0);
+    Ok(PhpType::Int)
+}
+
+/// Materializes the synthetic empty indexed array used by `Throwable::getTrace()`.
+fn lower_throwable_empty_trace_array(ctx: &mut FunctionContext<'_>) -> Result<PhpType> {
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            abi::emit_load_int_immediate(ctx.emitter, "x0", 4);
+            abi::emit_load_int_immediate(ctx.emitter, "x1", 8);
+        }
+        Arch::X86_64 => {
+            abi::emit_load_int_immediate(ctx.emitter, "rdi", 4);
+            abi::emit_load_int_immediate(ctx.emitter, "rsi", 8);
+        }
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_array_new");
+    crate::codegen::emit_array_value_type_stamp(
+        ctx.emitter,
+        abi::int_result_reg(ctx.emitter),
+        &PhpType::Mixed,
+    );
+    Ok(PhpType::Array(Box::new(PhpType::Mixed)))
+}
+
+/// Materializes the synthetic null result used by `Throwable::getPrevious()`.
+fn lower_throwable_null_previous(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+) -> Result<PhpType> {
+    let payload = if inst.result_php_type.codegen_repr() == PhpType::Mixed {
+        0
+    } else {
+        0x7fff_ffff_ffff_fffe
+    };
+    abi::emit_load_int_immediate(ctx.emitter, abi::int_result_reg(ctx.emitter), payload);
+    Ok(PhpType::Void)
 }
 
 /// Lowers `Fiber::start(...)` by copying boxed start arguments into the Fiber object.
