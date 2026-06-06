@@ -10,7 +10,7 @@
 //!   because they read 8-byte integer payloads directly.
 //! - Associative key filters require hash operands because their runtime helpers copy hash entries.
 
-use crate::codegen::{abi, emit_box_current_value_as_mixed};
+use crate::codegen::{abi, emit_box_current_owned_value_as_mixed, emit_box_current_value_as_mixed};
 use crate::codegen::context::DeferredCallbackWrapper;
 use crate::codegen::platform::Arch;
 use crate::codegen_ir::{CodegenIrError, Result};
@@ -464,6 +464,27 @@ pub(super) fn lower_array_slice(ctx: &mut FunctionContext<'_>, inst: &Instructio
     require_array_slice_result_type(&source_elem_ty, &result_elem_ty)?;
     lower_array_slice_call(ctx, array, offset, length, &source_elem_ty)?;
     normalize_indexed_array_result(ctx, "array_slice", &source_elem_ty, &result_elem_ty)?;
+    store_if_result(ctx, inst)
+}
+
+/// Lowers `array_splice()` by mutating an indexed source array and returning removed elements.
+pub(super) fn lower_array_splice(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    ensure_arg_count_between(inst, "array_splice", 2, 3)?;
+    let array = expect_operand(inst, 0)?;
+    let offset = expect_operand(inst, 1)?;
+    let length = if inst.operands.len() == 3 {
+        Some(expect_operand(inst, 2)?)
+    } else {
+        None
+    };
+    let elem_ty = array_pop_element_type(ctx.value_php_type(array)?)?;
+    let source_local = source_load_local_slot(ctx, array)?;
+    ensure_unique_array_pop_source(ctx, array)?;
+    if let Some(slot) = source_local {
+        ctx.store_value_to_local(slot, array)?;
+    }
+    lower_array_splice_call(ctx, array, offset, length, &elem_ty)?;
+    normalize_array_splice_result(ctx, &elem_ty, &inst.result_php_type.codegen_repr())?;
     store_if_result(ctx, inst)
 }
 
@@ -2745,6 +2766,52 @@ fn lower_array_slice_call(
     Ok(())
 }
 
+/// Calls the appropriate legacy runtime helper after materializing splice arguments.
+fn lower_array_splice_call(
+    ctx: &mut FunctionContext<'_>,
+    array: ValueId,
+    offset: ValueId,
+    length: Option<ValueId>,
+    elem_ty: &PhpType,
+) -> Result<()> {
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.load_value_to_reg(array, "x0")?;
+            ctx.load_value_to_reg(offset, "x1")?;
+            load_array_slice_length(ctx, length, "x2")?;
+        }
+        Arch::X86_64 => {
+            ctx.load_value_to_reg(array, "rdi")?;
+            ctx.load_value_to_reg(offset, "rsi")?;
+            load_array_slice_length(ctx, length, "rdx")?;
+        }
+    }
+    abi::emit_call_label(ctx.emitter, array_splice_runtime_helper(elem_ty));
+    Ok(())
+}
+
+/// Adapts the removed-elements array returned by `array_splice` to the EIR result type.
+fn normalize_array_splice_result(
+    ctx: &mut FunctionContext<'_>,
+    elem_ty: &PhpType,
+    result_ty: &PhpType,
+) -> Result<()> {
+    let removed_ty = PhpType::Array(Box::new(elem_ty.codegen_repr()));
+    match result_ty {
+        PhpType::Mixed => {
+            emit_box_current_owned_value_as_mixed(ctx.emitter, &removed_ty);
+            Ok(())
+        }
+        PhpType::Array(result_elem) if result_elem.codegen_repr() == elem_ty.codegen_repr() => {
+            Ok(())
+        }
+        other => Err(CodegenIrError::unsupported(format!(
+            "array_splice result PHP type {:?}",
+            other
+        ))),
+    }
+}
+
 /// Calls the appropriate legacy runtime helper after materializing chunk arguments.
 fn lower_array_chunk_call(
     ctx: &mut FunctionContext<'_>,
@@ -2851,6 +2918,15 @@ fn array_slice_runtime_helper(source_elem_ty: &PhpType) -> &'static str {
         "__rt_array_slice_refcounted"
     } else {
         "__rt_array_slice"
+    }
+}
+
+/// Returns the helper that matches the spliced element ownership representation.
+fn array_splice_runtime_helper(elem_ty: &PhpType) -> &'static str {
+    if elem_ty.is_refcounted() {
+        "__rt_array_splice_refcounted"
+    } else {
+        "__rt_array_splice"
     }
 }
 

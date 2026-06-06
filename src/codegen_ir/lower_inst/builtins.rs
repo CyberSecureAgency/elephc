@@ -110,6 +110,7 @@ pub(super) fn lower_builtin_call(ctx: &mut FunctionContext<'_>, inst: &Instructi
         "array_diff_key" => arrays::lower_array_diff_key(ctx, inst),
         "array_intersect_key" => arrays::lower_array_intersect_key(ctx, inst),
         "array_slice" => arrays::lower_array_slice(ctx, inst),
+        "array_splice" => arrays::lower_array_splice(ctx, inst),
         "array_keys" => arrays::lower_array_keys(ctx, inst),
         "array_values" => arrays::lower_array_values(ctx, inst),
         "array_rand" => arrays::lower_array_rand(ctx, inst),
