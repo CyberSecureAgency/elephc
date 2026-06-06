@@ -74,13 +74,7 @@ pub(super) fn lower_object_new(ctx: &mut FunctionContext<'_>, inst: &Instruction
     if reflection::is_reflection_owner_class(&class_name) {
         return reflection::lower_reflection_owner_new(ctx, inst, &class_name);
     }
-    if is_builtin_throwable_payload_class(&class_name) {
-        let class_id = ctx
-            .module
-            .class_infos
-            .get(&class_name)
-            .map(|class| class.class_id)
-            .ok_or_else(|| CodegenIrError::unsupported(format!("unknown class {}", class_name)))?;
+    if let Some(class_id) = throwable_payload_class_id(ctx, &class_name) {
         return lower_builtin_throwable_new(ctx, inst, &class_name, class_id);
     }
     let constructor_key = php_symbol_key("__construct");
@@ -223,6 +217,46 @@ fn is_builtin_throwable_payload_class(class_name: &str) -> bool {
             | "UnderflowException"
             | "UnexpectedValueException"
     )
+}
+
+/// Returns a class id for Throwable-compatible classes that can use the compact payload.
+fn throwable_payload_class_id(ctx: &FunctionContext<'_>, class_name: &str) -> Option<u64> {
+    let class_info = ctx.module.class_infos.get(class_name)?;
+    if is_builtin_throwable_payload_class(class_name)
+        || throwable_payload_compatible_user_class(ctx, class_name, class_info)
+    {
+        Some(class_info.class_id)
+    } else {
+        None
+    }
+}
+
+/// Returns true when a user subclass can reuse the compact Throwable storage layout.
+fn throwable_payload_compatible_user_class(
+    ctx: &FunctionContext<'_>,
+    class_name: &str,
+    class_info: &ClassInfo,
+) -> bool {
+    super::is_throwable_like_class(ctx, class_name)
+        && !class_declares_own_instance_properties(class_name, class_info)
+        && !class_declares_own_constructor(class_name, class_info)
+}
+
+/// Returns true when `class_name` declares an instance property of its own.
+fn class_declares_own_instance_properties(class_name: &str, class_info: &ClassInfo) -> bool {
+    class_info
+        .property_declaring_classes
+        .values()
+        .any(|declaring_class| declaring_class == class_name)
+}
+
+/// Returns true when `class_name` declares its own `__construct` method.
+fn class_declares_own_constructor(class_name: &str, class_info: &ClassInfo) -> bool {
+    let constructor_key = php_symbol_key("__construct");
+    class_info
+        .method_declaring_classes
+        .get(&constructor_key)
+        .is_some_and(|declaring_class| declaring_class == class_name)
 }
 
 /// Allocates a 32-byte Throwable payload and stamps its heap kind and class id.
