@@ -10,7 +10,7 @@
 //!   uses high-level opcodes with conservative effects.
 
 use crate::ir::{BlockId, Immediate, IrType, LocalKind, Op, Ownership, SwitchCase, Terminator};
-use crate::ir_lower::context::{LoopFrame, LoweredValue, LoweringContext};
+use crate::ir_lower::context::{FinallyFrame, LoopFrame, LoweredValue, LoweringContext};
 use crate::ir_lower::effects_lookup;
 use crate::ir_lower::expr::{
     lower_closure_for_assignment, lower_expr, static_callable_binding_for_expr,
@@ -1010,7 +1010,7 @@ fn lower_include_once_guard(ctx: &mut LoweringContext<'_, '_>, label: &str, body
 /// Lowers a throwing statement into a terminator.
 fn lower_throw(ctx: &mut LoweringContext<'_, '_>, expr: &Expr) {
     let value = lower_expr(ctx, expr);
-    ctx.builder.terminate(Terminator::Throw { value: value.value });
+    terminate_throw(ctx, value.value);
 }
 
 /// Lowers a `try`/`catch` statement into a runtime handler and explicit catch-dispatch blocks.
@@ -1021,17 +1021,21 @@ fn lower_try(
     finally_body: Option<&[Stmt]>,
     span: Span,
 ) {
-    if finally_body.is_some() {
-        ctx.emit_void(
-            Op::FinallyEnter,
-            Vec::new(),
-            None,
-            Op::FinallyEnter.default_effects(),
-            Some(span),
-        );
+    if let Some(finally_body) = finally_body {
+        lower_try_with_finally(ctx, try_body, catches, finally_body, span);
         return;
     }
 
+    lower_try_catch(ctx, try_body, catches, span);
+}
+
+/// Lowers a `try`/`catch` statement without a `finally` block.
+fn lower_try_catch(
+    ctx: &mut LoweringContext<'_, '_>,
+    try_body: &[Stmt],
+    catches: &[CatchClause],
+    span: Span,
+) {
     let handler_block = ctx.builder.create_named_block("try.catch_dispatch", Vec::new());
     let after_block = ctx.builder.create_named_block("try.after", Vec::new());
     let handler_token = handler_block.as_raw() as i64;
@@ -1046,17 +1050,84 @@ fn lower_try(
     );
     lower_block(ctx, try_body);
     if !ctx.builder.insertion_block_is_terminated() {
-        ctx.emit_void(
-            Op::TryPopHandler,
-            Vec::new(),
-            Some(Immediate::I64(handler_token)),
-            Op::TryPopHandler.default_effects(),
-            Some(span),
-        );
+        emit_try_pop_handler(ctx, handler_token, span);
         branch_to(ctx, after_block);
     }
 
     ctx.builder.position_at_end(handler_block);
+    emit_try_pop_handler(ctx, handler_token, span);
+    lower_catch_dispatch(ctx, catches, after_block, span);
+    ctx.builder.position_at_end(after_block);
+    ctx.clear_static_callable_locals();
+}
+
+/// Lowers `try`/`catch`/`finally` using duplicated finalizer bodies for explicit exits.
+fn lower_try_with_finally(
+    ctx: &mut LoweringContext<'_, '_>,
+    try_body: &[Stmt],
+    catches: &[CatchClause],
+    finally_body: &[Stmt],
+    span: Span,
+) {
+    if catches.is_empty() {
+        lower_try_finally_without_catches(ctx, try_body, finally_body);
+    } else {
+        lower_try_catch_finally(ctx, try_body, catches, finally_body, span);
+    }
+}
+
+/// Lowers a `try`/`finally` statement with no catch clauses.
+fn lower_try_finally_without_catches(
+    ctx: &mut LoweringContext<'_, '_>,
+    try_body: &[Stmt],
+    finally_body: &[Stmt],
+) {
+    let depth = push_finally_frame(ctx, finally_body, true, None);
+    lower_block(ctx, try_body);
+    pop_finally_frame_if_active(ctx, depth);
+    if !ctx.builder.insertion_block_is_terminated() {
+        lower_block(ctx, finally_body);
+    }
+}
+
+/// Lowers a `try`/`catch`/`finally` statement while preserving catch-before-finally order.
+fn lower_try_catch_finally(
+    ctx: &mut LoweringContext<'_, '_>,
+    try_body: &[Stmt],
+    catches: &[CatchClause],
+    finally_body: &[Stmt],
+    span: Span,
+) {
+    let handler_block = ctx.builder.create_named_block("try.catch_dispatch", Vec::new());
+    let after_block = ctx.builder.create_named_block("try.after", Vec::new());
+    let handler_token = handler_block.as_raw() as i64;
+
+    ctx.clear_static_callable_locals();
+    ctx.emit_void(
+        Op::TryPushHandler,
+        Vec::new(),
+        Some(Immediate::I64(handler_token)),
+        Op::TryPushHandler.default_effects(),
+        Some(span),
+    );
+    let depth = push_finally_frame(ctx, finally_body, false, Some((handler_token, span)));
+    lower_block(ctx, try_body);
+    pop_finally_frame_if_active(ctx, depth);
+    if !ctx.builder.insertion_block_is_terminated() {
+        emit_try_pop_handler(ctx, handler_token, span);
+        lower_block(ctx, finally_body);
+        branch_to(ctx, after_block);
+    }
+
+    ctx.builder.position_at_end(handler_block);
+    emit_try_pop_handler(ctx, handler_token, span);
+    lower_catch_dispatch_with_finally(ctx, catches, after_block, finally_body, span);
+    ctx.builder.position_at_end(after_block);
+    ctx.clear_static_callable_locals();
+}
+
+/// Emits the runtime cleanup for a pushed try/catch handler.
+fn emit_try_pop_handler(ctx: &mut LoweringContext<'_, '_>, handler_token: i64, span: Span) {
     ctx.emit_void(
         Op::TryPopHandler,
         Vec::new(),
@@ -1064,9 +1135,6 @@ fn lower_try(
         Op::TryPopHandler.default_effects(),
         Some(span),
     );
-    lower_catch_dispatch(ctx, catches, after_block, span);
-    ctx.builder.position_at_end(after_block);
-    ctx.clear_static_callable_locals();
 }
 
 /// Lowers ordered catch matching from the current exception handler block.
@@ -1092,6 +1160,38 @@ fn lower_catch_dispatch(
 
     let current = lower_current_exception(ctx, span);
     ctx.builder.terminate(Terminator::Throw { value: current.value });
+}
+
+/// Lowers catch dispatch for `try`/`catch`/`finally`.
+fn lower_catch_dispatch_with_finally(
+    ctx: &mut LoweringContext<'_, '_>,
+    catches: &[CatchClause],
+    after_block: BlockId,
+    finally_body: &[Stmt],
+    span: Span,
+) {
+    for catch in catches {
+        let catch_body = ctx.builder.create_named_block("try.catch_body", Vec::new());
+        let next_catch = ctx.builder.create_named_block("try.catch_next", Vec::new());
+        lower_catch_match(ctx, catch, catch_body, next_catch, span);
+        ctx.builder.position_at_end(catch_body);
+        lower_catch_bind(ctx, catch, span);
+        let depth = push_finally_frame(ctx, finally_body, true, None);
+        lower_block(ctx, &catch.body);
+        pop_finally_frame_if_active(ctx, depth);
+        if !ctx.builder.insertion_block_is_terminated() {
+            lower_block(ctx, finally_body);
+            branch_to(ctx, after_block);
+        }
+        ctx.clear_static_callable_locals();
+        ctx.builder.position_at_end(next_catch);
+    }
+
+    let current = lower_current_exception(ctx, span);
+    lower_block(ctx, finally_body);
+    if !ctx.builder.insertion_block_is_terminated() {
+        ctx.builder.terminate(Terminator::Throw { value: current.value });
+    }
 }
 
 /// Emits the match tests for one catch clause and branches to body or next clause.
@@ -1182,7 +1282,7 @@ fn lower_break(ctx: &mut LoweringContext<'_, '_>, level: usize) {
         ctx.builder.terminate(Terminator::Unreachable);
         return;
     };
-    ctx.builder.terminate(Terminator::Br { target: frame.break_block, args: Vec::new() });
+    terminate_branch(ctx, frame.break_block);
 }
 
 /// Lowers a `continue` terminator.
@@ -1191,7 +1291,7 @@ fn lower_continue(ctx: &mut LoweringContext<'_, '_>, level: usize) {
         ctx.builder.terminate(Terminator::Unreachable);
         return;
     };
-    ctx.builder.terminate(Terminator::Br { target: frame.continue_block, args: Vec::new() });
+    terminate_branch(ctx, frame.continue_block);
 }
 
 /// Lowers a return statement using the current function return contract.
@@ -1200,7 +1300,7 @@ fn lower_return(ctx: &mut LoweringContext<'_, '_>, value: Option<&Expr>, span: S
         if let Some(value) = value {
             lower_expr(ctx, value);
         }
-        ctx.builder.terminate(Terminator::Return { value: None });
+        terminate_return(ctx, None);
         return;
     }
     let value = if let Some(value) = value {
@@ -1209,7 +1309,82 @@ fn lower_return(ctx: &mut LoweringContext<'_, '_>, value: Option<&Expr>, span: S
         emit_null_value(ctx, Some(span))
     };
     let value = coerce_to_return_type(ctx, value, Some(span));
-    ctx.builder.terminate(Terminator::Return { value: Some(value.value) });
+    terminate_return(ctx, Some(value.value));
+}
+
+/// Terminates with a return after running active finally bodies from inner to outer.
+fn terminate_return(ctx: &mut LoweringContext<'_, '_>, value: Option<crate::ir::ValueId>) {
+    if run_innermost_finally(ctx, false) {
+        if !ctx.builder.insertion_block_is_terminated() {
+            terminate_return(ctx, value);
+        }
+        return;
+    }
+    ctx.builder.terminate(Terminator::Return { value });
+}
+
+/// Terminates with a branch after running active finally bodies from inner to outer.
+fn terminate_branch(ctx: &mut LoweringContext<'_, '_>, target: BlockId) {
+    if run_innermost_finally(ctx, false) {
+        if !ctx.builder.insertion_block_is_terminated() {
+            terminate_branch(ctx, target);
+        }
+        return;
+    }
+    ctx.builder.terminate(Terminator::Br { target, args: Vec::new() });
+}
+
+/// Terminates with a throw after running finally bodies that apply to uncaught throws.
+fn terminate_throw(ctx: &mut LoweringContext<'_, '_>, value: crate::ir::ValueId) {
+    if run_innermost_finally(ctx, true) {
+        if !ctx.builder.insertion_block_is_terminated() {
+            terminate_throw(ctx, value);
+        }
+        return;
+    }
+    ctx.builder.terminate(Terminator::Throw { value });
+}
+
+/// Runs and removes the innermost applicable finally frame.
+fn run_innermost_finally(ctx: &mut LoweringContext<'_, '_>, is_throw: bool) -> bool {
+    let Some(frame) = ctx.finally_stack.last() else {
+        return false;
+    };
+    if is_throw && !frame.run_on_throw {
+        return false;
+    }
+    let frame = ctx
+        .finally_stack
+        .pop()
+        .expect("finally frame disappeared after last() check");
+    if let Some((handler_token, span)) = frame.handler_cleanup {
+        emit_try_pop_handler(ctx, handler_token, span);
+    }
+    lower_block(ctx, &frame.body);
+    true
+}
+
+/// Pushes a finalizer and returns the stack depth before the push.
+fn push_finally_frame(
+    ctx: &mut LoweringContext<'_, '_>,
+    body: &[Stmt],
+    run_on_throw: bool,
+    handler_cleanup: Option<(i64, Span)>,
+) -> usize {
+    let depth = ctx.finally_stack.len();
+    ctx.finally_stack.push(FinallyFrame {
+        body: body.to_vec(),
+        run_on_throw,
+        handler_cleanup,
+    });
+    depth
+}
+
+/// Removes a finalizer when the protected body fell through normally.
+fn pop_finally_frame_if_active(ctx: &mut LoweringContext<'_, '_>, depth: usize) {
+    if ctx.finally_stack.len() > depth {
+        ctx.finally_stack.pop();
+    }
 }
 
 /// Lowers a global constant declaration.

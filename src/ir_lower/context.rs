@@ -18,7 +18,7 @@ use crate::ir::{
     Ownership, ValueId, Function,
 };
 use crate::names::php_symbol_key;
-use crate::parser::ast::{ExprKind, StaticReceiver, TypeExpr};
+use crate::parser::ast::{ExprKind, StaticReceiver, Stmt, TypeExpr};
 use crate::span::Span;
 use crate::types::{
     ClassInfo, EnumInfo, ExternFunctionSig, FunctionSig, InterfaceInfo, PackedClassInfo, PhpType,
@@ -37,6 +37,14 @@ pub(crate) struct LoweredValue {
 pub(crate) struct LoopFrame {
     pub break_block: BlockId,
     pub continue_block: BlockId,
+}
+
+/// Active `finally` body that must run before selected control-flow exits.
+#[derive(Debug, Clone)]
+pub(crate) struct FinallyFrame {
+    pub body: Vec<Stmt>,
+    pub run_on_throw: bool,
+    pub handler_cleanup: Option<(i64, Span)>,
 }
 
 /// Compile-time callable target tracked for straight-line local FCC calls.
@@ -82,6 +90,7 @@ pub(crate) struct LoweringContext<'m, 'f> {
     pub top_level_env: TypeEnv,
     pub current_class: Option<String>,
     pub loop_stack: Vec<LoopFrame>,
+    pub finally_stack: Vec<FinallyFrame>,
     static_callable_locals: HashMap<String, StaticCallableBinding>,
     ref_bound_locals: HashSet<String>,
     ref_cell_owner_locals: HashMap<String, LocalSlotId>,
@@ -136,6 +145,7 @@ impl<'m, 'f> LoweringContext<'m, 'f> {
             top_level_env,
             current_class,
             loop_stack: Vec::new(),
+            finally_stack: Vec::new(),
             static_callable_locals: HashMap::new(),
             ref_bound_locals: HashSet::new(),
             ref_cell_owner_locals: HashMap::new(),
