@@ -62,6 +62,10 @@ pub(crate) enum StaticCallableBinding {
         receiver: StaticReceiver,
         method: String,
     },
+    StaticMethodDescriptor {
+        receiver: StaticReceiver,
+        method: String,
+    },
     InstanceMethod { signature: FunctionSig },
 }
 

@@ -1537,7 +1537,8 @@ fn static_callable_return_type(
         StaticCallableBinding::Closure { signature, .. } => {
             normalize_value_php_type(signature.return_type.codegen_repr())
         }
-        StaticCallableBinding::StaticMethod { receiver, method } => {
+        StaticCallableBinding::StaticMethod { receiver, method }
+        | StaticCallableBinding::StaticMethodDescriptor { receiver, method } => {
             static_method_implementation_signature(ctx, receiver, method)
                 .map(|signature| normalize_value_php_type(signature.return_type.codegen_repr()))
                 .unwrap_or(PhpType::Mixed)
@@ -1626,6 +1627,9 @@ fn lower_static_callable_value_call(
                 Some(expr.span),
             ))
         }
+        StaticCallableBinding::StaticMethodDescriptor { receiver, method } => {
+            lower_static_method_descriptor_value_call(ctx, &receiver, &method, operands, expr)
+        }
         StaticCallableBinding::InstanceMethod { .. } => None,
     }
 }
@@ -1646,7 +1650,7 @@ fn static_call_user_func_callback(
         ExprKind::Variable(name) => ctx
             .static_callable_local(name)
             .and_then(direct_static_callable_binding),
-        ExprKind::ArrayLiteral(items) => static_array_callable_target(ctx, items),
+        ExprKind::ArrayLiteral(items) => static_array_callable_descriptor_target(ctx, items),
         _ => None,
     }
 }
@@ -1691,6 +1695,7 @@ pub(crate) fn static_callable_binding_for_expr(
         ExprKind::FirstClassCallable(CallableTarget::StaticMethod { receiver, method }) => {
             resolve_static_method_callable(ctx, receiver.clone(), method.clone())
         }
+        ExprKind::ArrayLiteral(items) => static_array_callable_descriptor_target(ctx, items),
         ExprKind::FirstClassCallable(CallableTarget::Method { object, method }) => {
             resolve_instance_method_callable(ctx, object, method.clone())
         }
@@ -1704,6 +1709,26 @@ fn static_array_callable_target(
     ctx: &LoweringContext<'_, '_>,
     items: &[Expr],
 ) -> Option<StaticCallableBinding> {
+    static_array_callable_parts(ctx, items).map(|(receiver, method)| {
+        StaticCallableBinding::StaticMethod { receiver, method }
+    })
+}
+
+/// Resolves a static callable array literal as a descriptor-backed static method.
+fn static_array_callable_descriptor_target(
+    ctx: &LoweringContext<'_, '_>,
+    items: &[Expr],
+) -> Option<StaticCallableBinding> {
+    static_array_callable_parts(ctx, items).map(|(receiver, method)| {
+        StaticCallableBinding::StaticMethodDescriptor { receiver, method }
+    })
+}
+
+/// Resolves the named static receiver and method from a static callable array literal.
+fn static_array_callable_parts(
+    ctx: &LoweringContext<'_, '_>,
+    items: &[Expr],
+) -> Option<(StaticReceiver, String)> {
     let [class_expr, method_expr] = items else {
         return None;
     };
@@ -1712,11 +1737,9 @@ fn static_array_callable_target(
         return None;
     };
     let class_name = lookup_folded_name(ctx.classes.keys(), class_name.trim_start_matches('\\'))?;
-    resolve_static_method_callable(
-        ctx,
-        StaticReceiver::Named(Name::from(class_name)),
-        method.clone(),
-    )
+    let receiver = StaticReceiver::Named(Name::from(class_name));
+    static_method_implementation_signature(ctx, &receiver, method)?;
+    Some((receiver, method.clone()))
 }
 
 /// Extracts a compile-time class name for a static callable array.
@@ -1867,6 +1890,15 @@ fn lower_static_callable_call(
         }
         StaticCallableBinding::StaticMethod { receiver, method } => {
             Some(lower_static_method_call(ctx, &receiver, &method, callback_args, expr))
+        }
+        StaticCallableBinding::StaticMethodDescriptor { receiver, method } => {
+            Some(lower_static_method_descriptor_call(
+                ctx,
+                &receiver,
+                &method,
+                callback_args,
+                expr,
+            ))
         }
         StaticCallableBinding::InstanceMethod { .. } => None,
     }
@@ -5331,6 +5363,71 @@ fn lower_static_method_call(
         Op::StaticMethodCall.default_effects(),
         Some(expr.span),
     )
+}
+
+/// Lowers a static-method callable-array call through a descriptor invoker.
+fn lower_static_method_descriptor_call(
+    ctx: &mut LoweringContext<'_, '_>,
+    receiver: &StaticReceiver,
+    method: &str,
+    args: &[Expr],
+    expr: &Expr,
+) -> LoweredValue {
+    let sig = static_method_implementation_signature(ctx, receiver, method).cloned();
+    let wrapper_sig = sig
+        .as_ref()
+        .map(crate::codegen::callable_dispatch::static_method_runtime_wrapper_sig);
+    let target = CallableTarget::StaticMethod {
+        receiver: receiver.clone(),
+        method: method.to_string(),
+    };
+    let descriptor = lower_first_class_callable(ctx, &target, expr);
+    let mut operands = Vec::with_capacity(args.len() + 1);
+    operands.push(descriptor.value);
+    operands.extend(lower_args_with_signature(ctx, wrapper_sig.as_ref(), args));
+    let result_type = sig
+        .as_ref()
+        .map(|signature| normalize_value_php_type(signature.return_type.codegen_repr()))
+        .unwrap_or_else(|| fallback_expr_type(expr));
+    ctx.emit_value(
+        Op::ExprCall,
+        operands,
+        None,
+        result_type,
+        Op::ExprCall.default_effects(),
+        Some(expr.span),
+    )
+}
+
+/// Lowers a static-method descriptor call when operands have already been evaluated.
+fn lower_static_method_descriptor_value_call(
+    ctx: &mut LoweringContext<'_, '_>,
+    receiver: &StaticReceiver,
+    method: &str,
+    args: Vec<crate::ir::ValueId>,
+    expr: &Expr,
+) -> Option<LoweredValue> {
+    let sig = static_method_implementation_signature(ctx, receiver, method).cloned();
+    let target = CallableTarget::StaticMethod {
+        receiver: receiver.clone(),
+        method: method.to_string(),
+    };
+    let descriptor = lower_first_class_callable(ctx, &target, expr);
+    let mut operands = Vec::with_capacity(args.len() + 1);
+    operands.push(descriptor.value);
+    operands.extend(args);
+    let result_type = sig
+        .as_ref()
+        .map(|signature| normalize_value_php_type(signature.return_type.codegen_repr()))
+        .unwrap_or_else(|| fallback_expr_type(expr));
+    Some(ctx.emit_value(
+        Op::ExprCall,
+        operands,
+        None,
+        result_type,
+        Op::ExprCall.default_effects(),
+        Some(expr.span),
+    ))
 }
 
 /// Returns the implementation signature used by the static method symbol that will run.

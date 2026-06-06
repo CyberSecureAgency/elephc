@@ -471,7 +471,7 @@ echo $callback(value: 7);
     let (user_asm, _runtime_asm, _required_libraries) =
         compile_source_to_asm_with_options(source, &dir, 8_388_608, false, false);
     assert!(
-        user_asm.contains("cufa_descriptor_invoker_ready"),
+        user_asm.contains("descriptor_invoker_ready"),
         "direct static-method callable arrays should route through descriptor invokers:\n{}",
         user_asm
     );
@@ -738,7 +738,7 @@ echo ([Formatter::class, "stamp"])(value: 7);
     let (user_asm, _runtime_asm, _required_libraries) =
         compile_source_to_asm_with_options(source, &dir, 8_388_608, false, false);
     assert!(
-        user_asm.contains("cufa_descriptor_invoker_ready"),
+        user_asm.contains("descriptor_invoker_ready"),
         "literal static-method callable arrays should route through descriptor invokers:\n{}",
         user_asm
     );
