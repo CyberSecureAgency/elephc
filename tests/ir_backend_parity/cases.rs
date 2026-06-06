@@ -823,6 +823,34 @@ echo $mapped[1];
     );
 }
 
+/// Verifies stored instance-method `array_map()` callbacks keep legacy receiver capture.
+#[test]
+fn parity_stored_instance_method_array_map_callbacks() {
+    assert_backend_parity(
+        "stored_instance_method_array_map_callbacks",
+        r#"<?php
+class StoredMapperBox {
+    public int $base = 0;
+
+    public function add(int $item): int {
+        return $this->base + $item;
+    }
+}
+
+$box = new StoredMapperBox();
+$box->base = 10;
+$fn = $box->add(...);
+$box = new StoredMapperBox();
+$box->base = 100;
+$mapped = array_map($fn, [1, 2]);
+echo $mapped[0];
+echo ":";
+echo $mapped[1];
+"#,
+        &[],
+    );
+}
+
 /// Verifies reflection attribute owner metadata matches the legacy backend.
 #[test]
 fn parity_reflection_owner_attributes() {

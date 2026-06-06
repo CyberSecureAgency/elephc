@@ -13,7 +13,7 @@
 use crate::codegen::{abi, emit_box_current_value_as_mixed};
 use crate::codegen::platform::Arch;
 use crate::codegen_ir::{CodegenIrError, Result};
-use crate::ir::{Immediate, Instruction, LocalSlotId, Op, ValueDef, ValueId};
+use crate::ir::{BlockId, Immediate, Instruction, LocalSlotId, Op, ValueDef, ValueId};
 use crate::names::{function_symbol, method_symbol, php_symbol_key, static_method_symbol};
 use crate::types::{array_key_type_from_value_type, PhpType};
 
@@ -1048,28 +1048,12 @@ fn static_callback_name_operand(
     value: ValueId,
     owner: &str,
 ) -> Result<StaticCallbackName> {
-    let Some(value_ref) = ctx.function.value(value) else {
-        return Err(CodegenIrError::missing_entry("value", value.as_raw()));
-    };
-    let ValueDef::Instruction { inst, .. } = value_ref.def else {
-        return Err(CodegenIrError::unsupported(format!(
-            "{} with non-static callback operand",
-            owner
-        )));
-    };
-    let Some(inst_ref) = ctx.function.instruction(inst) else {
-        return Err(CodegenIrError::missing_entry("instruction", inst.as_raw()));
-    };
+    let inst_ref = static_callback_source_instruction(ctx, value, owner)?;
     let receiver = inst_ref.operands.first().copied();
     let kind = match inst_ref.op {
         Op::ConstStr => StaticCallbackOperandKind::StringLiteral,
         Op::FirstClassCallableNew => StaticCallbackOperandKind::FirstClassCallable,
-        _ => {
-            return Err(CodegenIrError::unsupported(format!(
-                "{} with non-static callback operand",
-                owner
-            )));
-        }
+        _ => unreachable!("callback source instruction was validated earlier"),
     };
     let Some(Immediate::Data(data)) = inst_ref.immediate.as_ref() else {
         return Err(CodegenIrError::invalid_module(format!(
@@ -1085,6 +1069,96 @@ fn static_callback_name_operand(
         .cloned()
         .ok_or_else(|| CodegenIrError::missing_entry("data string", data.as_raw()))?;
     Ok(StaticCallbackName { name, kind, receiver })
+}
+
+/// Returns the literal callback-producing instruction for a callback operand.
+fn static_callback_source_instruction<'a>(
+    ctx: &'a FunctionContext<'_>,
+    value: ValueId,
+    owner: &str,
+) -> Result<&'a Instruction> {
+    let Some(value_ref) = ctx.function.value(value) else {
+        return Err(CodegenIrError::missing_entry("value", value.as_raw()));
+    };
+    let ValueDef::Instruction { block, index, inst } = value_ref.def else {
+        return Err(CodegenIrError::unsupported(format!(
+            "{} with non-static callback operand",
+            owner
+        )));
+    };
+    let Some(inst_ref) = ctx.function.instruction(inst) else {
+        return Err(CodegenIrError::missing_entry("instruction", inst.as_raw()));
+    };
+    if inst_ref.op == Op::LoadLocal {
+        return static_callback_local_source_instruction(ctx, block, index, inst_ref, owner);
+    }
+    require_static_callback_source(inst_ref, owner)
+}
+
+/// Resolves a local callback load to the last same-block store before that load.
+fn static_callback_local_source_instruction<'a>(
+    ctx: &'a FunctionContext<'_>,
+    block: BlockId,
+    load_index: u32,
+    load_inst: &Instruction,
+    owner: &str,
+) -> Result<&'a Instruction> {
+    let Some(Immediate::LocalSlot(slot)) = load_inst.immediate else {
+        return Err(CodegenIrError::invalid_module(format!(
+            "{} load_local callback has no local slot",
+            owner
+        )));
+    };
+    let block_ref = ctx
+        .function
+        .block(block)
+        .ok_or_else(|| CodegenIrError::missing_entry("block", block.as_raw()))?;
+    let mut stored = None;
+    for (index, inst_id) in block_ref.instructions.iter().enumerate() {
+        if index as u32 >= load_index {
+            break;
+        }
+        let inst_ref = ctx
+            .function
+            .instruction(*inst_id)
+            .ok_or_else(|| CodegenIrError::missing_entry("instruction", inst_id.as_raw()))?;
+        if inst_ref.op == Op::StoreLocal
+            && matches!(inst_ref.immediate, Some(Immediate::LocalSlot(candidate)) if candidate == slot)
+        {
+            stored = inst_ref.operands.first().copied();
+        }
+    }
+    let Some(stored) = stored else {
+        return Err(CodegenIrError::unsupported(format!(
+            "{} with local callback operand that has no prior same-block store",
+            owner
+        )));
+    };
+    let Some(value_ref) = ctx.function.value(stored) else {
+        return Err(CodegenIrError::missing_entry("value", stored.as_raw()));
+    };
+    let ValueDef::Instruction { inst, .. } = value_ref.def else {
+        return Err(CodegenIrError::unsupported(format!(
+            "{} with local callback operand from non-instruction value",
+            owner
+        )));
+    };
+    let Some(inst_ref) = ctx.function.instruction(inst) else {
+        return Err(CodegenIrError::missing_entry("instruction", inst.as_raw()));
+    };
+    require_static_callback_source(inst_ref, owner)
+}
+
+/// Verifies an instruction directly materializes a callback identity supported by the runtime.
+fn require_static_callback_source<'a>(inst: &'a Instruction, owner: &str) -> Result<&'a Instruction> {
+    if matches!(inst.op, Op::ConstStr | Op::FirstClassCallableNew) {
+        Ok(inst)
+    } else {
+        Err(CodegenIrError::unsupported(format!(
+            "{} with non-static callback operand",
+            owner
+        )))
+    }
 }
 
 /// Resolved static-method callback metadata for a small runtime helper wrapper.

@@ -2989,6 +2989,34 @@ echo $mapped[1];
     );
 }
 
+/// Verifies stored instance-method callbacks keep their captured receiver in `array_map()`.
+#[test]
+fn ir_backend_handles_stored_instance_method_array_map_callbacks() {
+    let source = r#"<?php
+class StoredMapperBox {
+    public int $base = 0;
+
+    public function add(int $item): int {
+        return $this->base + $item;
+    }
+}
+
+$box = new StoredMapperBox();
+$box->base = 10;
+$fn = $box->add(...);
+$box = new StoredMapperBox();
+$box->base = 100;
+$mapped = array_map($fn, [1, 2]);
+echo $mapped[0];
+echo ":";
+echo $mapped[1];
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("stored_instance_method_array_map_callbacks", source),
+        "11:12"
+    );
+}
+
 /// Verifies fixed-class object construction calls `__construct` through the EIR method ABI.
 #[test]
 fn ir_backend_calls_simple_constructor() {
