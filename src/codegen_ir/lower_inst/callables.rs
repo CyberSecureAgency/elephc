@@ -69,6 +69,17 @@ fn lower_descriptor_invoker_call(
     op_name: &str,
 ) -> Result<()> {
     let visible_args = inst.operands.iter().skip(1).copied().collect::<Vec<_>>();
+    lower_descriptor_invoker_call_with_args(ctx, inst, callable, &visible_args, op_name)
+}
+
+/// Lowers a callable descriptor call with an explicitly provided visible argument list.
+fn lower_descriptor_invoker_call_with_args(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+    callable: ValueId,
+    visible_args: &[ValueId],
+    op_name: &str,
+) -> Result<()> {
     let descriptor_reg = abi::nested_call_reg(ctx.emitter);
     let invoker_reg = abi::symbol_scratch_reg(ctx.emitter);
     ctx.load_value_to_reg(callable, descriptor_reg)?;
@@ -78,7 +89,7 @@ fn lower_descriptor_invoker_call(
     emit_missing_descriptor_invoker_fatal(ctx, op_name);
 
     ctx.emitter.label(&ready_label);
-    emit_invoker_arg_mixed(ctx, &visible_args)?;
+    emit_invoker_arg_mixed(ctx, visible_args)?;
     abi::emit_push_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));          // preserve the boxed Mixed argument array across descriptor register setup
     move_reg_to_arg(ctx, descriptor_reg, 0);
     let arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 1);
@@ -299,7 +310,7 @@ fn move_result_to_arg(ctx: &mut FunctionContext<'_>, arg_index: usize) {
     move_reg_to_arg(ctx, result_reg, arg_index);
 }
 
-/// Lowers `value |> $callable` when `$callable` is a first-class user-function descriptor.
+/// Lowers `value |> $callable` through the callable descriptor's uniform invoker.
 pub(super) fn lower_pipe_call(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     if inst.operands.len() != 2 {
         return Err(CodegenIrError::invalid_module(format!(
@@ -309,117 +320,13 @@ pub(super) fn lower_pipe_call(ctx: &mut FunctionContext<'_>, inst: &Instruction)
     }
     let value = expect_operand(inst, 0)?;
     let callable = expect_operand(inst, 1)?;
-    let value_ty = ctx.value_php_type(value)?.codegen_repr();
-    reject_signature_dependent_pipe_type("pipe value", &value_ty)?;
-    if let Some(result) = inst.result {
-        let result_ty = ctx.value_php_type(result)?.codegen_repr();
-        reject_signature_dependent_pipe_type("pipe result", &result_ty)?;
-    }
-
-    let descriptor_reg = abi::nested_call_reg(ctx.emitter);
-    ctx.load_value_to_reg(callable, descriptor_reg)?;
-    let fatal_label = ctx.next_label("pipe_call_unsupported_descriptor");
-    emit_branch_if_not_user_function_descriptor(ctx, descriptor_reg, &fatal_label);
-
-    let overflow_bytes = materialize_direct_call_args(ctx, &[value], &[value_ty])?;
-    let caller_stack_pad_bytes = direct_call_stack_pad_bytes(ctx, overflow_bytes);
-    let entry_reg = abi::secondary_scratch_reg(ctx.emitter);
-    callable_descriptor::emit_load_entry_from_descriptor(ctx.emitter, entry_reg, descriptor_reg);
-    abi::emit_reserve_temporary_stack(ctx.emitter, caller_stack_pad_bytes);
-    abi::emit_call_reg(ctx.emitter, entry_reg);
-    abi::emit_release_temporary_stack(ctx.emitter, caller_stack_pad_bytes);
-    abi::emit_release_temporary_stack(ctx.emitter, overflow_bytes);
-    store_pipe_call_result(ctx, inst)?;
-
-    let done_label = ctx.next_label("pipe_call_done");
-    abi::emit_jump(ctx.emitter, &done_label);
-    ctx.emitter.label(&fatal_label);
-    emit_unsupported_pipe_call_fatal(ctx);
-    ctx.emitter.label(&done_label);
-    Ok(())
-}
-
-/// Rejects pipe-call shapes whose ABI cannot be recovered without callable signature metadata.
-fn reject_signature_dependent_pipe_type(label: &str, ty: &PhpType) -> Result<()> {
-    if matches!(ty.codegen_repr(), PhpType::Mixed | PhpType::Union(_) | PhpType::Void | PhpType::Never) {
+    if ctx.value_php_type(callable)?.codegen_repr() != PhpType::Callable {
         return Err(CodegenIrError::unsupported(format!(
-            "{} PHP type {:?} without descriptor signature metadata",
-            label, ty
+            "pipe_call for callable PHP type {:?}",
+            ctx.value_php_type(callable)?.codegen_repr()
         )));
     }
-    Ok(())
-}
-
-/// Emits runtime guards that keep this Phase-04 pipe lowering on plain user functions.
-fn emit_branch_if_not_user_function_descriptor(
-    ctx: &mut FunctionContext<'_>,
-    descriptor_reg: &str,
-    fatal_label: &str,
-) {
-    let kind_reg = abi::secondary_scratch_reg(ctx.emitter);
-    match ctx.emitter.target.arch {
-        Arch::AArch64 => {
-            ctx.emitter.instruction(&format!("cmp {}, #0", descriptor_reg));    // reject a missing first-class callable descriptor before dereferencing it
-            ctx.emitter.instruction(&format!("b.eq {}", fatal_label));          // report unsupported pipe callable descriptors instead of branching through null
-            abi::emit_load_from_address(ctx.emitter, kind_reg, descriptor_reg, 0);
-            ctx.emitter.instruction(&format!(
-                "cmp {}, #{}",
-                kind_reg,
-                callable_descriptor::CALLABLE_DESC_KIND_FUNCTION
-            ));                                                                 // verify the descriptor targets a plain user function
-            ctx.emitter.instruction(&format!("b.ne {}", fatal_label));          // keep non-function callable descriptors on the explicit unsupported path
-        }
-        Arch::X86_64 => {
-            ctx.emitter.instruction(&format!("test {}, {}", descriptor_reg, descriptor_reg)); // reject a missing first-class callable descriptor before dereferencing it
-            ctx.emitter.instruction(&format!("je {}", fatal_label));            // report unsupported pipe callable descriptors instead of branching through null
-            abi::emit_load_from_address(ctx.emitter, kind_reg, descriptor_reg, 0);
-            ctx.emitter.instruction(&format!(
-                "cmp {}, {}",
-                kind_reg,
-                callable_descriptor::CALLABLE_DESC_KIND_FUNCTION
-            ));                                                                 // verify the descriptor targets a plain user function
-            ctx.emitter.instruction(&format!("jne {}", fatal_label));           // keep non-function callable descriptors on the explicit unsupported path
-        }
-    }
-}
-
-/// Stores an indirect pipe-call result using the EIR result type.
-fn store_pipe_call_result(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
-    let Some(result) = inst.result else {
-        return Ok(());
-    };
-    if ctx.value_php_type(result)?.codegen_repr() == PhpType::Void {
-        abi::emit_load_int_immediate(
-            ctx.emitter,
-            abi::int_result_reg(ctx.emitter),
-            0x7fff_ffff_ffff_fffe,
-        );
-    }
-    ctx.store_result_value(result)
-}
-
-/// Emits the fatal path for pipe-call callable descriptors not covered by Phase 04.
-fn emit_unsupported_pipe_call_fatal(ctx: &mut FunctionContext<'_>) {
-    let message = b"Fatal error: Unsupported EIR pipe callable descriptor\n";
-    let (message_label, message_len) = ctx.data.add_string(message);
-    match ctx.emitter.target.arch {
-        Arch::AArch64 => {
-            ctx.emitter.instruction("mov x0, #2");                              // write the unsupported pipe-call diagnostic to stderr
-            ctx.emitter.adrp("x1", &message_label);                             // load the unsupported pipe-call diagnostic string page
-            ctx.emitter.add_lo12("x1", "x1", &message_label);                  // resolve the unsupported pipe-call diagnostic string address
-            ctx.emitter.instruction(&format!("mov x2, #{}", message_len));      // pass the unsupported pipe-call diagnostic byte length to write
-            ctx.emitter.syscall(4);
-            abi::emit_exit(ctx.emitter, 1);
-        }
-        Arch::X86_64 => {
-            ctx.emitter.instruction("mov edi, 2");                              // write the unsupported pipe-call diagnostic to Linux stderr
-            abi::emit_symbol_address(ctx.emitter, "rsi", &message_label);
-            ctx.emitter.instruction(&format!("mov edx, {}", message_len));      // pass the unsupported pipe-call diagnostic byte length to write
-            ctx.emitter.instruction("mov eax, 1");                              // Linux x86_64 syscall 1 = write
-            ctx.emitter.instruction("syscall");                                 // emit the unsupported pipe-call diagnostic before terminating
-            abi::emit_exit(ctx.emitter, 1);
-        }
-    }
+    lower_descriptor_invoker_call_with_args(ctx, inst, callable, &[value], "pipe_call")
 }
 
 /// Dispatches a runtime string callable across user functions with compatible ABI shape.

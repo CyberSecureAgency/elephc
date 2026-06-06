@@ -951,16 +951,32 @@ fn lower_pipe_runtime_call(
     callable: &Expr,
     expr: &Expr,
 ) -> LoweredValue {
+    let result_type = pipe_runtime_result_type(ctx, callable, expr);
     let value = lower_expr(ctx, value);
     let callable = lower_expr(ctx, callable);
     ctx.emit_value(
         Op::PipeCall,
         vec![value.value, callable.value],
         None,
-        fallback_expr_type(expr),
+        result_type,
         Op::PipeCall.default_effects(),
         Some(expr.span),
     )
+}
+
+/// Returns the best known result type for a runtime-lowered pipe call.
+fn pipe_runtime_result_type(
+    ctx: &LoweringContext<'_, '_>,
+    callable: &Expr,
+    expr: &Expr,
+) -> PhpType {
+    match &callable.kind {
+        ExprKind::Variable(name) => ctx
+            .static_callable_local(name)
+            .map(|target| static_callable_return_type(ctx, &target))
+            .unwrap_or_else(|| fallback_expr_type(expr)),
+        _ => fallback_expr_type(expr),
+    }
 }
 
 /// Lowers an assignment expression.
