@@ -4730,7 +4730,7 @@ fn ir_backend_handles_indexed_in_array() {
         (
             "in_array_int_missing",
             "<?php $a = [10, 20, 30]; echo in_array(99, $a);",
-            "",
+            "0",
         ),
         (
             "in_array_string_found",
@@ -4740,7 +4740,7 @@ fn ir_backend_handles_indexed_in_array() {
         (
             "in_array_string_missing",
             "<?php $a = [\"a\", \"b\", \"c\"]; echo in_array(\"x\", $a);",
-            "",
+            "0",
         ),
         (
             "in_array_empty",

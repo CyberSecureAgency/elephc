@@ -72,6 +72,35 @@ foreach ($c as $value) { echo $value; }
     );
 }
 
+/// Verifies untyped numeric ordering, unary negation, and direct `in_array()` output match legacy codegen.
+#[test]
+fn parity_untyped_numeric_ordering_and_in_array_echo() {
+    assert_backend_parity(
+        "untyped_numeric_ordering_negation",
+        r#"<?php
+function abs_val($x) {
+    if ($x < 0) {
+        return -$x;
+    }
+    return $x;
+}
+echo abs_val(-5) . " " . abs_val(3);
+"#,
+        &[],
+    );
+    assert_backend_parity(
+        "in_array_direct_echo_false",
+        r#"<?php
+$a = [10, 20, 30];
+echo in_array(99, $a);
+echo ":";
+$b = ["a", "b", "c"];
+echo in_array("x", $b);
+"#,
+        &[],
+    );
+}
+
 /// Verifies generator construction, iterator protocol calls, and shadowed receiver foreach match the legacy backend.
 #[test]
 fn parity_generator_foreach_protocol() {

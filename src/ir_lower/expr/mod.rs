@@ -544,11 +544,14 @@ fn lower_compare(
         _ if lhs.ir_type == IrType::F64 || rhs.ir_type == IrType::F64 => Op::FCmp,
         _ if lhs.ir_type == IrType::I64 && rhs.ir_type == IrType::I64 => Op::ICmp,
         _ if lhs.ir_type == IrType::Str && rhs.ir_type == IrType::Str => Op::StrCmp,
-        _ => Op::LooseEq,
+        _ => Op::ICmp,
     };
     if matches!(opcode, Op::FCmp) {
         lhs = coerce_to_float(ctx, lhs, left);
         rhs = coerce_to_float(ctx, rhs, right);
+    } else if matches!(opcode, Op::ICmp) {
+        lhs = coerce_to_int(ctx, lhs, left);
+        rhs = coerce_to_int(ctx, rhs, right);
     }
     let immediate = if matches!(opcode, Op::ICmp | Op::FCmp) {
         Some(Immediate::CmpPredicate(cmp_predicate(op)))
@@ -591,6 +594,10 @@ fn lower_numeric_unary(
     match value.ir_type {
         IrType::F64 => ctx.emit_value(float_op, vec![value.value], None, PhpType::Float, float_op.default_effects(), Some(expr.span)),
         IrType::I64 => ctx.emit_value(int_op, vec![value.value], None, PhpType::Int, int_op.default_effects(), Some(expr.span)),
+        _ if int_op == Op::INeg => {
+            let zero = lower_int_literal(ctx, 0, expr);
+            lower_mixed_numeric_binary(ctx, zero, value, MixedNumericOp::Sub, expr)
+        }
         _ => ctx.emit_value(Op::RuntimeCall, vec![value.value], None, PhpType::Mixed, Effects::all(), Some(expr.span)),
     }
 }
@@ -2700,6 +2707,7 @@ fn array_builtin_return_type(
         "array_merge" => array_merge_builtin_return_type(ctx, operands),
         "array_splice" | "array_filter" | "array_diff" | "array_intersect" | "array_diff_key"
         | "array_intersect_key" => array_preserve_first_builtin_return_type(ctx, operands),
+        "in_array" => Some(PhpType::Int),
         "range" => Some(PhpType::Array(Box::new(PhpType::Int))),
         "array_values" => {
             let array = operands.first()?;
@@ -2854,7 +2862,7 @@ fn builtin_return_type_override(name: &str) -> Option<PhpType> {
         "chdir" | "chgrp" | "chmod" | "chown" | "class_exists" | "copy" | "define" | "defined"
         | "empty" | "file_exists" | "fnmatch" | "function_exists" | "is_a" | "is_callable"
         | "fdatasync" | "fflush" | "flock" | "fsync" | "ftruncate" | "interface_exists" | "is_dir"
-        | "in_array" | "is_executable" | "is_file" | "is_link" | "is_numeric" | "link" | "mkdir" | "rename"
+        | "is_executable" | "is_file" | "is_link" | "is_numeric" | "link" | "mkdir" | "rename"
         | "enum_exists" | "trait_exists" | "putenv" | "rmdir" | "is_readable"
         | "is_subclass_of" | "is_writeable" | "is_writable" | "spl_autoload_register"
         | "spl_autoload_unregister" | "symlink" | "touch" | "unlink" => {
