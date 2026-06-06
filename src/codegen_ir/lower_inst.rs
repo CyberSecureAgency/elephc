@@ -414,29 +414,12 @@ fn emit_instance_method_descriptor_entry_wrapper(
     sig: &FunctionSig,
 ) -> Result<String> {
     let visible_arg_types = descriptor_visible_arg_types(sig);
-    require_instance_descriptor_wrapper_arg_types(class_name, method_key, &visible_arg_types)?;
+    require_instance_descriptor_wrapper_arg_types(ctx, class_name, method_key, &visible_arg_types)?;
     let wrapper_label = ctx.next_label("instance_method_descriptor_entry");
     let done_label = ctx.next_label("instance_method_descriptor_entry_done");
     abi::emit_jump(ctx.emitter, &done_label);
     ctx.emitter.label(&wrapper_label);
-    match ctx.emitter.target.arch {
-        Arch::AArch64 => {
-            emit_instance_method_descriptor_entry_wrapper_aarch64(
-                ctx,
-                class_name,
-                method_key,
-                &visible_arg_types,
-            );
-        }
-        Arch::X86_64 => {
-            emit_instance_method_descriptor_entry_wrapper_x86_64(
-                ctx,
-                class_name,
-                method_key,
-                &visible_arg_types,
-            );
-        }
-    }
+    emit_instance_method_descriptor_entry_wrapper_body(ctx, class_name, method_key, &visible_arg_types);
     ctx.emitter.label(&done_label);
     Ok(wrapper_label)
 }
@@ -451,136 +434,143 @@ fn descriptor_visible_arg_types(sig: &FunctionSig) -> Vec<PhpType> {
 
 /// Verifies the descriptor entry wrapper can forward this method's visible ABI shape.
 fn require_instance_descriptor_wrapper_arg_types(
+    ctx: &FunctionContext<'_>,
     class_name: &str,
     method_key: &str,
     visible_arg_types: &[PhpType],
 ) -> Result<()> {
-    if visible_arg_types.len() > 2 {
-        return Err(CodegenIrError::unsupported(format!(
-            "first-class instance method {}::{} with {} descriptor wrapper args",
-            class_name,
-            method_key,
-            visible_arg_types.len()
-        )));
-    }
-    if visible_arg_types
-        .iter()
-        .any(|ty| matches!(ty.codegen_repr(), PhpType::Str))
-        && !(visible_arg_types.len() == 1
-            && matches!(visible_arg_types[0].codegen_repr(), PhpType::Str))
+    let receiver_ty = descriptor_receiver_type(class_name);
+    let incoming_types = descriptor_entry_incoming_types(visible_arg_types, &receiver_ty);
+    let actual_types = descriptor_entry_actual_types(visible_arg_types, &receiver_ty);
+    let incoming_assignments =
+        abi::build_outgoing_arg_assignments_for_target(ctx.emitter.target, &incoming_types, 0);
+    let actual_assignments =
+        abi::build_outgoing_arg_assignments_for_target(ctx.emitter.target, &actual_types, 0);
+    if incoming_assignments.iter().all(|assignment| assignment.in_register())
+        && actual_assignments.iter().all(|assignment| assignment.in_register())
     {
-        return Err(CodegenIrError::unsupported(format!(
-            "first-class instance method {}::{} with string descriptor wrapper args outside the one-argument ABI",
-            class_name, method_key
-        )));
+        return Ok(());
     }
-    for ty in visible_arg_types {
-        if !matches!(
-            ty.codegen_repr(),
-            PhpType::Int | PhpType::Bool | PhpType::Str | PhpType::Void | PhpType::Never
-        ) {
-            return Err(CodegenIrError::unsupported(format!(
-                "first-class instance method {}::{} descriptor wrapper arg PHP type {:?}",
-                class_name,
-                method_key,
-                ty.codegen_repr()
-            )));
-        }
-    }
-    Ok(())
+    Err(CodegenIrError::unsupported(format!(
+        "first-class instance method {}::{} descriptor wrapper stack-passed args",
+        class_name, method_key
+    )))
 }
 
-/// Emits the AArch64 receiver-prefix adapter used as a descriptor entry.
-fn emit_instance_method_descriptor_entry_wrapper_aarch64(
+/// Emits a descriptor entry wrapper body by reordering visible args after the receiver.
+fn emit_instance_method_descriptor_entry_wrapper_body(
     ctx: &mut FunctionContext<'_>,
     class_name: &str,
     method_key: &str,
     visible_arg_types: &[PhpType],
 ) {
-    let receiver_reg = abi::int_arg_reg_name(ctx.emitter.target, callback_arg_abi_slots(visible_arg_types));
-    ctx.emitter.instruction("sub sp, sp, #16");                                 // reserve wrapper spill space for the descriptor entry return address
-    ctx.emitter.instruction("str x30, [sp, #8]");                               // preserve the descriptor invoker return address across the method call
-    ctx.emitter.instruction(&format!("mov x3, {}", receiver_reg));              // keep the captured receiver while shifting visible callback args
-    shift_callback_args_after_hidden_aarch64(ctx, visible_arg_types);
-    ctx.emitter.instruction("mov x0, x3");                                      // pass the captured receiver as the method receiver
+    let receiver_ty = descriptor_receiver_type(class_name);
+    let incoming_types = descriptor_entry_incoming_types(visible_arg_types, &receiver_ty);
+    let actual_types = descriptor_entry_actual_types(visible_arg_types, &receiver_ty);
+    let incoming_assignments =
+        abi::build_outgoing_arg_assignments_for_target(ctx.emitter.target, &incoming_types, 0);
+    let actual_assignments =
+        abi::build_outgoing_arg_assignments_for_target(ctx.emitter.target, &actual_types, 0);
+    let frame_size = descriptor_entry_frame_size(incoming_types.len());
+
+    abi::emit_frame_prologue(ctx.emitter, frame_size);
+    for (idx, (ty, assignment)) in incoming_types.iter().zip(incoming_assignments.iter()).enumerate() {
+        store_descriptor_entry_incoming_arg(ctx.emitter, ty, assignment, descriptor_entry_slot_offset(idx));
+    }
+    for (idx, (ty, assignment)) in actual_types.iter().zip(actual_assignments.iter()).enumerate() {
+        let source_idx = if idx == 0 { visible_arg_types.len() } else { idx - 1 };
+        load_descriptor_entry_actual_arg(ctx.emitter, ty, assignment, descriptor_entry_slot_offset(source_idx));
+    }
     abi::emit_call_label(ctx.emitter, &method_symbol(class_name, method_key));
-    ctx.emitter.instruction("ldr x30, [sp, #8]");                               // restore the descriptor invoker return address after the method call
-    ctx.emitter.instruction("add sp, sp, #16");                                 // release descriptor entry wrapper spill space
-    ctx.emitter.instruction("ret");                                             // return the method result to the descriptor invoker
+    abi::emit_frame_restore(ctx.emitter, frame_size);
+    abi::emit_return(ctx.emitter);
 }
 
-/// Emits the x86_64 receiver-prefix adapter used as a descriptor entry.
-fn emit_instance_method_descriptor_entry_wrapper_x86_64(
-    ctx: &mut FunctionContext<'_>,
-    class_name: &str,
-    method_key: &str,
-    visible_arg_types: &[PhpType],
+/// Returns the runtime receiver type threaded through the descriptor entry wrapper.
+fn descriptor_receiver_type(class_name: &str) -> PhpType {
+    PhpType::Object(class_name.to_string())
+}
+
+/// Returns the wrapper incoming argument order: visible args followed by receiver.
+fn descriptor_entry_incoming_types(visible_arg_types: &[PhpType], receiver_ty: &PhpType) -> Vec<PhpType> {
+    let mut types = visible_arg_types.to_vec();
+    types.push(receiver_ty.clone());
+    types
+}
+
+/// Returns the real method ABI argument order: receiver followed by visible args.
+fn descriptor_entry_actual_types(visible_arg_types: &[PhpType], receiver_ty: &PhpType) -> Vec<PhpType> {
+    let mut types = Vec::with_capacity(visible_arg_types.len() + 1);
+    types.push(receiver_ty.clone());
+    types.extend_from_slice(visible_arg_types);
+    types
+}
+
+/// Returns an aligned frame size for descriptor entry wrapper spill slots plus footer.
+fn descriptor_entry_frame_size(slot_count: usize) -> usize {
+    align16((slot_count + 1) * 16)
+}
+
+/// Returns the frame offset for a descriptor entry wrapper spill slot.
+fn descriptor_entry_slot_offset(idx: usize) -> usize {
+    (idx + 1) * 16
+}
+
+/// Stores one incoming descriptor entry argument into its spill slot.
+fn store_descriptor_entry_incoming_arg(
+    emitter: &mut crate::codegen::emit::Emitter,
+    ty: &PhpType,
+    assignment: &abi::OutgoingArgAssignment,
+    offset: usize,
 ) {
-    let receiver_reg = abi::int_arg_reg_name(ctx.emitter.target, callback_arg_abi_slots(visible_arg_types));
-    ctx.emitter.instruction("push rbp");                                        // preserve the descriptor invoker frame pointer for the method call
-    ctx.emitter.instruction("mov rbp, rsp");                                    // establish a wrapper frame while shifting descriptor args
-    ctx.emitter.instruction(&format!("mov rcx, {}", receiver_reg));             // keep the captured receiver while shifting visible callback args
-    shift_callback_args_after_hidden_x86_64(ctx, visible_arg_types);
-    ctx.emitter.instruction("mov rdi, rcx");                                    // pass the captured receiver as the method receiver
-    abi::emit_call_label(ctx.emitter, &method_symbol(class_name, method_key));
-    ctx.emitter.instruction("pop rbp");                                         // restore the descriptor invoker frame pointer before returning
-    ctx.emitter.instruction("ret");                                             // return the method result to the descriptor invoker
-}
-
-/// Counts integer ABI slots consumed by visible callback arguments.
-fn callback_arg_abi_slots(visible_arg_types: &[PhpType]) -> usize {
-    visible_arg_types
-        .iter()
-        .map(|ty| {
-            if matches!(ty.codegen_repr(), PhpType::Str) {
-                2
-            } else {
-                1
-            }
-        })
-        .sum()
-}
-
-/// Shifts AArch64 visible arguments right by one slot for a prepended receiver.
-fn shift_callback_args_after_hidden_aarch64(
-    ctx: &mut FunctionContext<'_>,
-    visible_arg_types: &[PhpType],
-) {
-    match visible_arg_types {
-        [ty] if matches!(ty.codegen_repr(), PhpType::Str) => {
-            ctx.emitter.instruction("mov x2, x1");                              // shift the callback string length after the hidden receiver
-            ctx.emitter.instruction("mov x1, x0");                              // shift the callback string pointer after the hidden receiver
+    match ty.codegen_repr() {
+        PhpType::Float => {
+            let reg = abi::float_arg_reg_name(emitter.target, assignment.start_reg);
+            abi::store_at_offset(emitter, reg, offset);
         }
-        [_] => {
-            ctx.emitter.instruction("mov x1, x0");                              // shift the scalar callback argument after the hidden receiver
+        PhpType::Str => {
+            let ptr_reg = abi::int_arg_reg_name(emitter.target, assignment.start_reg);
+            let len_reg = abi::int_arg_reg_name(emitter.target, assignment.start_reg + 1);
+            abi::store_at_offset(emitter, ptr_reg, offset);
+            abi::store_at_offset(emitter, len_reg, offset - 8);
         }
-        [_, _] => {
-            ctx.emitter.instruction("mov x2, x1");                              // shift the second scalar callback argument after the hidden receiver
-            ctx.emitter.instruction("mov x1, x0");                              // shift the first scalar callback argument after the hidden receiver
+        PhpType::Void | PhpType::Never => {}
+        _ => {
+            let reg = abi::int_arg_reg_name(emitter.target, assignment.start_reg);
+            abi::store_at_offset(emitter, reg, offset);
         }
-        _ => {}
     }
 }
 
-/// Shifts x86_64 visible arguments right by one slot for a prepended receiver.
-fn shift_callback_args_after_hidden_x86_64(
-    ctx: &mut FunctionContext<'_>,
-    visible_arg_types: &[PhpType],
+/// Loads one spilled descriptor entry argument into its real method ABI assignment.
+fn load_descriptor_entry_actual_arg(
+    emitter: &mut crate::codegen::emit::Emitter,
+    ty: &PhpType,
+    assignment: &abi::OutgoingArgAssignment,
+    offset: usize,
 ) {
-    match visible_arg_types {
-        [ty] if matches!(ty.codegen_repr(), PhpType::Str) => {
-            ctx.emitter.instruction("mov rdx, rsi");                            // shift the callback string length after the hidden receiver
-            ctx.emitter.instruction("mov rsi, rdi");                            // shift the callback string pointer after the hidden receiver
+    match ty.codegen_repr() {
+        PhpType::Float => {
+            let reg = abi::float_arg_reg_name(emitter.target, assignment.start_reg);
+            abi::load_at_offset(emitter, reg, offset);
         }
-        [_] => {
-            ctx.emitter.instruction("mov rsi, rdi");                            // shift the scalar callback argument after the hidden receiver
+        PhpType::Str => {
+            let ptr_reg = abi::int_arg_reg_name(emitter.target, assignment.start_reg);
+            let len_reg = abi::int_arg_reg_name(emitter.target, assignment.start_reg + 1);
+            abi::load_at_offset(emitter, ptr_reg, offset);
+            abi::load_at_offset(emitter, len_reg, offset - 8);
         }
-        [_, _] => {
-            ctx.emitter.instruction("mov rdx, rsi");                            // shift the second scalar callback argument after the hidden receiver
-            ctx.emitter.instruction("mov rsi, rdi");                            // shift the first scalar callback argument after the hidden receiver
+        PhpType::Void | PhpType::Never => {}
+        _ => {
+            let reg = abi::int_arg_reg_name(emitter.target, assignment.start_reg);
+            abi::load_at_offset(emitter, reg, offset);
         }
-        _ => {}
     }
+}
+
+/// Rounds `value` up to a 16-byte multiple.
+fn align16(value: usize) -> usize {
+    (value + 15) & !15
 }
 
 /// Emits a descriptor invoker inline and branches around its global entry body.
