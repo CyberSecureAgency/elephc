@@ -884,6 +884,36 @@ array_walk([1, 2], $walk);
     );
 }
 
+/// Verifies stored instance-method `array_filter()` callbacks keep legacy receiver capture.
+#[test]
+fn parity_stored_instance_method_array_filter_callbacks() {
+    assert_backend_parity(
+        "stored_instance_method_array_filter_callbacks",
+        r#"<?php
+class StoredFilterBox {
+    public int $base = 0;
+
+    public function keep(int $item): bool {
+        return $this->base + $item > 12;
+    }
+}
+
+$box = new StoredFilterBox();
+$box->base = 10;
+$filter = $box->keep(...);
+$box = new StoredFilterBox();
+$box->base = 100;
+$values = array_filter([1, 2, 3], $filter);
+echo count($values);
+foreach ($values as $value) {
+    echo ":";
+    echo $value;
+}
+"#,
+        &[],
+    );
+}
+
 /// Verifies reflection attribute owner metadata matches the legacy backend.
 #[test]
 fn parity_reflection_owner_attributes() {

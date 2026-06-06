@@ -3050,6 +3050,36 @@ array_walk([1, 2], $walk);
     );
 }
 
+/// Verifies stored instance-method callbacks keep their receiver in `array_filter()`.
+#[test]
+fn ir_backend_handles_stored_instance_method_array_filter_callbacks() {
+    let source = r#"<?php
+class StoredFilterBox {
+    public int $base = 0;
+
+    public function keep(int $item): bool {
+        return $this->base + $item > 12;
+    }
+}
+
+$box = new StoredFilterBox();
+$box->base = 10;
+$filter = $box->keep(...);
+$box = new StoredFilterBox();
+$box->base = 100;
+$values = array_filter([1, 2, 3], $filter);
+echo count($values);
+foreach ($values as $value) {
+    echo ":";
+    echo $value;
+}
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("stored_instance_method_array_filter_callbacks", source),
+        "1:3"
+    );
+}
+
 /// Verifies fixed-class object construction calls `__construct` through the EIR method ABI.
 #[test]
 fn ir_backend_calls_simple_constructor() {

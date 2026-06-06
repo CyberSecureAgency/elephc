@@ -165,7 +165,7 @@ pub(super) fn lower_array_unique(ctx: &mut FunctionContext<'_>, inst: &Instructi
     store_if_result(ctx, inst)
 }
 
-/// Lowers `array_filter()` for static callbacks by reusing the legacy runtime helper.
+/// Lowers `array_filter()` for static and first-class callbacks through the runtime helper.
 pub(super) fn lower_array_filter(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     ensure_arg_count_between(inst, "array_filter", 2, 3)?;
     let array = expect_operand(inst, 0)?;
@@ -174,8 +174,9 @@ pub(super) fn lower_array_filter(ctx: &mut FunctionContext<'_>, inst: &Instructi
     let elem_ty = array_filter_source_element_type(ctx.value_php_type(array)?)?;
     require_array_filter_result_type(&elem_ty, &inst.result_php_type.codegen_repr())?;
     let callback_arg_types = array_filter_callback_arg_types(ctx, mode, &elem_ty)?;
-    let callback_label =
-        static_callback_entry_label(ctx, callback, "array_filter callback", callback_arg_types.as_deref())?;
+    let callback_binding =
+        static_sort_callback_binding(ctx, callback, "array_filter callback", callback_arg_types.as_deref())?;
+    let env_bytes = reserve_static_callback_env(ctx, callback_binding.env_source)?;
     let runtime_label = if array_filter_uses_refcounted_runtime(&elem_ty) {
         "__rt_array_filter_refcounted"
     } else {
@@ -183,19 +184,22 @@ pub(super) fn lower_array_filter(ctx: &mut FunctionContext<'_>, inst: &Instructi
     };
     match ctx.emitter.target.arch {
         Arch::AArch64 => {
-            abi::emit_symbol_address(ctx.emitter, "x0", &callback_label);
+            abi::emit_symbol_address(ctx.emitter, "x0", &callback_binding.label);
             ctx.load_value_to_reg(array, "x1")?;
-            abi::emit_load_int_immediate(ctx.emitter, "x2", 0);
+            load_static_callback_env_arg(ctx, "x2", env_bytes);
             load_array_filter_mode(ctx, mode, "x3")?;
         }
         Arch::X86_64 => {
-            abi::emit_symbol_address(ctx.emitter, "rdi", &callback_label);
+            abi::emit_symbol_address(ctx.emitter, "rdi", &callback_binding.label);
             ctx.load_value_to_reg(array, "rsi")?;
-            abi::emit_load_int_immediate(ctx.emitter, "rdx", 0);
+            load_static_callback_env_arg(ctx, "rdx", env_bytes);
             load_array_filter_mode(ctx, mode, "rcx")?;
         }
     }
     abi::emit_call_label(ctx.emitter, runtime_label);
+    if env_bytes != 0 {
+        abi::emit_release_temporary_stack(ctx.emitter, env_bytes);
+    }
     store_if_result(ctx, inst)
 }
 
@@ -952,31 +956,6 @@ fn box_array_result_for_mixed_builtin(
     }
 }
 
-/// Returns the entry label for a static string or first-class callback.
-fn static_callback_entry_label(
-    ctx: &mut FunctionContext<'_>,
-    value: ValueId,
-    owner: &str,
-    visible_arg_types: Option<&[PhpType]>,
-) -> Result<String> {
-    let callback = static_callback_name_operand(ctx, value, owner)?;
-    if let Some(callee) = ctx.callable_function_by_name(&callback.name) {
-        return Ok(function_symbol(&callee.name));
-    }
-    if callback.kind == StaticCallbackOperandKind::FirstClassCallable {
-        if let Some(target) = static_method_callback_target(ctx, &callback.name, owner, visible_arg_types)? {
-            let visible_arg_types =
-                visible_arg_types.expect("static method callback target requires known argument types");
-            return Ok(emit_static_method_callback_wrapper(ctx, &target, visible_arg_types));
-        }
-    }
-    Err(CodegenIrError::unsupported(format!(
-        "{} '{}' is not a user function or supported first-class static method",
-        owner,
-        callback.name
-    )))
-}
-
 /// Callback label, return type, and optional environment source for callback runtime helpers.
 struct StaticSortCallbackBinding {
     label: String,
@@ -1189,16 +1168,6 @@ enum StaticCallbackEnvSource {
     Local(LocalSlotId),
     ThisObject(LocalSlotId),
     Value(ValueId),
-}
-
-/// Resolves a static `Class::method` callback target and verifies its visible ABI shape.
-fn static_method_callback_target(
-    ctx: &FunctionContext<'_>,
-    callback_name: &str,
-    owner: &str,
-    visible_arg_types: Option<&[PhpType]>,
-) -> Result<Option<StaticMethodCallbackTarget>> {
-    static_method_callback_target_inner(ctx, callback_name, owner, visible_arg_types, false)
 }
 
 /// Resolves a sort static-method callback, allowing `static::` with an environment.
