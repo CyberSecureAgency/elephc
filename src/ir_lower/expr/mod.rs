@@ -3492,6 +3492,16 @@ fn property_get_result_type(
     if matches!(object_ty.codegen_repr(), PhpType::Mixed | PhpType::Union(_)) {
         return PhpType::Mixed;
     }
+    if let PhpType::Packed(class_name) = object_ty.codegen_repr() {
+        let normalized = class_name.trim_start_matches('\\');
+        let Some(class_info) = ctx.packed_classes.get(normalized) else {
+            return fallback_expr_type(expr);
+        };
+        let Some(field) = class_info.fields.iter().find(|field| field.name == property) else {
+            return fallback_expr_type(expr);
+        };
+        return normalize_value_php_type(field.php_type.codegen_repr());
+    }
     let Some((class_name, nullable)) = singular_object_class(&object_ty) else {
         return fallback_expr_type(expr);
     };

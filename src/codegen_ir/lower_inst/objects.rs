@@ -45,6 +45,7 @@ struct PropertySlot {
     php_type: PhpType,
     offset: usize,
     is_declared: bool,
+    is_packed: bool,
 }
 
 /// Resolved object property default metadata for fixed-offset initialization.
@@ -1418,6 +1419,7 @@ fn resolve_property_slot_for_class(
         php_type: php_type.clone(),
         offset,
         is_declared: class_info.declared_properties.contains(property),
+        is_packed: false,
     })
 }
 
@@ -1552,6 +1554,7 @@ fn resolve_packed_field_slot(
         php_type: field.php_type.clone(),
         offset: field.offset,
         is_declared: false,
+        is_packed: true,
     })
 }
 
@@ -1638,6 +1641,9 @@ fn emit_property_load(
     slot: &PropertySlot,
     base_reg: &str,
 ) -> Result<()> {
+    if slot.is_packed {
+        return emit_packed_field_load(ctx, slot, base_reg);
+    }
     match &slot.php_type {
         PhpType::Str => {
             let (ptr_reg, len_reg) = abi::string_result_regs(ctx.emitter);
@@ -1664,6 +1670,44 @@ fn emit_property_load(
     Ok(())
 }
 
+/// Emits a compact packed-field load from a pointer to the containing packed record.
+fn emit_packed_field_load(
+    ctx: &mut FunctionContext<'_>,
+    slot: &PropertySlot,
+    base_reg: &str,
+) -> Result<()> {
+    match &slot.php_type {
+        PhpType::Float => {
+            let float_reg = abi::float_result_reg(ctx.emitter);
+            abi::emit_load_from_address(ctx.emitter, float_reg, base_reg, slot.offset);
+        }
+        PhpType::Bool | PhpType::Int | PhpType::Pointer(_) | PhpType::Resource(_) => {
+            let int_reg = abi::int_result_reg(ctx.emitter);
+            abi::emit_load_from_address(ctx.emitter, int_reg, base_reg, slot.offset);
+        }
+        PhpType::Packed(_) => {
+            let int_reg = abi::int_result_reg(ctx.emitter);
+            if slot.offset == 0 {
+                ctx.emitter.instruction(&format!("mov {}, {}", int_reg, base_reg)); // return the nested packed field address directly
+            } else {
+                match ctx.emitter.target.arch {
+                    Arch::AArch64 => {
+                        ctx.emitter.instruction(&format!("add {}, {}, #{}", int_reg, base_reg, slot.offset)); // compute the nested packed field address
+                    }
+                    Arch::X86_64 => {
+                        ctx.emitter.instruction(&format!("lea {}, [{} + {}]", int_reg, base_reg, slot.offset)); // compute the nested packed field address
+                    }
+                }
+            }
+        }
+        _ => return Err(CodegenIrError::unsupported(format!(
+            "packed field load for PHP type {:?}",
+            slot.php_type
+        ))),
+    }
+    Ok(())
+}
+
 /// Emits a declared-property store from an SSA value into the object slot.
 fn emit_property_store(
     ctx: &mut FunctionContext<'_>,
@@ -1671,6 +1715,9 @@ fn emit_property_store(
     slot: &PropertySlot,
     base_reg: &str,
 ) -> Result<()> {
+    if slot.is_packed {
+        return emit_packed_field_store(ctx, value, slot, base_reg);
+    }
     match &slot.php_type {
         PhpType::Str => {
             let (ptr_reg, len_reg) = abi::string_result_regs(ctx.emitter);
@@ -1706,6 +1753,36 @@ fn emit_property_store(
         }
         _ => return Err(CodegenIrError::unsupported(format!(
             "property store for PHP type {:?}",
+            slot.php_type
+        ))),
+    }
+    Ok(())
+}
+
+/// Emits a compact packed-field store without writing object-property metadata words.
+fn emit_packed_field_store(
+    ctx: &mut FunctionContext<'_>,
+    value: crate::ir::ValueId,
+    slot: &PropertySlot,
+    base_reg: &str,
+) -> Result<()> {
+    match &slot.php_type {
+        PhpType::Float => {
+            let float_reg = abi::float_result_reg(ctx.emitter);
+            abi::emit_push_reg(ctx.emitter, base_reg);
+            ctx.load_value_to_reg(value, float_reg)?;
+            abi::emit_pop_reg(ctx.emitter, base_reg);
+            abi::emit_store_to_address(ctx.emitter, float_reg, base_reg, slot.offset);
+        }
+        PhpType::Bool | PhpType::Int | PhpType::Pointer(_) | PhpType::Resource(_) => {
+            let int_reg = abi::int_result_reg(ctx.emitter);
+            abi::emit_push_reg(ctx.emitter, base_reg);
+            ctx.load_value_to_reg(value, int_reg)?;
+            abi::emit_pop_reg(ctx.emitter, base_reg);
+            abi::emit_store_to_address(ctx.emitter, int_reg, base_reg, slot.offset);
+        }
+        _ => return Err(CodegenIrError::unsupported(format!(
+            "packed field store for PHP type {:?}",
             slot.php_type
         ))),
     }
