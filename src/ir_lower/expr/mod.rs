@@ -1849,18 +1849,18 @@ fn lower_args_with_signature(
     let Some(sig) = sig else {
         return lower_args(ctx, args);
     };
-    if let Some(operands) = lower_assoc_spread_only_args(ctx, sig, args) {
-        return operands;
-    }
     if crate::types::call_args::has_named_args(args) {
         return lower_named_args_with_signature(ctx, sig, args);
     }
-    let static_spread_args = if has_static_indexed_spread_args(args) {
-        Some(expand_static_indexed_spread_args(args))
+    let static_spread_args = if has_static_call_spread_args(args) {
+        Some(expand_static_call_spread_args(args))
     } else {
         None
     };
     let args = static_spread_args.as_deref().unwrap_or(args);
+    if let Some(operands) = lower_assoc_spread_only_args(ctx, sig, args) {
+        return operands;
+    }
     if args.iter().any(is_spread_arg) {
         return lower_args(ctx, args);
     }
@@ -2156,12 +2156,31 @@ fn is_spread_arg(arg: &Expr) -> bool {
     matches!(arg.kind, ExprKind::Spread(_))
 }
 
+/// Returns true when a call contains any static spread that EIR can flatten before lowering.
+fn has_static_call_spread_args(args: &[Expr]) -> bool {
+    has_static_indexed_spread_args(args) || has_static_assoc_spread_args(args)
+}
+
 /// Returns true when a call contains an indexed-array spread that EIR can flatten statically.
 fn has_static_indexed_spread_args(args: &[Expr]) -> bool {
     args.iter().any(|arg| match &arg.kind {
         ExprKind::Spread(inner) => matches!(inner.kind, ExprKind::ArrayLiteral(_)),
         _ => false,
     })
+}
+
+/// Returns true when a call contains an associative-array spread literal that can be flattened.
+fn has_static_assoc_spread_args(args: &[Expr]) -> bool {
+    args.iter().any(|arg| match &arg.kind {
+        ExprKind::Spread(inner) => matches!(inner.kind, ExprKind::ArrayLiteralAssoc(_)),
+        _ => false,
+    })
+}
+
+/// Flattens every statically-known call spread before EIR operand materialization.
+fn expand_static_call_spread_args(args: &[Expr]) -> Vec<Expr> {
+    let assoc_expanded = crate::types::call_args::expand_static_assoc_spread_args(args);
+    expand_static_indexed_spread_args(&assoc_expanded)
 }
 
 /// Flattens static indexed array spreads into positional call arguments.
