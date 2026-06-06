@@ -4651,9 +4651,10 @@ fn lower_closure_call(ctx: &mut LoweringContext<'_, '_>, var: &str, args: &[Expr
             return value;
         }
     }
-    let mut operands = vec![ctx.load_local(var, Some(expr.span)).value];
+    let callable = ctx.load_local(var, Some(expr.span));
+    let result_type = result_type.unwrap_or_else(|| dynamic_callable_result_type(ctx, callable.value, expr));
+    let mut operands = vec![callable.value];
     operands.extend(lower_args_with_signature(ctx, instance_signature.as_ref(), args));
-    let result_type = result_type.unwrap_or_else(|| fallback_expr_type(expr));
     ctx.emit_value(Op::ClosureCall, operands, None, result_type, Op::ClosureCall.default_effects(), Some(expr.span))
 }
 
@@ -4680,9 +4681,11 @@ fn lower_expr_call(ctx: &mut LoweringContext<'_, '_>, callee: &Expr, args: &[Exp
             return lower_static_method_call(ctx, &receiver, &method, args, expr);
         }
     }
-    let mut operands = vec![lower_expr(ctx, callee).value];
+    let lowered_callee = lower_expr(ctx, callee);
+    let result_type = dynamic_callable_result_type(ctx, lowered_callee.value, expr);
+    let mut operands = vec![lowered_callee.value];
     operands.extend(lower_args(ctx, args));
-    ctx.emit_value(Op::ExprCall, operands, None, fallback_expr_type(expr), Op::ExprCall.default_effects(), Some(expr.span))
+    ctx.emit_value(Op::ExprCall, operands, None, result_type, Op::ExprCall.default_effects(), Some(expr.span))
 }
 
 /// Lowers an expression call once the callable expression is already evaluated.
@@ -4692,16 +4695,29 @@ fn lower_expr_call_from_value(
     args: &[Expr],
     expr: &Expr,
 ) -> LoweredValue {
+    let result_type = dynamic_callable_result_type(ctx, callee.value, expr);
     let mut operands = vec![callee.value];
     operands.extend(lower_args(ctx, args));
     ctx.emit_value(
         Op::ExprCall,
         operands,
         None,
-        fallback_expr_type(expr),
+        result_type,
         Op::ExprCall.default_effects(),
         Some(expr.span),
     )
+}
+
+/// Returns the result storage type for an indirect callable with no static signature.
+fn dynamic_callable_result_type(
+    ctx: &LoweringContext<'_, '_>,
+    callable: ValueId,
+    expr: &Expr,
+) -> PhpType {
+    match ctx.builder.value_php_type(callable).codegen_repr() {
+        PhpType::Callable | PhpType::Str | PhpType::Mixed | PhpType::Union(_) => PhpType::Mixed,
+        _ => fallback_expr_type(expr),
+    }
 }
 
 /// Resolves an assignment-expression callee whose assigned value is a static callable.
