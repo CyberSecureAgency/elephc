@@ -6818,7 +6818,14 @@ fn lower_instanceof(
 ) -> LoweredValue {
     let mut operands = vec![lower_expr(ctx, value).value];
     let immediate = match target {
-        InstanceOfTarget::Name(name) => Some(Immediate::Data(ctx.intern_class_name(name.as_str()))),
+        InstanceOfTarget::Name(name) => {
+            if name.as_str().trim_start_matches('\\') == "static" && ctx.local_slots.contains_key("this") {
+                operands.push(ctx.load_local("this", Some(expr.span)).value);
+                None
+            } else {
+                Some(Immediate::Data(ctx.intern_class_name(&instanceof_target_name(ctx, name.as_str()))))
+            }
+        }
         InstanceOfTarget::Expr(expr) => {
             operands.push(lower_expr(ctx, expr).value);
             None
@@ -6826,6 +6833,20 @@ fn lower_instanceof(
     };
     let op = if immediate.is_some() { Op::InstanceOf } else { Op::InstanceOfDynamic };
     ctx.emit_value(op, operands, immediate, PhpType::Bool, op.default_effects(), Some(expr.span))
+}
+
+/// Resolves lexical `instanceof` target keywords to concrete class names when possible.
+fn instanceof_target_name(ctx: &LoweringContext<'_, '_>, name: &str) -> String {
+    match name.trim_start_matches('\\') {
+        "self" => ctx.current_class.clone().unwrap_or_else(|| name.to_string()),
+        "parent" => ctx
+            .current_class
+            .as_deref()
+            .and_then(|class_name| ctx.classes.get(class_name))
+            .and_then(|class_info| class_info.parent.clone())
+            .unwrap_or_else(|| name.to_string()),
+        _ => name.to_string(),
+    }
 }
 
 /// Coerces a value to integer storage before integer-only operations.
