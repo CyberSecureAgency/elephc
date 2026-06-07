@@ -16,6 +16,7 @@ use crate::ir::Instruction;
 use crate::types::PhpType;
 
 use super::super::super::context::FunctionContext;
+use super::super::iterators;
 use super::{expect_operand, store_if_result};
 
 const EXTS_PTR_SYMBOL: &str = "_spl_autoload_exts_ptr";
@@ -188,6 +189,35 @@ pub(super) fn lower_spl_object_hash(
     store_if_result(ctx, inst)
 }
 
+/// Lowers `iterator_count()` over arrays, `iterable`, and Traversable objects.
+pub(super) fn lower_iterator_count(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+) -> Result<()> {
+    super::ensure_arg_count(inst, "iterator_count", 1)?;
+    let source = expect_operand(inst, 0)?;
+    let source_ty = ctx.value_php_type(source)?.codegen_repr();
+    ctx.load_value_to_result(source)?;
+    match source_ty {
+        PhpType::Array(_) | PhpType::AssocArray { .. } => {
+            emit_count_loaded_array(ctx);
+        }
+        PhpType::Iterable => {
+            emit_count_loaded_iterable(ctx)?;
+        }
+        PhpType::Object(_) => {
+            emit_count_loaded_traversable_object(ctx)?;
+        }
+        other => {
+            return Err(CodegenIrError::unsupported(format!(
+                "iterator_count for PHP type {:?}",
+                other
+            )))
+        }
+    }
+    store_if_result(ctx, inst)
+}
+
 /// Loads the single object operand into the canonical integer result register.
 fn load_object_operand(
     ctx: &mut FunctionContext<'_>,
@@ -203,6 +233,205 @@ fn load_object_operand(
             name,
             other
         ))),
+    }
+}
+
+/// Reads the runtime length header from the loaded indexed array or hash pointer.
+fn emit_count_loaded_array(ctx: &mut FunctionContext<'_>) {
+    let result_reg = abi::int_result_reg(ctx.emitter);
+    abi::emit_load_from_address(ctx.emitter, result_reg, result_reg, 0);
+}
+
+/// Dispatches an `iterable` pointer to direct array/hash counts or object traversal.
+fn emit_count_loaded_iterable(ctx: &mut FunctionContext<'_>) -> Result<()> {
+    let indexed_case = ctx.next_label("iterator_count_iterable_indexed");
+    let hash_case = ctx.next_label("iterator_count_iterable_hash");
+    let object_case = ctx.next_label("iterator_count_iterable_object");
+    let done = ctx.next_label("iterator_count_iterable_done");
+
+    abi::emit_push_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));
+    abi::emit_call_label(ctx.emitter, "__rt_heap_kind");
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction("cmp x0, #2");                              // is the iterable an indexed array?
+            ctx.emitter.instruction(&format!("b.eq {}", indexed_case));         // count indexed-array entries directly
+            ctx.emitter.instruction("cmp x0, #3");                              // is the iterable an associative hash?
+            ctx.emitter.instruction(&format!("b.eq {}", hash_case));            // count hash entries directly
+            ctx.emitter.instruction("cmp x0, #4");                              // is the iterable an object?
+            ctx.emitter.instruction(&format!("b.eq {}", object_case));          // count a Traversable object through Iterator dispatch
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("cmp rax, 2");                              // is the iterable an indexed array?
+            ctx.emitter.instruction(&format!("je {}", indexed_case));           // count indexed-array entries directly
+            ctx.emitter.instruction("cmp rax, 3");                              // is the iterable an associative hash?
+            ctx.emitter.instruction(&format!("je {}", hash_case));              // count hash entries directly
+            ctx.emitter.instruction("cmp rax, 4");                              // is the iterable an object?
+            ctx.emitter.instruction(&format!("je {}", object_case));            // count a Traversable object through Iterator dispatch
+        }
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_iterable_unsupported_kind");
+
+    ctx.emitter.label(&object_case);
+    abi::emit_pop_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));
+    emit_count_loaded_traversable_object(ctx)?;
+    abi::emit_jump(ctx.emitter, &done);
+
+    ctx.emitter.label(&hash_case);
+    abi::emit_pop_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));
+    emit_count_loaded_array(ctx);
+    abi::emit_jump(ctx.emitter, &done);
+
+    ctx.emitter.label(&indexed_case);
+    abi::emit_pop_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));
+    emit_count_loaded_array(ctx);
+
+    ctx.emitter.label(&done);
+    Ok(())
+}
+
+/// Counts a loaded Traversable object by probing Iterator versus IteratorAggregate at runtime.
+fn emit_count_loaded_traversable_object(ctx: &mut FunctionContext<'_>) -> Result<()> {
+    let direct_case = ctx.next_label("iterator_count_object_iterator");
+    let aggregate_case = ctx.next_label("iterator_count_object_aggregate");
+    let done = ctx.next_label("iterator_count_object_done");
+
+    abi::emit_push_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));
+    emit_branch_if_saved_receiver_implements(ctx, "Iterator", &direct_case)?;
+    emit_branch_if_saved_receiver_implements(ctx, "IteratorAggregate", &aggregate_case)?;
+    abi::emit_pop_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));
+    abi::emit_call_label(ctx.emitter, "__rt_iterable_unsupported_kind");
+
+    ctx.emitter.label(&direct_case);
+    abi::emit_pop_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));
+    emit_count_loaded_iterator_object(ctx)?;
+    abi::emit_jump(ctx.emitter, &done);
+
+    ctx.emitter.label(&aggregate_case);
+    abi::emit_pop_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));
+    move_result_to_receiver_arg(ctx);
+    iterators::emit_interface_dispatch_call(ctx, "IteratorAggregate", "getiterator", None)?;
+    emit_count_loaded_iterator_object(ctx)?;
+
+    ctx.emitter.label(&done);
+    Ok(())
+}
+
+/// Counts a loaded Iterator object by driving rewind(), valid(), and next().
+fn emit_count_loaded_iterator_object(ctx: &mut FunctionContext<'_>) -> Result<()> {
+    let receiver_reg = abi::nested_call_reg(ctx.emitter);
+    ctx.emitter.instruction(&format!(
+        "mov {}, {}",
+        receiver_reg,
+        abi::int_result_reg(ctx.emitter)
+    )); // preserve iterator_count()'s receiver while initializing the count slot
+    abi::emit_load_int_immediate(ctx.emitter, abi::int_result_reg(ctx.emitter), 0);
+    abi::emit_push_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));
+    ctx.emitter.instruction(&format!(
+        "mov {}, {}",
+        abi::int_result_reg(ctx.emitter),
+        receiver_reg
+    )); // restore iterator_count()'s receiver for the Iterator loop
+
+    abi::emit_push_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));
+    reload_saved_iterator_receiver(ctx);
+    iterators::emit_interface_dispatch_call(ctx, "Iterator", "rewind", None)?;
+
+    let loop_start = ctx.next_label("iterator_count_start");
+    let loop_end = ctx.next_label("iterator_count_end");
+    ctx.emitter.label(&loop_start);
+
+    reload_saved_iterator_receiver(ctx);
+    iterators::emit_interface_dispatch_call(ctx, "Iterator", "valid", None)?;
+    emit_branch_if_invalid_iterator(ctx, &loop_end);
+
+    emit_increment_saved_count(ctx);
+    reload_saved_iterator_receiver(ctx);
+    iterators::emit_interface_dispatch_call(ctx, "Iterator", "next", None)?;
+    abi::emit_jump(ctx.emitter, &loop_start);
+
+    ctx.emitter.label(&loop_end);
+    abi::emit_release_temporary_stack(ctx.emitter, 16);
+    abi::emit_pop_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));
+    Ok(())
+}
+
+/// Branches when the saved Traversable receiver implements `interface_name`.
+fn emit_branch_if_saved_receiver_implements(
+    ctx: &mut FunctionContext<'_>,
+    interface_name: &str,
+    target_label: &str,
+) -> Result<()> {
+    let interface_id = ctx
+        .module
+        .interface_infos
+        .get(interface_name)
+        .ok_or_else(|| CodegenIrError::unsupported(format!("missing interface {}", interface_name)))?
+        .interface_id as i64;
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction("ldr x0, [sp]");                            // load the saved Traversable object for interface probing
+            abi::emit_load_int_immediate(ctx.emitter, "x1", interface_id);
+            abi::emit_load_int_immediate(ctx.emitter, "x2", 1);
+            abi::emit_call_label(ctx.emitter, "__rt_exception_matches");
+            ctx.emitter.instruction("cmp x0, #0");                              // did the runtime interface matcher succeed?
+            ctx.emitter.instruction(&format!("b.ne {}", target_label));         // branch to the matching iterator_count object path
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("mov rdi, QWORD PTR [rsp]");                // load the saved Traversable object for interface probing
+            abi::emit_load_int_immediate(ctx.emitter, "rsi", interface_id);
+            abi::emit_load_int_immediate(ctx.emitter, "rdx", 1);
+            abi::emit_call_label(ctx.emitter, "__rt_exception_matches");
+            ctx.emitter.instruction("test rax, rax");                           // did the runtime interface matcher succeed?
+            ctx.emitter.instruction(&format!("jne {}", target_label));          // branch to the matching iterator_count object path
+        }
+    }
+    Ok(())
+}
+
+/// Moves the loaded object result into the ABI receiver register for method dispatch.
+fn move_result_to_receiver_arg(ctx: &mut FunctionContext<'_>) {
+    if ctx.emitter.target.arch == Arch::X86_64 {
+        ctx.emitter.instruction("mov rdi, rax");                                // pass the object result as the interface method receiver
+    }
+}
+
+/// Reloads the saved iterator receiver from the top temporary stack slot.
+fn reload_saved_iterator_receiver(ctx: &mut FunctionContext<'_>) {
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction("ldr x0, [sp]");                            // reload iterator receiver before the next protocol call
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("mov rdi, QWORD PTR [rsp]");                // reload iterator receiver before the next protocol call
+        }
+    }
+}
+
+/// Branches out of the count loop when `valid()` returns false.
+fn emit_branch_if_invalid_iterator(ctx: &mut FunctionContext<'_>, loop_end: &str) {
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction("cmp x0, #0");                              // valid() false means the iterator is exhausted
+            ctx.emitter.instruction(&format!("b.eq {}", loop_end));             // exit iterator_count() loop when exhausted
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("test rax, rax");                           // valid() false means the iterator is exhausted
+            ctx.emitter.instruction(&format!("je {}", loop_end));               // exit iterator_count() loop when exhausted
+        }
+    }
+}
+
+/// Increments the saved iterator_count counter beneath the receiver slot.
+fn emit_increment_saved_count(ctx: &mut FunctionContext<'_>) {
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction("ldr x9, [sp, #16]");                       // load iterator_count()'s counter beneath the receiver slot
+            ctx.emitter.instruction("add x9, x9, #1");                          // count this valid iterator position
+            ctx.emitter.instruction("str x9, [sp, #16]");                       // persist the updated iterator_count() counter
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("add QWORD PTR [rsp + 16], 1");             // count this valid iterator position beneath the receiver slot
+        }
     }
 }
 
