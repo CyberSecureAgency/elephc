@@ -131,6 +131,27 @@ echo $y[0];
     assert_eq!(out, "12");
 }
 
+/// Tests that an instance method by-ref array write that grows storage publishes the
+/// reallocated array pointer back to the caller variable.
+#[test]
+fn test_instance_method_byref_array_param_storeback_after_growth() {
+    let out = compile_and_run(
+        r#"<?php
+class Foo {
+    public function grow(array &$a): void {
+        $a[2] = 7;
+    }
+}
+
+$x = [0];
+$foo = new Foo();
+$foo->grow($x);
+echo $x[2];
+"#,
+    );
+    assert_eq!(out, "7");
+}
+
 /// Tests an instance method captured as a first-class callable and invoked via an indirect
 /// variable call expression `$fn(...)`, verifying the receiver and arguments are bound
 /// correctly.

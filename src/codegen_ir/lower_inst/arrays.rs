@@ -983,7 +983,7 @@ fn convert_hash_union_result_to_mixed_if_needed(
     }
 }
 
-/// Returns the stack/local slot loaded by an array operand when it came from `load_local`.
+/// Returns the stack/local slot loaded by an array operand when it came from local storage.
 fn source_load_local_slot(
     ctx: &FunctionContext<'_>,
     value: ValueId,
@@ -997,7 +997,7 @@ fn source_load_local_slot(
     let Some(inst_ref) = ctx.function.instruction(inst) else {
         return Err(CodegenIrError::missing_entry("instruction", inst.as_raw()));
     };
-    if inst_ref.op == Op::LoadLocal {
+    if matches!(inst_ref.op, Op::LoadLocal | Op::LoadRefCell) {
         if let Some(Immediate::LocalSlot(slot)) = inst_ref.immediate {
             return Ok(Some(slot));
         }

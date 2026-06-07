@@ -3042,6 +3042,68 @@ fn lower_args(ctx: &mut LoweringContext<'_, '_>, args: &[Expr]) -> Vec<crate::ir
     args.iter().map(|arg| lower_expr(ctx, arg).value).collect()
 }
 
+/// Lowers one argument while applying by-reference storage normalization from a signature.
+fn lower_arg_with_signature(
+    ctx: &mut LoweringContext<'_, '_>,
+    sig: &FunctionSig,
+    index: usize,
+    arg: &Expr,
+) -> crate::ir::ValueId {
+    if let Some(value) = lower_by_ref_array_arg_with_signature(ctx, sig, index, arg) {
+        return value;
+    }
+    lower_expr(ctx, arg).value
+}
+
+/// Widens local indexed-array storage before passing it to an `array<mixed>` ref parameter.
+fn lower_by_ref_array_arg_with_signature(
+    ctx: &mut LoweringContext<'_, '_>,
+    sig: &FunctionSig,
+    index: usize,
+    arg: &Expr,
+) -> Option<crate::ir::ValueId> {
+    if !sig.ref_params.get(index).copied().unwrap_or(false) {
+        return None;
+    }
+    let (_, param_ty) = sig.params.get(index)?;
+    let ExprKind::Variable(name) = &arg.kind else {
+        return None;
+    };
+    if !by_ref_array_arg_needs_mixed_storage(ctx, name, param_ty) {
+        return None;
+    }
+    let array_ty = PhpType::Array(Box::new(PhpType::Mixed));
+    let local = ctx.load_local(name, Some(arg.span));
+    let converted = ctx.emit_value(
+        Op::ArrayToMixed,
+        vec![local.value],
+        None,
+        array_ty.clone(),
+        Op::ArrayToMixed.default_effects(),
+        Some(arg.span),
+    );
+    ctx.store_mutated_local(name, converted, array_ty, Some(arg.span));
+    Some(ctx.load_local(name, Some(arg.span)).value)
+}
+
+/// Returns true when a local array must be converted before a by-reference call.
+fn by_ref_array_arg_needs_mixed_storage(
+    ctx: &LoweringContext<'_, '_>,
+    name: &str,
+    param_ty: &PhpType,
+) -> bool {
+    let PhpType::Array(param_elem) = param_ty.codegen_repr() else {
+        return false;
+    };
+    if param_elem.codegen_repr() != PhpType::Mixed {
+        return false;
+    }
+    let PhpType::Array(local_elem) = ctx.local_type(name).codegen_repr() else {
+        return false;
+    };
+    local_elem.codegen_repr() != PhpType::Mixed
+}
+
 /// Lowers positional call arguments with omitted optional defaults and variadic tail packing.
 fn lower_args_with_signature(
     ctx: &mut LoweringContext<'_, '_>,
@@ -3076,11 +3138,16 @@ fn lower_args_with_signature(
         args.len()
     };
     if sig.variadic.is_none() && fixed_arg_count >= regular_param_count {
-        return lower_args(ctx, args);
+        return args
+            .iter()
+            .enumerate()
+            .map(|(index, arg)| lower_arg_with_signature(ctx, sig, index, arg))
+            .collect();
     }
     let mut operands: Vec<crate::ir::ValueId> = args[..fixed_arg_count]
         .iter()
-        .map(|arg| lower_expr(ctx, arg).value)
+        .enumerate()
+        .map(|(index, arg)| lower_arg_with_signature(ctx, sig, index, arg))
         .collect();
     for idx in fixed_arg_count..regular_param_count {
         let Some(Some(default)) = sig.defaults.get(idx) else {
@@ -3123,8 +3190,8 @@ fn lower_positional_spread_args_with_signature(
     }
 
     let mut operands = Vec::with_capacity(regular_param_count);
-    for arg in &args[..spread_idx] {
-        operands.push(lower_expr(ctx, arg).value);
+    for (index, arg) in args[..spread_idx].iter().enumerate() {
+        operands.push(lower_arg_with_signature(ctx, sig, index, arg));
     }
 
     let spread_type = indexed_spread_source_type(ctx, inner)?;
