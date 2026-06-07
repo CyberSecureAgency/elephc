@@ -230,6 +230,25 @@ pub(super) fn lower_float_to_string(
     store_if_result(ctx, inst)
 }
 
+/// Lowers a resource-to-string conversion through PHP's display string helper.
+pub(super) fn lower_resource_to_string(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+) -> Result<()> {
+    let value = expect_operand(inst, 0)?;
+    let raw_ty = ctx.raw_value_php_type(value)?;
+    ctx.load_value_to_result(value)?;
+    if !matches!(raw_ty, PhpType::Resource(_)) {
+        return Err(CodegenIrError::unsupported(format!(
+            "{} for PHP type {:?}",
+            inst.op.name(),
+            raw_ty
+        )));
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_resource_to_string");
+    store_if_result(ctx, inst)
+}
+
 /// Lowers an integer-like-to-string conversion, including PHP bool/null string rules.
 pub(super) fn lower_int_like_to_string(
     ctx: &mut FunctionContext<'_>,

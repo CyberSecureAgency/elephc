@@ -25,7 +25,7 @@ pub(super) fn lower_print_r(ctx: &mut FunctionContext<'_>, inst: &Instruction) -
     ctx.emitter.blank();
     ctx.emitter.comment("print_r()");
     let value = expect_operand(inst, 0)?;
-    let ty = ctx.load_value_to_result(value)?.codegen_repr();
+    let ty = loaded_php_semantic_type(ctx, value)?;
     emit_print_r_loaded_value(ctx, &ty)?;
     store_if_result(ctx, inst)
 }
@@ -36,7 +36,7 @@ pub(super) fn lower_var_dump(ctx: &mut FunctionContext<'_>, inst: &Instruction) 
     ctx.emitter.blank();
     ctx.emitter.comment("var_dump()");
     let value = expect_operand(inst, 0)?;
-    let ty = ctx.load_value_to_result(value)?.codegen_repr();
+    let ty = loaded_php_semantic_type(ctx, value)?;
     match &ty {
         PhpType::Int => emit_var_dump_int(ctx),
         PhpType::Float => emit_var_dump_float(ctx),
@@ -57,6 +57,20 @@ pub(super) fn lower_var_dump(ctx: &mut FunctionContext<'_>, inst: &Instruction) 
         ))),
     }?;
     store_if_result(ctx, inst)
+}
+
+/// Loads a value and returns the PHP type needed for user-visible debug output.
+fn loaded_php_semantic_type(
+    ctx: &mut FunctionContext<'_>,
+    value: crate::ir::ValueId,
+) -> Result<PhpType> {
+    let loaded_ty = ctx.load_value_to_result(value)?.codegen_repr();
+    let raw_ty = ctx.raw_value_php_type(value)?;
+    if matches!(raw_ty, PhpType::Resource(_)) {
+        Ok(raw_ty)
+    } else {
+        Ok(loaded_ty)
+    }
 }
 
 /// Emits `print_r` output for the value currently loaded in result register(s).

@@ -2846,6 +2846,9 @@ fn lower_builtin_call_args(
     sig: Option<&FunctionSig>,
     args: &[Expr],
 ) -> Vec<crate::ir::ValueId> {
+    if is_empty_static_indexed_spread_arg(args) && zero_arity_call_signature(name, sig) {
+        return Vec::new();
+    }
     match php_symbol_key(name.trim_start_matches('\\')).as_str() {
         "date" => lower_date_args(ctx, sig, args),
         "json_decode" => lower_json_decode_args(ctx, sig, args),
@@ -2863,6 +2866,32 @@ fn lower_builtin_call_args(
         }
         _ => lower_args_with_signature(ctx, sig, args),
     }
+}
+
+/// Returns true when the call uses exactly one static empty indexed spread.
+fn is_empty_static_indexed_spread_arg(args: &[Expr]) -> bool {
+    let [arg] = args else {
+        return false;
+    };
+    let ExprKind::Spread(inner) = &arg.kind else {
+        return false;
+    };
+    matches!(&inner.kind, ExprKind::ArrayLiteral(items) if items.is_empty())
+}
+
+/// Returns true when the callable signature accepts no visible operands.
+fn zero_arity_call_signature(name: &str, sig: Option<&FunctionSig>) -> bool {
+    if let Some(sig) = sig {
+        return is_zero_arity_signature(sig);
+    }
+    builtin_call_signature(name)
+        .as_ref()
+        .is_some_and(is_zero_arity_signature)
+}
+
+/// Returns true when a signature has no regular or variadic parameters.
+fn is_zero_arity_signature(sig: &FunctionSig) -> bool {
+    crate::types::call_args::regular_param_count(sig) == 0 && sig.variadic.is_none()
 }
 
 /// Lowers `settype($local, "type")` and updates subsequent local type facts.
@@ -7388,6 +7417,16 @@ fn coerce_to_string_at_span(
     value: LoweredValue,
     span: Option<crate::span::Span>,
 ) -> LoweredValue {
+    if matches!(ctx.builder.value_php_type(value.value), PhpType::Resource(_)) {
+        return ctx.emit_value(
+            Op::ResourceToStr,
+            vec![value.value],
+            None,
+            PhpType::Str,
+            Op::ResourceToStr.default_effects(),
+            span,
+        );
+    }
     match value.ir_type {
         IrType::Str => value,
         IrType::I64 => ctx.emit_value(Op::IToStr, vec![value.value], None, PhpType::Str, Op::IToStr.default_effects(), span),

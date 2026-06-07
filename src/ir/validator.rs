@@ -366,9 +366,10 @@ fn validate_opcode_rules(function: &Function, inst_id: InstId, inst: &Instructio
         ICmp => check_binary(function, inst_id, inst, IrType::I64, "I64"),
         FCmp => check_binary(function, inst_id, inst, IrType::F64, "F64"),
         IToF | IToStr => check_unary(function, inst_id, inst, IrType::I64, "I64"),
+        ResourceToStr => check_unary(function, inst_id, inst, IrType::I64, "I64 resource"),
         FToI | FToStr => check_unary(function, inst_id, inst, IrType::F64, "F64"),
         BoolToStr => check_unary(function, inst_id, inst, IrType::I64, "I64 bool"),
-        StrToI | StrToF | StrToNumber | StrLen | StrPersist | ResourceToStr => {
+        StrToI | StrToF | StrToNumber | StrLen | StrPersist => {
             check_unary(function, inst_id, inst, IrType::Str, "Str")
         }
         StrConcat | StrEq | StrCmp | StrLooseEq => check_binary(function, inst_id, inst, IrType::Str, "Str"),

@@ -116,6 +116,7 @@ pub(super) fn lower_instruction(ctx: &mut FunctionContext<'_>, inst_id: InstId) 
         Op::IToStr => strings::lower_int_like_to_string(ctx, &inst),
         Op::FToStr => strings::lower_float_to_string(ctx, &inst),
         Op::BoolToStr => strings::lower_int_like_to_string(ctx, &inst),
+        Op::ResourceToStr => strings::lower_resource_to_string(ctx, &inst),
         Op::StrToI => conversions::lower_str_to_int(ctx, &inst),
         Op::StrToF => conversions::lower_str_to_float(ctx, &inst),
         Op::Cast => conversions::lower_cast(ctx, &inst),

@@ -1406,7 +1406,7 @@ fn emit_unbox_stream_or_type_error(ctx: &mut FunctionContext<'_>, function_name:
             ctx.emitter.instruction(&format!("je {}", ok_label));               // continue only when the boxed value is a resource
         }
     }
-    emit_stream_type_error_and_exit(ctx, function_name);
+    emit_stream_type_error(ctx, function_name);
     ctx.emitter.label(&ok_label);
     match ctx.emitter.target.arch {
         Arch::AArch64 => {
@@ -1418,25 +1418,109 @@ fn emit_unbox_stream_or_type_error(ctx: &mut FunctionContext<'_>, function_name:
     }
 }
 
-/// Emits a fatal stream TypeError diagnostic and terminates with exit status 1.
-fn emit_stream_type_error_and_exit(ctx: &mut FunctionContext<'_>, function_name: &str) {
+/// Dispatches a stream TypeError to the concrete PHP type name from the Mixed tag.
+fn emit_stream_type_error(ctx: &mut FunctionContext<'_>, function_name: &str) {
+    let int_label = ctx.next_label("stream_type_error_int");
+    let string_label = ctx.next_label("stream_type_error_string");
+    let float_label = ctx.next_label("stream_type_error_float");
+    let bool_label = ctx.next_label("stream_type_error_bool");
+    let false_label = ctx.next_label("stream_type_error_false");
+    let true_label = ctx.next_label("stream_type_error_true");
+    let array_label = ctx.next_label("stream_type_error_array");
+    let object_label = ctx.next_label("stream_type_error_object");
+    let null_label = ctx.next_label("stream_type_error_null");
+    let unknown_label = ctx.next_label("stream_type_error_unknown");
+
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction("cmp x0, #0");                              // did the bad stream value unwrap to an integer?
+            ctx.emitter.instruction(&format!("b.eq {}", int_label));            // report PHP's int-given stream TypeError
+            ctx.emitter.instruction("cmp x0, #1");                              // did the bad stream value unwrap to a string?
+            ctx.emitter.instruction(&format!("b.eq {}", string_label));         // report PHP's string-given stream TypeError
+            ctx.emitter.instruction("cmp x0, #2");                              // did the bad stream value unwrap to a float?
+            ctx.emitter.instruction(&format!("b.eq {}", float_label));          // report PHP's float-given stream TypeError
+            ctx.emitter.instruction("cmp x0, #3");                              // did the bad stream value unwrap to a boolean?
+            ctx.emitter.instruction(&format!("b.eq {}", bool_label));           // split boolean payloads into true/false diagnostics
+            ctx.emitter.instruction("cmp x0, #4");                              // did the bad stream value unwrap to an indexed array?
+            ctx.emitter.instruction(&format!("b.eq {}", array_label));          // report PHP's array-given stream TypeError
+            ctx.emitter.instruction("cmp x0, #5");                              // did the bad stream value unwrap to an associative array?
+            ctx.emitter.instruction(&format!("b.eq {}", array_label));          // associative arrays share PHP's array-given wording
+            ctx.emitter.instruction("cmp x0, #6");                              // did the bad stream value unwrap to an object?
+            ctx.emitter.instruction(&format!("b.eq {}", object_label));         // report PHP's object-given stream TypeError
+            ctx.emitter.instruction("cmp x0, #8");                              // did the bad stream value unwrap to null?
+            ctx.emitter.instruction(&format!("b.eq {}", null_label));           // report PHP's null-given stream TypeError
+            ctx.emitter.instruction(&format!("b {}", unknown_label));           // fall back for unsupported boxed payload tags
+            ctx.emitter.label(&bool_label);
+            ctx.emitter.instruction("cmp x1, #0");                              // is the unboxed boolean payload false?
+            ctx.emitter.instruction(&format!("b.eq {}", false_label));          // report PHP's false-given stream TypeError
+            ctx.emitter.instruction(&format!("b {}", true_label));              // report PHP's true-given stream TypeError
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("cmp rax, 0");                              // did the bad stream value unwrap to an integer?
+            ctx.emitter.instruction(&format!("je {}", int_label));              // report PHP's int-given stream TypeError
+            ctx.emitter.instruction("cmp rax, 1");                              // did the bad stream value unwrap to a string?
+            ctx.emitter.instruction(&format!("je {}", string_label));           // report PHP's string-given stream TypeError
+            ctx.emitter.instruction("cmp rax, 2");                              // did the bad stream value unwrap to a float?
+            ctx.emitter.instruction(&format!("je {}", float_label));            // report PHP's float-given stream TypeError
+            ctx.emitter.instruction("cmp rax, 3");                              // did the bad stream value unwrap to a boolean?
+            ctx.emitter.instruction(&format!("je {}", bool_label));             // split boolean payloads into true/false diagnostics
+            ctx.emitter.instruction("cmp rax, 4");                              // did the bad stream value unwrap to an indexed array?
+            ctx.emitter.instruction(&format!("je {}", array_label));            // report PHP's array-given stream TypeError
+            ctx.emitter.instruction("cmp rax, 5");                              // did the bad stream value unwrap to an associative array?
+            ctx.emitter.instruction(&format!("je {}", array_label));            // associative arrays share PHP's array-given wording
+            ctx.emitter.instruction("cmp rax, 6");                              // did the bad stream value unwrap to an object?
+            ctx.emitter.instruction(&format!("je {}", object_label));           // report PHP's object-given stream TypeError
+            ctx.emitter.instruction("cmp rax, 8");                              // did the bad stream value unwrap to null?
+            ctx.emitter.instruction(&format!("je {}", null_label));             // report PHP's null-given stream TypeError
+            ctx.emitter.instruction(&format!("jmp {}", unknown_label));         // fall back for unsupported boxed payload tags
+            ctx.emitter.label(&bool_label);
+            ctx.emitter.instruction("test rdi, rdi");                           // is the unboxed boolean payload false?
+            ctx.emitter.instruction(&format!("je {}", false_label));            // report PHP's false-given stream TypeError
+            ctx.emitter.instruction(&format!("jmp {}", true_label));            // report PHP's true-given stream TypeError
+        }
+    }
+
+    emit_stream_type_error_case(ctx, function_name, "int", &int_label);
+    emit_stream_type_error_case(ctx, function_name, "string", &string_label);
+    emit_stream_type_error_case(ctx, function_name, "float", &float_label);
+    emit_stream_type_error_case(ctx, function_name, "false", &false_label);
+    emit_stream_type_error_case(ctx, function_name, "true", &true_label);
+    emit_stream_type_error_case(ctx, function_name, "array", &array_label);
+    emit_stream_type_error_case(ctx, function_name, "object", &object_label);
+    emit_stream_type_error_case(ctx, function_name, "null", &null_label);
+    emit_stream_type_error_case(ctx, function_name, "unknown", &unknown_label);
+}
+
+/// Emits one concrete stream TypeError branch and terminates the process.
+fn emit_stream_type_error_case(
+    ctx: &mut FunctionContext<'_>,
+    function_name: &str,
+    given_type: &str,
+    case_label: &str,
+) {
+    ctx.emitter.label(case_label);
     let message = format!(
-        "Fatal error: Uncaught TypeError: {}(): Argument #1 ($stream) must be of type resource, non-resource given\n",
-        function_name
+        "Fatal error: Uncaught TypeError: {}(): Argument #1 ($stream) must be of type resource, {} given\n",
+        function_name, given_type
     );
     let (label, len) = ctx.data.add_string(message.as_bytes());
+    emit_stream_type_error_and_exit(ctx, &label, len);
+}
+
+/// Emits a fatal stream TypeError diagnostic and terminates with exit status 1.
+fn emit_stream_type_error_and_exit(ctx: &mut FunctionContext<'_>, label: &str, len: usize) {
     match ctx.emitter.target.arch {
         Arch::AArch64 => {
             ctx.emitter.instruction("mov x0, #2");                              // write the stream TypeError diagnostic to stderr
-            ctx.emitter.adrp("x1", &label);                                     // load the diagnostic string page
-            ctx.emitter.add_lo12("x1", "x1", &label);                           // resolve the diagnostic string address within the page
+            ctx.emitter.adrp("x1", label);                                      // load the diagnostic string page
+            ctx.emitter.add_lo12("x1", "x1", label);                            // resolve the diagnostic string address within the page
             ctx.emitter.instruction(&format!("mov x2, #{}", len));              // pass the diagnostic byte length to write()
             ctx.emitter.syscall(4);
             ctx.emitter.instruction("mov x0, #1");                              // exit with status 1 after reporting the TypeError
             ctx.emitter.syscall(1);
         }
         Arch::X86_64 => {
-            abi::emit_symbol_address(ctx.emitter, "rsi", &label);
+            abi::emit_symbol_address(ctx.emitter, "rsi", label);
             ctx.emitter.instruction(&format!("mov edx, {}", len));              // pass the diagnostic byte length to write()
             ctx.emitter.instruction("mov edi, 2");                              // write the stream TypeError diagnostic to stderr
             ctx.emitter.instruction("mov eax, 1");                              // select Linux x86_64 write syscall

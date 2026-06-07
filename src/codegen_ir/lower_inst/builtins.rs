@@ -923,7 +923,7 @@ fn lower_boolval(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()
 fn lower_empty(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     ensure_arg_count(inst, "empty", 1)?;
     let value = expect_operand(inst, 0)?;
-    match ctx.value_php_type(value)?.codegen_repr() {
+    match ctx.raw_value_php_type(value)? {
         PhpType::Int | PhpType::Bool => {
             ctx.load_value_to_result(value)?;
             emit_int_result_zero_bool(ctx);
