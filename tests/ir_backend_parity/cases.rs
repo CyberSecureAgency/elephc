@@ -67,6 +67,21 @@ echo count($result) . ":" . count($items[0]);
     );
 }
 
+/// Verifies direct and boxed object payloads retain their runtime class name in `var_dump()`.
+#[test]
+fn parity_var_dump_mixed_object_prints_class_name() {
+    assert_backend_parity(
+        "var_dump_mixed_object_class_name",
+        r#"<?php
+class Box {}
+var_dump(new Box());
+$map = ["i" => 1, "o" => new Box()];
+var_dump($map["o"]);
+"#,
+        &[],
+    );
+}
+
 /// Verifies later indexed-array foreach states do not clobber source pointers at large frame offsets.
 #[test]
 fn parity_repeated_indexed_foreach() {

@@ -8,7 +8,8 @@
 //! Key details:
 //! - Output must match the legacy backend for the supported concrete types.
 //! - Mixed dispatch follows the runtime tag/payload contract from `__rt_mixed_unbox`.
-//! - Iterable and full object class-name dispatch stay explicit unsupported work.
+//! - Object dumps read the runtime class id from the object header and map it
+//!   through the EIR module's class metadata.
 
 use crate::codegen::abi;
 use crate::codegen::platform::Arch;
@@ -50,6 +51,7 @@ pub(super) fn lower_var_dump(ctx: &mut FunctionContext<'_>, inst: &Instruction) 
         PhpType::Array(_) | PhpType::AssocArray { .. } | PhpType::Iterable => {
             emit_var_dump_array(ctx)
         }
+        PhpType::Object(_) => emit_var_dump_dynamic_object(ctx),
         PhpType::Mixed | PhpType::Union(_) => emit_var_dump_mixed(ctx),
         other => Err(CodegenIrError::unsupported(format!(
             "var_dump for PHP type {:?}",
@@ -160,7 +162,8 @@ fn emit_var_dump_mixed(ctx: &mut FunctionContext<'_>) -> Result<()> {
     abi::emit_jump(ctx.emitter, &done);
 
     ctx.emitter.label(&object_case);
-    emit_write_literal(ctx, b"object\n");
+    move_mixed_payload_to_int_result(ctx);
+    emit_var_dump_dynamic_object(ctx)?;
     abi::emit_jump(ctx.emitter, &done);
 
     ctx.emitter.label(&null_case);
@@ -285,6 +288,65 @@ fn emit_var_dump_array(ctx: &mut FunctionContext<'_>) -> Result<()> {
     Ok(())
 }
 
+/// Emits `var_dump` output for an object pointer in the integer result register.
+fn emit_var_dump_dynamic_object(ctx: &mut FunctionContext<'_>) -> Result<()> {
+    let mut classes: Vec<_> = ctx
+        .module
+        .class_infos
+        .iter()
+        .map(|(class_name, class_info)| (class_name.clone(), class_info.class_id))
+        .collect();
+    classes.sort_by_key(|(_, class_id)| *class_id);
+    let mut cases = Vec::with_capacity(classes.len());
+    let null_label = ctx.next_label("var_dump_object_null");
+    let fallback = ctx.next_label("var_dump_object_fallback");
+    let done = ctx.next_label("var_dump_object_done");
+
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction(&format!("cbz x0, {}", null_label));        // print NULL for defensive null object payloads
+            ctx.emitter.instruction("ldr x9, [x0]");                            // load the object's runtime class id from its header
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("test rax, rax");                           // check for defensive null object payloads
+            ctx.emitter.instruction(&format!("je {}", null_label));             // print NULL for defensive null object payloads
+            ctx.emitter.instruction("mov r11, QWORD PTR [rax]");                // load the object's runtime class id from its header
+        }
+    }
+    for (class_name, class_id) in classes {
+        let case = ctx.next_label("var_dump_object_case");
+        cases.push((case.clone(), class_name));
+        match ctx.emitter.target.arch {
+            Arch::AArch64 => {
+                ctx.emitter.instruction(&format!("cmp x9, #{}", class_id));     // compare the runtime class id against a known class
+            }
+            Arch::X86_64 => {
+                ctx.emitter.instruction(&format!("cmp r11, {}", class_id));     // compare the runtime class id against a known class
+            }
+        }
+        emit_branch_if_eq(ctx, &case);
+    }
+    abi::emit_jump(ctx.emitter, &fallback);
+    for (case, class_name) in cases {
+        ctx.emitter.label(&case);
+        emit_var_dump_object_name(ctx, &class_name);
+        abi::emit_jump(ctx.emitter, &done);
+    }
+    ctx.emitter.label(&null_label);
+    emit_var_dump_null(ctx);
+    abi::emit_jump(ctx.emitter, &done);
+    ctx.emitter.label(&fallback);
+    emit_write_literal(ctx, b"object\n");
+    ctx.emitter.label(&done);
+    Ok(())
+}
+
+/// Emits `object(ClassName)` output for a known runtime class name.
+fn emit_var_dump_object_name(ctx: &mut FunctionContext<'_>, class_name: &str) {
+    let text = format!("object({})\n", class_name);
+    emit_write_literal(ctx, text.as_bytes());
+}
+
 /// Writes a compile-time literal byte string to stdout.
 fn emit_write_literal(ctx: &mut FunctionContext<'_>, bytes: &[u8]) {
     let (label, len) = ctx.data.add_string(bytes);
@@ -391,6 +453,18 @@ fn emit_branch_if_ne(ctx: &mut FunctionContext<'_>, label: &str) {
         }
         Arch::X86_64 => {
             ctx.emitter.instruction(&format!("jne {}", label));                 // branch when the compared register payloads are different
+        }
+    }
+}
+
+/// Emits a branch when the previous comparison found equal values.
+fn emit_branch_if_eq(ctx: &mut FunctionContext<'_>, label: &str) {
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction(&format!("b.eq {}", label));                // branch when the compared register payloads are equal
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction(&format!("je {}", label));                  // branch when the compared register payloads are equal
         }
     }
 }
