@@ -82,6 +82,22 @@ var_dump($map["o"]);
     );
 }
 
+/// Verifies discarded boxed `strpos()` comparison results are released by both backends.
+#[test]
+fn parity_strpos_strict_compare_releases_mixed_result() {
+    assert_backend_gc_clean(
+        "strpos_strict_compare_releases_mixed_result",
+        r#"<?php
+for ($i = 0; $i < 10; $i++) {
+    if (strpos("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n", "\r\n\r\n") === false) {
+        echo "bad";
+    }
+}
+echo "done";
+"#,
+    );
+}
+
 /// Verifies later indexed-array foreach states do not clobber source pointers at large frame offsets.
 #[test]
 fn parity_repeated_indexed_foreach() {
@@ -1871,8 +1887,41 @@ fn assert_backend_parity(name: &str, source: &str, args: &[&str]) {
     assert_eq!(ir, legacy, "IR backend stdout differed from legacy for {name}");
 }
 
+/// Compiles/runs both backends with GC stats and requires each to leave no live heap blocks.
+fn assert_backend_gc_clean(name: &str, source: &str) {
+    let legacy = compile_and_run_backend_capture(name, source, &[], Backend::Legacy, &["--gc-stats"]);
+    let ir = compile_and_run_backend_capture(name, source, &[], Backend::Ir, &["--gc-stats"]);
+    assert_eq!(
+        ir.0, legacy.0,
+        "IR backend stdout differed from legacy for {name}"
+    );
+    let legacy_stats = parse_gc_stats(&legacy.1);
+    let ir_stats = parse_gc_stats(&ir.1);
+    assert_eq!(
+        legacy_stats.0, legacy_stats.1,
+        "legacy backend leaked heap blocks for {name}: {}",
+        legacy.1
+    );
+    assert_eq!(
+        ir_stats.0, ir_stats.1,
+        "IR backend leaked heap blocks for {name}: {}",
+        ir.1
+    );
+}
+
 /// Compiles a PHP snippet with one backend, runs the produced binary, and returns stdout.
 fn compile_and_run_backend(name: &str, source: &str, args: &[&str], backend: Backend) -> String {
+    compile_and_run_backend_capture(name, source, args, backend, &[]).0
+}
+
+/// Compiles a PHP snippet with one backend, runs it, and returns stdout/stderr.
+fn compile_and_run_backend_capture(
+    name: &str,
+    source: &str,
+    args: &[&str],
+    backend: Backend,
+    compiler_args: &[&str],
+) -> (String, String) {
     let dir = temp_case_dir(name, backend);
     fs::create_dir_all(&dir).expect("failed to create parity test directory");
     let php_path = dir.join("main.php");
@@ -1883,6 +1932,7 @@ fn compile_and_run_backend(name: &str, source: &str, args: &[&str], backend: Bac
         .env("XDG_CACHE_HOME", dir.join("cache-root"))
         .current_dir(&dir);
     backend.add_compile_flags(&mut compile_command);
+    compile_command.args(compiler_args);
     let compile = compile_command
         .arg(&php_path)
         .output()
@@ -1907,8 +1957,30 @@ fn compile_and_run_backend(name: &str, source: &str, args: &[&str], backend: Bac
     );
 
     let stdout = String::from_utf8(run.stdout).expect("parity binary stdout should be utf8");
+    let stderr = String::from_utf8(run.stderr).expect("parity binary stderr should be utf8");
     let _ = fs::remove_dir_all(&dir);
-    stdout
+    (stdout, stderr)
+}
+
+/// Parses one `GC: allocs=N frees=N` line from a parity binary's stderr.
+fn parse_gc_stats(stderr: &str) -> (u64, u64) {
+    let line = stderr
+        .lines()
+        .find(|line| line.starts_with("GC: allocs="))
+        .unwrap_or_else(|| panic!("missing gc stats line: {stderr}"));
+    let allocs = line
+        .split("allocs=")
+        .nth(1)
+        .and_then(|rest| rest.split_whitespace().next())
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or_else(|| panic!("missing alloc count: {stderr}"));
+    let frees = line
+        .split("frees=")
+        .nth(1)
+        .and_then(|rest| rest.split_whitespace().next())
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or_else(|| panic!("missing free count: {stderr}"));
+    (allocs, frees)
 }
 
 /// Builds a unique temporary directory path for one backend run.

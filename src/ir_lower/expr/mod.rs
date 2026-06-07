@@ -568,14 +568,30 @@ fn lower_compare(
         None
     };
     let php_type = if matches!(op, BinOp::Spaceship) { PhpType::Int } else { PhpType::Bool };
-    ctx.emit_value(
+    let result = ctx.emit_value(
         opcode,
         vec![lhs.value, rhs.value],
         immediate,
         php_type,
         opcode.default_effects(),
         Some(expr.span),
-    )
+    );
+    release_binary_operand_temporary(ctx, lhs, expr.span);
+    if rhs.value != lhs.value {
+        release_binary_operand_temporary(ctx, rhs, expr.span);
+    }
+    result
+}
+
+/// Releases an owning binary-operator operand once the consuming opcode has read it.
+fn release_binary_operand_temporary(
+    ctx: &mut LoweringContext<'_, '_>,
+    operand: LoweredValue,
+    span: Span,
+) {
+    if ctx.value_is_owning_temporary(operand) {
+        crate::ir_lower::ownership::release_if_owned(ctx, operand, Some(span));
+    }
 }
 
 /// Maps an AST comparison operator to an EIR predicate.
