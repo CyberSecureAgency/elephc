@@ -6563,12 +6563,21 @@ fn lower_method_call(
     if op == Op::MethodCall && value_is_nullable(ctx, object.value) {
         return lower_nullable_regular_method_call(ctx, object, method, args, expr);
     }
-    let result_type = method_call_result_type(ctx, object.value, method, op, expr);
+    let magic_args;
+    let (dispatch_method, args) = if let Some(args) =
+        magic_call_dispatch_args(ctx, object.value, method, args, object_expr.span)
+    {
+        magic_args = args;
+        ("__call", magic_args.as_slice())
+    } else {
+        (method, args)
+    };
+    let result_type = method_call_result_type(ctx, object.value, dispatch_method, op, expr);
     let mut operands = vec![object.value];
-    let sig = method_call_argument_signature(ctx, object_expr, object.value, method);
+    let sig = method_call_argument_signature(ctx, object_expr, object.value, dispatch_method);
     let arg_values = lower_args_with_signature(ctx, sig.as_ref(), args);
     operands.extend(arg_values.iter().copied());
-    let data = ctx.intern_string(method);
+    let data = ctx.intern_string(dispatch_method);
     let call = ctx.emit_value(
         op,
         operands,
@@ -6579,6 +6588,29 @@ fn lower_method_call(
     );
     release_owned_call_arg_temporaries(ctx, &arg_values, expr.span);
     call
+}
+
+/// Builds synthetic `__call` arguments when a class lacks the requested method.
+fn magic_call_dispatch_args(
+    ctx: &LoweringContext<'_, '_>,
+    object: crate::ir::ValueId,
+    method: &str,
+    args: &[Expr],
+    span: Span,
+) -> Option<Vec<Expr>> {
+    if method_signature(ctx, object, method).is_some() {
+        return None;
+    }
+    let object_ty = ctx.builder.value_php_type(object);
+    let Some((class_name, _)) = singular_object_class(&object_ty) else {
+        return None;
+    };
+    let normalized = class_name.trim_start_matches('\\');
+    class_method_signature(ctx, normalized, &php_symbol_key("__call"))?;
+    Some(vec![
+        Expr::new(ExprKind::StringLiteral(method.to_string()), span),
+        Expr::new(ExprKind::ArrayLiteral(args.to_vec()), span),
+    ])
 }
 
 /// Returns the signature to use for method-call argument normalization.
@@ -6750,12 +6782,20 @@ fn lower_method_call_with_receiver(
     op: Op,
     expr: &Expr,
 ) -> LoweredValue {
-    let result_type = method_call_result_type(ctx, object.value, method, op, expr);
+    let magic_args;
+    let (dispatch_method, args) =
+        if let Some(args) = magic_call_dispatch_args(ctx, object.value, method, args, expr.span) {
+            magic_args = args;
+            ("__call", magic_args.as_slice())
+        } else {
+            (method, args)
+        };
+    let result_type = method_call_result_type(ctx, object.value, dispatch_method, op, expr);
     let mut operands = vec![object.value];
-    let sig = method_signature(ctx, object.value, method);
+    let sig = method_signature(ctx, object.value, dispatch_method);
     let arg_values = lower_args_with_signature(ctx, sig.as_ref(), args);
     operands.extend(arg_values.iter().copied());
-    let data = ctx.intern_string(method);
+    let data = ctx.intern_string(dispatch_method);
     let call = ctx.emit_value(
         op,
         operands,
