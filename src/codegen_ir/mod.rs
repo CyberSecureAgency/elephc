@@ -272,9 +272,34 @@ fn runtime_referenced_class_names(module: &Module) -> HashSet<String> {
             names.insert(class_name);
         }
     }
+    seed_runtime_throwable_class_names(module, &mut names);
     seed_builtin_reflection_class_names(module, &mut names);
     expand_class_dependencies(&mut names, &module.class_infos);
     names
+}
+
+/// Adds builtin throwable classes that runtime helpers can materialize without EIR class references.
+fn seed_runtime_throwable_class_names(module: &Module, names: &mut HashSet<String>) {
+    if names.contains("Fiber") && module.class_infos.contains_key("FiberError") {
+        names.insert("FiberError".to_string());
+    }
+    for class_name in [
+        "Throwable",
+        "Error",
+        "TypeError",
+        "ValueError",
+        "Exception",
+        "LogicException",
+        "RuntimeException",
+        "JsonException",
+        "InvalidArgumentException",
+        "OutOfBoundsException",
+        "OutOfRangeException",
+    ] {
+        if module.class_infos.contains_key(class_name) {
+            names.insert(class_name.to_string());
+        }
+    }
 }
 
 /// Adds builtin reflection classes whose objects can be materialized by metadata helpers.
