@@ -11,9 +11,10 @@
 //!   start arguments into the concrete callback ABI.
 //! - Descriptor-backed callables share a generic wrapper that calls the descriptor
 //!   invoker with an indexed Mixed argument array.
-//! - Captures remain descriptor-owned; this phase only passes visible callback parameters.
+//! - Closure captures remain descriptor-owned and are passed as hidden wrapper
+//!   arguments loaded from runtime descriptor capture slots.
 
-use crate::ir::{Function, Immediate, Instruction, Module, Op, ValueDef};
+use crate::ir::{Function, FunctionParam, Immediate, Instruction, Module, Op, ValueDef, ValueId};
 use crate::names::php_symbol_key;
 use crate::types::{FunctionSig, PhpType};
 
@@ -27,6 +28,12 @@ pub(crate) struct FiberWrapper {
     pub(crate) use_descriptor_invoker: bool,
 }
 
+/// Closure body plus capture count recovered from a `closure_new` Fiber operand.
+struct ClosureFiberTarget<'a> {
+    closure: &'a Function,
+    capture_count: usize,
+}
+
 /// Returns the wrapper needed when `new Fiber(...)` receives a supported callable operand.
 pub(crate) fn wrapper_for_fiber_new(
     module: &Module,
@@ -37,8 +44,8 @@ pub(crate) fn wrapper_for_fiber_new(
         return None;
     }
     let callable = inst.operands.first().copied()?;
-    if let Some(closure) = closure_literal_operand(module, function, callable) {
-        return Some(wrapper_for_closure(closure));
+    if let Some(target) = closure_literal_operand(module, function, callable) {
+        return wrapper_for_closure(target.closure, target.capture_count);
     }
     if callable_operand_uses_descriptor_invoker(module, function, callable) {
         return Some(descriptor_invoker_wrapper());
@@ -65,8 +72,8 @@ fn is_fiber_object_new(module: &Module, inst: &Instruction) -> bool {
 fn closure_literal_operand<'a>(
     module: &'a Module,
     function: &Function,
-    callable: crate::ir::ValueId,
-) -> Option<&'a Function> {
+    callable: ValueId,
+) -> Option<ClosureFiberTarget<'a>> {
     let value = function.value(callable)?;
     let ValueDef::Instruction {
         inst: callable_inst,
@@ -83,17 +90,21 @@ fn closure_literal_operand<'a>(
         return None;
     };
     let closure_name = module.data.strings.get(data.as_raw() as usize)?;
-    module
+    let closure = module
         .closures
         .iter()
-        .find(|closure| closure.name == *closure_name)
+        .find(|closure| closure.name == *closure_name)?;
+    Some(ClosureFiberTarget {
+        closure,
+        capture_count: callable_inst.operands.len(),
+    })
 }
 
 /// Returns true when a Fiber callable operand runs through the descriptor-invoker wrapper.
 fn callable_operand_uses_descriptor_invoker(
     module: &Module,
     function: &Function,
-    callable: crate::ir::ValueId,
+    callable: ValueId,
 ) -> bool {
     function
         .value(callable)
@@ -109,14 +120,18 @@ fn callable_operand_uses_descriptor_invoker(
 }
 
 /// Builds a deferred Fiber wrapper description from the concrete EIR closure signature.
-fn wrapper_for_closure(closure: &Function) -> FiberWrapper {
-    FiberWrapper {
-        label: fiber_wrapper_label(&closure.name),
-        sig: signature_from_closure(closure),
-        visible_param_count: closure.params.len(),
-        hidden_arg_types: Vec::new(),
-        use_descriptor_invoker: false,
+fn wrapper_for_closure(closure: &Function, capture_count: usize) -> Option<FiberWrapper> {
+    if capture_count > closure.params.len() {
+        return None;
     }
+    let visible_param_count = closure.params.len() - capture_count;
+    Some(FiberWrapper {
+        label: fiber_wrapper_label(&closure.name),
+        sig: signature_from_closure(closure, visible_param_count),
+        visible_param_count,
+        hidden_arg_types: hidden_capture_arg_types_from_closure(closure, capture_count),
+        use_descriptor_invoker: false,
+    })
 }
 
 /// Builds the shared Fiber wrapper that delegates descriptor callables to their invoker slot.
@@ -149,28 +164,67 @@ fn descriptor_invoker_placeholder_sig() -> FunctionSig {
     }
 }
 
-/// Reconstructs callable signature metadata from a lowered EIR closure function.
-fn signature_from_closure(closure: &Function) -> FunctionSig {
+/// Reconstructs caller-visible signature metadata from a lowered EIR closure function.
+fn signature_from_closure(closure: &Function, visible_param_count: usize) -> FunctionSig {
     FunctionSig {
         params: closure
             .params
             .iter()
+            .take(visible_param_count)
             .map(|param| (param.name.clone(), param.php_type.clone()))
             .collect(),
-        defaults: closure.params.iter().map(|_| None).collect(),
+        defaults: closure
+            .params
+            .iter()
+            .take(visible_param_count)
+            .map(|_| None)
+            .collect(),
         return_type: closure.return_php_type.clone(),
         declared_return: !matches!(closure.return_php_type, PhpType::Mixed),
-        ref_params: closure.params.iter().map(|param| param.by_ref).collect(),
+        ref_params: closure
+            .params
+            .iter()
+            .take(visible_param_count)
+            .map(|param| param.by_ref)
+            .collect(),
         declared_params: closure
             .params
             .iter()
+            .take(visible_param_count)
             .map(|param| !matches!(param.php_type, PhpType::Mixed))
             .collect(),
         variadic: closure
             .params
             .iter()
+            .take(visible_param_count)
             .find(|param| param.variadic)
             .map(|param| param.name.clone()),
         deprecation: None,
+    }
+}
+
+/// Returns hidden argument types for closure captures stored in descriptor capture slots.
+fn hidden_capture_arg_types_from_closure(
+    closure: &Function,
+    capture_count: usize,
+) -> Vec<PhpType> {
+    closure
+        .params
+        .iter()
+        .rev()
+        .take(capture_count)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .map(hidden_capture_arg_type)
+        .collect()
+}
+
+/// Maps by-reference captures to pointer-sized hidden arguments.
+fn hidden_capture_arg_type(param: &FunctionParam) -> PhpType {
+    if param.by_ref {
+        PhpType::Int
+    } else {
+        param.php_type.clone()
     }
 }

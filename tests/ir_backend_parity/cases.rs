@@ -209,6 +209,75 @@ echo $f->getReturn();
     );
 }
 
+/// Verifies core Fiber lifecycle and error behavior match the legacy backend.
+#[test]
+fn parity_fiber_lifecycle_and_errors() {
+    assert_backend_parity(
+        "fiber_get_current_inside",
+        r#"<?php
+$f = new Fiber(function(): void {
+    $cur = Fiber::getCurrent();
+    echo ($cur instanceof Fiber) ? "fiber" : "not-fiber";
+    echo "/";
+    echo $cur->isRunning() ? "running" : "not-running";
+});
+$f->start();
+"#,
+        &[],
+    );
+    assert_backend_parity(
+        "fiber_full_suspend_resume_cycle",
+        r#"<?php
+$f = new Fiber(function(): void {
+    $a = Fiber::suspend("yield-1");
+    echo "[got " . $a . "]";
+    $b = Fiber::suspend("yield-2");
+    echo "[got " . $b . "]";
+    Fiber::suspend("yield-3");
+});
+echo $f->start();
+echo "|";
+echo $f->resume("resume-A");
+echo "|";
+echo $f->resume("resume-B");
+"#,
+        &[],
+    );
+    assert_backend_parity(
+        "fiber_capture_string_survives_suspend",
+        r#"<?php
+$ctx = "stable";
+$f = new Fiber(function() use ($ctx): void {
+    Fiber::suspend(0);
+    echo "after=" . $ctx;
+});
+$f->start();
+$f->resume(0);
+"#,
+        &[],
+    );
+    assert_backend_parity(
+        "fiber_error_start_twice",
+        r#"<?php
+$f = new Fiber(function(): void {});
+$f->start();
+try { $f->start(); echo "no-throw"; }
+catch (FiberError $e) { echo $e->getMessage(); }
+"#,
+        &[],
+    );
+    assert_backend_parity(
+        "fiber_error_get_return_before_terminated",
+        r#"<?php
+$f = new Fiber(function(): void { Fiber::suspend(0); });
+$f->start();
+try { $f->getReturn(); echo "no-throw"; }
+catch (FiberError $e) { echo $e->getMessage(); }
+"#,
+        &[],
+    );
+}
+
 /// Verifies recent static callable fixes match the legacy backend behavior.
 #[test]
 fn parity_static_callable_checks() {

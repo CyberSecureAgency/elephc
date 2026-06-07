@@ -2022,7 +2022,12 @@ fn lower_method_call(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Resul
     if let Some((class_name, true)) = objects::nullable_object_receiver_class(ctx, object)? {
         return lower_nullable_receiver_method_call(ctx, inst, object, &class_name, &method_name);
     }
-    let object_ty = ctx.value_php_type(object)?;
+    let object_ty = ctx.value_php_type(object)?.codegen_repr();
+    if matches!(object_ty, PhpType::Mixed | PhpType::Union(_)) {
+        if let Some(state) = fiber_state_predicate_method(&method_name) {
+            return lower_mixed_fiber_state_predicate(ctx, inst, object, &method_name, state);
+        }
+    }
     let PhpType::Object(class_name) = object_ty else {
         return Err(CodegenIrError::unsupported(format!(
             "method call receiver for PHP type {:?}",
@@ -2963,6 +2968,78 @@ fn lower_fiber_state_predicate(
 ) -> Result<()> {
     let receiver_arg = abi::int_arg_reg_name(ctx.emitter.target, 0);
     ctx.load_value_to_reg(object, receiver_arg)?;
+    emit_fiber_state_predicate_call(ctx, inst, state)
+}
+
+/// Lowers Fiber state predicates when the receiver is boxed as `Mixed`.
+fn lower_mixed_fiber_state_predicate(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+    object: ValueId,
+    method_name: &str,
+    state: FiberStatePredicate,
+) -> Result<()> {
+    if inst.operands.len() != 1 {
+        return Err(CodegenIrError::unsupported(format!(
+            "Fiber mixed state predicate {} with EIR arguments",
+            method_name
+        )));
+    }
+    emit_mixed_fiber_receiver_to_arg(ctx, object, method_name)?;
+    emit_fiber_state_predicate_call(ctx, inst, state)
+}
+
+/// Unboxes a `Mixed` receiver and leaves a verified `Fiber*` in argument register 0.
+fn emit_mixed_fiber_receiver_to_arg(
+    ctx: &mut FunctionContext<'_>,
+    object: ValueId,
+    method_name: &str,
+) -> Result<()> {
+    let object_label = ctx.next_label("mixed_fiber_state_object");
+    let fiber_label = ctx.next_label("mixed_fiber_state_fiber");
+    let class_id = ctx
+        .module
+        .class_infos
+        .get("Fiber")
+        .map(|class| class.class_id)
+        .ok_or_else(|| CodegenIrError::unsupported("mixed Fiber predicate without Fiber metadata"))?;
+    let receiver_arg = abi::int_arg_reg_name(ctx.emitter.target, 0);
+    ctx.load_value_to_reg(object, abi::int_result_reg(ctx.emitter))?;
+    abi::emit_call_label(ctx.emitter, "__rt_mixed_unbox");
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction("cmp x0, #6");                              // continue only when the Mixed receiver holds an object
+            ctx.emitter.instruction(&format!("b.eq {}", object_label));         // inspect the object class before calling the Fiber predicate
+            emit_method_call_on_null_fatal(ctx, method_name);
+            ctx.emitter.label(&object_label);
+            ctx.emitter.instruction("ldr x9, [x1]");                            // load the receiver object's runtime class id
+            ctx.emitter.instruction(&format!("cmp x9, #{}", class_id));         // verify the boxed object is a Fiber instance
+            ctx.emitter.instruction(&format!("b.eq {}", fiber_label));          // call the Fiber predicate only for real Fiber receivers
+            emit_method_call_on_null_fatal(ctx, method_name);
+            ctx.emitter.label(&fiber_label);
+            ctx.emitter.instruction(&format!("mov {}, x1", receiver_arg));      // pass the unboxed Fiber object to the runtime predicate
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("cmp rax, 6");                              // continue only when the Mixed receiver holds an object
+            ctx.emitter.instruction(&format!("je {}", object_label));           // inspect the object class before calling the Fiber predicate
+            emit_method_call_on_null_fatal(ctx, method_name);
+            ctx.emitter.label(&object_label);
+            ctx.emitter.instruction("mov r10, QWORD PTR [rdi]");                // load the receiver object's runtime class id
+            ctx.emitter.instruction(&format!("cmp r10, {}", class_id));         // verify the boxed object is a Fiber instance
+            ctx.emitter.instruction(&format!("je {}", fiber_label));            // call the Fiber predicate only for real Fiber receivers
+            emit_method_call_on_null_fatal(ctx, method_name);
+            ctx.emitter.label(&fiber_label);
+        }
+    }
+    Ok(())
+}
+
+/// Calls the shared runtime state predicate helper for a receiver already in arg0.
+fn emit_fiber_state_predicate_call(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+    state: FiberStatePredicate,
+) -> Result<()> {
     abi::emit_load_int_immediate(
         ctx.emitter,
         abi::int_arg_reg_name(ctx.emitter.target, 1),
@@ -3034,6 +3111,11 @@ fn fiber_state_predicate(
     if php_symbol_key(class_name.trim_start_matches('\\')) != "fiber" {
         return None;
     }
+    fiber_state_predicate_method(method_name)
+}
+
+/// Resolves a Fiber state predicate solely from the method name.
+fn fiber_state_predicate_method(method_name: &str) -> Option<FiberStatePredicate> {
     match php_symbol_key(method_name).as_str() {
         "isstarted" => Some(FiberStatePredicate::Started),
         "isrunning" => Some(FiberStatePredicate::Running),
