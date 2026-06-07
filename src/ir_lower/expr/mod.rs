@@ -1396,10 +1396,33 @@ fn lower_static_is_callable(
             let is_callable = static_array_callable_is_callable(ctx, items)?;
             Some(emit_bool_literal(ctx, is_callable, Some(expr.span)))
         }
-        ExprKind::Variable(name) if ctx.static_callable_local(name).is_some() => {
-            Some(emit_bool_literal(ctx, true, Some(expr.span)))
-        }
+        ExprKind::Variable(name) => ctx.static_callable_local(name).map(|target| {
+            emit_bool_literal(
+                ctx,
+                static_callable_binding_is_callable(ctx, &target),
+                Some(expr.span),
+            )
+        }),
         _ => None,
+    }
+}
+
+/// Returns whether straight-line callable-local metadata represents a public callable.
+fn static_callable_binding_is_callable(
+    ctx: &LoweringContext<'_, '_>,
+    target: &StaticCallableBinding,
+) -> bool {
+    match target {
+        StaticCallableBinding::StaticMethod { receiver, method }
+        | StaticCallableBinding::StaticMethodDescriptor { receiver, method } => {
+            static_receiver_class_name(ctx, receiver)
+                .is_some_and(|class_name| static_method_callback_is_callable(ctx, &class_name, method))
+        }
+        StaticCallableBinding::UserFunction(_)
+        | StaticCallableBinding::ExternFunction(_)
+        | StaticCallableBinding::Builtin(_)
+        | StaticCallableBinding::Closure { .. }
+        | StaticCallableBinding::InstanceMethod { .. } => true,
     }
 }
 
@@ -2440,10 +2463,7 @@ fn static_method_callback_is_callable(
     if !class_info.static_methods.contains_key(&method_key) {
         return false;
     }
-    matches!(
-        class_info.static_method_visibilities.get(&method_key),
-        Some(Visibility::Public) | None
-    )
+    class_info.static_method_visibilities.get(&method_key) == Some(&Visibility::Public)
 }
 
 /// Converts a static `call_user_func_array()` argument array into call arguments.

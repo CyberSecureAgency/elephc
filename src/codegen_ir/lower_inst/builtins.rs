@@ -644,31 +644,80 @@ fn lower_class_like_exists(
     store_if_result(ctx, inst)
 }
 
-/// Lowers `is_callable(value)` for static strings and concrete scalar types.
+/// Lowers `is_callable(value)` through static lookup or runtime callable-shape helpers.
 fn lower_is_callable(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     ensure_arg_count(inst, "is_callable", 1)?;
     let value = expect_operand(inst, 0)?;
-    match ctx.value_php_type(value)? {
+    match ctx.value_php_type(value)?.codegen_repr() {
         PhpType::Callable => emit_static_bool(ctx, true),
         PhpType::Str => {
-            let function_name = const_string_operand(ctx, value)?;
-            if let Some((class_name, method_name)) = function_name.rsplit_once("::") {
-                emit_static_bool(ctx, static_method_string_is_callable(ctx, class_name, method_name));
+            if let Ok(function_name) = const_string_operand(ctx, value) {
+                if let Some((class_name, method_name)) = function_name.rsplit_once("::") {
+                    emit_static_bool(ctx, static_method_string_is_callable(ctx, class_name, method_name));
+                } else {
+                    emit_static_bool(ctx, callable_name_exists(ctx, &function_name));
+                }
             } else {
-                emit_static_bool(ctx, callable_name_exists(ctx, &function_name));
+                ctx.load_value_to_result(value)?;
+                emit_is_callable_dynamic_string_lookup(ctx);
             }
         }
-        PhpType::Int | PhpType::Bool | PhpType::Float | PhpType::Void | PhpType::Never => {
-            emit_static_bool(ctx, false);
+        PhpType::Array(_) => {
+            ctx.load_value_to_result(value)?;
+            emit_is_callable_pointer_lookup(ctx, "__rt_is_callable_array");
         }
-        other => {
-            return Err(CodegenIrError::unsupported(format!(
-                "is_callable for PHP type {:?}",
-                other
-            )))
+        PhpType::AssocArray { .. } => {
+            ctx.load_value_to_result(value)?;
+            emit_is_callable_pointer_lookup(ctx, "__rt_is_callable_assoc");
+        }
+        PhpType::Object(_) => {
+            ctx.load_value_to_result(value)?;
+            emit_is_callable_pointer_lookup(ctx, "__rt_is_callable_object");
+        }
+        PhpType::Mixed | PhpType::Union(_) => {
+            ctx.load_value_to_result(value)?;
+            emit_is_callable_pointer_lookup(ctx, "__rt_is_callable_mixed");
+        }
+        PhpType::Iterable => {
+            ctx.load_value_to_result(value)?;
+            emit_is_callable_pointer_lookup(ctx, "__rt_is_callable_heap");
+        }
+        PhpType::Int
+        | PhpType::Bool
+        | PhpType::Float
+        | PhpType::Void
+        | PhpType::Never
+        | PhpType::Pointer(_)
+        | PhpType::Buffer(_)
+        | PhpType::Packed(_)
+        | PhpType::Resource(_) => {
+            emit_static_bool(ctx, false);
         }
     }
     store_if_result(ctx, inst)
+}
+
+/// Calls the runtime `is_callable` helper for pointer-shaped values already in result regs.
+fn emit_is_callable_pointer_lookup(ctx: &mut FunctionContext<'_>, label: &str) {
+    if ctx.emitter.target.arch == Arch::X86_64 {
+        ctx.emitter.instruction("mov rdi, rax");                                // move pointer-shaped value into helper argument 0
+    }
+    abi::emit_call_label(ctx.emitter, label);
+}
+
+/// Calls the runtime `is_callable` string-name helper for a loaded dynamic string value.
+fn emit_is_callable_dynamic_string_lookup(ctx: &mut FunctionContext<'_>) {
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction("mov x0, x1");                              // move string pointer into helper argument 0
+            ctx.emitter.instruction("mov x1, x2");                              // move string length into helper argument 1
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("mov rdi, rax");                            // move string pointer into helper argument 0
+            ctx.emitter.instruction("mov rsi, rdx");                            // move string length into helper argument 1
+        }
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_is_callable_string");
 }
 
 /// Returns true when a static `Class::method` string names a public static method.
@@ -687,10 +736,7 @@ fn static_method_string_is_callable(
     if !class_info.static_methods.contains_key(&method_key) {
         return false;
     }
-    matches!(
-        class_info.static_method_visibilities.get(&method_key),
-        Some(Visibility::Public) | None
-    )
+    class_info.static_method_visibilities.get(&method_key) == Some(&Visibility::Public)
 }
 
 /// Emits a runtime check for whether an include-loaded function variant is active.

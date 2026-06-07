@@ -97,9 +97,12 @@ fn finalize_user_asm(module: &Module, mut emitter: Emitter, data: DataSection) -
     let data_output = data.emit();
     let empty_globals = HashSet::<String>::new();
     let empty_static_vars = HashMap::<(String, String), PhpType>::new();
-    let empty_functions = HashMap::<String, FunctionSig>::new();
-    let empty_variant_groups = HashSet::<String>::new();
-    let allowed_class_names = runtime_referenced_class_names(module);
+    let user_functions = runtime_user_function_sigs(module);
+    let function_variant_groups = runtime_function_variant_groups(module);
+    let mut allowed_class_names = runtime_referenced_class_names(module);
+    if module_uses_dynamic_callable_lookup(module) {
+        allowed_class_names.extend(module.class_infos.keys().cloned());
+    }
     let runtime_interfaces = runtime_referenced_interfaces(module, &allowed_class_names);
     let runtime_classes = runtime_class_infos(module);
     crate::codegen::interface_wrappers::emit_interface_return_wrappers(
@@ -112,8 +115,8 @@ fn finalize_user_asm(module: &Module, mut emitter: Emitter, data: DataSection) -
     let user_data = runtime::emit_runtime_data_user(
         &empty_globals,
         &empty_static_vars,
-        &empty_functions,
-        &empty_variant_groups,
+        &user_functions,
+        &function_variant_groups,
         &runtime_interfaces,
         &runtime_classes,
         &module.enum_infos,
@@ -128,6 +131,106 @@ fn finalize_user_asm(module: &Module, mut emitter: Emitter, data: DataSection) -
     user_asm.push('\n');
     user_asm.push_str(&user_data);
     user_asm
+}
+
+/// Returns user functions visible to runtime callable-name metadata.
+fn runtime_user_function_sigs(module: &Module) -> HashMap<String, FunctionSig> {
+    let mut functions = module
+        .functions
+        .iter()
+        .map(|function| (function.name.clone(), ir_function_sig(function)))
+        .collect::<HashMap<_, _>>();
+    for group in function_variants::collect_dispatch_groups(module) {
+        if let Some(function) = function_variants::variant_callee_for_group(module, &group.name) {
+            functions
+                .entry(group.name.clone())
+                .or_insert_with(|| ir_function_sig(function));
+        }
+    }
+    functions
+}
+
+/// Reconstructs callable metadata from an EIR function when no source signature is attached.
+fn ir_function_sig(function: &Function) -> FunctionSig {
+    if let Some(signature) = &function.signature {
+        return signature.clone();
+    }
+    FunctionSig {
+        params: function
+            .params
+            .iter()
+            .map(|param| (param.name.clone(), param.php_type.clone()))
+            .collect(),
+        defaults: vec![None; function.params.len()],
+        return_type: function.return_php_type.clone(),
+        declared_return: false,
+        ref_params: function.params.iter().map(|param| param.by_ref).collect(),
+        declared_params: vec![true; function.params.len()],
+        variadic: function
+            .params
+            .iter()
+            .find(|param| param.variadic)
+            .map(|param| param.name.clone()),
+        deprecation: None,
+    }
+}
+
+/// Returns include-variant public names that runtime callable lookup must check dynamically.
+fn runtime_function_variant_groups(module: &Module) -> HashSet<String> {
+    function_variants::collect_dispatch_groups(module)
+        .into_iter()
+        .map(|group| group.name)
+        .collect()
+}
+
+/// Returns true when runtime callable helpers need broad user callable metadata.
+fn module_uses_dynamic_callable_lookup(module: &Module) -> bool {
+    module
+        .functions
+        .iter()
+        .chain(module.class_methods.iter())
+        .chain(module.closures.iter())
+        .chain(module.fiber_wrappers.iter())
+        .chain(module.callback_wrappers.iter())
+        .chain(module.extern_callback_trampolines.iter())
+        .chain(module.runtime_callable_invokers.iter())
+        .any(|function| function_uses_dynamic_callable_lookup(module, function))
+}
+
+/// Returns true when one function calls `is_callable()` on a runtime-shaped value.
+fn function_uses_dynamic_callable_lookup(module: &Module, function: &Function) -> bool {
+    function.instructions.iter().any(|inst| {
+        if !is_dynamic_callable_lookup_builtin(module, inst) || inst.operands.is_empty() {
+            return false;
+        }
+        let Some(value) = function.value(inst.operands[0]) else {
+            return false;
+        };
+        matches!(
+            value.php_type.codegen_repr(),
+            PhpType::Str
+                | PhpType::Array(_)
+                | PhpType::AssocArray { .. }
+                | PhpType::Object(_)
+                | PhpType::Mixed
+                | PhpType::Union(_)
+                | PhpType::Iterable
+        )
+    })
+}
+
+/// Returns true for an EIR builtin instruction that calls PHP `is_callable()`.
+fn is_dynamic_callable_lookup_builtin(module: &Module, inst: &crate::ir::Instruction) -> bool {
+    if inst.op != Op::BuiltinCall {
+        return false;
+    }
+    let Some(Immediate::Data(data)) = inst.immediate else {
+        return false;
+    };
+    let Some(name) = module.data.function_names.get(data.as_raw() as usize) else {
+        return false;
+    };
+    crate::names::php_symbol_key(name.trim_start_matches('\\')) == "is_callable"
 }
 
 /// Emits method-symbol wrappers for runtime-backed intrinsic class methods.
