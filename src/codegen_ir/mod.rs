@@ -28,7 +28,9 @@ use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 use crate::codegen::runtime;
+use crate::intrinsics::IntrinsicCall;
 use crate::ir::{Function, Immediate, Module, Op};
+use crate::names::{method_symbol, static_method_symbol};
 use crate::types::{ClassInfo, FunctionSig, InterfaceInfo, PhpType};
 
 /// Error returned by the Phase 04 IR backend while a required lowering path is missing.
@@ -106,6 +108,7 @@ fn finalize_user_asm(module: &Module, mut emitter: Emitter, data: DataSection) -
         &runtime_classes,
         Some(&allowed_class_names),
     );
+    emit_intrinsic_method_wrappers(module, &mut emitter);
     let user_data = runtime::emit_runtime_data_user(
         &empty_globals,
         &empty_static_vars,
@@ -125,6 +128,92 @@ fn finalize_user_asm(module: &Module, mut emitter: Emitter, data: DataSection) -
     user_asm.push('\n');
     user_asm.push_str(&user_data);
     user_asm
+}
+
+/// Emits method-symbol wrappers for runtime-backed intrinsic class methods.
+fn emit_intrinsic_method_wrappers(module: &Module, emitter: &mut Emitter) {
+    for wrapper in intrinsic_method_wrapper_specs(module) {
+        let symbol = if wrapper.is_static {
+            static_method_symbol(&wrapper.class_name, &wrapper.method_key)
+        } else {
+            method_symbol(&wrapper.class_name, &wrapper.method_key)
+        };
+        emitter.label(&symbol);
+        match emitter.target.arch {
+            Arch::AArch64 => {
+                emitter.instruction(&format!("b {}", wrapper.helper));          // tail-call the runtime helper using the method ABI arguments
+            }
+            Arch::X86_64 => {
+                emitter.instruction(&format!("jmp {}", wrapper.helper));        // tail-call the runtime helper using the method ABI arguments
+            }
+        }
+    }
+}
+
+/// Runtime-backed method wrapper that should be emitted as a PHP method symbol.
+struct IntrinsicMethodWrapper {
+    class_name: String,
+    method_key: String,
+    helper: &'static str,
+    is_static: bool,
+}
+
+/// Returns intrinsic instance/static methods that need method-symbol wrappers.
+fn intrinsic_method_wrapper_specs(module: &Module) -> Vec<IntrinsicMethodWrapper> {
+    let eir_methods = eir_class_method_keys(module);
+    let mut wrappers = Vec::new();
+    for (class_name, class_info) in &module.class_infos {
+        for method_key in class_info.methods.keys() {
+            let impl_class = class_info
+                .method_impl_classes
+                .get(method_key)
+                .map(String::as_str)
+                .unwrap_or(class_name.as_str());
+            if eir_methods.contains(&(impl_class.to_string(), method_key.clone(), false)) {
+                continue;
+            }
+            if let Some(helper) = IntrinsicCall::instance_method(impl_class, method_key)
+                .and_then(|intrinsic| intrinsic.runtime_helper())
+            {
+                wrappers.push(IntrinsicMethodWrapper {
+                    class_name: impl_class.to_string(),
+                    method_key: method_key.clone(),
+                    helper,
+                    is_static: false,
+                });
+            }
+        }
+        for method_key in class_info.static_methods.keys() {
+            let impl_class = class_info
+                .static_method_impl_classes
+                .get(method_key)
+                .map(String::as_str)
+                .unwrap_or(class_name.as_str());
+            if eir_methods.contains(&(impl_class.to_string(), method_key.clone(), true)) {
+                continue;
+            }
+            if let Some(helper) = IntrinsicCall::static_method(impl_class, method_key)
+                .and_then(|intrinsic| intrinsic.runtime_helper())
+            {
+                wrappers.push(IntrinsicMethodWrapper {
+                    class_name: impl_class.to_string(),
+                    method_key: method_key.clone(),
+                    helper,
+                    is_static: true,
+                });
+            }
+        }
+    }
+    wrappers.sort_by(|left, right| {
+        (&left.class_name, &left.method_key, left.is_static)
+            .cmp(&(&right.class_name, &right.method_key, right.is_static))
+    });
+    wrappers.dedup_by(|left, right| {
+        left.class_name == right.class_name
+            && left.method_key == right.method_key
+            && left.is_static == right.is_static
+    });
+    wrappers
 }
 
 /// Returns class metadata trimmed to method symbols emitted by the EIR backend.
@@ -308,6 +397,15 @@ fn class_metadata_supported_for_dynamic_instanceof(
 
 /// Returns class-method symbols emitted by the EIR backend.
 fn emitted_class_method_keys(module: &Module) -> HashSet<(String, String, bool)> {
+    let mut keys = eir_class_method_keys(module);
+    for wrapper in intrinsic_method_wrapper_specs(module) {
+        keys.insert((wrapper.class_name, wrapper.method_key, wrapper.is_static));
+    }
+    keys
+}
+
+/// Returns class-method symbols backed by actual lowered EIR functions.
+fn eir_class_method_keys(module: &Module) -> HashSet<(String, String, bool)> {
     module
         .class_methods
         .iter()

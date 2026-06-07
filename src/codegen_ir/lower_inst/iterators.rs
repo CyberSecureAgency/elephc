@@ -915,7 +915,11 @@ fn emit_object_iterator_method_call(
     let overflow_bytes = abi::materialize_outgoing_args(ctx.emitter, &assignments);
     let caller_stack_pad_bytes = direct_call_stack_pad_bytes(ctx, overflow_bytes);
     abi::emit_reserve_temporary_stack(ctx.emitter, caller_stack_pad_bytes);
-    abi::emit_call_label(ctx.emitter, &method_symbol(&target.impl_class, &method_key));
+    if let Some(helper) = target.runtime_helper {
+        abi::emit_call_label(ctx.emitter, helper);
+    } else {
+        abi::emit_call_label(ctx.emitter, &method_symbol(&target.impl_class, &method_key));
+    }
     abi::emit_release_temporary_stack(ctx.emitter, caller_stack_pad_bytes);
     abi::emit_release_temporary_stack(ctx.emitter, overflow_bytes);
     Ok(target.return_type)
@@ -1130,17 +1134,9 @@ fn object_iterator_method_target(
         .get(method_key)
         .cloned()
         .unwrap_or_else(|| normalized.to_string());
-    let emitted = ctx.module.class_methods.iter().any(|function| {
-        !function.flags.is_static
-            && function
-                .name
-                .rsplit_once("::")
-                .is_some_and(|(candidate_class, candidate_method)| {
-                    candidate_class == impl_class
-                        && php_symbol_key(candidate_method) == method_key
-                })
-    });
-    if !emitted {
+    let runtime_helper =
+        IntrinsicCall::instance_method(&impl_class, method_key).and_then(|intrinsic| intrinsic.runtime_helper());
+    if runtime_helper.is_none() && !class_method_body_exists(ctx, &impl_class, method_key) {
         return Err(CodegenIrError::unsupported(format!(
             "iterator method {}::{} without an emitted EIR method body",
             impl_class, method_key
@@ -1148,6 +1144,7 @@ fn object_iterator_method_target(
     }
     Ok(ObjectIteratorMethodTarget {
         impl_class,
+        runtime_helper,
         return_type: callee_sig.return_type.clone(),
     })
 }
@@ -1155,7 +1152,21 @@ fn object_iterator_method_target(
 /// Resolved method implementation for an object iterator method call.
 struct ObjectIteratorMethodTarget {
     impl_class: String,
+    runtime_helper: Option<&'static str>,
     return_type: PhpType,
+}
+
+/// Returns true when the EIR module contains the concrete instance-method body.
+fn class_method_body_exists(ctx: &FunctionContext<'_>, class_name: &str, method_key: &str) -> bool {
+    ctx.module.class_methods.iter().any(|function| {
+        !function.flags.is_static
+            && function
+                .name
+                .rsplit_once("::")
+                .is_some_and(|(candidate_class, candidate_method)| {
+                    candidate_class == class_name && php_symbol_key(candidate_method) == method_key
+                })
+    })
 }
 
 /// Lowers iterator cleanup; Phase 04 array iterator state is stack-resident.

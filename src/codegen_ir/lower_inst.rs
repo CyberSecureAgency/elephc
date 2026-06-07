@@ -1384,7 +1384,18 @@ fn try_lower_array_access_runtime_call(
     };
     match dispatch {
         ArrayAccessRuntimeDispatch::Concrete(class_name) => {
-            lower_runtime_object_method_call(ctx, inst, &class_name, method_name)?;
+            let concrete_method = if method_name == "append"
+                && is_spl_doubly_linked_list_family(&class_name)
+            {
+                "push"
+            } else {
+                method_name
+            };
+            if let Some(intrinsic) = runtime_backed_instance_intrinsic(&class_name, concrete_method) {
+                lower_instance_runtime_intrinsic(ctx, inst, &class_name, concrete_method, intrinsic)?;
+            } else {
+                lower_runtime_object_method_call(ctx, inst, &class_name, concrete_method)?;
+            }
         }
         ArrayAccessRuntimeDispatch::Interface {
             boxed_receiver: false,
@@ -1398,6 +1409,11 @@ fn try_lower_array_access_runtime_call(
         }
     }
     Ok(Some(()))
+}
+
+/// Returns true when a concrete class uses the SPL doubly-linked-list append helper.
+fn is_spl_doubly_linked_list_family(class_name: &str) -> bool {
+    matches!(class_name, "SplDoublyLinkedList" | "SplStack" | "SplQueue")
 }
 
 /// Selects the ArrayAccess runtime dispatch strategy for a receiver type.
@@ -2022,6 +2038,9 @@ fn lower_method_call(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Resul
     if let Some(intrinsic) = callback_filter_intrinsic(&class_name, &method_name) {
         return lower_callback_filter_accept_intrinsic(ctx, inst, intrinsic);
     }
+    if let Some(intrinsic) = runtime_backed_instance_intrinsic(&class_name, &method_name) {
+        return lower_instance_runtime_intrinsic(ctx, inst, &class_name, &method_name, intrinsic);
+    }
     if is_fiber_start_call(&class_name, &method_name) {
         return lower_fiber_start(ctx, inst, object);
     }
@@ -2297,6 +2316,137 @@ fn callback_filter_intrinsic(class_name: &str, method_name: &str) -> Option<Intr
     } else {
         None
     }
+}
+
+/// Returns a runtime-backed intrinsic for ordinary direct instance-method calls.
+fn runtime_backed_instance_intrinsic(class_name: &str, method_name: &str) -> Option<IntrinsicCall> {
+    let intrinsic = IntrinsicCall::instance_method(class_name.trim_start_matches('\\'), method_name)?;
+    intrinsic.runtime_helper()?;
+    Some(intrinsic)
+}
+
+/// Returns a runtime-backed intrinsic for ordinary direct static-method calls.
+fn runtime_backed_static_intrinsic(class_name: &str, method_name: &str) -> Option<IntrinsicCall> {
+    let intrinsic = IntrinsicCall::static_method(class_name.trim_start_matches('\\'), method_name)?;
+    intrinsic.runtime_helper()?;
+    Some(intrinsic)
+}
+
+/// Lowers a runtime-backed intrinsic instance method using normal method ABI arguments.
+fn lower_instance_runtime_intrinsic(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+    class_name: &str,
+    method_name: &str,
+    intrinsic: IntrinsicCall,
+) -> Result<()> {
+    let normalized = class_name.trim_start_matches('\\');
+    let method_key = php_symbol_key(method_name);
+    let class_info = ctx
+        .module
+        .class_infos
+        .get(normalized)
+        .ok_or_else(|| CodegenIrError::unsupported(format!("intrinsic method on unknown class {}", normalized)))?;
+    let callee_sig = class_info
+        .methods
+        .get(&method_key)
+        .ok_or_else(|| CodegenIrError::unsupported(format!("intrinsic method {}::{}", normalized, method_name)))?;
+    let expected_args = callee_sig.params.len() + 1;
+    if inst.operands.len() != expected_args {
+        return Err(CodegenIrError::unsupported(format!(
+            "intrinsic method call to {}::{} with {} operands for {} ABI params",
+            normalized,
+            method_name,
+            inst.operands.len(),
+            expected_args
+        )));
+    }
+    let return_ty = callee_sig.return_type.clone();
+    let callee_params = callee_sig.params.clone();
+    let callee_ref_params = callee_sig.ref_params.clone();
+    let mut param_types = Vec::with_capacity(callee_params.len() + 1);
+    param_types.push(PhpType::Object(normalized.to_string()));
+    param_types.extend(callee_params.iter().map(|(_, ty)| ty.codegen_repr()));
+    let mut ref_params = Vec::with_capacity(callee_ref_params.len() + 1);
+    ref_params.push(false);
+    ref_params.extend(callee_ref_params.iter().copied());
+    let call_args =
+        materialize_direct_call_args_with_refs(ctx, &inst.operands, &param_types, &ref_params)?;
+    let caller_stack_pad_bytes = direct_call_stack_pad_bytes(ctx, call_args.overflow_bytes);
+    abi::emit_reserve_temporary_stack(ctx.emitter, caller_stack_pad_bytes);
+    abi::emit_call_label(
+        ctx.emitter,
+        intrinsic
+            .runtime_helper()
+            .expect("runtime-backed instance intrinsic must have a helper"),
+    );
+    abi::emit_release_temporary_stack(ctx.emitter, caller_stack_pad_bytes);
+    abi::emit_release_temporary_stack(ctx.emitter, call_args.overflow_bytes);
+    store_call_result(ctx, inst, &return_ty)?;
+    emit_ref_arg_writebacks(ctx, &call_args.ref_writebacks)
+}
+
+/// Lowers a runtime-backed intrinsic static method using the hidden called-class id ABI.
+fn lower_static_runtime_intrinsic(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+    receiver: &str,
+    method_name: &str,
+    called_class_id: &CalledClassIdArg,
+    intrinsic: IntrinsicCall,
+) -> Result<()> {
+    let method_key = php_symbol_key(method_name);
+    let receiver_info = ctx
+        .module
+        .class_infos
+        .get(receiver)
+        .ok_or_else(|| CodegenIrError::unsupported(format!("intrinsic static method on unknown class {}", receiver)))?;
+    let callee_sig = receiver_info
+        .static_methods
+        .get(&method_key)
+        .ok_or_else(|| CodegenIrError::unsupported(format!("intrinsic static method {}::{}", receiver, method_name)))?;
+    if inst.operands.len() != callee_sig.params.len() {
+        return Err(CodegenIrError::unsupported(format!(
+            "intrinsic static method call to {}::{} with {} operands for {} params",
+            receiver,
+            method_name,
+            inst.operands.len(),
+            callee_sig.params.len()
+        )));
+    }
+    let return_ty = callee_sig.return_type.clone();
+    let callee_ref_params = callee_sig.ref_params.clone();
+    let param_types = callee_sig
+        .params
+        .iter()
+        .map(|(_, ty)| ty.codegen_repr())
+        .collect::<Vec<_>>();
+    let call_args = materialize_static_method_call_args_with_refs(
+        ctx,
+        called_class_id,
+        &inst.operands,
+        &param_types,
+        &callee_ref_params,
+    )?;
+    let caller_stack_pad_bytes = direct_call_stack_pad_bytes(ctx, call_args.overflow_bytes);
+    abi::emit_reserve_temporary_stack(ctx.emitter, caller_stack_pad_bytes);
+    abi::emit_call_label(
+        ctx.emitter,
+        intrinsic
+            .runtime_helper()
+            .expect("runtime-backed static intrinsic must have a helper"),
+    );
+    abi::emit_release_temporary_stack(ctx.emitter, caller_stack_pad_bytes);
+    abi::emit_release_temporary_stack(ctx.emitter, call_args.overflow_bytes);
+    if let Some(result) = inst.result {
+        let result_ty = ctx.value_php_type(result)?.codegen_repr();
+        let return_ty = return_ty.codegen_repr();
+        if matches!(result_ty, PhpType::Mixed | PhpType::Union(_)) && return_ty != PhpType::Mixed {
+            emit_box_current_value_as_mixed(ctx.emitter, &return_ty);
+        }
+        ctx.store_result_value(result)?;
+    }
+    emit_ref_arg_writebacks(ctx, &call_args.ref_writebacks)
 }
 
 /// Lowers `CallbackFilterIterator::__elephcAcceptCallback()` through its stored descriptor.
@@ -3130,6 +3280,16 @@ fn lower_static_method_call(ctx: &mut FunctionContext<'_>, inst: &Instruction) -
         return Ok(());
     }
     let called_class_id = resolve_static_called_class_arg(ctx, receiver_label, &receiver)?;
+    if let Some(intrinsic) = runtime_backed_static_intrinsic(receiver.as_str(), method_name) {
+        return lower_static_runtime_intrinsic(
+            ctx,
+            inst,
+            receiver.as_str(),
+            method_name,
+            &called_class_id,
+            intrinsic,
+        );
+    }
     let late_bound_static = is_late_bound_static_receiver(receiver_label);
     let receiver_info = ctx
         .module
@@ -3526,6 +3686,22 @@ fn materialize_direct_call_arg_for_param(
     param_ty: &PhpType,
 ) -> Result<PhpType> {
     match param_ty.codegen_repr() {
+        PhpType::Int if matches!(source_ty.codegen_repr(), PhpType::Mixed | PhpType::Union(_)) => {
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_int");
+            Ok(PhpType::Int)
+        }
+        PhpType::Bool if matches!(source_ty.codegen_repr(), PhpType::Mixed | PhpType::Union(_)) => {
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_bool");
+            Ok(PhpType::Bool)
+        }
+        PhpType::Float if matches!(source_ty.codegen_repr(), PhpType::Mixed | PhpType::Union(_)) => {
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_float");
+            Ok(PhpType::Float)
+        }
+        PhpType::Str if matches!(source_ty.codegen_repr(), PhpType::Mixed | PhpType::Union(_)) => {
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_string");
+            Ok(PhpType::Str)
+        }
         PhpType::Mixed if source_ty.codegen_repr() != PhpType::Mixed => {
             emit_box_current_value_as_mixed(ctx.emitter, source_ty);
             Ok(PhpType::Mixed)

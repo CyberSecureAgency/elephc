@@ -732,7 +732,11 @@ fn lower_count(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> 
         PhpType::Object(class_name)
             if super::class_implements_interface(ctx, &class_name, "Countable") =>
         {
-            super::lower_runtime_object_method_call(ctx, inst, &class_name, "count")
+            if let Some(intrinsic) = super::runtime_backed_instance_intrinsic(&class_name, "count") {
+                super::lower_instance_runtime_intrinsic(ctx, inst, &class_name, "count", intrinsic)
+            } else {
+                super::lower_runtime_object_method_call(ctx, inst, &class_name, "count")
+            }
         }
         other => Err(CodegenIrError::unsupported(format!(
             "count for PHP type {:?}",

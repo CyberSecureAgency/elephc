@@ -18,6 +18,7 @@ use std::collections::HashSet;
 use crate::codegen::{abi, emit_box_current_value_as_mixed};
 use crate::codegen::platform::Arch;
 use crate::codegen::UNINITIALIZED_TYPED_PROPERTY_SENTINEL;
+use crate::intrinsics::IntrinsicCall;
 use crate::ir::{Immediate, Instruction, Op, ValueDef, ValueId};
 use crate::names::{method_symbol, php_symbol_key};
 use crate::types::{ClassInfo, InterfaceInfo, PhpType};
@@ -82,6 +83,12 @@ pub(super) fn lower_object_new(ctx: &mut FunctionContext<'_>, inst: &Instruction
     }
     if class_name == "IteratorIterator" {
         return lower_iterator_iterator_new(ctx, inst);
+    }
+    if is_spl_doubly_linked_list_family(&class_name) {
+        return lower_spl_doubly_linked_list_new(ctx, inst, &class_name);
+    }
+    if class_name == "SplFixedArray" {
+        return lower_spl_fixed_array_new(ctx, inst);
     }
     if let Some(class_id) = throwable_payload_class_id(ctx, &class_name) {
         return lower_builtin_throwable_new(ctx, inst, &class_name, class_id);
@@ -178,6 +185,74 @@ pub(super) fn lower_object_new(ctx: &mut FunctionContext<'_>, inst: &Instruction
         )?;
     }
     Ok(())
+}
+
+/// Returns true when the class uses the runtime-managed SPL doubly-linked-list payload.
+fn is_spl_doubly_linked_list_family(class_name: &str) -> bool {
+    matches!(class_name, "SplDoublyLinkedList" | "SplStack" | "SplQueue")
+}
+
+/// Lowers `new SplDoublyLinkedList`, `new SplStack`, and `new SplQueue`.
+fn lower_spl_doubly_linked_list_new(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+    class_name: &str,
+) -> Result<()> {
+    if !inst.operands.is_empty() {
+        return Err(CodegenIrError::unsupported(format!(
+            "{} constructor with {} EIR operands",
+            class_name,
+            inst.operands.len()
+        )));
+    }
+    let class_id = ctx
+        .module
+        .class_infos
+        .get(class_name)
+        .map(|info| info.class_id)
+        .ok_or_else(|| CodegenIrError::unsupported(format!("unknown class {}", class_name)))?;
+    abi::emit_load_int_immediate(
+        ctx.emitter,
+        abi::int_arg_reg_name(ctx.emitter.target, 0),
+        class_id as i64,
+    );
+    abi::emit_call_label(ctx.emitter, "__rt_spl_dll_new");
+    store_if_result(ctx, inst)
+}
+
+/// Lowers `new SplFixedArray($size = 0)` through the runtime-backed payload allocator.
+fn lower_spl_fixed_array_new(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    if inst.operands.len() > 1 {
+        return Err(CodegenIrError::unsupported(format!(
+            "SplFixedArray constructor with {} EIR operands",
+            inst.operands.len()
+        )));
+    }
+    let class_id = ctx
+        .module
+        .class_infos
+        .get("SplFixedArray")
+        .map(|info| info.class_id)
+        .ok_or_else(|| CodegenIrError::unsupported("unknown class SplFixedArray"))?;
+    if let Some(size) = inst.operands.first().copied() {
+        ctx.load_value_to_result(size)?;
+        abi::emit_push_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));
+        abi::emit_load_int_immediate(
+            ctx.emitter,
+            abi::int_arg_reg_name(ctx.emitter.target, 0),
+            class_id as i64,
+        );
+        abi::emit_pop_reg(ctx.emitter, abi::int_arg_reg_name(ctx.emitter.target, 1));
+    } else {
+        abi::emit_load_int_immediate(
+            ctx.emitter,
+            abi::int_arg_reg_name(ctx.emitter.target, 0),
+            class_id as i64,
+        );
+        abi::emit_load_int_immediate(ctx.emitter, abi::int_arg_reg_name(ctx.emitter.target, 1), 0);
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_spl_fixed_new");
+    store_if_result(ctx, inst)
 }
 
 /// Lowers `new CallbackFilterIterator($iterator, $callback)` with callable-array capture.
@@ -1991,7 +2066,12 @@ fn interface_requires_missing_method_symbol(
             .get(method_name)
             .map(String::as_str)
             .unwrap_or(fallback_class);
-        if !emitted_methods.contains(&(impl_class.to_string(), method_name.clone())) {
+        let key = (impl_class.to_string(), method_name.clone());
+        if !emitted_methods.contains(&key)
+            && IntrinsicCall::instance_method(impl_class, method_name)
+                .and_then(|intrinsic| intrinsic.runtime_helper())
+                .is_none()
+        {
             return true;
         }
     }

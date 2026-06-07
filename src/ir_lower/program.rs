@@ -650,6 +650,16 @@ fn required_builtin_spl_metadata_methods(class_name: &str) -> &'static [&'static
             "offsetSet",
             "offsetUnset",
         ],
+        "SplFixedArray" => &[
+            "getIterator",
+            "count",
+            "offsetExists",
+            "offsetGet",
+            "offsetSet",
+            "offsetUnset",
+            "jsonSerialize",
+        ],
+        "InternalIterator" => &["current", "key", "next", "rewind", "valid"],
         "IteratorIterator" => &[
             "current",
             "key",
@@ -728,6 +738,18 @@ fn required_builtin_spl_metadata_methods(class_name: &str) -> &'static [&'static
             "offsetSet",
             "offsetUnset",
             "count",
+        ],
+        "SplDoublyLinkedList" => &[
+            "current",
+            "key",
+            "next",
+            "rewind",
+            "valid",
+            "count",
+            "offsetExists",
+            "offsetGet",
+            "offsetSet",
+            "offsetUnset",
         ],
         "SplFileInfo" => &["__toString"],
         "SplFileObject" => &[
@@ -856,6 +878,58 @@ fn is_supported_builtin_spl_method(class_name: &str, method_key: &str) -> bool {
                 | "offsetunset"
                 | "append"
                 | "getarraycopy"
+        ),
+        "SplFixedArray" => matches!(
+            method_key,
+            "__construct"
+                | "__wakeup"
+                | "__serialize"
+                | "__unserialize"
+                | "count"
+                | "getiterator"
+                | "toarray"
+                | "getsize"
+                | "setsize"
+                | "offsetexists"
+                | "offsetget"
+                | "offsetset"
+                | "offsetunset"
+                | "jsonserialize"
+        ),
+        "InternalIterator" => matches!(
+            method_key,
+            "__construct" | "current" | "key" | "next" | "rewind" | "valid"
+        ),
+        "SplDoublyLinkedList" | "SplStack" | "SplQueue" => matches!(
+            method_key,
+            "add"
+                | "pop"
+                | "shift"
+                | "push"
+                | "unshift"
+                | "top"
+                | "bottom"
+                | "count"
+                | "isempty"
+                | "setiteratormode"
+                | "getiteratormode"
+                | "offsetexists"
+                | "offsetget"
+                | "offsetset"
+                | "offsetunset"
+                | "rewind"
+                | "current"
+                | "key"
+                | "prev"
+                | "next"
+                | "valid"
+                | "serialize"
+                | "unserialize"
+                | "__serialize"
+                | "__unserialize"
+                | "__debuginfo"
+                | "enqueue"
+                | "dequeue"
         ),
         "IteratorIterator" => matches!(
             method_key,
