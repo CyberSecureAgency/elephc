@@ -1348,6 +1348,9 @@ fn callable_target_data<'a>(
 
 /// Lowers high-level runtime fallback casts that Phase 04 can identify by type.
 fn lower_runtime_call(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    if inst.operands.len() == 3 && matches!(inst.immediate, Some(Immediate::Data(_))) {
+        return lower_property_array_runtime_set(ctx, inst);
+    }
     if let Some(()) = try_lower_array_access_runtime_call(ctx, inst)? {
         return Ok(());
     }
@@ -1791,6 +1794,153 @@ fn lower_mixed_array_runtime_set_x86_64(
     abi::emit_pop_reg_pair(ctx.emitter, "rsi", "rdx");
     abi::emit_pop_reg(ctx.emitter, "rcx");
     abi::emit_call_label(ctx.emitter, "__rt_mixed_array_set");
+    Ok(())
+}
+
+/// Lowers `$object->property[$key] = $value` when the property itself is runtime-typed.
+fn lower_property_array_runtime_set(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+) -> Result<()> {
+    let object = expect_operand(inst, 0)?;
+    let key = expect_operand(inst, 1)?;
+    let value = expect_operand(inst, 2)?;
+    let data = expect_data(inst)?;
+    let property = ctx
+        .module
+        .data
+        .strings
+        .get(data.as_raw() as usize)
+        .cloned()
+        .ok_or_else(|| CodegenIrError::missing_entry("data string", data.as_raw()))?;
+    match ctx.value_php_type(object)?.codegen_repr() {
+        PhpType::Mixed | PhpType::Union(_) => match ctx.emitter.target.arch {
+            Arch::AArch64 => lower_mixed_property_array_runtime_set_aarch64(
+                ctx,
+                object,
+                key,
+                value,
+                &property,
+                "__rt_mixed_property_get",
+            ),
+            Arch::X86_64 => lower_mixed_property_array_runtime_set_x86_64(
+                ctx,
+                object,
+                key,
+                value,
+                &property,
+                "__rt_mixed_property_get",
+            ),
+        },
+        PhpType::Object(class_name)
+            if crate::types::checker::builtin_stdclass::is_stdclass(
+                class_name.trim_start_matches('\\'),
+            ) =>
+        {
+            match ctx.emitter.target.arch {
+                Arch::AArch64 => lower_mixed_property_array_runtime_set_aarch64(
+                    ctx,
+                    object,
+                    key,
+                    value,
+                    &property,
+                    "__rt_stdclass_get",
+                ),
+                Arch::X86_64 => lower_mixed_property_array_runtime_set_x86_64(
+                    ctx,
+                    object,
+                    key,
+                    value,
+                    &property,
+                    "__rt_stdclass_get",
+                ),
+            }
+        }
+        other => Err(CodegenIrError::unsupported(format!(
+            "runtime_call property array set with receiver PHP type {:?}",
+            other
+        ))),
+    }
+}
+
+/// Lowers a property-array write through stdClass/Mixed property get and Mixed array set on AArch64.
+fn lower_mixed_property_array_runtime_set_aarch64(
+    ctx: &mut FunctionContext<'_>,
+    object: ValueId,
+    key: ValueId,
+    value: ValueId,
+    property: &str,
+    getter_label: &str,
+) -> Result<()> {
+    let value_ty = ctx.load_value_to_result(value)?.codegen_repr();
+    if matches!(value_ty, PhpType::Mixed | PhpType::Union(_)) {
+        abi::emit_incref_if_refcounted(ctx.emitter, &value_ty);
+    } else {
+        emit_box_current_value_as_mixed(ctx.emitter, &value_ty);
+    }
+    abi::emit_push_reg(ctx.emitter, "x0");
+    hashes::materialize_hash_key_aarch64(ctx, key)?;
+    abi::emit_push_reg_pair(ctx.emitter, "x1", "x2");
+    emit_property_array_target_get_aarch64(ctx, object, property, getter_label)?;
+    abi::emit_pop_reg_pair(ctx.emitter, "x1", "x2");
+    abi::emit_pop_reg(ctx.emitter, "x3");
+    abi::emit_call_label(ctx.emitter, "__rt_mixed_array_set");
+    Ok(())
+}
+
+/// Lowers a property-array write through stdClass/Mixed property get and Mixed array set on x86_64.
+fn lower_mixed_property_array_runtime_set_x86_64(
+    ctx: &mut FunctionContext<'_>,
+    object: ValueId,
+    key: ValueId,
+    value: ValueId,
+    property: &str,
+    getter_label: &str,
+) -> Result<()> {
+    let value_ty = ctx.load_value_to_result(value)?.codegen_repr();
+    if matches!(value_ty, PhpType::Mixed | PhpType::Union(_)) {
+        abi::emit_incref_if_refcounted(ctx.emitter, &value_ty);
+    } else {
+        emit_box_current_value_as_mixed(ctx.emitter, &value_ty);
+    }
+    abi::emit_push_reg(ctx.emitter, "rax");
+    hashes::materialize_hash_key_x86_64(ctx, key)?;
+    abi::emit_push_reg_pair(ctx.emitter, "rsi", "rdx");
+    emit_property_array_target_get_x86_64(ctx, object, property, getter_label)?;
+    ctx.emitter.instruction("mov rdi, rax");                                    // pass the property Mixed cell as the array-write target
+    abi::emit_pop_reg_pair(ctx.emitter, "rsi", "rdx");
+    abi::emit_pop_reg(ctx.emitter, "rcx");
+    abi::emit_call_label(ctx.emitter, "__rt_mixed_array_set");
+    Ok(())
+}
+
+/// Calls the requested property getter and leaves the boxed Mixed property cell in `x0`.
+fn emit_property_array_target_get_aarch64(
+    ctx: &mut FunctionContext<'_>,
+    object: ValueId,
+    property: &str,
+    getter_label: &str,
+) -> Result<()> {
+    let (label, len) = ctx.data.add_string(property.as_bytes());
+    ctx.load_value_to_reg(object, "x0")?;
+    abi::emit_symbol_address(ctx.emitter, "x1", &label);
+    abi::emit_load_int_immediate(ctx.emitter, "x2", len as i64);
+    abi::emit_call_label(ctx.emitter, getter_label);
+    Ok(())
+}
+
+/// Calls the requested property getter and leaves the boxed Mixed property cell in `rax`.
+fn emit_property_array_target_get_x86_64(
+    ctx: &mut FunctionContext<'_>,
+    object: ValueId,
+    property: &str,
+    getter_label: &str,
+) -> Result<()> {
+    let (label, len) = ctx.data.add_string(property.as_bytes());
+    ctx.load_value_to_reg(object, "rdi")?;
+    abi::emit_symbol_address(ctx.emitter, "rsi", &label);
+    abi::emit_load_int_immediate(ctx.emitter, "rdx", len as i64);
+    abi::emit_call_label(ctx.emitter, getter_label);
     Ok(())
 }
 

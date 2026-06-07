@@ -5126,6 +5126,9 @@ fn property_access_expr_type_for_ir(
 ) -> Option<PhpType> {
     let class_name = instance_callable_object_class(ctx, object)?;
     let normalized = class_name.trim_start_matches('\\');
+    if is_builtin_stdclass_name(normalized) {
+        return Some(PhpType::Mixed);
+    }
     if let Some(property_ty) = runtime_property_type_override(ctx, normalized, property) {
         return Some(normalize_value_php_type(property_ty));
     }
@@ -6280,6 +6283,13 @@ fn property_get_result_type(
         return fallback_expr_type(expr);
     };
     let normalized = class_name.trim_start_matches('\\');
+    if is_builtin_stdclass_name(normalized) {
+        return if nullable {
+            nullable_result_type(PhpType::Mixed)
+        } else {
+            PhpType::Mixed
+        };
+    }
     let Some(class_info) = ctx.classes.get(normalized) else {
         return fallback_expr_type(expr);
     };
@@ -6423,6 +6433,13 @@ fn dynamic_property_get_result_type(
         return fallback_expr_type(expr);
     };
     let normalized = class_name.trim_start_matches('\\');
+    if is_builtin_stdclass_name(normalized) {
+        return if nullable {
+            nullable_result_type(PhpType::Mixed)
+        } else {
+            PhpType::Mixed
+        };
+    }
     let Some(class_info) = ctx.classes.get(normalized) else {
         return fallback_expr_type(expr);
     };
@@ -6439,6 +6456,11 @@ fn dynamic_property_get_result_type(
         })
         .collect::<Vec<_>>();
     normalize_union_members(members).unwrap_or_else(|| fallback_expr_type(expr))
+}
+
+/// Returns true when the normalized class name refers to PHP's builtin stdClass.
+fn is_builtin_stdclass_name(class_name: &str) -> bool {
+    crate::types::checker::builtin_stdclass::is_stdclass(class_name)
 }
 
 /// Flattens and deduplicates union candidates, with `Mixed` absorbing all members.

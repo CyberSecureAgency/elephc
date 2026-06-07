@@ -89,6 +89,9 @@ pub(super) fn lower_object_new(ctx: &mut FunctionContext<'_>, inst: &Instruction
     if class_name == "CallbackFilterIterator" || class_name == "RecursiveCallbackFilterIterator" {
         return lower_callback_filter_iterator_new(ctx, inst, &class_name);
     }
+    if is_builtin_stdclass(&class_name) {
+        return lower_stdclass_new(ctx, inst);
+    }
     if class_name == "IteratorIterator" {
         return lower_iterator_iterator_new(ctx, inst);
     }
@@ -190,6 +193,18 @@ pub(super) fn lower_object_new(ctx: &mut FunctionContext<'_>, inst: &Instruction
         )?;
     }
     Ok(())
+}
+
+/// Lowers `new stdClass()` through the runtime helper that seeds its dynamic-property hash.
+fn lower_stdclass_new(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    if !inst.operands.is_empty() {
+        return Err(CodegenIrError::unsupported(format!(
+            "stdClass constructor with {} EIR operands",
+            inst.operands.len()
+        )));
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_stdclass_new");
+    store_if_result(ctx, inst)
 }
 
 /// Returns true when the class uses the runtime-managed SPL doubly-linked-list payload.
@@ -1502,6 +1517,9 @@ pub(super) fn lower_prop_get(ctx: &mut FunctionContext<'_>, inst: &Instruction) 
     if matches!(ctx.value_php_type(object)?.codegen_repr(), PhpType::Mixed | PhpType::Union(_)) {
         return lower_mixed_prop_get(ctx, inst, object, &property);
     }
+    if object_is_builtin_stdclass(ctx, object)? {
+        return lower_stdclass_prop_get(ctx, inst, object, &property);
+    }
     if let Some(offset) = dynamic_property_hash_offset_for_object(ctx, object, &property)? {
         return lower_allow_dynamic_prop_get(ctx, inst, object, &property, offset);
     }
@@ -1513,6 +1531,41 @@ pub(super) fn lower_prop_get(ctx: &mut FunctionContext<'_>, inst: &Instruction) 
     }
     emit_property_load(ctx, &slot, base_reg)?;
     store_if_result(ctx, inst)
+}
+
+/// Lowers a named property read from a statically known stdClass receiver.
+fn lower_stdclass_prop_get(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+    object: ValueId,
+    property: &str,
+) -> Result<()> {
+    emit_stdclass_get_call(ctx, object, property)?;
+    cast_loaded_mixed_pointer_to_result(ctx, &inst.result_php_type.codegen_repr())?;
+    store_if_result(ctx, inst)
+}
+
+/// Calls the stdClass runtime getter for an object receiver and static property name.
+fn emit_stdclass_get_call(
+    ctx: &mut FunctionContext<'_>,
+    object: ValueId,
+    property: &str,
+) -> Result<()> {
+    let (label, len) = ctx.data.add_string(property.as_bytes());
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.load_value_to_reg(object, "x0")?;
+            abi::emit_symbol_address(ctx.emitter, "x1", &label);
+            abi::emit_load_int_immediate(ctx.emitter, "x2", len as i64);
+        }
+        Arch::X86_64 => {
+            ctx.load_value_to_reg(object, "rdi")?;
+            abi::emit_symbol_address(ctx.emitter, "rsi", &label);
+            abi::emit_load_int_immediate(ctx.emitter, "rdx", len as i64);
+        }
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_stdclass_get");
+    Ok(())
 }
 
 /// Lowers a static-name read from an undeclared property on an allow-dynamic class.
@@ -2161,6 +2214,9 @@ pub(super) fn lower_prop_set(ctx: &mut FunctionContext<'_>, inst: &Instruction) 
     if let Some((class_name, true)) = nullable_object_receiver_class(ctx, object)? {
         return lower_nullable_prop_set(ctx, inst, object, value, &class_name, &property);
     }
+    if object_is_builtin_stdclass(ctx, object)? {
+        return lower_stdclass_prop_set(ctx, object, value, &property);
+    }
     if let Some(offset) = dynamic_property_hash_offset_for_object(ctx, object, &property)? {
         return lower_allow_dynamic_prop_set(ctx, object, value, &property, offset);
     }
@@ -2170,6 +2226,35 @@ pub(super) fn lower_prop_set(ctx: &mut FunctionContext<'_>, inst: &Instruction) 
     let base_reg = abi::symbol_scratch_reg(ctx.emitter);
     ctx.load_value_to_reg(object, base_reg)?;
     emit_property_store(ctx, value, &slot, base_reg)
+}
+
+/// Lowers a named property write to a statically known stdClass receiver.
+fn lower_stdclass_prop_set(
+    ctx: &mut FunctionContext<'_>,
+    object: ValueId,
+    value: ValueId,
+    property: &str,
+) -> Result<()> {
+    let value_ty = ctx.value_php_type(value)?.codegen_repr();
+    materialize_dynamic_property_mixed_value(ctx, value, &value_ty)?;
+    abi::emit_push_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));
+    let (label, len) = ctx.data.add_string(property.as_bytes());
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.load_value_to_reg(object, "x0")?;
+            abi::emit_symbol_address(ctx.emitter, "x1", &label);
+            abi::emit_load_int_immediate(ctx.emitter, "x2", len as i64);
+            abi::emit_pop_reg(ctx.emitter, "x3");
+        }
+        Arch::X86_64 => {
+            ctx.load_value_to_reg(object, "rdi")?;
+            abi::emit_symbol_address(ctx.emitter, "rsi", &label);
+            abi::emit_load_int_immediate(ctx.emitter, "rdx", len as i64);
+            abi::emit_pop_reg(ctx.emitter, "rcx");
+        }
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_stdclass_set");
+    Ok(())
 }
 
 /// Lowers a static-name write to an undeclared property on an allow-dynamic class.
@@ -2578,6 +2663,9 @@ fn dynamic_property_hash_offset_for_class(
     property: &str,
 ) -> Result<Option<usize>> {
     let normalized = class_name.trim_start_matches('\\');
+    if is_builtin_stdclass(normalized) {
+        return Ok(Some(dynamic_property_hash_offset(0)));
+    }
     let class_info = ctx
         .module
         .class_infos
@@ -2590,6 +2678,19 @@ fn dynamic_property_hash_offset_for_class(
         return Ok(Some(dynamic_property_hash_offset(class_info.properties.len())));
     }
     Ok(None)
+}
+
+/// Returns true when a class name is the builtin `stdClass` dynamic-property container.
+fn is_builtin_stdclass(class_name: &str) -> bool {
+    crate::types::checker::builtin_stdclass::is_stdclass(class_name.trim_start_matches('\\'))
+}
+
+/// Returns true when the SSA value is known to hold a stdClass object pointer.
+fn object_is_builtin_stdclass(ctx: &FunctionContext<'_>, object: ValueId) -> Result<bool> {
+    Ok(matches!(
+        ctx.value_php_type(object)?.codegen_repr(),
+        PhpType::Object(class_name) if is_builtin_stdclass(&class_name)
+    ))
 }
 
 /// Resolves a property slot for a known class name.
