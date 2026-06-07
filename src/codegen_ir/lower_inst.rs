@@ -1688,6 +1688,7 @@ fn lower_mixed_to_mixed_indexed_array(ctx: &mut FunctionContext<'_>) -> Result<(
         }
     }
     abi::emit_call_label(ctx.emitter, "__rt_array_to_mixed");
+    abi::emit_incref_if_refcounted(ctx.emitter, &PhpType::Array(Box::new(PhpType::Mixed)));
     Ok(())
 }
 
@@ -1701,6 +1702,13 @@ fn lower_mixed_to_mixed_assoc_array(ctx: &mut FunctionContext<'_>) -> Result<()>
         Arch::X86_64 => {}
     }
     abi::emit_call_label(ctx.emitter, "__rt_hash_to_mixed");
+    abi::emit_incref_if_refcounted(
+        ctx.emitter,
+        &PhpType::AssocArray {
+            key: Box::new(PhpType::Mixed),
+            value: Box::new(PhpType::Mixed),
+        },
+    );
     Ok(())
 }
 

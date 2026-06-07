@@ -535,6 +535,20 @@ fn emit_array_get_null_fallback(ctx: &mut FunctionContext<'_>, elem_ty: &PhpType
             abi::emit_load_int_immediate(ctx.emitter, ptr_reg, 0);
             abi::emit_load_int_immediate(ctx.emitter, len_reg, 0);
         }
+        PhpType::Mixed => match ctx.emitter.target.arch {
+            Arch::AArch64 => {
+                abi::emit_load_int_immediate(ctx.emitter, "x0", 8);
+                abi::emit_load_int_immediate(ctx.emitter, "x1", 0);
+                abi::emit_load_int_immediate(ctx.emitter, "x2", 0);
+                abi::emit_call_label(ctx.emitter, "__rt_mixed_from_value");
+            }
+            Arch::X86_64 => {
+                abi::emit_load_int_immediate(ctx.emitter, "rax", 8);
+                abi::emit_load_int_immediate(ctx.emitter, "rdi", 0);
+                abi::emit_load_int_immediate(ctx.emitter, "rsi", 0);
+                abi::emit_call_label(ctx.emitter, "__rt_mixed_from_value");
+            }
+        },
         _ => {
             abi::emit_load_int_immediate(
                 ctx.emitter,

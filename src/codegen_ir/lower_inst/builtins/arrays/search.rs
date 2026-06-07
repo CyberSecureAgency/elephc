@@ -7,8 +7,8 @@
 //! - `crate::codegen_ir::lower_inst::builtins::arrays`.
 //!
 //! Key details:
-//! - `AssocArray<Mixed>` entries are boxed Mixed cells in EIR, so the search
-//!   path must unbox entry payloads before comparing concrete runtime tags.
+//! - `AssocArray<Mixed>` entries may be concrete tag/payload pairs or boxed
+//!   Mixed cells, so mixed searches dispatch on the per-entry runtime tag.
 
 use crate::codegen::abi;
 use crate::codegen::platform::Arch;
@@ -382,8 +382,14 @@ fn emit_mixed_assoc_value_match_aarch64(
     needle_offset: i32,
     found_label: &str,
 ) -> Result<()> {
+    let concrete_label = ctx.next_label("assoc_mixed_search_concrete");
     let mismatch_label = ctx.next_label("assoc_mixed_search_mismatch");
     let expected_tag = runtime_value_tag("associative-array search", needle_ty)? as i64;
+    abi::emit_load_int_immediate(ctx.emitter, "x6", expected_tag);
+    ctx.emitter.instruction("cmp x5, x6");                                      // compare the concrete entry tag against the searched needle tag
+    ctx.emitter.instruction(&format!("b.eq {}", concrete_label));               // compare concrete payloads directly when the tags already match
+    ctx.emitter.instruction("cmp x5, #7");                                      // check whether this mixed-capable entry stores a boxed Mixed cell
+    ctx.emitter.instruction(&format!("b.ne {}", mismatch_label));               // skip entries with a different concrete runtime tag
     ctx.emitter.instruction("mov x0, x3");                                      // pass the boxed Mixed entry value to the unbox helper
     abi::emit_call_label(ctx.emitter, "__rt_mixed_unbox");
     abi::emit_load_int_immediate(ctx.emitter, "x6", expected_tag);
@@ -407,6 +413,28 @@ fn emit_mixed_assoc_value_match_aarch64(
             )));
         }
     }
+    ctx.emitter.instruction(&format!("b {}", mismatch_label));                  // finish the boxed path before emitting concrete-payload comparison
+    ctx.emitter.label(&concrete_label);
+    match needle_ty {
+        PhpType::Str => {
+            ctx.emitter.instruction("mov x1, x3");                              // move the concrete entry string pointer into the comparison argument
+            ctx.emitter.instruction("mov x2, x4");                              // move the concrete entry string length into the comparison argument
+            ctx.emitter.instruction(&format!("ldp x3, x4, [sp, #{}]", needle_offset)); // reload the searched string needle from the stack
+            abi::emit_call_label(ctx.emitter, "__rt_str_eq");
+            ctx.emitter.instruction(&format!("cbnz x0, {}", found_label));      // branch when the concrete string entry matches the needle
+        }
+        PhpType::Int | PhpType::Bool => {
+            ctx.emitter.instruction(&format!("ldr x6, [sp, #{}]", needle_offset)); // reload the searched scalar needle from the stack
+            ctx.emitter.instruction("cmp x3, x6");                              // compare the concrete scalar payload against the needle
+            ctx.emitter.instruction(&format!("b.eq {}", found_label));          // branch when the concrete scalar entry matches the needle
+        }
+        other => {
+            return Err(CodegenIrError::unsupported(format!(
+                "associative-array mixed search needle PHP type {:?}",
+                other
+            )));
+        }
+    }
     ctx.emitter.label(&mismatch_label);
     Ok(())
 }
@@ -418,8 +446,14 @@ fn emit_mixed_assoc_value_match_x86_64(
     needle_offset: i32,
     found_label: &str,
 ) -> Result<()> {
+    let concrete_label = ctx.next_label("assoc_mixed_search_concrete");
     let mismatch_label = ctx.next_label("assoc_mixed_search_mismatch");
     let expected_tag = runtime_value_tag("associative-array search", needle_ty)? as i64;
+    abi::emit_load_int_immediate(ctx.emitter, "r10", expected_tag);
+    ctx.emitter.instruction("cmp r9, r10");                                     // compare the concrete entry tag against the searched needle tag
+    ctx.emitter.instruction(&format!("je {}", concrete_label));                 // compare concrete payloads directly when the tags already match
+    ctx.emitter.instruction("cmp r9, 7");                                       // check whether this mixed-capable entry stores a boxed Mixed cell
+    ctx.emitter.instruction(&format!("jne {}", mismatch_label));                // skip entries with a different concrete runtime tag
     ctx.emitter.instruction("mov rdi, rcx");                                    // pass the boxed Mixed entry value to the unbox helper
     abi::emit_call_label(ctx.emitter, "__rt_mixed_unbox");
     abi::emit_load_int_immediate(ctx.emitter, "r10", expected_tag);
@@ -438,6 +472,30 @@ fn emit_mixed_assoc_value_match_x86_64(
             ctx.emitter.instruction(&format!("mov r10, QWORD PTR [rsp + {}]", needle_offset)); // reload the searched scalar needle from the stack
             ctx.emitter.instruction("cmp rdi, r10");                            // compare the unboxed scalar payload against the needle
             ctx.emitter.instruction(&format!("je {}", found_label));            // branch when the unboxed scalar entry matches the needle
+        }
+        other => {
+            return Err(CodegenIrError::unsupported(format!(
+                "associative-array mixed search needle PHP type {:?}",
+                other
+            )));
+        }
+    }
+    ctx.emitter.instruction(&format!("jmp {}", mismatch_label));                // finish the boxed path before emitting concrete-payload comparison
+    ctx.emitter.label(&concrete_label);
+    match needle_ty {
+        PhpType::Str => {
+            ctx.emitter.instruction("mov rdi, rcx");                            // move the concrete entry string pointer into the comparison argument
+            ctx.emitter.instruction("mov rsi, r8");                             // move the concrete entry string length into the comparison argument
+            ctx.emitter.instruction(&format!("mov rdx, QWORD PTR [rsp + {}]", needle_offset)); // reload the searched string needle pointer
+            ctx.emitter.instruction(&format!("mov rcx, QWORD PTR [rsp + {}]", needle_offset + 8)); // reload the searched string needle length
+            abi::emit_call_label(ctx.emitter, "__rt_str_eq");
+            ctx.emitter.instruction("test rax, rax");                           // check whether the concrete string entry matched the needle
+            ctx.emitter.instruction(&format!("jne {}", found_label));           // branch when the concrete string entry matches the needle
+        }
+        PhpType::Int | PhpType::Bool => {
+            ctx.emitter.instruction(&format!("mov r10, QWORD PTR [rsp + {}]", needle_offset)); // reload the searched scalar needle from the stack
+            ctx.emitter.instruction("cmp rcx, r10");                            // compare the concrete scalar payload against the needle
+            ctx.emitter.instruction(&format!("je {}", found_label));            // branch when the concrete scalar entry matches the needle
         }
         other => {
             return Err(CodegenIrError::unsupported(format!(
