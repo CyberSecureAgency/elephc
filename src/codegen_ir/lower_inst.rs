@@ -5095,7 +5095,10 @@ fn move_int_result_to_first_arg(ctx: &mut FunctionContext<'_>) {
 }
 
 /// Returns the temporary caller-stack pad needed to match incoming stack-arg offsets.
-fn direct_call_stack_pad_bytes(ctx: &FunctionContext<'_>, overflow_bytes: usize) -> usize {
+pub(super) fn direct_call_stack_pad_bytes(
+    ctx: &FunctionContext<'_>,
+    overflow_bytes: usize,
+) -> usize {
     match ctx.emitter.target.arch {
         Arch::AArch64 if overflow_bytes > 0 => 16,
         _ => 0,

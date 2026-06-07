@@ -15,12 +15,12 @@ use crate::codegen::{
 };
 use crate::codegen::platform::Arch;
 use crate::codegen_ir::{CodegenIrError, Result};
-use crate::ir::{Immediate, Instruction, Op, ValueDef, ValueId};
+use crate::ir::{BlockId, Immediate, Instruction, Op, ValueDef, ValueId};
 use crate::names::function_symbol;
 use crate::types::PhpType;
 
 use super::super::super::context::FunctionContext;
-use super::super::{iterators, predicates};
+use super::super::{direct_call_stack_pad_bytes, iterators, materialize_direct_call_args, predicates};
 use super::{expect_operand, store_if_result};
 
 const EXTS_PTR_SYMBOL: &str = "_spl_autoload_exts_ptr";
@@ -98,6 +98,8 @@ enum IteratorApplyCallback {
     StaticUserFunction {
         label: String,
         return_ty: PhpType,
+        args: Vec<ValueId>,
+        param_types: Vec<PhpType>,
     },
     DynamicString {
         targets: Vec<IteratorApplyCallbackTarget>,
@@ -272,14 +274,10 @@ pub(super) fn lower_iterator_apply(
     inst: &Instruction,
 ) -> Result<()> {
     super::ensure_arg_count_between(inst, "iterator_apply", 2, 3)?;
-    if inst.operands.len() > 2 {
-        return Err(CodegenIrError::unsupported(
-            "iterator_apply EIR callback argument arrays",
-        ));
-    }
     let source = expect_operand(inst, 0)?;
     let callback_value = expect_operand(inst, 1)?;
-    let callback = iterator_apply_callback(ctx, callback_value)?;
+    let callback_args = iterator_apply_callback_args(ctx, inst)?;
+    let callback = iterator_apply_callback(ctx, callback_value, callback_args)?;
     let source_ty = ctx.value_php_type(source)?.codegen_repr();
 
     if matches!(callback, IteratorApplyCallback::DynamicString { .. }) {
@@ -309,6 +307,7 @@ pub(super) fn lower_iterator_apply(
 fn iterator_apply_callback(
     ctx: &mut FunctionContext<'_>,
     callback: ValueId,
+    args: Vec<ValueId>,
 ) -> Result<IteratorApplyCallback> {
     if let Some(callback_name) = static_string_operand(ctx, callback)? {
         let callback_function = ctx.callable_function_by_name(&callback_name).ok_or_else(|| {
@@ -317,21 +316,44 @@ fn iterator_apply_callback(
                 callback_name
             ))
         })?;
-        if !callback_function.params.is_empty() {
+        if callback_function.params.len() != args.len() {
             return Err(CodegenIrError::unsupported(format!(
-                "iterator_apply callback {} with {} params",
+                "iterator_apply callback {} with {} params and {} EIR args",
                 callback_name,
-                callback_function.params.len()
+                callback_function.params.len(),
+                args.len()
             )));
         }
+        if callback_function
+            .params
+            .iter()
+            .any(|param| param.by_ref || param.variadic)
+        {
+            return Err(CodegenIrError::unsupported(format!(
+                "iterator_apply callback {} with by-ref or variadic params",
+                callback_name
+            )));
+        }
+        let param_types = callback_function
+            .params
+            .iter()
+            .map(|param| param.php_type.codegen_repr())
+            .collect();
         return Ok(IteratorApplyCallback::StaticUserFunction {
             label: function_symbol(&callback_function.name),
             return_ty: callback_function.return_php_type.codegen_repr(),
+            args,
+            param_types,
         });
     }
 
     match ctx.value_php_type(callback)?.codegen_repr() {
         PhpType::Str => {
+            if !args.is_empty() {
+                return Err(CodegenIrError::unsupported(
+                    "iterator_apply EIR dynamic string callback with arg arrays",
+                ));
+            }
             let targets = iterator_apply_runtime_string_targets(ctx);
             if targets.is_empty() {
                 return Err(CodegenIrError::unsupported(
@@ -386,6 +408,144 @@ fn iterator_apply_callback_return_supported(return_ty: &PhpType) -> bool {
             | PhpType::Mixed
             | PhpType::Union(_)
     )
+}
+
+/// Returns callback argument SSA values for the static arg-array subset.
+fn iterator_apply_callback_args(
+    ctx: &FunctionContext<'_>,
+    inst: &Instruction,
+) -> Result<Vec<ValueId>> {
+    let Some(args) = inst.operands.get(2).copied() else {
+        return Ok(Vec::new());
+    };
+    if iterator_apply_arg_is_null(ctx, args)? {
+        return Ok(Vec::new());
+    }
+    iterator_apply_static_array_items(ctx, inst, args)?.ok_or_else(|| {
+        CodegenIrError::unsupported("iterator_apply EIR callback argument arrays")
+    })
+}
+
+/// Returns true when an explicit third argument is PHP null.
+fn iterator_apply_arg_is_null(ctx: &FunctionContext<'_>, value: ValueId) -> Result<bool> {
+    let value = strip_iterator_apply_arg_acquire(ctx, value)?;
+    Ok(value_defining_op(ctx, value)? == Some(Op::ConstNull))
+}
+
+/// Recovers values pushed into a simple indexed-array literal before `iterator_apply()`.
+fn iterator_apply_static_array_items(
+    ctx: &FunctionContext<'_>,
+    inst: &Instruction,
+    value: ValueId,
+) -> Result<Option<Vec<ValueId>>> {
+    let array = strip_iterator_apply_arg_acquire(ctx, value)?;
+    let Some((array_inst, array_block, _)) = value_instruction_with_location(ctx, array)? else {
+        return Ok(None);
+    };
+    if array_inst.op != Op::ArrayNew {
+        return Ok(None);
+    }
+    let limit_index = iterator_apply_instruction_index(ctx, inst)?
+        .filter(|(block, _)| *block == array_block)
+        .map(|(_, index)| index)
+        .unwrap_or(u32::MAX);
+    Ok(Some(iterator_apply_array_items(
+        ctx,
+        array,
+        array_block,
+        limit_index,
+    )?))
+}
+
+/// Removes an acquire wrapper from an arg-array value when EIR inserted one.
+fn strip_iterator_apply_arg_acquire(ctx: &FunctionContext<'_>, value: ValueId) -> Result<ValueId> {
+    let Some(value_ref) = ctx.function.value(value) else {
+        return Err(CodegenIrError::missing_entry("value", value.as_raw()));
+    };
+    let ValueDef::Instruction { inst, .. } = value_ref.def else {
+        return Ok(value);
+    };
+    let inst_ref = ctx
+        .function
+        .instruction(inst)
+        .ok_or_else(|| CodegenIrError::missing_entry("instruction", inst.as_raw()))?;
+    if inst_ref.op == Op::Acquire {
+        Ok(inst_ref.operands.first().copied().unwrap_or(value))
+    } else {
+        Ok(value)
+    }
+}
+
+/// Returns the defining opcode for an SSA value when it comes from an instruction.
+fn value_defining_op(ctx: &FunctionContext<'_>, value: ValueId) -> Result<Option<Op>> {
+    Ok(value_instruction_with_location(ctx, value)?.map(|(inst, _, _)| inst.op))
+}
+
+/// Returns an instruction-backed value definition and its block/index location.
+fn value_instruction_with_location<'a>(
+    ctx: &'a FunctionContext<'_>,
+    value: ValueId,
+) -> Result<Option<(&'a Instruction, BlockId, u32)>> {
+    let Some(value_ref) = ctx.function.value(value) else {
+        return Err(CodegenIrError::missing_entry("value", value.as_raw()));
+    };
+    let ValueDef::Instruction { block, index, inst } = value_ref.def else {
+        return Ok(None);
+    };
+    let inst_ref = ctx
+        .function
+        .instruction(inst)
+        .ok_or_else(|| CodegenIrError::missing_entry("instruction", inst.as_raw()))?;
+    Ok(Some((inst_ref, block, index)))
+}
+
+/// Returns the current builtin instruction location from its result value when available.
+fn iterator_apply_instruction_index(
+    ctx: &FunctionContext<'_>,
+    inst: &Instruction,
+) -> Result<Option<(BlockId, u32)>> {
+    let Some(result) = inst.result else {
+        return Ok(None);
+    };
+    let Some(value_ref) = ctx.function.value(result) else {
+        return Err(CodegenIrError::missing_entry("value", result.as_raw()));
+    };
+    let ValueDef::Instruction { block, index, .. } = value_ref.def else {
+        return Ok(None);
+    };
+    Ok(Some((block, index)))
+}
+
+/// Collects item values pushed into an indexed-array literal before the builtin call.
+fn iterator_apply_array_items(
+    ctx: &FunctionContext<'_>,
+    array: ValueId,
+    block: BlockId,
+    limit_index: u32,
+) -> Result<Vec<ValueId>> {
+    let block_ref = ctx
+        .function
+        .block(block)
+        .ok_or_else(|| CodegenIrError::missing_entry("block", block.as_raw()))?;
+    let mut items = Vec::new();
+    for (index, inst_id) in block_ref.instructions.iter().enumerate() {
+        if index as u32 >= limit_index {
+            break;
+        }
+        let inst_ref = ctx
+            .function
+            .instruction(*inst_id)
+            .ok_or_else(|| CodegenIrError::missing_entry("instruction", inst_id.as_raw()))?;
+        if inst_ref.op == Op::ArrayPush && inst_ref.operands.first().copied() == Some(array) {
+            let Some(item) = inst_ref.operands.get(1).copied() else {
+                return Err(CodegenIrError::invalid_module(
+                    "iterator_apply arg array push missing value operand",
+                ));
+            };
+            items.push(item);
+        }
+    }
+    Ok(items)
 }
 
 /// Loads the single object operand into the canonical integer result register.
@@ -1317,15 +1477,35 @@ fn emit_apply_callback_invocation(
     loop_end: &str,
 ) -> Result<()> {
     match callback {
-        IteratorApplyCallback::StaticUserFunction { label, return_ty } => {
-            abi::emit_call_label(ctx.emitter, label);
-            emit_increment_saved_apply_count(ctx);
-            emit_branch_if_callback_result_false(ctx, return_ty, loop_end)
-        }
+        IteratorApplyCallback::StaticUserFunction {
+            label,
+            return_ty,
+            args,
+            param_types,
+        } => emit_static_apply_callback_invocation(ctx, label, return_ty, args, param_types, loop_end),
         IteratorApplyCallback::DynamicString { targets } => {
             emit_dynamic_string_apply_callback_invocation(ctx, targets, loop_end)
         }
     }
+}
+
+/// Materializes static callback args and invokes the resolved user function.
+fn emit_static_apply_callback_invocation(
+    ctx: &mut FunctionContext<'_>,
+    label: &str,
+    return_ty: &PhpType,
+    args: &[ValueId],
+    param_types: &[PhpType],
+    loop_end: &str,
+) -> Result<()> {
+    let overflow_bytes = materialize_direct_call_args(ctx, args, param_types)?;
+    let caller_stack_pad_bytes = direct_call_stack_pad_bytes(ctx, overflow_bytes);
+    abi::emit_reserve_temporary_stack(ctx.emitter, caller_stack_pad_bytes);
+    abi::emit_call_label(ctx.emitter, label);
+    abi::emit_release_temporary_stack(ctx.emitter, caller_stack_pad_bytes);
+    abi::emit_release_temporary_stack(ctx.emitter, overflow_bytes);
+    emit_increment_saved_apply_count(ctx);
+    emit_branch_if_callback_result_false(ctx, return_ty, loop_end)
 }
 
 /// Dispatches a saved runtime string callback to a zero-argument user function.
