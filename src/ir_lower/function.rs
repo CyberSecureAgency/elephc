@@ -40,6 +40,7 @@ pub(crate) fn lower_main(
     module: &mut Module,
     check_result: &CheckResult,
     constants: &std::collections::HashMap<String, (ExprKind, PhpType)>,
+    fiber_return_sigs: &std::collections::HashMap<String, FunctionSig>,
 ) {
     let mut function = Function::new("main".to_string(), IrType::Void, PhpType::Void);
     function.flags.is_main = true;
@@ -53,6 +54,7 @@ pub(crate) fn lower_main(
         &check_result.functions,
         &check_result.extern_functions,
         &check_result.callable_param_sigs,
+        fiber_return_sigs,
         &check_result.classes,
         &check_result.enums,
         &check_result.interfaces,
@@ -175,6 +177,7 @@ pub(crate) fn lower_user_function(
     module: &mut Module,
     check_result: &CheckResult,
     constants: &std::collections::HashMap<String, (ExprKind, PhpType)>,
+    fiber_return_sigs: &std::collections::HashMap<String, FunctionSig>,
 ) {
     let fallback = signature_from_ast(params, return_type);
     let signature = check_result.functions.get(name).unwrap_or(&fallback);
@@ -201,6 +204,7 @@ pub(crate) fn lower_user_function(
         &check_result.functions,
         &check_result.extern_functions,
         &check_result.callable_param_sigs,
+        fiber_return_sigs,
         &check_result.classes,
         &check_result.enums,
         &check_result.interfaces,
@@ -228,6 +232,7 @@ pub(crate) fn lower_class_method(
     module: &mut Module,
     check_result: &CheckResult,
     constants: &std::collections::HashMap<String, (ExprKind, PhpType)>,
+    fiber_return_sigs: &std::collections::HashMap<String, FunctionSig>,
 ) {
     let fallback = signature_from_ast(params, return_type);
     let signature = check_result
@@ -284,6 +289,7 @@ pub(crate) fn lower_class_method(
         &check_result.functions,
         &check_result.extern_functions,
         &check_result.callable_param_sigs,
+        fiber_return_sigs,
         &check_result.classes,
         &check_result.enums,
         &check_result.interfaces,
@@ -398,6 +404,7 @@ fn lower_closure_function_with_signature(
         parent.functions,
         parent.extern_functions,
         parent.callable_param_sigs,
+        parent.fiber_return_sigs,
         parent.classes,
         parent.enums,
         parent.interfaces,
@@ -424,6 +431,7 @@ fn lower_body_into_function(
     functions: &std::collections::HashMap<String, FunctionSig>,
     extern_functions: &std::collections::HashMap<String, crate::types::ExternFunctionSig>,
     callable_param_sigs: &std::collections::HashMap<(String, String), FunctionSig>,
+    fiber_return_sigs: &std::collections::HashMap<String, FunctionSig>,
     classes: &std::collections::HashMap<String, crate::types::ClassInfo>,
     enums: &std::collections::HashMap<String, crate::types::EnumInfo>,
     interfaces: &std::collections::HashMap<String, crate::types::InterfaceInfo>,
@@ -448,6 +456,7 @@ fn lower_body_into_function(
         functions,
         extern_functions,
         callable_param_sigs,
+        fiber_return_sigs,
         classes,
         enums,
         interfaces,
@@ -860,7 +869,7 @@ fn signature_from_ast_with_variadic(
     return_type: Option<&TypeExpr>,
     variadic: Option<&str>,
 ) -> FunctionSig {
-    FunctionSig {
+    let mut signature = FunctionSig {
         params: params
             .iter()
             .map(|(name, ty, _, _)| {
@@ -879,7 +888,25 @@ fn signature_from_ast_with_variadic(
         declared_params: params.iter().map(|(_, ty, _, _)| ty.is_some()).collect(),
         variadic: variadic.map(str::to_string),
         deprecation: None,
+    };
+    append_variadic_param_slot(&mut signature);
+    signature
+}
+
+/// Adds the variadic `array<mixed>` parameter slot omitted from parsed parameter tuples.
+fn append_variadic_param_slot(signature: &mut FunctionSig) {
+    let Some(variadic) = signature.variadic.clone() else {
+        return;
+    };
+    if signature.params.iter().any(|(name, _)| name == &variadic) {
+        return;
     }
+    signature
+        .params
+        .push((variadic, PhpType::Array(Box::new(PhpType::Mixed))));
+    signature.defaults.push(None);
+    signature.ref_params.push(false);
+    signature.declared_params.push(false);
 }
 
 /// Finds a method signature using PHP's case-insensitive method key convention.

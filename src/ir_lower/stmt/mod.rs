@@ -248,6 +248,7 @@ fn lower_assign(ctx: &mut LoweringContext<'_, '_>, name: &str, value: &Expr, spa
     let direct_closure = matches!(value.kind, ExprKind::Closure { .. });
     ctx.clear_pending_static_callable_result();
     let static_callable = static_callable_binding_for_expr(ctx, value);
+    let fiber_start_sig = crate::ir_lower::fibers::start_sig_for_expr(ctx, value);
     let callable_array = lower_callable_array_for_assignment(ctx, value, static_callable.as_ref());
     let lowered = callable_array
         .as_ref()
@@ -268,6 +269,9 @@ fn lower_assign(ctx: &mut LoweringContext<'_, '_>, name: &str, value: &Expr, spa
         .or(callable_result);
     if let Some(target) = static_callable {
         ctx.bind_static_callable_local(name, target);
+    }
+    if let Some(sig) = fiber_start_sig {
+        ctx.bind_fiber_start_sig(name, sig);
     }
 }
 
@@ -305,7 +309,11 @@ fn contextualize_array_assignment(
 fn lower_ref_assign(ctx: &mut LoweringContext<'_, '_>, target: &str, source: &str, span: Span) {
     let value = ctx.load_local(source, Some(span));
     let php_type = ctx.builder.value_php_type(value.value);
+    let fiber_start_sig = ctx.fiber_start_sig_for_local(source);
     ctx.store_local(target, value, php_type, Some(span));
+    if let Some(sig) = fiber_start_sig {
+        ctx.bind_fiber_start_sig(target, sig);
+    }
 }
 
 /// Lowers an `if` / `elseif` / `else` chain and terminates unreachable merge blocks explicitly.
@@ -756,6 +764,7 @@ fn lower_typed_assign(
     ctx.clear_pending_static_callable_result();
     let php_type = ctx.type_expr_to_php_type_for_value(type_expr);
     let static_callable = static_callable_binding_for_expr(ctx, value);
+    let fiber_start_sig = crate::ir_lower::fibers::start_sig_for_expr(ctx, value);
     let callable_array = lower_callable_array_for_assignment(ctx, value, static_callable.as_ref());
     let lowered = callable_array
         .as_ref()
@@ -776,6 +785,9 @@ fn lower_typed_assign(
         .or(callable_result);
     if let Some(target) = static_callable {
         ctx.bind_static_callable_local(name, target);
+    }
+    if let Some(sig) = fiber_start_sig {
+        ctx.bind_fiber_start_sig(name, sig);
     }
 }
 

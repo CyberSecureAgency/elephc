@@ -464,7 +464,10 @@ fn function_signature_from_eir_with_param_count(
     param_count: usize,
 ) -> FunctionSig {
     if let Some(signature) = &function.signature {
-        if signature.params.len() == param_count {
+        let mut signature = signature.clone();
+        let original_param_count = signature.params.len();
+        ensure_variadic_param_slot(&mut signature);
+        if original_param_count == param_count {
             return signature.clone();
         }
     }
@@ -499,6 +502,22 @@ fn function_signature_from_eir_with_param_count(
             .map(|param| param.name.clone()),
         deprecation: None,
     }
+}
+
+/// Adds the virtual variadic array slot when the EIR ABI stores it outside `params`.
+fn ensure_variadic_param_slot(signature: &mut FunctionSig) {
+    let Some(variadic) = signature.variadic.clone() else {
+        return;
+    };
+    if signature.params.iter().any(|(name, _)| name == &variadic) {
+        return;
+    }
+    signature
+        .params
+        .push((variadic, PhpType::Array(Box::new(PhpType::Mixed))));
+    signature.defaults.push(None);
+    signature.ref_params.push(false);
+    signature.declared_params.push(false);
 }
 
 /// Lowers a concrete include-loaded function variant activation marker.

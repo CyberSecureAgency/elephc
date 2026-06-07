@@ -27,12 +27,13 @@ pub(crate) fn lower(
 ) -> Result<Module, LoweringError> {
     let mut module = Module::new(target);
     let constants = crate::codegen::collect_constants(program, target.platform);
+    let fiber_return_sigs = crate::ir_lower::fibers::collect_fiber_return_sigs(program);
     populate_metadata(&mut module, program, check_result);
-    lower_function_declarations(program, &mut module, check_result, &constants);
-    lower_class_like_methods(program, &mut module, check_result, &constants);
-    lower_builtin_reflection_methods(&mut module, check_result, &constants);
-    function::lower_main(program, &mut module, check_result, &constants);
-    lower_referenced_builtin_spl_methods(&mut module, check_result, &constants);
+    lower_function_declarations(program, &mut module, check_result, &constants, &fiber_return_sigs);
+    lower_class_like_methods(program, &mut module, check_result, &constants, &fiber_return_sigs);
+    lower_builtin_reflection_methods(&mut module, check_result, &constants, &fiber_return_sigs);
+    function::lower_main(program, &mut module, check_result, &constants, &fiber_return_sigs);
+    lower_referenced_builtin_spl_methods(&mut module, check_result, &constants, &fiber_return_sigs);
     validate_module(&module)?;
     Ok(module)
 }
@@ -234,6 +235,7 @@ fn lower_function_declarations(
     module: &mut Module,
     check_result: &CheckResult,
     constants: &std::collections::HashMap<String, (ExprKind, PhpType)>,
+    fiber_return_sigs: &std::collections::HashMap<String, crate::types::FunctionSig>,
 ) {
     for stmt in statements {
         match &stmt.kind {
@@ -251,11 +253,12 @@ fn lower_function_declarations(
                 module,
                 check_result,
                 constants,
+                fiber_return_sigs,
             ),
             StmtKind::NamespaceBlock { body, .. }
             | StmtKind::Synthetic(body)
             | StmtKind::IncludeOnceGuard { body, .. } => {
-                lower_function_declarations(body, module, check_result, constants);
+                lower_function_declarations(body, module, check_result, constants, fiber_return_sigs);
             }
             StmtKind::If {
                 then_body,
@@ -263,12 +266,12 @@ fn lower_function_declarations(
                 else_body,
                 ..
             } => {
-                lower_function_declarations(then_body, module, check_result, constants);
+                lower_function_declarations(then_body, module, check_result, constants, fiber_return_sigs);
                 for (_, body) in elseif_clauses {
-                    lower_function_declarations(body, module, check_result, constants);
+                    lower_function_declarations(body, module, check_result, constants, fiber_return_sigs);
                 }
                 if let Some(body) = else_body {
-                    lower_function_declarations(body, module, check_result, constants);
+                    lower_function_declarations(body, module, check_result, constants, fiber_return_sigs);
                 }
             }
             StmtKind::IfDef {
@@ -276,23 +279,23 @@ fn lower_function_declarations(
                 else_body,
                 ..
             } => {
-                lower_function_declarations(then_body, module, check_result, constants);
+                lower_function_declarations(then_body, module, check_result, constants, fiber_return_sigs);
                 if let Some(body) = else_body {
-                    lower_function_declarations(body, module, check_result, constants);
+                    lower_function_declarations(body, module, check_result, constants, fiber_return_sigs);
                 }
             }
             StmtKind::While { body, .. }
             | StmtKind::DoWhile { body, .. }
             | StmtKind::For { body, .. }
             | StmtKind::Foreach { body, .. } => {
-                lower_function_declarations(body, module, check_result, constants);
+                lower_function_declarations(body, module, check_result, constants, fiber_return_sigs);
             }
             StmtKind::Switch { cases, default, .. } => {
                 for (_, body) in cases {
-                    lower_function_declarations(body, module, check_result, constants);
+                    lower_function_declarations(body, module, check_result, constants, fiber_return_sigs);
                 }
                 if let Some(body) = default {
-                    lower_function_declarations(body, module, check_result, constants);
+                    lower_function_declarations(body, module, check_result, constants, fiber_return_sigs);
                 }
             }
             StmtKind::Try {
@@ -300,12 +303,12 @@ fn lower_function_declarations(
                 catches,
                 finally_body,
             } => {
-                lower_function_declarations(try_body, module, check_result, constants);
+                lower_function_declarations(try_body, module, check_result, constants, fiber_return_sigs);
                 for catch in catches {
-                    lower_function_declarations(&catch.body, module, check_result, constants);
+                    lower_function_declarations(&catch.body, module, check_result, constants, fiber_return_sigs);
                 }
                 if let Some(body) = finally_body {
-                    lower_function_declarations(body, module, check_result, constants);
+                    lower_function_declarations(body, module, check_result, constants, fiber_return_sigs);
                 }
             }
             _ => {}
@@ -319,19 +322,20 @@ fn lower_class_like_methods(
     module: &mut Module,
     check_result: &CheckResult,
     constants: &std::collections::HashMap<String, (ExprKind, PhpType)>,
+    fiber_return_sigs: &std::collections::HashMap<String, crate::types::FunctionSig>,
 ) {
     for stmt in statements {
         match &stmt.kind {
             StmtKind::ClassDecl { name, methods, .. } | StmtKind::TraitDecl { name, methods, .. } => {
-                lower_methods_for_class_like(name, methods, module, check_result, constants);
+                lower_methods_for_class_like(name, methods, module, check_result, constants, fiber_return_sigs);
             }
             StmtKind::InterfaceDecl { name, methods, .. } => {
-                lower_methods_for_class_like(name, methods, module, check_result, constants);
+                lower_methods_for_class_like(name, methods, module, check_result, constants, fiber_return_sigs);
             }
             StmtKind::NamespaceBlock { body, .. }
             | StmtKind::Synthetic(body)
             | StmtKind::IncludeOnceGuard { body, .. } => {
-                lower_class_like_methods(body, module, check_result, constants);
+                lower_class_like_methods(body, module, check_result, constants, fiber_return_sigs);
             }
             StmtKind::If {
                 then_body,
@@ -339,12 +343,12 @@ fn lower_class_like_methods(
                 else_body,
                 ..
             } => {
-                lower_class_like_methods(then_body, module, check_result, constants);
+                lower_class_like_methods(then_body, module, check_result, constants, fiber_return_sigs);
                 for (_, body) in elseif_clauses {
-                    lower_class_like_methods(body, module, check_result, constants);
+                    lower_class_like_methods(body, module, check_result, constants, fiber_return_sigs);
                 }
                 if let Some(body) = else_body {
-                    lower_class_like_methods(body, module, check_result, constants);
+                    lower_class_like_methods(body, module, check_result, constants, fiber_return_sigs);
                 }
             }
             StmtKind::IfDef {
@@ -352,23 +356,23 @@ fn lower_class_like_methods(
                 else_body,
                 ..
             } => {
-                lower_class_like_methods(then_body, module, check_result, constants);
+                lower_class_like_methods(then_body, module, check_result, constants, fiber_return_sigs);
                 if let Some(body) = else_body {
-                    lower_class_like_methods(body, module, check_result, constants);
+                    lower_class_like_methods(body, module, check_result, constants, fiber_return_sigs);
                 }
             }
             StmtKind::While { body, .. }
             | StmtKind::DoWhile { body, .. }
             | StmtKind::For { body, .. }
             | StmtKind::Foreach { body, .. } => {
-                lower_class_like_methods(body, module, check_result, constants);
+                lower_class_like_methods(body, module, check_result, constants, fiber_return_sigs);
             }
             StmtKind::Switch { cases, default, .. } => {
                 for (_, body) in cases {
-                    lower_class_like_methods(body, module, check_result, constants);
+                    lower_class_like_methods(body, module, check_result, constants, fiber_return_sigs);
                 }
                 if let Some(body) = default {
-                    lower_class_like_methods(body, module, check_result, constants);
+                    lower_class_like_methods(body, module, check_result, constants, fiber_return_sigs);
                 }
             }
             StmtKind::Try {
@@ -376,12 +380,12 @@ fn lower_class_like_methods(
                 catches,
                 finally_body,
             } => {
-                lower_class_like_methods(try_body, module, check_result, constants);
+                lower_class_like_methods(try_body, module, check_result, constants, fiber_return_sigs);
                 for catch in catches {
-                    lower_class_like_methods(&catch.body, module, check_result, constants);
+                    lower_class_like_methods(&catch.body, module, check_result, constants, fiber_return_sigs);
                 }
                 if let Some(body) = finally_body {
-                    lower_class_like_methods(body, module, check_result, constants);
+                    lower_class_like_methods(body, module, check_result, constants, fiber_return_sigs);
                 }
             }
             _ => {}
@@ -396,6 +400,7 @@ fn lower_methods_for_class_like(
     module: &mut Module,
     check_result: &CheckResult,
     constants: &std::collections::HashMap<String, (ExprKind, PhpType)>,
+    fiber_return_sigs: &std::collections::HashMap<String, crate::types::FunctionSig>,
 ) {
     for method in methods {
         if !method.has_body {
@@ -415,6 +420,7 @@ fn lower_methods_for_class_like(
             module,
             check_result,
             constants,
+            fiber_return_sigs,
         );
     }
 }
@@ -424,6 +430,7 @@ fn lower_builtin_reflection_methods(
     module: &mut Module,
     check_result: &CheckResult,
     constants: &std::collections::HashMap<String, (ExprKind, PhpType)>,
+    fiber_return_sigs: &std::collections::HashMap<String, crate::types::FunctionSig>,
 ) {
     for class_name in [
         "ReflectionAttribute",
@@ -431,7 +438,7 @@ fn lower_builtin_reflection_methods(
         "ReflectionMethod",
         "ReflectionProperty",
     ] {
-        lower_builtin_reflection_class_methods(class_name, module, check_result, constants);
+        lower_builtin_reflection_class_methods(class_name, module, check_result, constants, fiber_return_sigs);
     }
 }
 
@@ -441,6 +448,7 @@ fn lower_builtin_reflection_class_methods(
     module: &mut Module,
     check_result: &CheckResult,
     constants: &std::collections::HashMap<String, (ExprKind, PhpType)>,
+    fiber_return_sigs: &std::collections::HashMap<String, crate::types::FunctionSig>,
 ) {
     let Some(class_info) = check_result.classes.get(class_name) else {
         return;
@@ -469,6 +477,7 @@ fn lower_builtin_reflection_class_methods(
             module,
             check_result,
             constants,
+            fiber_return_sigs,
         );
     }
 }
@@ -478,6 +487,7 @@ fn lower_referenced_builtin_spl_methods(
     module: &mut Module,
     check_result: &CheckResult,
     constants: &std::collections::HashMap<String, (ExprKind, PhpType)>,
+    fiber_return_sigs: &std::collections::HashMap<String, crate::types::FunctionSig>,
 ) {
     loop {
         let mut methods = referenced_builtin_spl_methods(module);
@@ -492,7 +502,7 @@ fn lower_referenced_builtin_spl_methods(
 
         let before = module.class_methods.len();
         for (class_name, method_key) in methods {
-            lower_builtin_spl_method(&class_name, &method_key, module, check_result, constants);
+            lower_builtin_spl_method(&class_name, &method_key, module, check_result, constants, fiber_return_sigs);
         }
         if module.class_methods.len() == before {
             break;
@@ -1216,6 +1226,7 @@ fn lower_builtin_spl_method(
     module: &mut Module,
     check_result: &CheckResult,
     constants: &std::collections::HashMap<String, (ExprKind, PhpType)>,
+    fiber_return_sigs: &std::collections::HashMap<String, crate::types::FunctionSig>,
 ) {
     if class_method_already_lowered(module, class_name, method_key, false)
         || !is_supported_builtin_spl_method(class_name, method_key)
@@ -1242,6 +1253,7 @@ fn lower_builtin_spl_method(
         module,
         check_result,
         constants,
+        fiber_return_sigs,
     );
 }
 

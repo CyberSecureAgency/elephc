@@ -1009,6 +1009,8 @@ fn lower_assignment_expr(
         _ => None,
     };
     let static_callable = assigned_name.and_then(|_| static_callable_binding_for_expr(ctx, value));
+    let fiber_start_sig =
+        assigned_name.and_then(|_| crate::ir_lower::fibers::start_sig_for_expr(ctx, value));
     let callable_array = assigned_name
         .and_then(|_| lower_callable_array_for_assignment(ctx, value, static_callable.as_ref()));
     let lowered = assigned_name
@@ -1024,6 +1026,9 @@ fn lower_assignment_expr(
             .or(static_callable);
         if let Some(target) = static_callable {
             ctx.bind_static_callable_local(name, target);
+        }
+        if let Some(sig) = fiber_start_sig {
+            ctx.bind_fiber_start_sig(name, sig);
         }
     } else {
         lower_non_local_assignment_write(ctx, target, value, expr.span);
@@ -6168,7 +6173,8 @@ fn lower_method_call(
     op: Op,
     expr: &Expr,
 ) -> LoweredValue {
-    let object = lower_expr(ctx, object);
+    let object_expr = object;
+    let object = lower_expr(ctx, object_expr);
     if op == Op::MethodCall && value_is_definitely_null(ctx, object.value) {
         let null_value = lower_null(ctx, expr);
         terminate_method_call_on_null(ctx, method);
@@ -6179,7 +6185,7 @@ fn lower_method_call(
     }
     let result_type = method_call_result_type(ctx, object.value, method, op, expr);
     let mut operands = vec![object.value];
-    let sig = method_signature(ctx, object.value, method).cloned();
+    let sig = method_call_argument_signature(ctx, object_expr, object.value, method);
     let arg_values = lower_args_with_signature(ctx, sig.as_ref(), args);
     operands.extend(arg_values.iter().copied());
     let data = ctx.intern_string(method);
@@ -6193,6 +6199,35 @@ fn lower_method_call(
     );
     release_owned_call_arg_temporaries(ctx, &arg_values, expr.span);
     call
+}
+
+/// Returns the signature to use for method-call argument normalization.
+fn method_call_argument_signature(
+    ctx: &LoweringContext<'_, '_>,
+    object_expr: &Expr,
+    object: crate::ir::ValueId,
+    method: &str,
+) -> Option<FunctionSig> {
+    if method_is_fiber_start(ctx, object, method) {
+        return crate::ir_lower::fibers::start_sig_for_expr(ctx, object_expr);
+    }
+    method_signature(ctx, object, method).cloned()
+}
+
+/// Returns true when a method call targets PHP's built-in `Fiber::start()`.
+fn method_is_fiber_start(
+    ctx: &LoweringContext<'_, '_>,
+    object: crate::ir::ValueId,
+    method: &str,
+) -> bool {
+    if php_symbol_key(method) != "start" {
+        return false;
+    }
+    let object_ty = ctx.builder.value_php_type(object);
+    let Some((class_name, _)) = singular_object_class(&object_ty) else {
+        return false;
+    };
+    php_symbol_key(class_name.trim_start_matches('\\')) == "fiber"
 }
 
 /// Lowers `?Object->method()` calls so null receivers fatal before argument evaluation.

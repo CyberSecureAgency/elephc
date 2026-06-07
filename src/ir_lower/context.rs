@@ -91,6 +91,7 @@ pub(crate) struct LoweringContext<'m, 'f> {
     pub functions: &'m HashMap<String, FunctionSig>,
     pub extern_functions: &'m HashMap<String, ExternFunctionSig>,
     pub callable_param_sigs: &'m HashMap<(String, String), FunctionSig>,
+    pub(crate) fiber_return_sigs: &'m HashMap<String, FunctionSig>,
     pub classes: &'m HashMap<String, ClassInfo>,
     pub enums: &'m HashMap<String, EnumInfo>,
     pub interfaces: &'m HashMap<String, InterfaceInfo>,
@@ -101,6 +102,7 @@ pub(crate) struct LoweringContext<'m, 'f> {
     pub loop_stack: Vec<LoopFrame>,
     pub finally_stack: Vec<FinallyFrame>,
     static_callable_locals: HashMap<String, StaticCallableBinding>,
+    fiber_start_sigs: HashMap<String, FunctionSig>,
     ref_bound_locals: HashSet<String>,
     ref_cell_owner_locals: HashMap<String, LocalSlotId>,
     pub return_type: IrType,
@@ -123,6 +125,7 @@ impl<'m, 'f> LoweringContext<'m, 'f> {
         functions: &'m HashMap<String, FunctionSig>,
         extern_functions: &'m HashMap<String, ExternFunctionSig>,
         callable_param_sigs: &'m HashMap<(String, String), FunctionSig>,
+        fiber_return_sigs: &'m HashMap<String, FunctionSig>,
         classes: &'m HashMap<String, ClassInfo>,
         enums: &'m HashMap<String, EnumInfo>,
         interfaces: &'m HashMap<String, InterfaceInfo>,
@@ -146,6 +149,7 @@ impl<'m, 'f> LoweringContext<'m, 'f> {
             functions,
             extern_functions,
             callable_param_sigs,
+            fiber_return_sigs,
             classes,
             enums,
             interfaces,
@@ -156,6 +160,7 @@ impl<'m, 'f> LoweringContext<'m, 'f> {
             loop_stack: Vec::new(),
             finally_stack: Vec::new(),
             static_callable_locals: HashMap::new(),
+            fiber_start_sigs: HashMap::new(),
             ref_bound_locals: HashSet::new(),
             ref_cell_owner_locals: HashMap::new(),
             return_type,
@@ -460,6 +465,7 @@ impl<'m, 'f> LoweringContext<'m, 'f> {
     /// Emits a store to a PHP local slot, updates type facts, and returns the stored value.
     pub(crate) fn store_local(&mut self, name: &str, value: LoweredValue, php_type: PhpType, span: Option<Span>) -> LoweredValue {
         self.clear_static_callable_local(name);
+        self.clear_fiber_start_sig(name);
         let previous_slot = self.local_slots.get(name).copied();
         let previous_type = self.local_type(name);
         let previous_kind = self.local_kinds.get(name).copied().unwrap_or(LocalKind::PhpLocal);
@@ -521,6 +527,7 @@ impl<'m, 'f> LoweringContext<'m, 'f> {
         span: Option<Span>,
     ) -> LoweredValue {
         self.clear_static_callable_local(name);
+        self.clear_fiber_start_sig(name);
         let previous_kind = self.local_kinds.get(name).copied().unwrap_or(LocalKind::PhpLocal);
         let uses_global = self.uses_global_storage(name, previous_kind);
         let slot = self.declare_local(name, php_type.clone());
@@ -551,6 +558,7 @@ impl<'m, 'f> LoweringContext<'m, 'f> {
             return self.store_local(name, null, PhpType::Void, span);
         }
         self.clear_static_callable_local(name);
+        self.clear_fiber_start_sig(name);
         let slot = self.declare_local(name, PhpType::Void);
         self.release_ref_cell_owner(name, span);
         self.emit_void(
@@ -692,6 +700,23 @@ impl<'m, 'f> LoweringContext<'m, 'f> {
         self.static_callable_locals.get(name).cloned()
     }
 
+    /// Records that a PHP local currently holds a Fiber with a known callback signature.
+    pub(crate) fn bind_fiber_start_sig(&mut self, name: &str, sig: FunctionSig) {
+        if self.can_track_static_callable_local(name) {
+            self.fiber_start_sigs.insert(name.to_string(), sig);
+        }
+    }
+
+    /// Returns the Fiber callback start signature currently associated with a local.
+    pub(crate) fn fiber_start_sig_for_local(&self, name: &str) -> Option<FunctionSig> {
+        self.fiber_start_sigs.get(name).cloned()
+    }
+
+    /// Returns the known Fiber callback start signature returned by a function.
+    pub(crate) fn fiber_return_sig(&self, name: &str) -> Option<FunctionSig> {
+        self.fiber_return_sigs.get(name).cloned()
+    }
+
     /// Returns the specialized signature inferred for a callable parameter in this scope.
     pub(crate) fn callable_param_signature(&self, name: &str) -> Option<&FunctionSig> {
         self.callable_param_sigs
@@ -703,9 +728,15 @@ impl<'m, 'f> LoweringContext<'m, 'f> {
         self.static_callable_locals.remove(name);
     }
 
+    /// Clears the known Fiber callback association for one local.
+    pub(crate) fn clear_fiber_start_sig(&mut self, name: &str) {
+        self.fiber_start_sigs.remove(name);
+    }
+
     /// Clears all compile-time callable associations after a control-flow join.
     pub(crate) fn clear_static_callable_locals(&mut self) {
         self.static_callable_locals.clear();
+        self.fiber_start_sigs.clear();
     }
 
     /// Returns whether the named PHP variable should use program-global storage.

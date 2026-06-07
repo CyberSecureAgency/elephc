@@ -13,6 +13,7 @@
 mod context;
 mod effects_lookup;
 mod expr;
+mod fibers;
 mod function;
 mod ownership;
 mod program;
