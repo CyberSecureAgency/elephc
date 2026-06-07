@@ -1949,6 +1949,9 @@ fn property_store_keeps_independent_ref(property_ty: &PhpType, value_ty: &PhpTyp
     if matches!((&property_ty, &value_ty), (PhpType::Mixed, PhpType::Mixed)) {
         return false;
     }
+    if matches!(property_ty, PhpType::Str) {
+        return true;
+    }
     property_ty.is_refcounted()
 }
 

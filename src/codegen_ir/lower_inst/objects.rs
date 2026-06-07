@@ -3061,7 +3061,10 @@ fn load_property_store_value_to_result(
     if matches!(value_ty.codegen_repr(), PhpType::Mixed | PhpType::Union(_)) {
         load_value_to_first_int_arg(ctx, value)?;
         match slot_ty.codegen_repr() {
-            PhpType::Str => abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_string"),
+            PhpType::Str => {
+                abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_string");
+                abi::emit_call_label(ctx.emitter, "__rt_str_persist");
+            }
             PhpType::Int => abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_int"),
             PhpType::Bool => abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_bool"),
             PhpType::Float => abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_float"),
@@ -3070,6 +3073,10 @@ fn load_property_store_value_to_result(
         return Ok(());
     }
     let loaded_ty = ctx.load_value_to_result(value)?;
+    if matches!(slot_ty.codegen_repr(), PhpType::Str) {
+        abi::emit_call_label(ctx.emitter, "__rt_str_persist");
+        return Ok(());
+    }
     if slot_ty.codegen_repr().is_refcounted() {
         abi::emit_incref_if_refcounted(ctx.emitter, &loaded_ty.codegen_repr());
     }
