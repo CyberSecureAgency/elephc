@@ -21,8 +21,8 @@ use crate::codegen::context::{
 use crate::codegen::platform::Arch;
 use crate::intrinsics::{IntrinsicCall, IntrinsicCallKind};
 use crate::ir::{
-    BlockId, CmpPredicate, Immediate, InstId, Instruction, LocalSlotId, Op, Ownership, ValueDef,
-    ValueId,
+    BlockId, CmpPredicate, Function, Immediate, InstId, Instruction, LocalSlotId, Op, Ownership,
+    Terminator, ValueDef, ValueId,
 };
 use crate::names::{
     function_symbol, ir_global_symbol, method_symbol, php_symbol_key, static_method_symbol,
@@ -57,6 +57,7 @@ mod static_locals;
 mod static_properties;
 
 const CALLED_CLASS_ID_PARAM: &str = "__elephc_called_class_id";
+const BORROWED_MIXED_ARG_CELL_BYTES: usize = 32;
 
 /// Lowers one EIR instruction by opcode.
 pub(super) fn lower_instruction(ctx: &mut FunctionContext<'_>, inst_id: InstId) -> Result<()> {
@@ -1579,14 +1580,20 @@ pub(super) fn lower_runtime_object_method_call(
     let mut ref_params = Vec::with_capacity(target.ref_params.len() + 1);
     ref_params.push(false);
     ref_params.extend(target.ref_params.iter().copied());
-    let call_args =
-        materialize_direct_call_args_with_refs(ctx, &inst.operands, &param_types, &ref_params)?;
+    let call_args = materialize_direct_call_args_with_refs_and_options(
+        ctx,
+        &inst.operands,
+        &param_types,
+        &ref_params,
+        true,
+    )?;
     let caller_stack_pad_bytes = direct_call_stack_pad_bytes(ctx, call_args.overflow_bytes);
     abi::emit_reserve_temporary_stack(ctx.emitter, caller_stack_pad_bytes);
     abi::emit_call_label(ctx.emitter, &method_symbol(&target.impl_class, &target.method_key));
     abi::emit_release_temporary_stack(ctx.emitter, caller_stack_pad_bytes);
     abi::emit_release_temporary_stack(ctx.emitter, call_args.overflow_bytes);
     store_runtime_object_call_result(ctx, inst, &target.return_ty)?;
+    emit_call_arg_temp_cleanups(ctx, &call_args);
     emit_ref_arg_writebacks(ctx, &call_args.ref_writebacks)
 }
 
@@ -2478,14 +2485,20 @@ fn lower_interface_method_call(
     let mut ref_params = Vec::with_capacity(callee_sig.ref_params.len() + 1);
     ref_params.push(false);
     ref_params.extend(callee_sig.ref_params.iter().copied());
-    let call_args =
-        materialize_direct_call_args_with_refs(ctx, &inst.operands, &param_types, &ref_params)?;
+    let call_args = materialize_direct_call_args_with_refs_and_options(
+        ctx,
+        &inst.operands,
+        &param_types,
+        &ref_params,
+        true,
+    )?;
     let caller_stack_pad_bytes = direct_call_stack_pad_bytes(ctx, call_args.overflow_bytes);
     abi::emit_reserve_temporary_stack(ctx.emitter, caller_stack_pad_bytes);
     let return_ty = iterators::emit_interface_dispatch_call(ctx, &normalized, &method_key, None)?;
     abi::emit_release_temporary_stack(ctx.emitter, caller_stack_pad_bytes);
     abi::emit_release_temporary_stack(ctx.emitter, call_args.overflow_bytes);
     store_call_result(ctx, inst, &return_ty)?;
+    emit_call_arg_temp_cleanups(ctx, &call_args);
     emit_ref_arg_writebacks(ctx, &call_args.ref_writebacks)
 }
 
@@ -3567,6 +3580,7 @@ struct CallArgMaterialization {
     ref_writebacks: Vec<RefArgWriteback>,
     cleanup_slots: Vec<CallArgTempCleanup>,
     cleanup_bytes: usize,
+    borrowed_stack_arg_bytes: usize,
 }
 
 /// Caller-owned temporary argument that must be released after the call returns.
@@ -3574,6 +3588,13 @@ struct CallArgTempCleanup {
     param_index: usize,
     offset: usize,
     ty: PhpType,
+}
+
+/// Caller-side stack Mixed cell borrowed by a read-only callee.
+struct BorrowedStackMixedArg {
+    param_index: usize,
+    offset: usize,
+    source_ty: PhpType,
 }
 
 /// A caller-side scalar local boxed into a temporary Mixed by-reference cell.
@@ -4038,8 +4059,16 @@ fn lower_direct_call(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Resul
         .map(|param| param.php_type.codegen_repr())
         .collect::<Vec<_>>();
     let ref_params = callee.params.iter().map(|param| param.by_ref).collect::<Vec<_>>();
-    let call_args =
-        materialize_direct_call_args_with_refs(ctx, &inst.operands, &param_types, &ref_params)?;
+    let borrowed_stack_mixed_args =
+        plan_borrowed_stack_mixed_args(ctx, callee, &inst.operands, &param_types, &ref_params)?;
+    let call_args = materialize_direct_call_args_with_refs_and_borrowed_options(
+        ctx,
+        &inst.operands,
+        &param_types,
+        &ref_params,
+        true,
+        &borrowed_stack_mixed_args,
+    )?;
     let caller_stack_pad_bytes = direct_call_stack_pad_bytes(ctx, call_args.overflow_bytes);
     abi::emit_reserve_temporary_stack(ctx.emitter, caller_stack_pad_bytes);
     abi::emit_call_label(ctx.emitter, &function_symbol(&function_name));
@@ -4055,6 +4084,8 @@ fn lower_direct_call(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Resul
         }
         ctx.store_result_value(result)?;
     }
+    emit_call_arg_temp_cleanups(ctx, &call_args);
+    emit_borrowed_stack_mixed_arg_release(ctx, &call_args);
     emit_ref_arg_writebacks(ctx, &call_args.ref_writebacks)
 }
 
@@ -4087,6 +4118,25 @@ fn materialize_direct_call_args_with_refs_and_options(
     ref_params: &[bool],
     track_mixed_temp_cleanups: bool,
 ) -> Result<CallArgMaterialization> {
+    materialize_direct_call_args_with_refs_and_borrowed_options(
+        ctx,
+        args,
+        param_types,
+        ref_params,
+        track_mixed_temp_cleanups,
+        &[],
+    )
+}
+
+/// Loads SSA operands into ABI argument slots with optional borrowed Mixed stack cells.
+fn materialize_direct_call_args_with_refs_and_borrowed_options(
+    ctx: &mut FunctionContext<'_>,
+    args: &[ValueId],
+    param_types: &[PhpType],
+    ref_params: &[bool],
+    track_mixed_temp_cleanups: bool,
+    borrowed_stack_mixed_args: &[BorrowedStackMixedArg],
+) -> Result<CallArgMaterialization> {
     if args.len() != param_types.len() {
         return Err(CodegenIrError::invalid_module(format!(
             "direct call materialization received {} args for {} params",
@@ -4106,8 +4156,19 @@ fn materialize_direct_call_args_with_refs_and_options(
     let abi_param_types = abi_param_types_for_refs(param_types, ref_params);
     let assignments =
         abi::build_outgoing_arg_assignments_for_target(ctx.emitter.target, &abi_param_types, 0);
+    let borrowed_stack_arg_bytes =
+        borrowed_stack_mixed_args.len() * BORROWED_MIXED_ARG_CELL_BYTES;
+    if borrowed_stack_arg_bytes > 0 {
+        abi::emit_reserve_temporary_stack(ctx.emitter, borrowed_stack_arg_bytes);
+    }
     let cleanup_slots = if track_mixed_temp_cleanups {
-        plan_call_arg_temp_cleanups(ctx, args, param_types, ref_params)?
+        plan_call_arg_temp_cleanups(
+            ctx,
+            args,
+            param_types,
+            ref_params,
+            borrowed_stack_mixed_args,
+        )?
     } else {
         Vec::new()
     };
@@ -4115,6 +4176,8 @@ fn materialize_direct_call_args_with_refs_and_options(
     if cleanup_bytes > 0 {
         abi::emit_reserve_temporary_stack(ctx.emitter, cleanup_bytes);
     }
+    let ref_cell_base_offset = borrowed_stack_arg_bytes + cleanup_bytes;
+    let borrowed_cell_base_offset = cleanup_bytes;
     let mut arg_temp_bytes = 0usize;
     for (index, (value, param_ty)) in args.iter().zip(param_types.iter()).enumerate() {
         if ref_params[index] {
@@ -4125,8 +4188,20 @@ fn materialize_direct_call_args_with_refs_and_options(
                 param_ty,
                 arg_temp_bytes,
                 &ref_writebacks,
+                ref_cell_base_offset,
             )?;
             abi::emit_push_result_value(ctx.emitter, &PhpType::Int);
+        } else if let Some(borrowed) = borrowed_stack_mixed_args
+            .iter()
+            .find(|borrowed| borrowed.param_index == index)
+        {
+            ctx.load_value_to_result(*value)?;
+            emit_borrowed_stack_mixed_arg_cell(
+                ctx,
+                borrowed,
+                borrowed_cell_base_offset + arg_temp_bytes,
+            );
+            abi::emit_push_result_value(ctx.emitter, &PhpType::Mixed);
         } else {
             ctx.load_value_to_result(*value)?;
             let source_ty = ctx.raw_value_php_type(*value)?;
@@ -4143,6 +4218,7 @@ fn materialize_direct_call_args_with_refs_and_options(
         ref_writebacks,
         cleanup_slots,
         cleanup_bytes,
+        borrowed_stack_arg_bytes,
     })
 }
 
@@ -4188,6 +4264,7 @@ fn materialize_static_method_call_args_with_refs(
                 param_ty,
                 arg_temp_bytes,
                 &ref_writebacks,
+                0,
             )?;
             abi::emit_push_result_value(ctx.emitter, &PhpType::Int);
         } else {
@@ -4203,6 +4280,7 @@ fn materialize_static_method_call_args_with_refs(
         ref_writebacks,
         cleanup_slots: Vec::new(),
         cleanup_bytes: 0,
+        borrowed_stack_arg_bytes: 0,
     })
 }
 
@@ -4288,16 +4366,153 @@ fn materialize_direct_call_arg_for_param(
     }
 }
 
+/// Plans scalar Mixed arguments that can be borrowed on the caller stack for a direct callee.
+fn plan_borrowed_stack_mixed_args(
+    ctx: &FunctionContext<'_>,
+    callee: &Function,
+    args: &[ValueId],
+    param_types: &[PhpType],
+    ref_params: &[bool],
+) -> Result<Vec<BorrowedStackMixedArg>> {
+    let mut borrowed_args = Vec::new();
+    for (index, (value, param_ty)) in args.iter().zip(param_types.iter()).enumerate() {
+        if ref_params[index]
+            || callee.params[index].variadic
+            || param_ty.codegen_repr() != PhpType::Mixed
+        {
+            continue;
+        }
+        let source_ty = ctx.raw_value_php_type(*value)?.codegen_repr();
+        if !matches!(source_ty, PhpType::Int | PhpType::Bool) {
+            continue;
+        }
+        if !callee_mixed_param_is_truthiness_only(callee, index) {
+            continue;
+        }
+        borrowed_args.push(BorrowedStackMixedArg {
+            param_index: index,
+            offset: borrowed_args.len() * BORROWED_MIXED_ARG_CELL_BYTES,
+            source_ty,
+        });
+    }
+    Ok(borrowed_args)
+}
+
+/// Returns true when a Mixed parameter is only loaded for boolean conversion.
+fn callee_mixed_param_is_truthiness_only(callee: &Function, param_index: usize) -> bool {
+    let slot = LocalSlotId::from_raw(param_index as u32);
+    let mut loaded_values = Vec::new();
+    for inst in &callee.instructions {
+        match (&inst.op, &inst.immediate) {
+            (Op::LoadLocal, Some(Immediate::LocalSlot(candidate))) if *candidate == slot => {
+                let Some(result) = inst.result else {
+                    return false;
+                };
+                loaded_values.push(result);
+            }
+            (_, Some(Immediate::LocalSlot(candidate))) if *candidate == slot => return false,
+            _ => {}
+        }
+    }
+    loaded_values
+        .iter()
+        .all(|value| callee_value_is_only_truthiness_operand(callee, *value))
+}
+
+/// Returns true when every use of `value` feeds a non-escaping boolean conversion.
+fn callee_value_is_only_truthiness_operand(callee: &Function, value: ValueId) -> bool {
+    for inst in &callee.instructions {
+        if !inst.operands.iter().any(|operand| *operand == value) {
+            continue;
+        }
+        if !matches!(inst.op, Op::IsTruthy | Op::MixedCastBool) {
+            return false;
+        }
+    }
+    !callee_terminator_uses_value(callee, value)
+}
+
+/// Returns true when any terminator directly consumes `value`.
+fn callee_terminator_uses_value(callee: &Function, value: ValueId) -> bool {
+    callee
+        .blocks
+        .iter()
+        .filter_map(|block| block.terminator.as_ref())
+        .any(|terminator| terminator_uses_value(terminator, value))
+}
+
+/// Returns true when one terminator directly consumes `value`.
+fn terminator_uses_value(terminator: &Terminator, value: ValueId) -> bool {
+    match terminator {
+        Terminator::Br { args, .. } => args.contains(&value),
+        Terminator::CondBr {
+            cond,
+            then_args,
+            else_args,
+            ..
+        } => *cond == value || then_args.contains(&value) || else_args.contains(&value),
+        Terminator::Switch {
+            scrutinee,
+            cases,
+            default_args,
+            ..
+        } => {
+            *scrutinee == value
+                || default_args.contains(&value)
+                || cases.iter().any(|case| case.args.contains(&value))
+        }
+        Terminator::Return { value: Some(return_value) } => *return_value == value,
+        Terminator::Return { value: None } => false,
+        Terminator::Throw { value: thrown } => *thrown == value,
+        Terminator::Fatal { .. } | Terminator::Unreachable => false,
+        Terminator::GeneratorSuspend {
+            key,
+            value: yielded,
+            resume_args,
+            ..
+        } => key.is_some_and(|key| key == value)
+            || yielded.is_some_and(|yielded| yielded == value)
+            || resume_args.contains(&value),
+    }
+}
+
+/// Writes a borrowed stack Mixed cell for a scalar argument and returns its address as the result.
+fn emit_borrowed_stack_mixed_arg_cell(
+    ctx: &mut FunctionContext<'_>,
+    borrowed: &BorrowedStackMixedArg,
+    base_offset: usize,
+) {
+    let payload_reg = abi::secondary_scratch_reg(ctx.emitter);
+    let cell_reg = abi::symbol_scratch_reg(ctx.emitter);
+    let result_reg = abi::int_result_reg(ctx.emitter);
+    ctx.emitter.instruction(&format!("mov {}, {}", payload_reg, result_reg));   // preserve the scalar payload before writing the borrowed Mixed tag
+    abi::emit_temporary_stack_address(ctx.emitter, cell_reg, base_offset + borrowed.offset);
+    abi::emit_load_int_immediate(
+        ctx.emitter,
+        result_reg,
+        runtime_value_tag(&borrowed.source_ty) as i64,
+    );
+    abi::emit_store_to_address(ctx.emitter, result_reg, cell_reg, 0);
+    abi::emit_store_to_address(ctx.emitter, payload_reg, cell_reg, 8);
+    abi::emit_store_zero_to_address(ctx.emitter, cell_reg, 16);
+    move_reg_to_int_result(ctx, cell_reg);
+}
+
 /// Plans temporary Mixed call arguments that must remain alive until after the callee returns.
 fn plan_call_arg_temp_cleanups(
     ctx: &FunctionContext<'_>,
     args: &[ValueId],
     param_types: &[PhpType],
     ref_params: &[bool],
+    borrowed_stack_mixed_args: &[BorrowedStackMixedArg],
 ) -> Result<Vec<CallArgTempCleanup>> {
     let mut cleanups = Vec::new();
     for (index, (value, param_ty)) in args.iter().zip(param_types.iter()).enumerate() {
-        if ref_params[index] {
+        if ref_params[index]
+            || borrowed_stack_mixed_args
+                .iter()
+                .any(|borrowed| borrowed.param_index == index)
+        {
             continue;
         }
         let source_ty = ctx.raw_value_php_type(*value)?;
@@ -4347,6 +4562,17 @@ fn emit_call_arg_temp_cleanups(
         abi::emit_decref_if_refcounted(ctx.emitter, &cleanup.ty);
     }
     abi::emit_release_temporary_stack(ctx.emitter, call_args.cleanup_bytes);
+}
+
+/// Releases borrowed stack Mixed cells after heap temp cleanups and before by-ref cells.
+fn emit_borrowed_stack_mixed_arg_release(
+    ctx: &mut FunctionContext<'_>,
+    call_args: &CallArgMaterialization,
+) {
+    if call_args.borrowed_stack_arg_bytes == 0 {
+        return;
+    }
+    abi::emit_release_temporary_stack(ctx.emitter, call_args.borrowed_stack_arg_bytes);
 }
 
 /// Converts the currently loaded indexed-array argument into boxed Mixed slots.
@@ -4409,6 +4635,7 @@ fn materialize_method_call_args_with_receiver_local_and_refs(
                 param_ty,
                 arg_temp_bytes,
                 &ref_writebacks,
+                0,
             )?;
             abi::emit_push_result_value(ctx.emitter, &PhpType::Int);
         } else {
@@ -4424,6 +4651,7 @@ fn materialize_method_call_args_with_receiver_local_and_refs(
         ref_writebacks,
         cleanup_slots: Vec::new(),
         cleanup_bytes: 0,
+        borrowed_stack_arg_bytes: 0,
     })
 }
 
@@ -4477,6 +4705,7 @@ fn materialize_method_call_args_with_receiver_reg_and_refs(
                 &param_types[param_index],
                 arg_temp_bytes,
                 &ref_writebacks,
+                0,
             )?;
             abi::emit_push_result_value(ctx.emitter, &PhpType::Int);
         } else {
@@ -4492,6 +4721,7 @@ fn materialize_method_call_args_with_receiver_reg_and_refs(
         ref_writebacks,
         cleanup_slots: Vec::new(),
         cleanup_bytes: 0,
+        borrowed_stack_arg_bytes: 0,
     })
 }
 
@@ -4577,12 +4807,13 @@ fn materialize_ref_arg_address(
     param_ty: &PhpType,
     arg_temp_bytes: usize,
     writebacks: &[RefArgWriteback],
+    ref_cell_base_offset: usize,
 ) -> Result<()> {
     if let Some(writeback) = writebacks
         .iter()
         .find(|writeback| writeback.param_index == param_index)
     {
-        let cell_offset = arg_temp_bytes + writeback.cell_offset;
+        let cell_offset = arg_temp_bytes + ref_cell_base_offset + writeback.cell_offset;
         abi::emit_temporary_stack_address(
             ctx.emitter,
             abi::int_result_reg(ctx.emitter),

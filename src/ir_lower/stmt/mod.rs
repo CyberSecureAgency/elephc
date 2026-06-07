@@ -717,7 +717,7 @@ pub(super) fn finish_indexed_array_local_write(
 fn indexed_array_write_updated_type(current_ty: PhpType, value_ty: PhpType) -> Option<PhpType> {
     match current_ty.codegen_repr() {
         PhpType::Array(elem_ty) if is_empty_indexed_array_element(elem_ty.as_ref()) => {
-            Some(PhpType::Array(Box::new(normalize_array_write_element_type(value_ty))))
+            Some(PhpType::Array(Box::new(normalize_empty_array_write_element_type(value_ty))))
         }
         PhpType::Array(elem_ty) if elem_ty.codegen_repr() == PhpType::Mixed => None,
         PhpType::Array(elem_ty) => {
@@ -750,7 +750,12 @@ fn indexed_array_write_needs_mixed_conversion(current_ty: &PhpType, updated_ty: 
 
 /// Returns true for the placeholder element type used by empty indexed arrays.
 fn is_empty_indexed_array_element(elem_ty: &PhpType) -> bool {
-    matches!(elem_ty.codegen_repr(), PhpType::Void)
+    matches!(elem_ty.codegen_repr(), PhpType::Never | PhpType::Void)
+}
+
+/// Preserves the first concrete value type written into an empty indexed array.
+fn normalize_empty_array_write_element_type(item_type: PhpType) -> PhpType {
+    normalize_materialized_element_type(item_type)
 }
 
 /// Lowers an assignment with a declared type.

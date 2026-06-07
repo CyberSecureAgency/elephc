@@ -224,7 +224,7 @@ fn lower_hash_set_aarch64(
     materialize_hash_value_aarch64(ctx, value, value_ty, storage_value_ty)?;
     abi::emit_pop_reg_pair(ctx.emitter, "x1", "x2");
     ctx.load_value_to_reg(hash, "x0")?;
-    abi::emit_load_int_immediate(ctx.emitter, "x5", crate::codegen::runtime_value_tag(storage_value_ty) as i64);
+    abi::emit_load_int_immediate(ctx.emitter, "x5", hash_set_value_tag(value_ty, storage_value_ty));
     abi::emit_call_label(ctx.emitter, "__rt_hash_set");
     Ok(())
 }
@@ -246,7 +246,7 @@ fn lower_hash_append_aarch64(
     ctx.emitter.instruction("ldr x0, [sp, #0]");                                // pass the hash pointer to hash_set
     ctx.emitter.instruction("ldr x1, [sp, #8]");                                // pass the computed integer append key
     abi::emit_load_int_immediate(ctx.emitter, "x2", -1);
-    abi::emit_load_int_immediate(ctx.emitter, "x5", crate::codegen::runtime_value_tag(storage_value_ty) as i64);
+    abi::emit_load_int_immediate(ctx.emitter, "x5", hash_set_value_tag(value_ty, storage_value_ty));
     abi::emit_call_label(ctx.emitter, "__rt_hash_set");
     ctx.emitter.instruction("add sp, sp, #32");                                 // release append temporaries
     Ok(())
@@ -266,7 +266,7 @@ fn lower_hash_set_x86_64(
     materialize_hash_value_x86_64(ctx, value, value_ty, storage_value_ty)?;
     abi::emit_pop_reg_pair(ctx.emitter, "rsi", "rdx");
     ctx.load_value_to_reg(hash, "rdi")?;
-    abi::emit_load_int_immediate(ctx.emitter, "r9", crate::codegen::runtime_value_tag(storage_value_ty) as i64);
+    abi::emit_load_int_immediate(ctx.emitter, "r9", hash_set_value_tag(value_ty, storage_value_ty));
     abi::emit_call_label(ctx.emitter, "__rt_hash_set");
     Ok(())
 }
@@ -288,7 +288,7 @@ fn lower_hash_append_x86_64(
     ctx.emitter.instruction("mov rdi, QWORD PTR [rsp]");                        // pass the hash pointer to hash_set
     ctx.emitter.instruction("mov rsi, QWORD PTR [rsp + 8]");                    // pass the computed integer append key
     abi::emit_load_int_immediate(ctx.emitter, "rdx", -1);
-    abi::emit_load_int_immediate(ctx.emitter, "r9", crate::codegen::runtime_value_tag(storage_value_ty) as i64);
+    abi::emit_load_int_immediate(ctx.emitter, "r9", hash_set_value_tag(value_ty, storage_value_ty));
     abi::emit_call_label(ctx.emitter, "__rt_hash_set");
     ctx.emitter.instruction("add rsp, 32");                                     // release append temporaries
     Ok(())
@@ -572,11 +572,7 @@ fn materialize_hash_mixed_value_aarch64(
         ctx.emitter.instruction("mov x4, xzr");                                 // boxed Mixed hash values do not use the high payload word
         return Ok(());
     }
-    ctx.load_value_to_result(value)?;
-    crate::codegen::emit_box_current_value_as_mixed(ctx.emitter, value_ty);
-    ctx.emitter.instruction("mov x3, x0");                                      // pass the boxed Mixed pointer as the hash value low word
-    ctx.emitter.instruction("mov x4, xzr");                                     // boxed Mixed hash values do not use the high payload word
-    Ok(())
+    materialize_hash_concrete_value_aarch64(ctx, value, value_ty)
 }
 
 /// Materializes a hash payload as an owned boxed Mixed value for x86_64 hash storage.
@@ -592,10 +588,89 @@ fn materialize_hash_mixed_value_x86_64(
         ctx.emitter.instruction("xor r8, r8");                                  // boxed Mixed hash values do not use the high payload word
         return Ok(());
     }
-    ctx.load_value_to_result(value)?;
-    crate::codegen::emit_box_current_value_as_mixed(ctx.emitter, value_ty);
-    ctx.emitter.instruction("mov rcx, rax");                                    // pass the boxed Mixed pointer as the hash value low word
-    ctx.emitter.instruction("xor r8, r8");                                      // boxed Mixed hash values do not use the high payload word
+    materialize_hash_concrete_value_x86_64(ctx, value, value_ty)
+}
+
+/// Returns the runtime value tag to store for one hash-set payload.
+fn hash_set_value_tag(value_ty: &PhpType, storage_value_ty: &PhpType) -> i64 {
+    if matches!(storage_value_ty, PhpType::Mixed | PhpType::Iterable) {
+        crate::codegen::runtime_value_tag(&value_ty.codegen_repr()) as i64
+    } else {
+        crate::codegen::runtime_value_tag(storage_value_ty) as i64
+    }
+}
+
+/// Materializes a concrete payload for a Mixed-capable AArch64 hash entry.
+fn materialize_hash_concrete_value_aarch64(
+    ctx: &mut FunctionContext<'_>,
+    value: ValueId,
+    value_ty: &PhpType,
+) -> Result<()> {
+    match value_ty {
+        PhpType::Void | PhpType::Never => {
+            ctx.emitter.instruction("mov x3, xzr");                             // null associative-array payloads use a zero low word
+            ctx.emitter.instruction("mov x4, xzr");                             // null associative-array payloads use a zero high word
+        }
+        PhpType::Int | PhpType::Bool | PhpType::Callable | PhpType::Float => {
+            ctx.load_value_to_reg(value, "x3")?;
+            ctx.emitter.instruction("mov x4, xzr");                             // scalar associative-array payloads leave the high value word empty
+        }
+        PhpType::Str => {
+            ctx.load_string_value_to_regs(value, "x1", "x2")?;
+            abi::emit_call_label(ctx.emitter, "__rt_str_persist");
+            ctx.emitter.instruction("mov x3, x1");                              // pass the owned string pointer as the hash value low word
+            ctx.emitter.instruction("mov x4, x2");                              // pass the owned string length as the hash value high word
+        }
+        other if other.is_refcounted() => {
+            ctx.load_value_to_result(value)?;
+            retain_hash_refcounted_value_if_borrowed(ctx, value, other)?;
+            ctx.emitter.instruction("mov x3, x0");                              // pass the retained pointer-backed payload as the hash value low word
+            ctx.emitter.instruction("mov x4, xzr");                             // pointer-backed hash values leave the high value word empty
+        }
+        other => {
+            return Err(CodegenIrError::unsupported(format!(
+                "mixed hash_set value PHP type {:?}",
+                other
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Materializes a concrete payload for a Mixed-capable x86_64 hash entry.
+fn materialize_hash_concrete_value_x86_64(
+    ctx: &mut FunctionContext<'_>,
+    value: ValueId,
+    value_ty: &PhpType,
+) -> Result<()> {
+    match value_ty {
+        PhpType::Void | PhpType::Never => {
+            ctx.emitter.instruction("xor rcx, rcx");                            // null associative-array payloads use a zero low word
+            ctx.emitter.instruction("xor r8, r8");                              // null associative-array payloads use a zero high word
+        }
+        PhpType::Int | PhpType::Bool | PhpType::Callable | PhpType::Float => {
+            ctx.load_value_to_reg(value, "rcx")?;
+            ctx.emitter.instruction("xor r8, r8");                              // scalar associative-array payloads leave the high value word empty
+        }
+        PhpType::Str => {
+            ctx.load_string_value_to_regs(value, "rax", "rdx")?;
+            abi::emit_call_label(ctx.emitter, "__rt_str_persist");
+            ctx.emitter.instruction("mov rcx, rax");                            // pass the owned string pointer as the hash value low word
+            ctx.emitter.instruction("mov r8, rdx");                             // pass the owned string length as the hash value high word
+        }
+        other if other.is_refcounted() => {
+            ctx.load_value_to_result(value)?;
+            retain_hash_refcounted_value_if_borrowed(ctx, value, other)?;
+            ctx.emitter.instruction("mov rcx, rax");                            // pass the retained pointer-backed payload as the hash value low word
+            ctx.emitter.instruction("xor r8, r8");                              // pointer-backed hash values leave the high value word empty
+        }
+        other => {
+            return Err(CodegenIrError::unsupported(format!(
+                "mixed hash_set value PHP type {:?}",
+                other
+            )));
+        }
+    }
     Ok(())
 }
 
@@ -610,7 +685,7 @@ fn emit_hash_get_success_aarch64(ctx: &mut FunctionContext<'_>, value_ty: &PhpTy
         }
         PhpType::Str => {}
         PhpType::Mixed => {
-            ctx.emitter.instruction("mov x0, x1");                              // return the boxed Mixed pointer stored in the hash entry
+            emit_hash_get_mixed_success_aarch64(ctx);
         }
         other if other.is_refcounted() => {
             ctx.emitter.instruction("mov x0, x1");                              // return the borrowed pointer-backed hash payload
@@ -639,7 +714,7 @@ fn emit_hash_get_success_x86_64(ctx: &mut FunctionContext<'_>, value_ty: &PhpTyp
             ctx.emitter.instruction("mov rdx, rsi");                            // move the borrowed hash string length into the paired string result
         }
         PhpType::Mixed => {
-            ctx.emitter.instruction("mov rax, rdi");                            // return the boxed Mixed pointer stored in the hash entry
+            emit_hash_get_mixed_success_x86_64(ctx);
         }
         other if other.is_refcounted() => {
             ctx.emitter.instruction("mov rax, rdi");                            // return the borrowed pointer-backed hash payload
@@ -652,6 +727,34 @@ fn emit_hash_get_success_x86_64(ctx: &mut FunctionContext<'_>, value_ty: &PhpTyp
         }
     }
     Ok(())
+}
+
+/// Materializes a successful AArch64 Mixed hash lookup as a boxed Mixed result.
+fn emit_hash_get_mixed_success_aarch64(ctx: &mut FunctionContext<'_>) {
+    let box_label = ctx.next_label("hash_get_mixed_box");
+    let done_label = ctx.next_label("hash_get_mixed_done");
+    ctx.emitter.instruction("cmp x3, #7");                                      // check whether the entry already stores a boxed Mixed cell
+    ctx.emitter.instruction(&format!("b.ne {}", box_label));                    // box concrete per-entry payloads before returning them as Mixed
+    ctx.emitter.instruction("mov x0, x1");                                      // return the boxed Mixed pointer stored in the hash entry
+    ctx.emitter.instruction(&format!("b {}", done_label));                      // skip on-demand boxing for already boxed entries
+    ctx.emitter.label(&box_label);
+    ctx.emitter.instruction("mov x0, x3");                                      // pass the concrete entry tag to the Mixed boxing helper
+    abi::emit_call_label(ctx.emitter, "__rt_mixed_from_value");
+    ctx.emitter.label(&done_label);
+}
+
+/// Materializes a successful x86_64 Mixed hash lookup as a boxed Mixed result.
+fn emit_hash_get_mixed_success_x86_64(ctx: &mut FunctionContext<'_>) {
+    let box_label = ctx.next_label("hash_get_mixed_box");
+    let done_label = ctx.next_label("hash_get_mixed_done");
+    ctx.emitter.instruction("cmp rcx, 7");                                      // check whether the entry already stores a boxed Mixed cell
+    ctx.emitter.instruction(&format!("jne {}", box_label));                     // box concrete per-entry payloads before returning them as Mixed
+    ctx.emitter.instruction("mov rax, rdi");                                    // return the boxed Mixed pointer stored in the hash entry
+    ctx.emitter.instruction(&format!("jmp {}", done_label));                    // skip on-demand boxing for already boxed entries
+    ctx.emitter.label(&box_label);
+    ctx.emitter.instruction("mov rax, rcx");                                    // pass the concrete entry tag to the Mixed boxing helper
+    abi::emit_call_label(ctx.emitter, "__rt_mixed_from_value");
+    ctx.emitter.label(&done_label);
 }
 
 /// Emits the miss fallback in the result shape expected by the associative-array value type.

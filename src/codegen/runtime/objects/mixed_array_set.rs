@@ -73,33 +73,15 @@ fn emit_mixed_array_set_aarch64(emitter: &mut Emitter) {
     emitter.instruction("ldr x9, [sp, #8]");                                    // reload the requested integer index
     emitter.instruction("cmp x9, #0");                                          // reject negative indexes before touching storage
     emitter.instruction("b.lt __rt_mixed_array_set_drop");                      // negative indexed writes are ignored by this helper
-    emitter.instruction("ldr x11, [x10]");                                      // load the current logical length
-    emitter.instruction("str x11, [sp, #48]");                                  // preserve the original length for overwrite and extension checks
-    emitter.instruction("ldr x12, [x10, #16]");                                 // load the element size used by the array payload
-    emitter.instruction("cmp x12, #8");                                         // Mixed arrays must use pointer-sized slots
-    emitter.instruction("b.ne __rt_mixed_array_set_drop");                      // non-pointer layouts cannot safely receive Mixed cells
     emitter.instruction("ldr x12, [x10, #-8]");                                 // load the packed indexed-array metadata
-    emitter.instruction("ubfx x13, x12, #8, #7");                               // extract the runtime value_type tag
-    emitter.instruction("cmp x11, #0");                                         // is the array currently empty?
-    emitter.instruction("b.eq __rt_mixed_array_set_type_ready");                // empty arrays can be stamped as Mixed-valued before the first write
-    emitter.instruction("cmp x13, #7");                                         // do existing slots already hold boxed Mixed pointers?
-    emitter.instruction("b.ne __rt_mixed_array_set_drop");                      // avoid corrupting typed arrays wrapped in a Mixed cell
-    emitter.label("__rt_mixed_array_set_type_ready");
-
-    emitter.instruction("mov x0, x10");                                         // pass the indexed array to the copy-on-write helper
-    emitter.instruction("bl __rt_array_ensure_unique");                         // split shared arrays before mutating a boxed payload
+    emitter.instruction("ubfx x1, x12, #8, #7");                                // pass the source value_type tag to the Mixed conversion helper
+    emitter.instruction("mov x0, x10");                                         // pass the indexed array to the Mixed conversion helper
+    emitter.instruction("bl __rt_array_to_mixed");                              // split shared arrays and normalize slots before writing Mixed values
     emitter.instruction("str x0, [sp, #32]");                                   // save the unique array pointer
     emitter.instruction("ldr x10, [sp, #0]");                                   // reload the target Mixed cell after the helper call
     emitter.instruction("str x0, [x10, #8]");                                   // publish the unique array pointer back into the Mixed cell
-    emitter.instruction("ldr x12, [x0, #-8]");                                  // reload the unique array metadata
-    emitter.instruction("mov x13, #0x80ff");                                    // preserve indexed-array kind and copy-on-write bits
-    emitter.instruction("and x12, x12, x13");                                   // clear stale value_type bits
-    emitter.instruction("mov x13, #7");                                         // runtime value_type 7 = boxed Mixed
-    emitter.instruction("lsl x13, x13, #8");                                    // move the Mixed tag into the metadata byte lane
-    emitter.instruction("orr x12, x12, x13");                                   // combine preserved container bits with the Mixed value type
-    emitter.instruction("str x12, [x0, #-8]");                                  // stamp the indexed array as Mixed-valued
-    emitter.instruction("mov x12, #8");                                         // boxed Mixed slots are pointer-sized
-    emitter.instruction("str x12, [x0, #16]");                                  // persist the pointer-sized slot width
+    emitter.instruction("ldr x11, [x0]");                                       // load the post-conversion logical length
+    emitter.instruction("str x11, [sp, #48]");                                  // preserve the original length for overwrite and extension checks
     emitter.instruction("ldr x9, [sp, #8]");                                    // reload the requested integer index
     emitter.instruction("str x9, [sp, #40]");                                   // preserve the target index across growth and release helpers
 
@@ -214,31 +196,17 @@ fn emit_mixed_array_set_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov r9, QWORD PTR [rbp - 16]");                        // reload the requested integer index
     emitter.instruction("cmp r9, 0");                                           // reject negative indexes before touching storage
     emitter.instruction("jl __rt_mixed_array_set_drop");                        // negative indexed writes are ignored by this helper
-    emitter.instruction("mov r11, QWORD PTR [r10]");                            // load the current logical length
-    emitter.instruction("mov QWORD PTR [rbp - 56], r11");                       // preserve the original length for overwrite and extension checks
-    emitter.instruction("mov r8, QWORD PTR [r10 + 16]");                        // load the element size used by the array payload
-    emitter.instruction("cmp r8, 8");                                           // Mixed arrays must use pointer-sized slots
-    emitter.instruction("jne __rt_mixed_array_set_drop");                       // non-pointer layouts cannot safely receive Mixed cells
     emitter.instruction("mov r8, QWORD PTR [r10 - 8]");                         // load the packed indexed-array metadata
     emitter.instruction("shr r8, 8");                                           // move the value_type tag into the low byte
     emitter.instruction("and r8, 0x7f");                                        // isolate the runtime value_type tag
-    emitter.instruction("cmp r11, 0");                                          // is the array currently empty?
-    emitter.instruction("je __rt_mixed_array_set_type_ready");                  // empty arrays can be stamped as Mixed-valued before the first write
-    emitter.instruction("cmp r8, 7");                                           // do existing slots already hold boxed Mixed pointers?
-    emitter.instruction("jne __rt_mixed_array_set_drop");                       // avoid corrupting typed arrays wrapped in a Mixed cell
-    emitter.label("__rt_mixed_array_set_type_ready");
-
-    emitter.instruction("mov rdi, r10");                                        // pass the indexed array to the copy-on-write helper
-    emitter.instruction("call __rt_array_ensure_unique");                       // split shared arrays before mutating a boxed payload
+    emitter.instruction("mov rsi, r8");                                         // pass the source value_type tag to the Mixed conversion helper
+    emitter.instruction("mov rdi, r10");                                        // pass the indexed array to the Mixed conversion helper
+    emitter.instruction("call __rt_array_to_mixed");                            // split shared arrays and normalize slots before writing Mixed values
     emitter.instruction("mov QWORD PTR [rbp - 40], rax");                       // save the unique array pointer
     emitter.instruction("mov r10, QWORD PTR [rbp - 8]");                        // reload the target Mixed cell after the helper call
     emitter.instruction("mov QWORD PTR [r10 + 8], rax");                        // publish the unique array pointer back into the Mixed cell
-    emitter.instruction("mov r10, QWORD PTR [rax - 8]");                        // reload the unique array metadata
-    emitter.instruction("mov r11, 0xffffffff000080ff");                         // preserve x86 heap marker, indexed-array kind, and COW bits
-    emitter.instruction("and r10, r11");                                        // clear stale value_type bits
-    emitter.instruction("or r10, 0x700");                                       // encode runtime value_type 7 = boxed Mixed
-    emitter.instruction("mov QWORD PTR [rax - 8], r10");                        // stamp the indexed array as Mixed-valued
-    emitter.instruction("mov QWORD PTR [rax + 16], 8");                         // persist the pointer-sized slot width
+    emitter.instruction("mov r11, QWORD PTR [rax]");                            // load the post-conversion logical length
+    emitter.instruction("mov QWORD PTR [rbp - 56], r11");                       // preserve the original length for overwrite and extension checks
     emitter.instruction("mov r9, QWORD PTR [rbp - 16]");                        // reload the requested integer index
     emitter.instruction("mov QWORD PTR [rbp - 48], r9");                        // preserve the target index across growth and release helpers
 

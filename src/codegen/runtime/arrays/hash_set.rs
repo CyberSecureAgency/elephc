@@ -352,6 +352,26 @@ fn emit_hash_set_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return to the caller with the hash-table pointer in rax
 
     emitter.label("__rt_hash_set_update");
+    emitter.instruction("mov r13, QWORD PTR [r12 + 40]");                       // load the overwritten entry's runtime value tag before replacing it
+    emitter.instruction("cmp r13, 8");                                          // check whether the overwritten value is PHP null
+    emitter.instruction("je __rt_hash_set_write_value_x");                      // null owns no heap payload and can be overwritten directly
+    emitter.instruction("cmp r13, 1");                                          // check whether the overwritten value is an owned string
+    emitter.instruction("je __rt_hash_set_release_any_x");                      // string values release through the uniform dispatcher
+    emitter.instruction("cmp r13, 4");                                          // check whether the overwritten value is heap backed
+    emitter.instruction("jae __rt_hash_set_release_any_x");                     // arrays, hashes, objects, and boxed mixed values need release
+    emitter.instruction("jmp __rt_hash_set_write_value_x");                     // scalar values own no heap payload
+
+    emitter.label("__rt_hash_set_release_any_x");
+    emitter.instruction("mov rax, QWORD PTR [r12 + 24]");                       // pass the overwritten heap-backed payload to the uniform release dispatcher
+    emitter.instruction("call __rt_decref_any");                                // release the overwritten hash value before storing the replacement
+    emitter.instruction("mov r10, QWORD PTR [rbp - 8]");                        // reload the hash-table pointer after the release helper clobbered caller-saved registers
+    emitter.instruction("mov r11, QWORD PTR [rbp - 56]");                       // reload the current probe index for entry-address reconstruction
+    emitter.instruction("mov r12, r11");                                        // copy the probe index before scaling it into a byte offset
+    emitter.instruction("shl r12, 6");                                          // convert the probe index into a 64-byte hash-entry offset
+    emitter.instruction("add r12, r10");                                        // advance from the hash-table base pointer to the selected entry block
+    emitter.instruction("add r12, 40");                                         // skip the fixed hash header to land on the selected entry
+
+    emitter.label("__rt_hash_set_write_value_x");
     emitter.instruction("mov r13, QWORD PTR [rbp - 32]");                       // reload the replacement low payload word for the existing key slot
     emitter.instruction("mov QWORD PTR [r12 + 24], r13");                       // overwrite the stored low payload word in the existing hash entry
     emitter.instruction("mov r13, QWORD PTR [rbp - 40]");                       // reload the replacement high payload word for the existing key slot

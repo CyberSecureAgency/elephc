@@ -81,6 +81,9 @@ pub(crate) fn literal_default_value(
         (PhpType::Void | PhpType::Never, ExprKind::Null) => Ok(LiteralDefaultValue::NullSentinel),
         (PhpType::Void | PhpType::Never, _) => Ok(LiteralDefaultValue::NullSentinel),
         (PhpType::Object(_), ExprKind::Null) => Ok(LiteralDefaultValue::Null),
+        (php_type, ExprKind::Null) if php_type.codegen_repr().is_refcounted() => {
+            Ok(LiteralDefaultValue::Null)
+        }
         (PhpType::AssocArray { value, .. }, ExprKind::ArrayLiteral(items)) if items.is_empty() => {
             Ok(LiteralDefaultValue::EmptyAssocArray {
                 value_type: value.as_ref().codegen_repr(),
