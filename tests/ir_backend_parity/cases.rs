@@ -360,6 +360,61 @@ foreach ($tree as $key => $value) {
     );
 }
 
+/// Verifies RegexIterator GET_MATCH keeps capture slots after a by-ref array capture.
+#[test]
+fn parity_regex_iterator_get_match_many_captures() {
+    assert_backend_parity(
+        "regex_iterator_get_match_many_captures",
+        r#"<?php
+$it = new RegexIterator(
+    new ArrayIterator(["abcdefghijkl"]),
+    "/(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)(l)/",
+    RegexIterator::GET_MATCH
+);
+foreach ($it as $match) {
+    echo count($match);
+    echo ":";
+    echo $match[11];
+    echo $match[12];
+}
+"#,
+        &[],
+    );
+}
+
+/// Verifies RegexIterator offset-capture nested arrays survive Mixed array access.
+#[test]
+fn parity_regex_iterator_get_match_offset_capture() {
+    assert_backend_parity(
+        "regex_iterator_get_match_offset_capture",
+        r#"<?php
+$it = new RegexIterator(
+    new ArrayIterator(["a12"]),
+    "/([a-z])([0-9]+)/",
+    RegexIterator::GET_MATCH,
+    0,
+    PREG_OFFSET_CAPTURE
+);
+foreach ($it as $match) {
+    echo count($match);
+    echo ":";
+    echo $match[0][0];
+    echo "@";
+    echo $match[0][1];
+    echo "/";
+    echo $match[1][0];
+    echo "@";
+    echo $match[1][1];
+    echo "/";
+    echo $match[2][0];
+    echo "@";
+    echo $match[2][1];
+}
+"#,
+        &[],
+    );
+}
+
 /// Verifies Fiber descriptor-backed callable construction matches legacy backend behavior.
 #[test]
 fn parity_fiber_descriptor_backed_callables() {

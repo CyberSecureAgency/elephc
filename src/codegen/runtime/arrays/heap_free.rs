@@ -46,6 +46,24 @@ pub fn emit_heap_free(emitter: &mut Emitter) {
     // -- validate pointer is not null --
     emitter.instruction("cbz x0, __rt_heap_free_done");                         // skip if null pointer
 
+    // -- validate pointer range and payload size before mutating allocator state --
+    crate::codegen::abi::emit_symbol_address(emitter, "x16", "_heap_buf");
+    emitter.instruction("add x17, x16, #16");                                   // compute the first valid heap payload address
+    emitter.instruction("cmp x0, x17");                                         // is the candidate below the first heap payload?
+    emitter.instruction("b.lo __rt_heap_free_done");                            // yes — ignore non-heap or interior pointers
+    crate::codegen::abi::emit_symbol_address(emitter, "x17", "_heap_off");
+    emitter.instruction("ldr x17, [x17]");                                      // load the current heap offset
+    emitter.instruction("add x17, x16, x17");                                   // compute the current heap end
+    emitter.instruction("cmp x0, x17");                                         // is the candidate at or beyond the heap end?
+    emitter.instruction("b.hs __rt_heap_free_done");                            // yes — ignore pointers outside the live heap
+    emitter.instruction("sub x9, x0, #16");                                     // recover the candidate block header
+    emitter.instruction("ldr w11, [x9]");                                       // load the candidate payload byte size
+    emitter.instruction("cmp x11, #8");                                         // can this block hold the minimum heap allocation?
+    emitter.instruction("b.lo __rt_heap_free_done");                            // no — reject implausible interior pointers
+    emitter.instruction("add x12, x0, x11");                                    // compute the candidate payload end address
+    emitter.instruction("cmp x12, x17");                                        // would the candidate payload overrun the live heap?
+    emitter.instruction("b.hi __rt_heap_free_done");                            // yes — reject the invalid block before free-list insertion
+
     // -- debug mode: validate the free list before mutating it --
     crate::codegen::abi::emit_symbol_address(emitter, "x16", "_heap_debug_enabled");
     emitter.instruction("ldr x16, [x16]");                                      // load the heap-debug enabled flag
@@ -234,9 +252,9 @@ pub fn emit_heap_free(emitter: &mut Emitter) {
     emitter.label("__rt_heap_free_done");
     emitter.instruction("ret");                                                 // return to caller
 
-    // -- heap_free_safe: only frees if pointer is within heap range --
-    // Validates that x0 points into _heap_buf before freeing.
-    // Safe to call with garbage/null/.data pointers — silently skips.
+    // -- heap_free_safe: only frees if pointer is a plausible live heap block --
+    // Validates that x0 points at a block payload before freeing.
+    // Safe to call with garbage/null/.data/interior pointers — silently skips.
     emitter.blank();
     emitter.comment("--- runtime: heap_free_safe ---");
     emitter.label_global("__rt_heap_free_safe");
@@ -244,10 +262,11 @@ pub fn emit_heap_free(emitter: &mut Emitter) {
     // -- null check --
     emitter.instruction("cbz x0, __rt_heap_free_safe_skip");                    // skip if null pointer
 
-    // -- check lower bound: x0 >= _heap_buf --
+    // -- check lower bound: x0 >= _heap_buf + header_size --
     crate::codegen::abi::emit_symbol_address(emitter, "x9", "_heap_buf");
-    emitter.instruction("cmp x0, x9");                                          // is pointer below heap start?
-    emitter.instruction("b.lo __rt_heap_free_safe_skip");                       // yes — not a heap pointer, skip
+    emitter.instruction("add x11, x9, #16");                                    // compute the first valid heap payload address
+    emitter.instruction("cmp x0, x11");                                         // is pointer below the first payload address?
+    emitter.instruction("b.lo __rt_heap_free_safe_skip");                       // yes — not a heap block payload pointer, skip
 
     // -- check upper bound: x0 < _heap_buf + _heap_off --
     crate::codegen::abi::emit_symbol_address(emitter, "x10", "_heap_off");
@@ -256,7 +275,18 @@ pub fn emit_heap_free(emitter: &mut Emitter) {
     emitter.instruction("cmp x0, x10");                                         // is pointer at or beyond heap end?
     emitter.instruction("b.hs __rt_heap_free_safe_skip");                       // yes — not a valid heap pointer, skip
 
-    // -- pointer is in heap range, delegate to heap_free --
+    // -- reject interior pointers and already-free blocks before delegating --
+    emitter.instruction("sub x11, x0, #16");                                    // x11 = candidate block header address
+    emitter.instruction("ldr w12, [x11, #4]");                                  // load the candidate live refcount
+    emitter.instruction("cbz w12, __rt_heap_free_safe_skip");                   // refcount zero means this is not a live heap payload
+    emitter.instruction("ldr w13, [x11]");                                      // load the candidate payload byte size
+    emitter.instruction("cmp x13, #8");                                         // can the candidate block hold the minimum heap payload?
+    emitter.instruction("b.lo __rt_heap_free_safe_skip");                       // no — reject implausible interior pointers
+    emitter.instruction("add x14, x0, x13");                                    // compute the candidate payload end address
+    emitter.instruction("cmp x14, x10");                                        // does the candidate payload overrun the live heap?
+    emitter.instruction("b.hi __rt_heap_free_safe_skip");                       // yes — reject the invalid candidate pointer
+
+    // -- pointer is a plausible live heap payload, delegate to heap_free --
     emitter.instruction("b __rt_heap_free");                                    // tail-call to heap_free
 
     emitter.label("__rt_heap_free_safe_skip");

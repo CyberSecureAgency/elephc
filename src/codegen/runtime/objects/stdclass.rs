@@ -9,6 +9,7 @@
 //! Key details:
 //! - `stdClass` layout is `[class_id:8][hash_ptr:8]`; properties live in a hash of boxed Mixed values.
 //! - ARM64 uses the project PCS convention; x86_64 uses SysV register materialization.
+//! - Property reads return owned `Mixed*` cells; borrowed hash entries are retained before return.
 
 use crate::codegen::abi;
 use crate::codegen::emit::Emitter;
@@ -44,9 +45,10 @@ pub fn emit_stdclass_from_hash(emitter: &mut Emitter) {
 
 /// Emit `__rt_stdclass_get(obj, name_ptr, name_len) → Mixed*`.
 ///
-/// Looks up the named property in the stdClass's internal hash. If the hash
-/// is empty or the property is missing, returns a freshly boxed null Mixed
-/// so callers can treat the result uniformly.
+/// Looks up the named property in the stdClass's internal hash. Existing
+/// property cells are retained so the caller owns the returned `Mixed*`; if
+/// the hash is empty or the property is missing, returns a freshly boxed null
+/// Mixed so callers can treat the result uniformly.
 pub fn emit_stdclass_get(emitter: &mut Emitter) {
     if emitter.target.arch == Arch::X86_64 {
         emit_stdclass_get_x86_64(emitter);
@@ -223,8 +225,8 @@ fn emit_stdclass_from_hash_aarch64(emitter: &mut Emitter) {
 ///
 /// Inputs: `x0` = obj, `x1` = name_ptr, `x2` = name_len. Loads the hash from
 /// `obj+8`, calls `__rt_hash_get(key_lo=name_ptr, key_hi=name_len)`. On hit
-/// returns the boxed Mixed pointer in `x0`. On miss, boxes a null Mixed via
-/// `__rt_mixed_from_value` and returns the result in `x0`.
+/// retains the boxed Mixed pointer and returns it in `x0`. On miss, boxes a
+/// null Mixed via `__rt_mixed_from_value` and returns the result in `x0`.
 fn emit_stdclass_get_aarch64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: stdclass_get ---");
@@ -247,6 +249,7 @@ fn emit_stdclass_get_aarch64(emitter: &mut Emitter) {
 
     emitter.instruction("cbz x0, __rt_stdclass_get_null");                      // not found → Mixed(null)
     emitter.instruction("mov x0, x1");                                          // hit: stored value is the boxed Mixed pointer
+    emitter.instruction("bl __rt_incref");                                      // retain the stored property cell so the caller owns the result
     emitter.instruction("ldp x29, x30, [sp, #32]");                             // restore frame pointer and return address
     emitter.instruction("add sp, sp, #48");                                     // release the local frame
     emitter.instruction("ret");                                                 // return Mixed* in x0
@@ -511,8 +514,8 @@ fn emit_stdclass_from_hash_x86_64(emitter: &mut Emitter) {
 ///
 /// Inputs (SysV): `rdi` = obj, `rsi` = name_ptr, `rdx` = name_len. Loads the
 /// hash from `obj+8`, calls `__rt_hash_get(key_lo=name_ptr, key_hi=name_len)`.
-/// On hit returns the boxed Mixed pointer in `rax`. On miss, boxes a null
-/// Mixed via `__rt_mixed_from_value` and returns the result in `rax`.
+/// On hit retains the boxed Mixed pointer and returns it in `rax`. On miss,
+/// boxes a null Mixed via `__rt_mixed_from_value` and returns the result in `rax`.
 fn emit_stdclass_get_x86_64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: stdclass_get ---");
@@ -539,6 +542,9 @@ fn emit_stdclass_get_x86_64(emitter: &mut Emitter) {
     emitter.instruction("je __rt_stdclass_get_null");                           // not found → Mixed(null)
 
     emitter.instruction("mov rax, rdi");                                        // return value = boxed Mixed pointer
+    abi::emit_push_reg(emitter, "rax");
+    emitter.instruction("call __rt_incref");                                    // retain the stored property cell so the caller owns the result
+    abi::emit_pop_reg(emitter, "rax");
     emitter.instruction("mov rsp, rbp");                                        // restore stack pointer
     emitter.instruction("pop rbp");                                             // restore caller frame pointer
     emitter.instruction("ret");                                                 // return Mixed* in rax

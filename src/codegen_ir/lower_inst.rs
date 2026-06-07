@@ -315,7 +315,8 @@ fn emit_runtime_closure_descriptor_with_captures(
     for (idx, ((_, capture_ty, by_ref), operand)) in captures.iter().zip(operands.iter()).enumerate() {
         if *by_ref {
             let slot = local_slot_for_loaded_value(ctx, *operand)?;
-            promote_local_slot_for_ref_capture(ctx, slot, None, capture_ty)?;
+            let release_replaced_value = ctx.value_ownership(*operand)? == Ownership::Owned;
+            promote_local_slot_for_ref_capture(ctx, slot, None, capture_ty, release_replaced_value)?;
             materialize_local_ref_arg_address(ctx, *operand)?;
             callable_descriptor::emit_store_current_result_to_runtime_capture(
                 ctx.emitter,
@@ -352,6 +353,7 @@ fn promote_local_slot_for_ref_capture(
     slot: LocalSlotId,
     owner_slot: Option<LocalSlotId>,
     capture_ty: &PhpType,
+    release_replaced_value: bool,
 ) -> Result<()> {
     if local_slot_stores_ref_cell_pointer(ctx, slot) {
         return Ok(());
@@ -368,7 +370,9 @@ fn promote_local_slot_for_ref_capture(
     ctx.emitter.instruction(&format!("mov {}, {}", cell_reg, abi::int_result_reg(ctx.emitter))); // keep the promoted closure capture cell while restoring its value
     pop_result_value(ctx, &local_ty);
     store_current_result_to_ref_cell(ctx, cell_reg, &local_ty);
-    release_replaced_promoted_local_value(ctx, &local_ty, offset, cell_reg);
+    if release_replaced_value {
+        release_replaced_promoted_local_value(ctx, &local_ty, offset, cell_reg);
+    }
     abi::store_at_offset_scratch(ctx.emitter, cell_reg, offset, abi::tertiary_scratch_reg(ctx.emitter));
     if let Some(owner_slot) = owner_slot {
         let owner_offset = ctx.local_offset(owner_slot)?;
@@ -5342,7 +5346,7 @@ fn lower_store_ref_cell(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Re
 /// Promotes an existing raw local slot into a heap ref-cell pointer.
 fn lower_promote_local_ref_cell(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     let (slot, owner_slot) = expect_local_slot_pair(inst)?;
-    promote_local_slot_for_ref_capture(ctx, slot, Some(owner_slot), &inst.result_php_type)
+    promote_local_slot_for_ref_capture(ctx, slot, Some(owner_slot), &inst.result_php_type, true)
 }
 
 /// Binds a target local slot to the source local's existing ref-cell pointer.

@@ -8,6 +8,7 @@
 //! Key details:
 //! - The key tuple matches `emit_normalized_hash_key`: int keys use `key_hi = -1`.
 //! - Unsupported payloads and missing keys return boxed `Mixed(null)` for PHP-like quiet access.
+//! - Every successful return is an owned `Mixed*`; borrowed array/hash slots are retained first.
 
 use crate::codegen::abi;
 use crate::codegen::emit::Emitter;
@@ -30,7 +31,7 @@ pub fn emit_mixed_array_get(emitter: &mut Emitter) {
 /// Emits `__rt_mixed_array_get` for ARM64 (AAPCS64 ABI).
 ///
 /// Inputs arrive in `x0` = mixed_ptr, `x1` = key_lo, `x2` = key_hi.
-/// Returns a pointer to a boxed `Mixed` cell in `x0`.
+/// Returns an owned pointer to a boxed `Mixed` cell in `x0`.
 ///
 /// The function dispatches on the mixed value's tag:
 /// - Tag 4 → indexed array path
@@ -41,8 +42,8 @@ pub fn emit_mixed_array_get(emitter: &mut Emitter) {
 /// For indexed arrays the key must be integer (`key_hi == -1` sentinel); string keys
 /// return null. For objects only `stdClass` with a string key is supported; int keys
 /// and non-stdClass objects return null. Missing keys return null. All paths that
-/// produce a value box it through `__rt_mixed_from_value` except when the hash entry
-/// already holds a boxed `Mixed` pointer (tag 7), which is returned directly.
+/// produce a value box it through `__rt_mixed_from_value` except when storage already
+/// holds a boxed `Mixed` pointer (tag 7), which is retained before returning.
 fn emit_mixed_array_get_aarch64(emitter: &mut Emitter) {
     emitter.blank();
     emitter.comment("--- runtime: mixed_array_get ---");
@@ -88,7 +89,7 @@ fn emit_mixed_array_get_aarch64(emitter: &mut Emitter) {
     emitter.instruction("ubfx x13, x13, #8, #7");                               // extract the runtime element value_type tag
     emitter.instruction("add x10, x10, #24");                                   // skip the 24-byte array header to reach the contiguous payload
     emitter.instruction("cmp x13, #7");                                         // are indexed slots already boxed Mixed pointers?
-    emitter.instruction("b.eq __rt_mixed_array_get_indexed_boxed");             // boxed slots can be returned directly
+    emitter.instruction("b.eq __rt_mixed_array_get_indexed_boxed");             // boxed slots must be retained before returning
     emitter.instruction("cmp x13, #1");                                         // do indexed slots contain string pointer/length pairs?
     emitter.instruction("b.eq __rt_mixed_array_get_indexed_string");            // string slots need a 16-byte load before boxing
     emitter.instruction("cmp x13, #8");                                         // do indexed slots represent null payloads?
@@ -103,6 +104,7 @@ fn emit_mixed_array_get_aarch64(emitter: &mut Emitter) {
     emitter.label("__rt_mixed_array_get_indexed_boxed");
     emitter.instruction("ldr x0, [x10, x12, lsl #3]");                          // load the boxed Mixed pointer from the indexed slot
     emitter.instruction("cbz x0, __rt_mixed_array_get_null");                   // empty slot → null Mixed
+    emitter.instruction("bl __rt_incref");                                      // retain the stored Mixed cell so the caller owns the returned result
     emitter.instruction("ldp x29, x30, [sp, #24]");                             // restore frame pointer and return address
     emitter.instruction("add sp, sp, #48");                                     // release the local frame
     emitter.instruction("ret");                                                 // return Mixed* in x0
@@ -145,7 +147,8 @@ fn emit_mixed_array_get_aarch64(emitter: &mut Emitter) {
     // so callers always see a uniform Mixed cell.
     emitter.instruction("cmp x3, #7");                                          // is the hash entry already a boxed Mixed?
     emitter.instruction("b.ne __rt_mixed_array_get_assoc_box");                 // no → box (lo, hi, tag) into a fresh Mixed cell
-    emitter.instruction("mov x0, x1");                                          // yes → return the borrowed Mixed* directly
+    emitter.instruction("mov x0, x1");                                          // yes → move the stored Mixed cell into the return register
+    emitter.instruction("bl __rt_incref");                                      // retain the stored Mixed cell so the caller owns the returned result
     emitter.instruction("ldp x29, x30, [sp, #24]");                             // restore frame pointer and return address
     emitter.instruction("add sp, sp, #48");                                     // release the local frame
     emitter.instruction("ret");                                                 // return Mixed* in x0
@@ -191,14 +194,14 @@ fn emit_mixed_array_get_aarch64(emitter: &mut Emitter) {
 /// Emits `__rt_mixed_array_get` for x86_64 (SysV ABI).
 ///
 /// Inputs arrive in `rdi` = mixed_ptr, `rsi` = key_lo, `rdx` = key_hi.
-/// Returns a pointer to a boxed `Mixed` cell in `rax`.
+/// Returns an owned pointer to a boxed `Mixed` cell in `rax`.
 ///
 /// Same dispatch and return semantics as `emit_mixed_array_get_aarch64`:
 /// - Tag 4 → indexed array, tag 5 → associative array, tag 6 → stdClass object
 /// - Integer keys on indexed arrays required (`key_hi == -1`); string keys return null
 /// - Objects: only `stdClass` with string key supported; int keys return null
 /// - Missing keys and unsupported payloads return boxed `Mixed(null)`
-/// - Hash entries already holding a boxed `Mixed` (tag 7) are returned directly;
+/// - Slots already holding a boxed `Mixed` (tag 7) are retained before return;
 ///   all other values are boxed through `__rt_mixed_from_value`
 fn emit_mixed_array_get_x86_64(emitter: &mut Emitter) {
     emitter.blank();
@@ -242,7 +245,7 @@ fn emit_mixed_array_get_x86_64(emitter: &mut Emitter) {
     emitter.instruction("and r9, 0x7f");                                        // remove the persistent COW flag from the extracted tag
     emitter.instruction("lea r10, [r10 + 24]");                                 // skip the 24-byte array header to reach the contiguous payload
     emitter.instruction("cmp r9, 7");                                           // are indexed slots already boxed Mixed pointers?
-    emitter.instruction("je __rt_mixed_array_get_indexed_boxed");               // boxed slots can be returned directly
+    emitter.instruction("je __rt_mixed_array_get_indexed_boxed");               // boxed slots must be retained before returning
     emitter.instruction("cmp r9, 1");                                           // do indexed slots contain string pointer/length pairs?
     emitter.instruction("je __rt_mixed_array_get_indexed_string");              // string slots need a 16-byte load before boxing
     emitter.instruction("cmp r9, 8");                                           // do indexed slots represent null payloads?
@@ -258,6 +261,9 @@ fn emit_mixed_array_get_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov rax, QWORD PTR [r10 + r8 * 8]");                   // load the boxed Mixed pointer from the indexed slot
     emitter.instruction("test rax, rax");                                       // empty slot → null
     emitter.instruction("je __rt_mixed_array_get_null");                        // branch on the current JSON decoder condition
+    abi::emit_push_reg(emitter, "rax");
+    emitter.instruction("call __rt_incref");                                    // retain the stored Mixed cell so the caller owns the returned result
+    abi::emit_pop_reg(emitter, "rax");
     emitter.instruction("mov rsp, rbp");                                        // restore stack pointer
     emitter.instruction("pop rbp");                                             // restore caller frame pointer
     emitter.instruction("ret");                                                 // return Mixed* in rax
@@ -300,7 +306,10 @@ fn emit_mixed_array_get_x86_64(emitter: &mut Emitter) {
     // callers always see a uniform Mixed cell.
     emitter.instruction("cmp rcx, 7");                                          // is the hash entry already a boxed Mixed?
     emitter.instruction("jne __rt_mixed_array_get_assoc_box");                  // no → box (lo, hi, tag) into a fresh Mixed cell
-    emitter.instruction("mov rax, rdi");                                        // yes → return the borrowed Mixed* directly
+    emitter.instruction("mov rax, rdi");                                        // yes → move the stored Mixed cell into the return register
+    abi::emit_push_reg(emitter, "rax");
+    emitter.instruction("call __rt_incref");                                    // retain the stored Mixed cell so the caller owns the returned result
+    abi::emit_pop_reg(emitter, "rax");
     emitter.instruction("mov rsp, rbp");                                        // restore stack pointer
     emitter.instruction("pop rbp");                                             // restore caller frame pointer
     emitter.instruction("ret");                                                 // return Mixed* in rax

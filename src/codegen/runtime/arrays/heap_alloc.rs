@@ -105,7 +105,25 @@ pub fn emit_heap_alloc(emitter: &mut Emitter) {
     // -- walk the free list looking for first-fit block --
     emitter.label("__rt_heap_alloc_fl_loop");
     emitter.instruction("cbz x10, __rt_heap_alloc_bump");                       // no free block found, fall through to bump
+    crate::codegen::abi::emit_symbol_address(emitter, "x12", "_heap_buf");
+    emitter.instruction("cmp x10, x12");                                        // reject free-list pointers that point before the heap buffer
+    emitter.instruction("b.lo __rt_heap_alloc_fl_drop_tail");                   // drop the rest of a chain once it leaves the heap buffer
+    crate::codegen::abi::emit_symbol_address(emitter, "x13", "_heap_off");
+    emitter.instruction("ldr x13, [x13]");                                      // load the current heap bump offset before deriving the live heap end
+    emitter.instruction("add x13, x12, x13");                                   // x13 = current live heap end
+    emitter.instruction("cmp x10, x13");                                        // reject free-list pointers at or beyond the live heap end
+    emitter.instruction("b.hs __rt_heap_alloc_fl_drop_tail");                   // truncate a chain that has escaped the live heap window
     emitter.instruction("ldr w11, [x10]");                                      // x11 = block size (32-bit, zero-extends)
+    emitter.instruction("cmp x11, #8");                                         // is the free block large enough to carry allocator metadata?
+    emitter.instruction("b.lo __rt_heap_alloc_fl_unlink_invalid");              // unlink in-heap nodes with impossible payload sizes
+    emitter.instruction("ldr w14, [x10, #4]");                                  // load the candidate refcount from the free block header
+    emitter.instruction("cbnz w14, __rt_heap_alloc_fl_unlink_invalid");         // live blocks must never be reused through the free list
+    emitter.instruction("ldr x14, [x10, #8]");                                  // load the candidate heap kind from the free block header
+    emitter.instruction("cbnz x14, __rt_heap_alloc_fl_unlink_invalid");         // free-list blocks must not retain a live heap kind
+    emitter.instruction("add x14, x10, #16");                                   // compute the start of this candidate payload
+    emitter.instruction("add x14, x14, x11");                                   // compute the candidate block end address
+    emitter.instruction("cmp x14, x13");                                        // does the candidate block stay inside the live heap window?
+    emitter.instruction("b.hi __rt_heap_alloc_fl_unlink_invalid");              // unlink in-heap nodes whose recorded size overruns live heap
     emitter.instruction("cmp x11, x0");                                         // does this block fit the request?
     emitter.instruction("b.ge __rt_heap_alloc_fl_found");                       // yes — use this block
 
@@ -113,6 +131,19 @@ pub fn emit_heap_alloc(emitter: &mut Emitter) {
     emitter.instruction("add x9, x10, #16");                                    // prev_next_addr = &current->next after the 16-byte free-block header
     emitter.instruction("ldr x10, [x10, #16]");                                 // current = current->next
     emitter.instruction("b __rt_heap_alloc_fl_loop");                           // continue searching
+
+    // -- unlink malformed in-heap nodes instead of allocating from stale state --
+    emitter.label("__rt_heap_alloc_fl_unlink_invalid");
+    emitter.instruction("ldr x12, [x10, #16]");                                 // preserve the next free-list pointer before removing this malformed node
+    emitter.instruction("str x12, [x9]");                                       // unlink the malformed in-heap node from the free-list chain
+    emitter.instruction("mov x10, x12");                                        // continue scanning from the successor node
+    emitter.instruction("b __rt_heap_alloc_fl_loop");                           // keep searching for a valid reusable free block
+
+    // -- truncate chains that have escaped the heap address range --
+    emitter.label("__rt_heap_alloc_fl_drop_tail");
+    emitter.instruction("str xzr, [x9]");                                       // drop the unreachable tail without dereferencing an out-of-heap pointer
+    emitter.instruction("mov x10, xzr");                                        // force the next loop iteration to use bump allocation
+    emitter.instruction("b __rt_heap_alloc_fl_loop");                           // restart the loop with the truncated chain
 
     // -- found a suitable free block, either split it or unlink it whole --
     emitter.label("__rt_heap_alloc_fl_found");
@@ -284,12 +315,44 @@ fn emit_heap_alloc_linux_x86_64(emitter: &mut Emitter) {
     emitter.label("__rt_heap_alloc_fl_loop");
     emitter.instruction("test r10, r10");                                       // did the free-list walk run out of blocks?
     emitter.instruction("jz __rt_heap_alloc_bump");                             // yes — fall back to bump allocation from the heap buffer
+    crate::codegen::abi::emit_symbol_address(emitter, "r8", "_heap_buf");
+    emitter.instruction("cmp r10, r8");                                         // reject free-list pointers that point before the heap buffer
+    emitter.instruction("jb __rt_heap_alloc_fl_drop_tail");                     // drop the rest of a chain once it leaves the heap buffer
+    crate::codegen::abi::emit_symbol_address(emitter, "rcx", "_heap_off");
+    emitter.instruction("mov rcx, QWORD PTR [rcx]");                            // load the current heap bump offset before deriving the live heap end
+    emitter.instruction("add rcx, r8");                                         // rcx = current live heap end
+    emitter.instruction("cmp r10, rcx");                                        // reject free-list pointers at or beyond the live heap end
+    emitter.instruction("jae __rt_heap_alloc_fl_drop_tail");                    // truncate a chain that has escaped the live heap window
     emitter.instruction("mov r11d, DWORD PTR [r10]");                           // load this free block payload size from its header
+    emitter.instruction("cmp r11, 8");                                          // is the free block large enough to carry allocator metadata?
+    emitter.instruction("jb __rt_heap_alloc_fl_unlink_invalid");                // unlink in-heap nodes with impossible payload sizes
+    emitter.instruction("mov edx, DWORD PTR [r10 + 4]");                        // load the candidate refcount from the free block header
+    emitter.instruction("test edx, edx");                                       // is the candidate still marked live rather than free?
+    emitter.instruction("jnz __rt_heap_alloc_fl_unlink_invalid");               // live blocks must never be reused through the free list
+    emitter.instruction("mov rdx, QWORD PTR [r10 + 8]");                        // load the candidate heap kind from the free block header
+    emitter.instruction("test rdx, rdx");                                       // does this free-list node retain a live heap kind?
+    emitter.instruction("jnz __rt_heap_alloc_fl_unlink_invalid");               // free-list blocks must not retain live heap kind metadata
+    emitter.instruction("lea rdx, [r10 + r11 + 16]");                           // compute the candidate block end address
+    emitter.instruction("cmp rdx, rcx");                                        // does the candidate block stay inside the live heap window?
+    emitter.instruction("ja __rt_heap_alloc_fl_unlink_invalid");                // unlink in-heap nodes whose recorded size overruns live heap
     emitter.instruction("cmp r11, rax");                                        // does this free block fit the requested payload size?
     emitter.instruction("jae __rt_heap_alloc_fl_found");                        // yes — reuse this free block
     emitter.instruction("lea r9, [r10 + 16]");                                  // advance prev_next_addr to the current block's next field
     emitter.instruction("mov r10, QWORD PTR [r10 + 16]");                       // move on to the next free block in the ordered list
     emitter.instruction("jmp __rt_heap_alloc_fl_loop");                         // continue searching for a large-enough free block
+
+    // -- unlink malformed in-heap nodes instead of allocating from stale state --
+    emitter.label("__rt_heap_alloc_fl_unlink_invalid");
+    emitter.instruction("mov rdx, QWORD PTR [r10 + 16]");                       // preserve the next free-list pointer before removing this malformed node
+    emitter.instruction("mov QWORD PTR [r9], rdx");                             // unlink the malformed in-heap node from the free-list chain
+    emitter.instruction("mov r10, rdx");                                        // continue scanning from the successor node
+    emitter.instruction("jmp __rt_heap_alloc_fl_loop");                         // keep searching for a valid reusable free block
+
+    // -- truncate chains that have escaped the heap address range --
+    emitter.label("__rt_heap_alloc_fl_drop_tail");
+    emitter.instruction("mov QWORD PTR [r9], 0");                               // drop the unreachable tail without dereferencing an out-of-heap pointer
+    emitter.instruction("xor r10, r10");                                        // force the next loop iteration to use bump allocation
+    emitter.instruction("jmp __rt_heap_alloc_fl_loop");                         // restart the loop with the truncated chain
 
     // -- found a suitable free block; either split it or consume it whole --
     emitter.label("__rt_heap_alloc_fl_found");

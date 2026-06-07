@@ -64,21 +64,30 @@ pub(super) fn lower_array_to_mixed(ctx: &mut FunctionContext<'_>, inst: &Instruc
         )));
     }
     let array = expect_operand(inst, 0)?;
-    let elem_ty = indexed_array_element_type(&ctx.value_php_type(array)?, inst)?;
+    indexed_array_element_type(&ctx.value_php_type(array)?, inst)?;
     require_array_to_mixed_result(&inst.result_php_type.codegen_repr(), inst)?;
-    let value_tag = runtime_value_tag(&elem_ty) as i64;
+    emit_array_to_mixed_operands(ctx, array)?;
+    abi::emit_call_label(ctx.emitter, "__rt_array_to_mixed");
+    store_if_result(ctx, inst)
+}
+
+/// Loads the array pointer and runtime element value tag for `__rt_array_to_mixed`.
+fn emit_array_to_mixed_operands(ctx: &mut FunctionContext<'_>, array: ValueId) -> Result<()> {
     match ctx.emitter.target.arch {
         Arch::AArch64 => {
             ctx.load_value_to_reg(array, "x0")?;
-            abi::emit_load_int_immediate(ctx.emitter, "x1", value_tag);
+            ctx.emitter.instruction("ldr x1, [x0, #-8]");                       // load the indexed-array packed header to recover the runtime slot tag
+            ctx.emitter.instruction("lsr x1, x1, #8");                          // move the runtime value_type byte into the low bits
+            ctx.emitter.instruction("and x1, x1, #0x7f");                       // isolate the source element value_type for Mixed boxing
         }
         Arch::X86_64 => {
             ctx.load_value_to_reg(array, "rdi")?;
-            abi::emit_load_int_immediate(ctx.emitter, "rsi", value_tag);
+            ctx.emitter.instruction("mov rsi, QWORD PTR [rdi - 8]");            // load the indexed-array packed header to recover the runtime slot tag
+            ctx.emitter.instruction("shr rsi, 8");                              // move the runtime value_type byte into the low bits
+            ctx.emitter.instruction("and rsi, 0x7f");                           // isolate the source element value_type for Mixed boxing
         }
     }
-    abi::emit_call_label(ctx.emitter, "__rt_array_to_mixed");
-    store_if_result(ctx, inst)
+    Ok(())
 }
 
 /// Lowers indexed-array promotion to associative hash storage.
@@ -1102,7 +1111,7 @@ fn convert_hash_union_result_to_mixed_if_needed(
     }
 }
 
-/// Returns the stack/local slot loaded by an array operand when it came from direct local storage.
+/// Returns the local/ref-cell slot loaded by an array operand when it can be written back after growth.
 fn source_load_local_slot(
     ctx: &FunctionContext<'_>,
     value: ValueId,
@@ -1116,7 +1125,7 @@ fn source_load_local_slot(
     let Some(inst_ref) = ctx.function.instruction(inst) else {
         return Err(CodegenIrError::missing_entry("instruction", inst.as_raw()));
     };
-    if inst_ref.op == Op::LoadLocal {
+    if matches!(inst_ref.op, Op::LoadLocal | Op::LoadRefCell) {
         if let Some(Immediate::LocalSlot(slot)) = inst_ref.immediate {
             return Ok(Some(slot));
         }

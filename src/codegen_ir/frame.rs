@@ -459,18 +459,22 @@ fn direct_return_local_slots(function: &Function) -> HashSet<LocalSlotId> {
         .collect()
 }
 
-/// Returns the local slot behind a returned `load_local` SSA value when visible.
+/// Returns the local slot behind a returned local or in-place converted local.
 fn direct_return_local_slot(function: &Function, value: crate::ir::ValueId) -> Option<LocalSlotId> {
     let value = function.value(value)?;
     let ValueDef::Instruction { inst, .. } = value.def else {
         return None;
     };
     let inst = function.instruction(inst)?;
-    if inst.op != Op::LoadLocal {
-        return None;
-    }
-    match inst.immediate {
-        Some(Immediate::LocalSlot(slot)) => Some(slot),
+    match inst.op {
+        Op::LoadLocal => match inst.immediate {
+            Some(Immediate::LocalSlot(slot)) => Some(slot),
+            _ => None,
+        },
+        Op::ArrayToMixed | Op::HashToMixed => {
+            let source = *inst.operands.first()?;
+            direct_return_local_slot(function, source)
+        }
         _ => None,
     }
 }
