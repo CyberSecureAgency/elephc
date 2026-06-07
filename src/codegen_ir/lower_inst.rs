@@ -78,6 +78,7 @@ pub(super) fn lower_instruction(ctx: &mut FunctionContext<'_>, inst_id: InstId) 
         Op::LoadRefCell => lower_load_ref_cell(ctx, &inst),
         Op::StoreRefCell => lower_store_ref_cell(ctx, &inst),
         Op::PromoteLocalRefCell => lower_promote_local_ref_cell(ctx, &inst),
+        Op::AliasLocalRefCell => lower_alias_local_ref_cell(ctx, &inst),
         Op::ReleaseLocalRefCell => lower_release_local_ref_cell(ctx, &inst),
         Op::LoadGlobal => lower_load_global(ctx, &inst),
         Op::StoreGlobal => lower_store_global(ctx, &inst),
@@ -4777,6 +4778,28 @@ fn lower_store_ref_cell(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Re
 fn lower_promote_local_ref_cell(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     let (slot, owner_slot) = expect_local_slot_pair(inst)?;
     promote_local_slot_for_ref_capture(ctx, slot, Some(owner_slot), &inst.result_php_type)
+}
+
+/// Binds a target local slot to the source local's existing ref-cell pointer.
+fn lower_alias_local_ref_cell(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    let (target_slot, source_slot) = expect_local_slot_pair(inst)?;
+    if !local_slot_stores_ref_cell_pointer(ctx, source_slot) {
+        return Err(CodegenIrError::invalid_module(
+            "alias_local_ref_cell source slot does not store a ref-cell pointer",
+        ));
+    }
+    let source_offset = ctx.local_offset(source_slot)?;
+    let target_offset = ctx.local_offset(target_slot)?;
+    let pointer_reg = abi::symbol_scratch_reg(ctx.emitter);
+    abi::load_at_offset(ctx.emitter, pointer_reg, source_offset);
+    abi::store_at_offset_scratch(
+        ctx.emitter,
+        pointer_reg,
+        target_offset,
+        abi::tertiary_scratch_reg(ctx.emitter),
+    );
+    ctx.mark_promoted_ref_cell(target_slot);
+    Ok(())
 }
 
 /// Releases an owned local ref-cell tracked by a hidden owner slot.

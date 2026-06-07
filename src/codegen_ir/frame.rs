@@ -303,13 +303,16 @@ fn local_slot_has_store(function: &Function, slot: LocalSlotId) -> bool {
     })
 }
 
-/// Returns PHP-visible locals whose slot is rewritten to a fallback ref-cell pointer.
+/// Returns PHP-visible locals whose slot is rewritten to a ref-cell pointer.
 fn promoted_ref_cell_local_slots(function: &Function) -> HashSet<LocalSlotId> {
     function
         .instructions
         .iter()
         .filter_map(|inst| match inst.immediate {
             Some(Immediate::LocalSlotPair { first, .. }) if inst.op == Op::PromoteLocalRefCell => {
+                Some(first)
+            }
+            Some(Immediate::LocalSlotPair { first, .. }) if inst.op == Op::AliasLocalRefCell => {
                 Some(first)
             }
             _ => None,

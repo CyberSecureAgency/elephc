@@ -597,6 +597,58 @@ impl<'m, 'f> LoweringContext<'m, 'f> {
         self.initialized_slots.insert(owner_slot);
     }
 
+    /// Binds one local name to the same ref-cell pointer as another local.
+    pub(crate) fn alias_local_ref_cell(&mut self, target: &str, source: &str, span: Option<Span>) {
+        if target == source {
+            return;
+        }
+        let source_ty = self.local_type(source);
+        if !self.is_ref_bound_local(source) {
+            self.promote_local_ref_cell(source, span);
+        }
+        self.clear_static_callable_local(target);
+        self.clear_fiber_start_sig(target);
+        self.release_replaced_local_before_ref_alias(target, span);
+        let source_slot = self.declare_local(source, source_ty.clone());
+        let target_slot = self.declare_local(target, source_ty.clone());
+        self.set_local_type(target, source_ty.clone());
+        self.builder.emit_with_effects(
+            Op::AliasLocalRefCell,
+            Vec::new(),
+            Some(Immediate::LocalSlotPair {
+                first: target_slot,
+                second: source_slot,
+            }),
+            IrType::Void,
+            source_ty,
+            Ownership::NonHeap,
+            Op::AliasLocalRefCell.default_effects(),
+            span,
+        );
+        self.mark_ref_bound_local(target);
+        self.initialized_slots.insert(target_slot);
+    }
+
+    /// Releases storage currently owned by a local before rebinding it as a ref alias.
+    fn release_replaced_local_before_ref_alias(&mut self, name: &str, span: Option<Span>) {
+        if self.is_ref_bound_local(name) {
+            self.release_ref_cell_owner(name, span);
+            return;
+        }
+        let Some(slot) = self.local_slots.get(name).copied() else {
+            return;
+        };
+        if !self.initialized_slots.contains(&slot) {
+            return;
+        }
+        let previous_type = self.local_type(name);
+        if !Ownership::php_type_needs_lifetime_tracking(&previous_type) {
+            return;
+        }
+        let previous = self.load_local(name, span);
+        crate::ir_lower::ownership::release_if_owned(self, previous, span);
+    }
+
     /// Releases a promoted fallback ref-cell owner if the variable still owns one.
     pub(crate) fn release_ref_cell_owner(&mut self, name: &str, span: Option<Span>) {
         let Some(owner_slot) = self.ref_cell_owner_slot(name) else {

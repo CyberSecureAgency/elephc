@@ -168,6 +168,7 @@ pub enum Op {
     LoadRefCell,
     StoreRefCell,
     PromoteLocalRefCell,
+    AliasLocalRefCell,
     ReleaseLocalRefCell,
     LoadGlobal,
     StoreGlobal,
@@ -367,6 +368,7 @@ impl Op {
             PromoteLocalRefCell => {
                 E::READS_LOCAL | E::WRITES_LOCAL | E::ALLOC_HEAP | E::WRITES_HEAP | E::REFCOUNT_OP
             },
+            AliasLocalRefCell => E::READS_LOCAL | E::WRITES_LOCAL,
             ReleaseLocalRefCell => E::READS_LOCAL | E::WRITES_LOCAL | E::WRITES_HEAP | E::REFCOUNT_OP,
             LoadGlobal | LoadStaticProperty | ScopedConstantGet | ClassAttrNames
             | ClassAttrArgs | ClassGetAttributes | CatchCurrent => E::READS_GLOBAL,
@@ -460,6 +462,7 @@ impl Op {
             LoadRefCell => "load_ref_cell",
             StoreRefCell => "store_ref_cell",
             PromoteLocalRefCell => "promote_local_ref_cell",
+            AliasLocalRefCell => "alias_local_ref_cell",
             ReleaseLocalRefCell => "release_local_ref_cell",
             LoadGlobal => "load_global",
             StoreGlobal => "store_global",

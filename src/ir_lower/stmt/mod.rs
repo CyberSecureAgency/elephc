@@ -305,12 +305,10 @@ fn contextualize_array_assignment(
     (hash, contextual_ty)
 }
 
-/// Lowers a by-reference assignment as a conservative local rebinding.
+/// Lowers a by-reference assignment by binding both variables to one ref-cell.
 fn lower_ref_assign(ctx: &mut LoweringContext<'_, '_>, target: &str, source: &str, span: Span) {
-    let value = ctx.load_local(source, Some(span));
-    let php_type = ctx.builder.value_php_type(value.value);
     let fiber_start_sig = ctx.fiber_start_sig_for_local(source);
-    ctx.store_local(target, value, php_type, Some(span));
+    ctx.alias_local_ref_cell(target, source, Some(span));
     if let Some(sig) = fiber_start_sig {
         ctx.bind_fiber_start_sig(target, sig);
     }

@@ -445,6 +445,11 @@ fn lower_body_into_function(
     all_global_var_names: std::collections::HashSet<String>,
 ) -> Vec<Function> {
     let owner_name = function.name.clone();
+    let by_ref_params = function
+        .params
+        .iter()
+        .map(|param| param.by_ref)
+        .collect::<Vec<_>>();
     let mut builder = Builder::new(function);
     let entry = builder.create_named_block("entry", Vec::new());
     builder.set_entry(entry);
@@ -469,9 +474,12 @@ fn lower_body_into_function(
         in_main,
         all_global_var_names,
     );
-    for (name, php_type) in params {
+    for (index, (name, php_type)) in params.iter().enumerate() {
         ctx.declare_local(name, php_type.clone());
         ctx.mark_local_initialized(name);
+        if by_ref_params.get(index).copied().unwrap_or(false) {
+            ctx.mark_ref_bound_local(name);
+        }
     }
     seed_recursive_closure_binding(&mut ctx, recursive_closure_binding);
     for stmt in body {
