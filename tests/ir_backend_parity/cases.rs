@@ -112,6 +112,44 @@ echo "done";
     );
 }
 
+/// Verifies missing indexed-array reads return null and emit PHP's warning.
+#[test]
+fn parity_indexed_array_missing_key_warns() {
+    let source = r#"<?php
+$a = [10, 20, 30];
+$v = $a[5];
+if (is_null($v)) { echo "null"; } else { echo "not null"; }
+"#;
+    let legacy = compile_and_run_backend_capture(
+        "indexed_array_missing_key_warns",
+        source,
+        &[],
+        Backend::Legacy,
+        &[],
+    );
+    let ir = compile_and_run_backend_capture(
+        "indexed_array_missing_key_warns",
+        source,
+        &[],
+        Backend::Ir,
+        &[],
+    );
+    assert_eq!(
+        ir.0, legacy.0,
+        "IR backend stdout differed from legacy for indexed_array_missing_key_warns"
+    );
+    assert!(
+        legacy.1.contains("Warning: Undefined array key 5"),
+        "legacy backend did not emit undefined-key warning: {}",
+        legacy.1
+    );
+    assert!(
+        ir.1.contains("Warning: Undefined array key 5"),
+        "IR backend did not emit undefined-key warning: {}",
+        ir.1
+    );
+}
+
 /// Verifies `explode()` arrays and copied string elements are released at function exit.
 #[test]
 fn parity_explode_parser_releases_arrays_and_elements() {

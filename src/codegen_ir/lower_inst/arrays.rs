@@ -313,6 +313,7 @@ fn lower_array_get_aarch64(
     emit_array_get_in_bounds_aarch64(ctx, array_reg, result_reg, elem_ty)?;
     ctx.emitter.instruction(&format!("b {}", done_label));                      // skip the null fallback after a successful indexed-array read
     ctx.emitter.label(&null_label);
+    emit_undefined_array_key_warning(ctx);
     emit_array_get_null_fallback(ctx, elem_ty);
     ctx.emitter.label(&done_label);
     store_if_result(ctx, inst)
@@ -387,6 +388,7 @@ fn lower_array_get_x86_64(
     emit_array_get_in_bounds_x86_64(ctx, array_reg, result_reg, elem_ty)?;
     ctx.emitter.instruction(&format!("jmp {}", done_label));                    // skip the null fallback after a successful indexed-array read
     ctx.emitter.label(&null_label);
+    emit_undefined_array_key_warning(ctx);
     emit_array_get_null_fallback(ctx, elem_ty);
     ctx.emitter.label(&done_label);
     store_if_result(ctx, inst)
@@ -517,6 +519,11 @@ fn emit_array_get_in_bounds_x86_64(
         }
     }
     Ok(())
+}
+
+/// Emits PHP's undefined integer array-key warning for the key in the result register.
+fn emit_undefined_array_key_warning(ctx: &mut FunctionContext<'_>) {
+    abi::emit_call_label(ctx.emitter, "__rt_warn_undefined_array_key_int");
 }
 
 /// Emits the null/miss fallback in the result shape expected by the array element type.
