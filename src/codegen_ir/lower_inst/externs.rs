@@ -21,10 +21,13 @@ use crate::ir::{
     ExternDecl, ExternParamDecl, Immediate, Instruction, LocalSlotId, Op, ValueDef, ValueId,
 };
 use crate::names::{function_symbol, php_symbol_key};
-use crate::types::{FunctionSig, PhpType};
+use crate::types::{callable_wrapper_sig, FunctionSig, PhpType};
 
 use super::super::context::FunctionContext;
-use super::{expect_data, expect_operand, store_if_result};
+use super::{
+    emit_runtime_callable_invoker_inline, expect_data, expect_operand, load_value_to_first_int_arg,
+    store_if_result,
+};
 use crate::codegen_ir::{CodegenIrError, Result};
 
 /// Lowers an EIR extern call to a platform-mangled C symbol call.
@@ -176,6 +179,12 @@ fn materialize_extern_arg(
             abi::emit_call_label(ctx.emitter, "__rt_str_to_cstr");
             return Ok(PhpType::Pointer(None));
         }
+        (PhpType::Int | PhpType::Bool | PhpType::Float | PhpType::Str, PhpType::Mixed | PhpType::Union(_)) => {
+            materialize_mixed_extern_arg(ctx, value, &target_ty)?;
+            if target_ty == PhpType::Str {
+                return Ok(PhpType::Pointer(None));
+            }
+        }
         (PhpType::Float, PhpType::Int | PhpType::Bool) => {
             ctx.load_value_to_result(value)?;
             abi::emit_int_result_to_float_result(ctx.emitter);
@@ -198,6 +207,37 @@ fn materialize_extern_arg(
     Ok(target_ty)
 }
 
+/// Casts a boxed Mixed/Union value into the concrete scalar shape an extern parameter expects.
+fn materialize_mixed_extern_arg(
+    ctx: &mut FunctionContext<'_>,
+    value: ValueId,
+    target_ty: &PhpType,
+) -> Result<()> {
+    load_value_to_first_int_arg(ctx, value)?;
+    match target_ty {
+        PhpType::Int => {
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_int");
+        }
+        PhpType::Bool => {
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_bool");
+        }
+        PhpType::Float => {
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_float");
+        }
+        PhpType::Str => {
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_string");
+            abi::emit_call_label(ctx.emitter, "__rt_str_to_cstr");
+        }
+        other => {
+            return Err(CodegenIrError::unsupported(format!(
+                "extern Mixed argument cast to PHP type {:?}",
+                other
+            )))
+        }
+    }
+    Ok(())
+}
+
 /// Materializes a constant string callback as a direct C function pointer.
 fn materialize_extern_string_callable_arg(
     ctx: &mut FunctionContext<'_>,
@@ -206,15 +246,50 @@ fn materialize_extern_string_callable_arg(
     let callback_name = const_string_value(ctx, value).ok_or_else(|| {
         CodegenIrError::unsupported("extern callable parameter from runtime string value")
     })?;
-    let resolved_name = ctx
-        .callable_function_by_name(callback_name)
-        .map(|function| function.name.as_str())
-        .unwrap_or(callback_name);
-    abi::emit_symbol_address(
-        ctx.emitter,
-        abi::int_result_reg(ctx.emitter),
-        &function_symbol(resolved_name),
+    let Some((function_name, signature)) =
+        ctx.callable_function_by_name(callback_name)
+            .filter(|function| !function.flags.is_main)
+            .map(|function| {
+                (
+                    function.name.clone(),
+                    callable_wrapper_sig(&super::function_signature_from_eir(function)),
+                )
+            })
+    else {
+        abi::emit_symbol_address(
+            ctx.emitter,
+            abi::int_result_reg(ctx.emitter),
+            &function_symbol(callback_name),
+        );
+        return Ok(());
+    };
+    materialize_extern_static_function_descriptor_callback(ctx, &function_name, &signature)?;
+    Ok(())
+}
+
+/// Materializes a resolved static user function through the descriptor-backed extern trampoline.
+fn materialize_extern_static_function_descriptor_callback(
+    ctx: &mut FunctionContext<'_>,
+    function_name: &str,
+    signature: &FunctionSig,
+) -> Result<()> {
+    let invoker_label = emit_runtime_callable_invoker_inline(ctx, &signature, &[]);
+    let descriptor_label = callable_descriptor::static_descriptor_with_optional_invoker_meta(
+        ctx.data,
+        &function_symbol(function_name),
+        Some(function_name),
+        callable_descriptor::CALLABLE_DESC_KIND_FUNCTION,
+        Some(&signature),
+        &[],
+        &[],
+        callable_descriptor::CallableDescriptorInvocation::named(
+            callable_descriptor::CallableDescriptorShape::Function,
+            function_name,
+        ),
+        Some(&invoker_label),
     );
+    abi::emit_symbol_address(ctx.emitter, abi::int_result_reg(ctx.emitter), &descriptor_label);
+    emit_stateful_extern_callback_trampoline(ctx, &signature);
     Ok(())
 }
 
@@ -262,11 +337,7 @@ fn emit_stateful_extern_callback_trampoline(
     let trampoline = DeferredExternCallbackTrampoline {
         label: trampoline_label.clone(),
         descriptor_slot_label: slot_label.clone(),
-        visible_arg_types: callback_sig
-            .params
-            .iter()
-            .map(|(_, ty)| ty.codegen_repr())
-            .collect(),
+        visible_arg_types: extern_callback_visible_arg_types(callback_sig),
         return_type: callback_sig.return_type.codegen_repr(),
     };
 
@@ -282,6 +353,18 @@ fn emit_stateful_extern_callback_trampoline(
     abi::emit_pop_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));
     abi::emit_store_reg_to_symbol(ctx.emitter, abi::int_result_reg(ctx.emitter), &slot_label, 0);
     abi::emit_symbol_address(ctx.emitter, abi::int_result_reg(ctx.emitter), &trampoline_label);
+}
+
+/// Returns the C-visible extern callback parameter types used before PHP boxing.
+fn extern_callback_visible_arg_types(callback_sig: &FunctionSig) -> Vec<PhpType> {
+    callback_sig
+        .params
+        .iter()
+        .map(|(_, ty)| match ty.codegen_repr() {
+            PhpType::Mixed | PhpType::Union(_) => PhpType::Int,
+            concrete => concrete,
+        })
+        .collect()
 }
 
 /// Recovers a callable signature from a value definition when the EIR carries enough metadata.
