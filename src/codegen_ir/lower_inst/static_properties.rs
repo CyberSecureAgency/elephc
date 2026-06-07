@@ -489,6 +489,8 @@ fn ensure_static_property_type_supported(php_type: &PhpType, inst: &Instruction)
         | PhpType::Int
         | PhpType::Float
         | PhpType::Str
+        | PhpType::Void
+        | PhpType::Never
         | PhpType::Mixed
         | PhpType::Union(_)
         | PhpType::Array(_)

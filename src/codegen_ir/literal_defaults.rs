@@ -28,7 +28,9 @@ pub(crate) enum LiteralDefaultValue {
     Float(f64),
     Str(String),
     Null,
+    NullSentinel,
     BoxedNull,
+    BoxedStr(String),
     Array {
         elem_type: PhpType,
         elements: Vec<LiteralArrayElement>,
@@ -72,7 +74,12 @@ pub(crate) fn literal_default_value(
             _ => Err(unsupported_literal_default(context, php_type, op_name)),
         },
         (PhpType::Str, ExprKind::StringLiteral(value)) => Ok(LiteralDefaultValue::Str(value.clone())),
+        (PhpType::Mixed | PhpType::Union(_), ExprKind::StringLiteral(value)) => {
+            Ok(LiteralDefaultValue::BoxedStr(value.clone()))
+        }
         (PhpType::Mixed | PhpType::Union(_), ExprKind::Null) => Ok(LiteralDefaultValue::BoxedNull),
+        (PhpType::Void | PhpType::Never, ExprKind::Null) => Ok(LiteralDefaultValue::NullSentinel),
+        (PhpType::Void | PhpType::Never, _) => Ok(LiteralDefaultValue::NullSentinel),
         (PhpType::Object(_), ExprKind::Null) => Ok(LiteralDefaultValue::Null),
         (PhpType::AssocArray { value, .. }, ExprKind::ArrayLiteral(items)) if items.is_empty() => {
             Ok(LiteralDefaultValue::EmptyAssocArray {
@@ -92,6 +99,26 @@ pub(crate) fn literal_default_value(
         }
         _ => Err(unsupported_literal_default(context, php_type, op_name)),
     }
+}
+
+/// Emits a string literal default into the canonical string result registers.
+pub(crate) fn emit_string_literal_default_to_result(
+    ctx: &mut FunctionContext<'_>,
+    value: &str,
+) {
+    let (label, len) = ctx.data.add_string(value.as_bytes());
+    let (ptr_reg, len_reg) = abi::string_result_regs(ctx.emitter);
+    abi::emit_symbol_address(ctx.emitter, ptr_reg, &label);
+    abi::emit_load_int_immediate(ctx.emitter, len_reg, len as i64);
+}
+
+/// Emits a string literal default boxed as a Mixed value.
+pub(crate) fn emit_boxed_string_literal_default_to_result(
+    ctx: &mut FunctionContext<'_>,
+    value: &str,
+) {
+    emit_string_literal_default_to_result(ctx, value);
+    emit_box_current_value_as_mixed(ctx.emitter, &PhpType::Str);
 }
 
 /// Emits an empty associative-array literal default into the canonical result register.

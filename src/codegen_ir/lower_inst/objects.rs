@@ -32,7 +32,8 @@ use super::{
 use crate::codegen_ir::fibers;
 use crate::codegen_ir::literal_defaults::{
     emit_array_literal_default_to_result, emit_boxed_null_literal_to_result,
-    emit_empty_assoc_array_literal_to_result, literal_default_value, LiteralDefaultValue,
+    emit_boxed_string_literal_default_to_result, emit_empty_assoc_array_literal_to_result,
+    emit_string_literal_default_to_result, literal_default_value, LiteralDefaultValue,
 };
 use crate::codegen_ir::{CodegenIrError, Result};
 
@@ -1409,10 +1410,8 @@ fn emit_property_default(
             abi::emit_store_zero_to_address(ctx.emitter, object_reg, default.offset + 8);
         }
         LiteralDefaultValue::Str(value) => {
-            let (label, len) = ctx.data.add_string(value.as_bytes());
+            emit_string_literal_default_to_result(ctx, value);
             let (ptr_reg, len_reg) = abi::string_result_regs(ctx.emitter);
-            abi::emit_symbol_address(ctx.emitter, ptr_reg, &label);
-            abi::emit_load_int_immediate(ctx.emitter, len_reg, len as i64);
             abi::emit_store_to_address(ctx.emitter, ptr_reg, object_reg, default.offset);
             abi::emit_store_to_address(ctx.emitter, len_reg, object_reg, default.offset + 8);
         }
@@ -1420,9 +1419,23 @@ fn emit_property_default(
             abi::emit_store_zero_to_address(ctx.emitter, object_reg, default.offset);
             abi::emit_store_zero_to_address(ctx.emitter, object_reg, default.offset + 8);
         }
+        LiteralDefaultValue::NullSentinel => {
+            let int_reg = abi::int_result_reg(ctx.emitter);
+            abi::emit_load_int_immediate(ctx.emitter, int_reg, RUNTIME_NULL_SENTINEL);
+            abi::emit_store_to_address(ctx.emitter, int_reg, object_reg, default.offset);
+            abi::emit_store_zero_to_address(ctx.emitter, object_reg, default.offset + 8);
+        }
         LiteralDefaultValue::BoxedNull => {
             abi::emit_push_reg(ctx.emitter, object_reg);
             emit_boxed_null_literal_to_result(ctx);
+            abi::emit_pop_reg(ctx.emitter, object_reg);
+            let int_reg = abi::int_result_reg(ctx.emitter);
+            abi::emit_store_to_address(ctx.emitter, int_reg, object_reg, default.offset);
+            abi::emit_store_zero_to_address(ctx.emitter, object_reg, default.offset + 8);
+        }
+        LiteralDefaultValue::BoxedStr(value) => {
+            abi::emit_push_reg(ctx.emitter, object_reg);
+            emit_boxed_string_literal_default_to_result(ctx, value);
             abi::emit_pop_reg(ctx.emitter, object_reg);
             let int_reg = abi::int_result_reg(ctx.emitter);
             abi::emit_store_to_address(ctx.emitter, int_reg, object_reg, default.offset);
@@ -2626,7 +2639,12 @@ fn resolve_packed_field_slot(
 /// Verifies that this slice knows how to represent the property type in an object slot.
 fn ensure_property_type_supported(php_type: &PhpType, inst: &Instruction) -> Result<()> {
     match php_type {
-        PhpType::Bool | PhpType::Int | PhpType::Float | PhpType::Str => Ok(()),
+        PhpType::Bool
+        | PhpType::Int
+        | PhpType::Float
+        | PhpType::Str
+        | PhpType::Void
+        | PhpType::Never => Ok(()),
         ty if is_pointer_sized_property_type(ty) => Ok(()),
         _ => Err(CodegenIrError::unsupported(format!(
             "{} for property PHP type {:?}",
@@ -2867,7 +2885,7 @@ fn emit_property_load(
             let float_reg = abi::float_result_reg(ctx.emitter);
             abi::emit_load_from_address(ctx.emitter, float_reg, base_reg, slot.offset);
         }
-        PhpType::Bool | PhpType::Int => {
+        PhpType::Bool | PhpType::Int | PhpType::Void | PhpType::Never => {
             let int_reg = abi::int_result_reg(ctx.emitter);
             abi::emit_load_from_address(ctx.emitter, int_reg, base_reg, slot.offset);
         }
@@ -2964,7 +2982,7 @@ fn emit_property_store(
             abi::emit_store_to_address(ctx.emitter, float_reg, base_reg, slot.offset);
             abi::emit_store_zero_to_address(ctx.emitter, base_reg, slot.offset + 8);
         }
-        PhpType::Bool | PhpType::Int => {
+        PhpType::Bool | PhpType::Int | PhpType::Void | PhpType::Never => {
             let int_reg = abi::int_result_reg(ctx.emitter);
             abi::emit_push_reg(ctx.emitter, base_reg);
             load_property_store_value_to_result(ctx, value, &slot.php_type)?;
@@ -3098,7 +3116,12 @@ fn emit_packed_field_store(
             abi::emit_pop_reg(ctx.emitter, base_reg);
             abi::emit_store_to_address(ctx.emitter, float_reg, base_reg, slot.offset);
         }
-        PhpType::Bool | PhpType::Int | PhpType::Pointer(_) | PhpType::Resource(_) => {
+        PhpType::Bool
+        | PhpType::Int
+        | PhpType::Void
+        | PhpType::Never
+        | PhpType::Pointer(_)
+        | PhpType::Resource(_) => {
             let int_reg = abi::int_result_reg(ctx.emitter);
             abi::emit_push_reg(ctx.emitter, base_reg);
             ctx.load_value_to_reg(value, int_reg)?;
@@ -3119,6 +3142,7 @@ fn is_pointer_sized_property_type(php_type: &PhpType) -> bool {
         php_type.codegen_repr(),
         PhpType::Iterable
             | PhpType::Mixed
+            | PhpType::Union(_)
             | PhpType::Array(_)
             | PhpType::AssocArray { .. }
             | PhpType::Buffer(_)

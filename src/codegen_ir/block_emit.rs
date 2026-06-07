@@ -32,7 +32,8 @@ use super::frame;
 use super::function_variants;
 use super::literal_defaults::{
     emit_array_literal_default_to_result, emit_boxed_null_literal_to_result,
-    emit_empty_assoc_array_literal_to_result, literal_default_value, LiteralDefaultValue,
+    emit_boxed_string_literal_default_to_result, emit_empty_assoc_array_literal_to_result,
+    emit_string_literal_default_to_result, literal_default_value, LiteralDefaultValue,
 };
 use super::lower_inst;
 use super::lower_term;
@@ -495,6 +496,8 @@ fn ensure_static_property_default_type_supported(
         | PhpType::Int
         | PhpType::Float
         | PhpType::Str
+        | PhpType::Void
+        | PhpType::Never
         | PhpType::Mixed
         | PhpType::Array(_)
         | PhpType::AssocArray { .. }
@@ -529,16 +532,23 @@ fn emit_static_property_default_value(
             abi::emit_load_symbol_to_reg(ctx.emitter, float_reg, &label, 0);
         }
         LiteralDefaultValue::Str(value) => {
-            let (label, len) = ctx.data.add_string(value.as_bytes());
-            let (ptr_reg, len_reg) = abi::string_result_regs(ctx.emitter);
-            abi::emit_symbol_address(ctx.emitter, ptr_reg, &label);
-            abi::emit_load_int_immediate(ctx.emitter, len_reg, len as i64);
+            emit_string_literal_default_to_result(ctx, value);
         }
         LiteralDefaultValue::Null => {
             abi::emit_load_int_immediate(ctx.emitter, abi::int_result_reg(ctx.emitter), 0);
         }
+        LiteralDefaultValue::NullSentinel => {
+            abi::emit_load_int_immediate(
+                ctx.emitter,
+                abi::int_result_reg(ctx.emitter),
+                0x7fff_ffff_ffff_fffe,
+            );
+        }
         LiteralDefaultValue::BoxedNull => {
             emit_boxed_null_literal_to_result(ctx);
+        }
+        LiteralDefaultValue::BoxedStr(value) => {
+            emit_boxed_string_literal_default_to_result(ctx, value);
         }
         LiteralDefaultValue::Array {
             elem_type,
