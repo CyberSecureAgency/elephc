@@ -12,7 +12,11 @@ use super::super::abi;
 use super::super::context::Context;
 use super::super::data_section::DataSection;
 use super::super::emit::Emitter;
-use super::super::expr::{coerce_to_string, emit_expr, string_result_is_owned_call_temp};
+use super::super::context::HeapOwnership;
+use super::super::expr::{
+    coerce_to_string_releasing_owned, emit_expr, expr_result_heap_ownership,
+    string_result_is_owned_call_temp,
+};
 use super::super::platform::Arch;
 use super::PhpType;
 use crate::parser::ast::Expr;
@@ -80,7 +84,8 @@ pub(crate) fn emit_expr_to_stdout(
             );
         }
         PhpType::Object(_) => {
-            coerce_to_string(emitter, ctx, data, &ty);
+            let release_object = expr_result_heap_ownership(expr) == HeapOwnership::Owned;
+            coerce_to_string_releasing_owned(emitter, ctx, data, &ty, release_object);
             emit_string_to_stdout_and_release_if_needed(emitter, true);
         }
         _ => {

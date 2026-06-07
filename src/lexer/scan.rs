@@ -297,6 +297,9 @@ fn scan_token(cursor: &mut Cursor) -> Result<Token, CompileError> {
         '$' => literals::scan_variable(cursor),
         '0'..='9' => literals::scan_number(cursor),
         'a'..='z' | 'A'..='Z' | '_' => literals::scan_keyword(cursor),
+        // PHP allows non-ASCII identifier characters (bytes 0x80-0xFF), so a word that
+        // starts with one is scanned as an identifier rather than rejected.
+        c if literals::is_ident_start(c) => literals::scan_keyword(cursor),
         _ => Err(CompileError::new(
             cursor.span(),
             &format!("Unexpected character: '{}'", ch),
