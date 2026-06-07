@@ -1745,6 +1745,8 @@ fn lower_property_array_push(
             Op::PropGet.default_effects(),
             Some(span),
         );
+        let property_value =
+            crate::ir_lower::ownership::acquire_if_refcounted(ctx, property_value, Some(span));
         let value = lower_expr(ctx, value);
         ctx.emit_void(
             Op::ArrayPush,
@@ -1798,6 +1800,8 @@ fn lower_property_array_assign(
             Op::PropGet.default_effects(),
             Some(span),
         );
+        let property_value =
+            crate::ir_lower::ownership::acquire_if_refcounted(ctx, property_value, Some(span));
         let index = lower_expr(ctx, index);
         let value = lower_expr(ctx, value);
         ctx.emit_void(
@@ -1830,6 +1834,8 @@ fn lower_property_array_assign(
             Op::PropGet.default_effects(),
             Some(span),
         );
+        let property_value =
+            crate::ir_lower::ownership::acquire_if_refcounted(ctx, property_value, Some(span));
         let index = lower_expr(ctx, index);
         let value = lower_expr(ctx, value);
         ctx.emit_void(

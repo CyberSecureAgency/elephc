@@ -50,6 +50,28 @@ fn nested_array_literal_releases_pushed_hash_temporary() {
     assert!(release > 0, "expected release after array_push in {text}");
 }
 
+/// Verifies property array rewrites acquire the container before in-place mutation.
+#[test]
+fn property_array_push_acquires_container_before_rewrite_release() {
+    let module = super::lower_source(
+        r#"<?php
+class C { public array $a; }
+$x = new C();
+$x->a = [];
+$x->a[] = 1;
+"#,
+    );
+    let text = print_module(&module);
+    let prop_get = text.find("prop_get").expect("expected property load in lowered IR");
+    let tail = &text[prop_get..];
+    let acquire = tail.find("acquire").expect("expected property container acquire");
+    let push = tail.find("array_push").expect("expected property array push");
+    assert!(
+        acquire < push,
+        "expected property container acquire before array_push in {text}"
+    );
+}
+
 /// Verifies overwriting a refcounted array local releases the previous value.
 #[test]
 fn overwriting_array_local_emits_release() {
