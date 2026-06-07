@@ -5082,7 +5082,7 @@ fn lower_match(
         store_expr_into_temp(ctx, &temp_name, result_type.clone(), default, expr.span);
         branch_to(ctx, merge);
     } else if !ctx.builder.insertion_block_is_terminated() {
-        let message = ctx.intern_string("unhandled match expression");
+        let message = ctx.intern_string("Fatal error: unhandled match case\n");
         ctx.builder.terminate(Terminator::Fatal { message });
     }
     ctx.builder.position_at_end(merge);
