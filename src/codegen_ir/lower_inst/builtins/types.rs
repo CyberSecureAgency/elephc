@@ -537,12 +537,12 @@ fn class_interfaces_contain(
     })
 }
 
-/// Returns declaration names from legacy shared order metadata, falling back to EIR tables.
+/// Returns declaration names from EIR order metadata, falling back to legacy registries.
 fn declared_names(ctx: &FunctionContext<'_>, name: &str) -> Result<Vec<String>> {
     let mut names = match name {
-        "get_declared_classes" => crate::codegen::declared_class_names(),
-        "get_declared_interfaces" => crate::codegen::declared_interface_names(),
-        "get_declared_traits" => crate::codegen::declared_trait_names(),
+        "get_declared_classes" => ctx.module.declared_class_names.clone(),
+        "get_declared_interfaces" => ctx.module.declared_interface_names.clone(),
+        "get_declared_traits" => ctx.module.declared_trait_names.clone(),
         _ => {
             return Err(CodegenIrError::unsupported(format!(
                 "declared-name builtin {}",
@@ -550,6 +550,14 @@ fn declared_names(ctx: &FunctionContext<'_>, name: &str) -> Result<Vec<String>> 
             )));
         }
     };
+    if names.is_empty() {
+        names = match name {
+            "get_declared_classes" => crate::codegen::declared_class_names(),
+            "get_declared_interfaces" => crate::codegen::declared_interface_names(),
+            "get_declared_traits" => crate::codegen::declared_trait_names(),
+            _ => unreachable!(),
+        };
+    }
     if names.is_empty() {
         names = match name {
             "get_declared_classes" => ctx

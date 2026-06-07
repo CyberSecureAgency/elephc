@@ -9,13 +9,15 @@
 //!   statements themselves are no-ops inside `main`.
 //! - The module is validated before it is returned to CLI/test callers.
 
+use std::collections::{HashMap, HashSet};
+
 use crate::codegen::platform::Target;
 use crate::ir::{
     validate_module, ExternDecl, ExternParamDecl, Immediate, IrType, Module, Op,
 };
 use crate::ir_lower::{function, LoweringError};
 use crate::parser::ast::{ClassMethod, ExprKind, Program, Stmt, StmtKind};
-use crate::types::{CheckResult, PhpType};
+use crate::types::{CheckResult, ClassInfo, InterfaceInfo, PhpType};
 
 /// Lowers an optimized typed AST program into a validated EIR module.
 pub(crate) fn lower(
@@ -41,6 +43,10 @@ fn populate_metadata(module: &mut Module, program: &Program, check_result: &Chec
     module.enum_table.names = sorted_keys(&check_result.enums);
     module.interface_table.names = sorted_keys(&check_result.interfaces);
     module.trait_table.names = collect_declared_trait_names(program);
+    module.declared_class_names = collect_declared_class_names(program, &check_result.classes);
+    module.declared_interface_names =
+        collect_declared_interface_names(program, &check_result.interfaces);
+    module.declared_trait_names = collect_declared_trait_names(program);
     module.class_infos = check_result.classes.clone();
     module.interface_infos = check_result.interfaces.clone();
     module.enum_infos = check_result.enums.clone();
@@ -78,6 +84,46 @@ fn sorted_keys<T>(map: &std::collections::HashMap<String, T>) -> Vec<String> {
     keys
 }
 
+/// Collects PHP-visible class and enum names in the order `get_declared_classes()` must expose.
+fn collect_declared_class_names(
+    program: &Program,
+    classes: &HashMap<String, ClassInfo>,
+) -> Vec<String> {
+    let mut user_names = Vec::new();
+    collect_program_declared_names(
+        program,
+        classes,
+        &mut HashSet::new(),
+        &mut user_names,
+        |stmt| match &stmt.kind {
+            StmtKind::ClassDecl { name, .. } | StmtKind::EnumDecl { name, .. } => {
+                Some(name.as_str())
+            }
+            _ => None,
+        },
+    );
+    prepend_internal_names(classes.keys(), &user_names)
+}
+
+/// Collects PHP-visible interface names in the order `get_declared_interfaces()` must expose.
+fn collect_declared_interface_names(
+    program: &Program,
+    interfaces: &HashMap<String, InterfaceInfo>,
+) -> Vec<String> {
+    let mut user_names = Vec::new();
+    collect_program_declared_names(
+        program,
+        interfaces,
+        &mut HashSet::new(),
+        &mut user_names,
+        |stmt| match &stmt.kind {
+            StmtKind::InterfaceDecl { name, .. } => Some(name.as_str()),
+            _ => None,
+        },
+    );
+    prepend_internal_names(interfaces.keys(), &user_names)
+}
+
 /// Collects user-declared trait names in source order, including namespace blocks.
 fn collect_declared_trait_names(program: &Program) -> Vec<String> {
     let mut names = Vec::new();
@@ -91,6 +137,60 @@ fn collect_declared_trait_names(program: &Program) -> Vec<String> {
         }
     }
     names
+}
+
+/// Recursively collects source-declared names that are present in checked metadata.
+fn collect_program_declared_names<T>(
+    program: &Program,
+    known: &HashMap<String, T>,
+    seen: &mut HashSet<String>,
+    out: &mut Vec<String>,
+    pick: impl Copy + Fn(&Stmt) -> Option<&str>,
+) {
+    for stmt in program {
+        match &stmt.kind {
+            StmtKind::NamespaceBlock { body, .. } => {
+                collect_program_declared_names(body, known, seen, out, pick);
+            }
+            _ => {
+                let Some(name) = pick(stmt) else {
+                    continue;
+                };
+                let key = crate::names::php_symbol_key(name);
+                let is_known = known.contains_key(name)
+                    || known.keys().any(|candidate| {
+                        crate::names::php_symbol_key(candidate.trim_start_matches('\\')) == key
+                    });
+                if is_known && seen.insert(key) {
+                    out.push(name.to_string());
+                }
+            }
+        }
+    }
+}
+
+/// Prepends deterministic internal names before source-order user declarations.
+fn prepend_internal_names<'a>(
+    known_names: impl Iterator<Item = &'a String>,
+    user_names: &[String],
+) -> Vec<String> {
+    let user_keys: HashSet<String> = user_names
+        .iter()
+        .map(|name| crate::names::php_symbol_key(name))
+        .collect();
+    let mut names: Vec<String> = known_names
+        .filter(|name| !is_internal_synthetic_class_name(name))
+        .filter(|name| !user_keys.contains(&crate::names::php_symbol_key(name)))
+        .cloned()
+        .collect();
+    names.sort();
+    names.extend(user_names.iter().cloned());
+    names
+}
+
+/// Returns true for compiler-internal helper classes hidden from PHP introspection.
+fn is_internal_synthetic_class_name(name: &str) -> bool {
+    crate::names::php_symbol_key(name).starts_with("__elephc")
 }
 
 /// Converts a PHP type to EIR storage while preserving true void returns.
