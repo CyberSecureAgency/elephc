@@ -40,7 +40,7 @@ pub(crate) fn wrapper_for_fiber_new(
     if let Some(closure) = closure_literal_operand(module, function, callable) {
         return Some(wrapper_for_closure(closure));
     }
-    if callable_operand_uses_descriptor_invoker(function, callable) {
+    if callable_operand_uses_descriptor_invoker(module, function, callable) {
         return Some(descriptor_invoker_wrapper());
     }
     None
@@ -91,6 +91,7 @@ fn closure_literal_operand<'a>(
 
 /// Returns true when a Fiber callable operand runs through the descriptor-invoker wrapper.
 fn callable_operand_uses_descriptor_invoker(
+    module: &Module,
     function: &Function,
     callable: crate::ir::ValueId,
 ) -> bool {
@@ -99,6 +100,10 @@ fn callable_operand_uses_descriptor_invoker(
         .is_some_and(|value| match value.php_type.codegen_repr() {
             PhpType::Callable | PhpType::Str => true,
             PhpType::Array(elem) => matches!(elem.codegen_repr(), PhpType::Mixed | PhpType::Str),
+            PhpType::Object(class_name) => module
+                .class_infos
+                .get(class_name.trim_start_matches('\\'))
+                .is_some_and(|class_info| class_info.methods.contains_key("__invoke")),
             _ => false,
         })
 }

@@ -280,6 +280,24 @@ fn lower_invokable_object_descriptor_invoke(
     class_name: &str,
     op_name: &str,
 ) -> Result<()> {
+    emit_invokable_object_descriptor_value(ctx, receiver, class_name, op_name)?;
+    emit_descriptor_reg_invoker_call_with_mixed_arg(
+        ctx,
+        inst,
+        abi::nested_call_reg(ctx.emitter),
+        arg_mixed,
+        op_name,
+        true,
+    )
+}
+
+/// Materializes a receiver-bound descriptor for an invokable object value.
+pub(super) fn emit_invokable_object_descriptor_value(
+    ctx: &mut FunctionContext<'_>,
+    receiver: ValueId,
+    class_name: &str,
+    op_name: &str,
+) -> Result<()> {
     let normalized_class = class_name.trim_start_matches('\\').to_string();
     let method_key = "__invoke";
     let class_info = ctx
@@ -335,15 +353,7 @@ fn lower_invokable_object_descriptor_invoke(
         ),
         Some(&invoker_label),
     );
-    emit_runtime_descriptor_with_receiver_capture(ctx, &descriptor_label, receiver, &receiver_ty)?;
-    emit_descriptor_reg_invoker_call_with_mixed_arg(
-        ctx,
-        inst,
-        abi::nested_call_reg(ctx.emitter),
-        arg_mixed,
-        op_name,
-        true,
-    )
+    emit_runtime_descriptor_with_receiver_capture(ctx, &descriptor_label, receiver, &receiver_ty)
 }
 
 /// Verifies that a descriptor-invoker argument operand is a supported container shape.

@@ -949,12 +949,20 @@ fn lower_fiber_new(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<
                 "fiber_constructor",
             )?;
         } else if matches!(
-            callable_ty,
+            &callable_ty,
             PhpType::Array(elem) if matches!(elem.codegen_repr(), PhpType::Mixed | PhpType::Str)
         ) {
             callables::emit_runtime_callable_array_descriptor_value(
                 ctx,
                 callable,
+                "fiber_constructor",
+            )?;
+            move_fiber_callable_result_to_arg(ctx, callable_arg);
+        } else if let PhpType::Object(class_name) = callable_ty {
+            callables::emit_invokable_object_descriptor_value(
+                ctx,
+                callable,
+                &class_name,
                 "fiber_constructor",
             )?;
             move_fiber_callable_result_to_arg(ctx, callable_arg);

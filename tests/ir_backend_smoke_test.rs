@@ -668,6 +668,28 @@ echo $f->getReturn();
         compile_and_run_ir_backend("fiber_start_instance_callable_array", instance_callable_array),
         "array:go/null/array:done"
     );
+
+    let invokable_object = r#"<?php
+class FiberInvokerJob {
+    public function __construct(private string $prefix) {}
+
+    public function __invoke(string $value): string {
+        echo $this->prefix . $value;
+        return $this->prefix . "done";
+    }
+}
+$job = new FiberInvokerJob("invoke:");
+$f = new Fiber($job);
+$v = $f->start("go");
+echo "/";
+echo is_null($v) ? "null" : $v;
+echo "/";
+echo $f->getReturn();
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("fiber_start_invokable_object", invokable_object),
+        "invoke:go/null/invoke:done"
+    );
 }
 
 /// Verifies Fiber suspend and resume transfer boxed Mixed values across the boundary.
