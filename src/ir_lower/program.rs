@@ -778,6 +778,18 @@ fn required_builtin_spl_metadata_methods(class_name: &str) -> &'static [&'static
             "offsetSet",
             "offsetUnset",
         ],
+        "RecursiveArrayIterator" => &["hasChildren", "getChildren"],
+        "RecursiveFilterIterator" => &["hasChildren"],
+        "RecursiveCallbackFilterIterator" => &["hasChildren", "getChildren"],
+        "ParentIterator" => &["accept", "getChildren"],
+        "RecursiveIteratorIterator" => &[
+            "current",
+            "key",
+            "next",
+            "rewind",
+            "valid",
+            "getInnerIterator",
+        ],
         "SplFileInfo" => &["__toString"],
         "SplFileObject" => &[
             "current",
@@ -974,7 +986,7 @@ fn is_supported_builtin_spl_method(class_name: &str, method_key: &str) -> bool {
         "NoRewindIterator" => matches!(method_key, "__construct" | "rewind"),
         "InfiniteIterator" => matches!(method_key, "__construct" | "next"),
         "FilterIterator" => matches!(method_key, "__construct" | "rewind" | "next"),
-        "CallbackFilterIterator" => matches!(method_key, "accept"),
+        "CallbackFilterIterator" => matches!(method_key, "accept" | "__elephcsetcallbackenv"),
         "CachingIterator" => matches!(
             method_key,
             "__construct"
@@ -1033,6 +1045,37 @@ fn is_supported_builtin_spl_method(class_name: &str, method_key: &str) -> bool {
                 | "key"
                 | "current"
                 | "next"
+        ),
+        "RecursiveArrayIterator" => matches!(
+            method_key,
+            "__construct" | "haschildren" | "getchildren" | "__elephcassumerecursiveiterator"
+        ),
+        "RecursiveFilterIterator" => matches!(
+            method_key,
+            "__construct" | "haschildren" | "getchildren" | "__elephcassumerecursiveiterator"
+        ),
+        "RecursiveCallbackFilterIterator" => matches!(
+            method_key,
+            "__construct" | "haschildren" | "getchildren" | "__elephcassumerecursiveiterator"
+        ),
+        "ParentIterator" => matches!(
+            method_key,
+            "__construct" | "accept" | "getchildren" | "__elephcassumerecursiveiterator"
+        ),
+        "RecursiveIteratorIterator" => matches!(
+            method_key,
+            "__construct"
+                | "rewind"
+                | "valid"
+                | "current"
+                | "key"
+                | "next"
+                | "getdepth"
+                | "getinneriterator"
+                | "getsubiterator"
+                | "__elephcadvance"
+                | "__elephcslotfordepth"
+                | "__elephcassumerecursiveiterator"
         ),
         "__ElephcAppendIteratorArrayIterator" => matches!(
             method_key,

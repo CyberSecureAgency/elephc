@@ -78,7 +78,7 @@ pub(super) fn lower_object_new(ctx: &mut FunctionContext<'_>, inst: &Instruction
     if reflection::is_reflection_owner_class(&class_name) {
         return reflection::lower_reflection_owner_new(ctx, inst, &class_name);
     }
-    if class_name == "CallbackFilterIterator" {
+    if class_name == "CallbackFilterIterator" || class_name == "RecursiveCallbackFilterIterator" {
         return lower_callback_filter_iterator_new(ctx, inst, &class_name);
     }
     if class_name == "IteratorIterator" {
@@ -2190,7 +2190,9 @@ fn resolve_property_slot_for_class(
             property
         )));
     };
-    ensure_property_type_supported(php_type, inst)?;
+    let php_type = runtime_property_type_override(ctx, normalized, property)
+        .unwrap_or_else(|| php_type.clone());
+    ensure_property_type_supported(&php_type, inst)?;
     let offset = class_info
         .property_offsets
         .get(property)
@@ -2199,11 +2201,27 @@ fn resolve_property_slot_for_class(
     Ok(PropertySlot {
         class_name: normalized.to_string(),
         property: property.to_string(),
-        php_type: php_type.clone(),
+        php_type,
         offset,
         is_declared: class_info.declared_properties.contains(property),
         is_packed: false,
     })
+}
+
+/// Returns precise runtime storage types for inherited SPL callback-filter internals.
+fn runtime_property_type_override(
+    ctx: &FunctionContext<'_>,
+    class_name: &str,
+    property: &str,
+) -> Option<PhpType> {
+    if !class_extends_class(ctx, class_name, "CallbackFilterIterator") {
+        return None;
+    }
+    match property {
+        "callback" => Some(PhpType::Callable),
+        "callbackEnv" => Some(PhpType::Pointer(None)),
+        _ => None,
+    }
 }
 
 /// Returns the source PHP type for an SSA value before codegen representation erasure.

@@ -93,7 +93,7 @@ fn spl_recursive_filter_iterator_methods() -> Vec<ClassMethod> {
             "__elephcAssumeRecursiveIterator",
             vec![param("iterator", mixed_type())],
             Some(named_type("RecursiveIterator")),
-            Vec::new(),
+            return_body(var_expr("iterator")),
         ),
     ]
 }
@@ -121,7 +121,7 @@ fn spl_recursive_callback_filter_iterator_methods() -> Vec<ClassMethod> {
             "__elephcAssumeRecursiveIterator",
             vec![param("iterator", mixed_type())],
             Some(named_type("RecursiveIterator")),
-            Vec::new(),
+            return_body(var_expr("iterator")),
         ),
     ]
 }
@@ -146,7 +146,7 @@ fn spl_parent_iterator_methods() -> Vec<ClassMethod> {
             "__elephcAssumeRecursiveIterator",
             vec![param("iterator", mixed_type())],
             Some(named_type("RecursiveIterator")),
-            Vec::new(),
+            return_body(var_expr("iterator")),
         ),
     ]
 }

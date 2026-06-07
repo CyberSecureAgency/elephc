@@ -196,6 +196,11 @@ impl Checker {
                     ));
                 }
             }
+            if let Some(ty) =
+                self.spl_callback_filter_runtime_property_type(class_name, property)
+            {
+                return Ok(ty);
+            }
             if let Some((_, ty)) = class_info.properties.iter().find(|(n, _)| n == property) {
                 return Ok(ty.clone());
             }
@@ -217,6 +222,25 @@ impl Checker {
             expr.span,
             &format!("Undefined class: {}", class_name),
         ))
+    }
+
+    /// Returns precise SPL runtime storage metadata for callback-filter internals.
+    fn spl_callback_filter_runtime_property_type(
+        &self,
+        class_name: &str,
+        property: &str,
+    ) -> Option<PhpType> {
+        let class_name = class_name.trim_start_matches('\\');
+        if class_name != "CallbackFilterIterator"
+            && !self.is_subclass_of(class_name, "CallbackFilterIterator")
+        {
+            return None;
+        }
+        match property {
+            "callback" => Some(PhpType::Callable),
+            "callbackEnv" => Some(PhpType::Pointer(None)),
+            _ => None,
+        }
     }
 
     /// Extracts the single class name from a nullable object type for nullsafe ops.

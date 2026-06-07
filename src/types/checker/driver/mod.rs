@@ -228,6 +228,7 @@ pub(super) fn check_types_impl(
 
     checker.resolve_unchecked_functions(&mut errors);
     checker.type_check_methods_until_stable(&flattened_classes, &global_env, &mut errors)?;
+    patch_builtin_spl_storage_signatures(&mut checker);
     apply_implicit_stringable_interfaces(&mut checker.classes);
 
     let (final_global_env, final_top_level_errors) = checker.check_top_level_program(program);

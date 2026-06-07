@@ -5912,6 +5912,14 @@ fn property_get_result_type(
     let Some(class_info) = ctx.classes.get(normalized) else {
         return fallback_expr_type(expr);
     };
+    if let Some(property_ty) = runtime_property_type_override(ctx, normalized, property) {
+        let property_ty = normalize_value_php_type(property_ty);
+        return if nullable {
+            nullable_result_type(property_ty)
+        } else {
+            property_ty
+        };
+    }
     let Some((_, property_ty)) = class_info.properties.iter().find(|(name, _)| name == property) else {
         return fallback_expr_type(expr);
     };
@@ -5959,6 +5967,42 @@ fn singular_object_class(php_type: &PhpType) -> Option<(&str, bool)> {
         }
         _ => None,
     }
+}
+
+/// Returns precise runtime storage types for inherited SPL callback-filter internals.
+fn runtime_property_type_override(
+    ctx: &LoweringContext<'_, '_>,
+    class_name: &str,
+    property: &str,
+) -> Option<PhpType> {
+    if !class_extends_class(ctx, class_name, "CallbackFilterIterator") {
+        return None;
+    }
+    match property {
+        "callback" => Some(PhpType::Callable),
+        "callbackEnv" => Some(PhpType::Pointer(None)),
+        _ => None,
+    }
+}
+
+/// Returns true when a class is or extends the target class.
+fn class_extends_class(
+    ctx: &LoweringContext<'_, '_>,
+    class_name: &str,
+    target_class: &str,
+) -> bool {
+    let target_key = php_symbol_key(target_class);
+    let mut current = Some(class_name.trim_start_matches('\\').to_string());
+    while let Some(name) = current {
+        if php_symbol_key(&name) == target_key {
+            return true;
+        }
+        current = ctx
+            .classes
+            .get(name.as_str())
+            .and_then(|class_info| class_info.parent.clone());
+    }
+    false
 }
 
 /// Lowers a dynamic property read.

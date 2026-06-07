@@ -598,7 +598,7 @@ fn recursive_caching_iterator_methods() -> Vec<ClassMethod> {
             "__elephcAssumeRecursiveIterator",
             vec![param("iterator", mixed_type())],
             Some(named_type("RecursiveIterator")),
-            Vec::new(),
+            return_body(var_expr("iterator")),
         ),
     ]
 }
