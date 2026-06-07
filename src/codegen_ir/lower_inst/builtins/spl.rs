@@ -10,7 +10,7 @@
 //!   `spl_object_hash()` stringifies that same identity with the shared itoa helper.
 
 use crate::codegen::{
-    abi, emit_box_current_owned_value_as_mixed, emit_box_current_value_as_mixed,
+    abi, callable_descriptor, emit_box_current_owned_value_as_mixed, emit_box_current_value_as_mixed,
     runtime_value_tag,
 };
 use crate::codegen::platform::Arch;
@@ -20,7 +20,9 @@ use crate::names::function_symbol;
 use crate::types::PhpType;
 
 use super::super::super::context::FunctionContext;
-use super::super::{direct_call_stack_pad_bytes, iterators, materialize_direct_call_args, predicates};
+use super::super::{
+    callables, direct_call_stack_pad_bytes, iterators, materialize_direct_call_args, predicates,
+};
 use super::{expect_operand, store_if_result};
 
 const EXTS_PTR_SYMBOL: &str = "_spl_autoload_exts_ptr";
@@ -28,6 +30,7 @@ const EXTS_LEN_SYMBOL: &str = "_spl_autoload_exts_len";
 const NULL_SENTINEL: i64 = 0x7fff_ffff_ffff_fffe;
 const APPLY_DYNAMIC_CALLBACK_PTR_OFFSET: usize = 32;
 const APPLY_DYNAMIC_CALLBACK_LEN_OFFSET: usize = 40;
+const APPLY_DESCRIPTOR_OFFSET: usize = 32;
 
 const SPL_CLASS_NAMES: &[&str] = &[
     "AppendIterator",
@@ -102,7 +105,12 @@ enum IteratorApplyCallback {
         param_types: Vec<PhpType>,
     },
     DynamicString {
+        callable: ValueId,
         targets: Vec<IteratorApplyCallbackTarget>,
+    },
+    DescriptorCallableArray {
+        callable: ValueId,
+        arg_container: Option<ValueId>,
     },
 }
 
@@ -276,15 +284,10 @@ pub(super) fn lower_iterator_apply(
     super::ensure_arg_count_between(inst, "iterator_apply", 2, 3)?;
     let source = expect_operand(inst, 0)?;
     let callback_value = expect_operand(inst, 1)?;
-    let callback_args = iterator_apply_callback_args(ctx, inst)?;
-    let callback = iterator_apply_callback(ctx, callback_value, callback_args)?;
+    let callback = iterator_apply_callback(ctx, callback_value, inst)?;
     let source_ty = ctx.value_php_type(source)?.codegen_repr();
 
-    if matches!(callback, IteratorApplyCallback::DynamicString { .. }) {
-        let (ptr_reg, len_reg) = abi::string_result_regs(ctx.emitter);
-        ctx.load_string_value_to_regs(callback_value, ptr_reg, len_reg)?;
-        abi::emit_push_reg_pair(ctx.emitter, ptr_reg, len_reg);
-    }
+    emit_apply_callback_state(ctx, &callback)?;
 
     ctx.load_value_to_result(source)?;
     match source_ty {
@@ -297,19 +300,66 @@ pub(super) fn lower_iterator_apply(
             )))
         }
     }
-    if matches!(callback, IteratorApplyCallback::DynamicString { .. }) {
-        abi::emit_release_temporary_stack(ctx.emitter, 16);
-    }
+    release_apply_callback_state(ctx, &callback);
     store_if_result(ctx, inst)
+}
+
+/// Materializes any callback state that must stay alive across the iterator loop.
+fn emit_apply_callback_state(
+    ctx: &mut FunctionContext<'_>,
+    callback: &IteratorApplyCallback,
+) -> Result<()> {
+    match callback {
+        IteratorApplyCallback::DynamicString { callable, .. } => {
+            let (ptr_reg, len_reg) = abi::string_result_regs(ctx.emitter);
+            ctx.load_string_value_to_regs(*callable, ptr_reg, len_reg)?;
+            abi::emit_push_reg_pair(ctx.emitter, ptr_reg, len_reg);
+            Ok(())
+        }
+        IteratorApplyCallback::DescriptorCallableArray { callable, .. } => {
+            callables::emit_runtime_mixed_instance_callable_array_descriptor_value(
+                ctx,
+                *callable,
+                "iterator_apply",
+            )?;
+            abi::emit_push_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));
+            Ok(())
+        }
+        IteratorApplyCallback::StaticUserFunction { .. } => Ok(()),
+    }
+}
+
+/// Releases callback state after the iterator loop has produced the count result.
+fn release_apply_callback_state(ctx: &mut FunctionContext<'_>, callback: &IteratorApplyCallback) {
+    match callback {
+        IteratorApplyCallback::DynamicString { .. } => {
+            abi::emit_release_temporary_stack(ctx.emitter, 16);
+        }
+        IteratorApplyCallback::DescriptorCallableArray { .. } => {
+            emit_release_saved_apply_descriptor(ctx);
+        }
+        IteratorApplyCallback::StaticUserFunction { .. } => {}
+    }
+}
+
+/// Releases the saved runtime descriptor while preserving the final callback count.
+fn emit_release_saved_apply_descriptor(ctx: &mut FunctionContext<'_>) {
+    let result_reg = abi::int_result_reg(ctx.emitter);
+    abi::emit_push_reg(ctx.emitter, result_reg);
+    abi::emit_load_temporary_stack_slot(ctx.emitter, result_reg, 16);
+    callable_descriptor::emit_release_current_descriptor(ctx.emitter);
+    abi::emit_pop_reg(ctx.emitter, result_reg);
+    abi::emit_release_temporary_stack(ctx.emitter, 16);
 }
 
 /// Resolves the supported callback forms for `iterator_apply()`.
 fn iterator_apply_callback(
     ctx: &mut FunctionContext<'_>,
     callback: ValueId,
-    args: Vec<ValueId>,
+    inst: &Instruction,
 ) -> Result<IteratorApplyCallback> {
     if let Some(callback_name) = static_string_operand(ctx, callback)? {
+        let args = iterator_apply_callback_args(ctx, inst)?;
         let callback_function = ctx.callable_function_by_name(&callback_name).ok_or_else(|| {
             CodegenIrError::unsupported(format!(
                 "iterator_apply callback {} without emitted EIR function",
@@ -349,7 +399,7 @@ fn iterator_apply_callback(
 
     match ctx.value_php_type(callback)?.codegen_repr() {
         PhpType::Str => {
-            if !args.is_empty() {
+            if iterator_apply_arg_container(ctx, inst)?.is_some() {
                 return Err(CodegenIrError::unsupported(
                     "iterator_apply EIR dynamic string callback with arg arrays",
                 ));
@@ -360,7 +410,13 @@ fn iterator_apply_callback(
                     "iterator_apply EIR dynamic string callback with no zero-arg targets",
                 ));
             }
-            Ok(IteratorApplyCallback::DynamicString { targets })
+            Ok(IteratorApplyCallback::DynamicString { callable: callback, targets })
+        }
+        PhpType::Array(elem) if elem.codegen_repr() == PhpType::Mixed => {
+            Ok(IteratorApplyCallback::DescriptorCallableArray {
+                callable: callback,
+                arg_container: iterator_apply_arg_container(ctx, inst)?,
+            })
         }
         other => Err(CodegenIrError::unsupported(format!(
             "iterator_apply EIR dynamic callback PHP type {:?}",
@@ -424,6 +480,28 @@ fn iterator_apply_callback_args(
     iterator_apply_static_array_items(ctx, inst, args)?.ok_or_else(|| {
         CodegenIrError::unsupported("iterator_apply EIR callback argument arrays")
     })
+}
+
+/// Returns the original callback argument container for descriptor-backed callbacks.
+fn iterator_apply_arg_container(
+    ctx: &FunctionContext<'_>,
+    inst: &Instruction,
+) -> Result<Option<ValueId>> {
+    let Some(args) = inst.operands.get(2).copied() else {
+        return Ok(None);
+    };
+    if iterator_apply_arg_is_null(ctx, args)? {
+        return Ok(None);
+    }
+    match ctx.value_php_type(args)?.codegen_repr() {
+        PhpType::Array(_) | PhpType::AssocArray { .. } | PhpType::Mixed | PhpType::Union(_) => {
+            Ok(Some(args))
+        }
+        other => Err(CodegenIrError::unsupported(format!(
+            "iterator_apply EIR callback argument container PHP type {:?}",
+            other
+        ))),
+    }
 }
 
 /// Returns true when an explicit third argument is PHP null.
@@ -1483,8 +1561,11 @@ fn emit_apply_callback_invocation(
             args,
             param_types,
         } => emit_static_apply_callback_invocation(ctx, label, return_ty, args, param_types, loop_end),
-        IteratorApplyCallback::DynamicString { targets } => {
+        IteratorApplyCallback::DynamicString { targets, .. } => {
             emit_dynamic_string_apply_callback_invocation(ctx, targets, loop_end)
+        }
+        IteratorApplyCallback::DescriptorCallableArray { arg_container, .. } => {
+            emit_descriptor_apply_callback_invocation(ctx, *arg_container, loop_end)
         }
     }
 }
@@ -1506,6 +1587,35 @@ fn emit_static_apply_callback_invocation(
     abi::emit_release_temporary_stack(ctx.emitter, overflow_bytes);
     emit_increment_saved_apply_count(ctx);
     emit_branch_if_callback_result_false(ctx, return_ty, loop_end)
+}
+
+/// Invokes a saved callable descriptor and tests its boxed Mixed result for truthiness.
+fn emit_descriptor_apply_callback_invocation(
+    ctx: &mut FunctionContext<'_>,
+    arg_container: Option<ValueId>,
+    loop_end: &str,
+) -> Result<()> {
+    let descriptor_reg = abi::nested_call_reg(ctx.emitter);
+    abi::emit_load_temporary_stack_slot(ctx.emitter, descriptor_reg, APPLY_DESCRIPTOR_OFFSET);
+    if let Some(arg_container) = arg_container {
+        callables::emit_descriptor_reg_invoker_mixed_result_with_arg_container(
+            ctx,
+            descriptor_reg,
+            arg_container,
+            "iterator_apply",
+            false,
+        )?;
+    } else {
+        callables::emit_descriptor_reg_invoker_mixed_result_with_args(
+            ctx,
+            descriptor_reg,
+            &[],
+            "iterator_apply",
+            false,
+        )?;
+    }
+    emit_increment_saved_apply_count(ctx);
+    emit_branch_if_callback_result_false(ctx, &PhpType::Mixed, loop_end)
 }
 
 /// Dispatches a saved runtime string callback to a zero-argument user function.

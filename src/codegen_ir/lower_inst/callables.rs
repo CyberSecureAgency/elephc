@@ -510,6 +510,50 @@ pub(super) fn emit_runtime_callable_array_descriptor_value(
     }
 }
 
+/// Materializes an instance-method descriptor selected from a mixed callable-array value.
+pub(super) fn emit_runtime_mixed_instance_callable_array_descriptor_value(
+    ctx: &mut FunctionContext<'_>,
+    callable: ValueId,
+    op_name: &str,
+) -> Result<()> {
+    match ctx.value_php_type(callable)?.codegen_repr() {
+        PhpType::Array(elem) if elem.codegen_repr() == PhpType::Mixed => {}
+        other => {
+            return Err(CodegenIrError::unsupported(format!(
+                "{} for instance callable-array PHP type {:?}",
+                op_name, other
+            )))
+        }
+    }
+
+    let targets = runtime_array_instance_method_targets_for_descriptor(ctx);
+    if targets.is_empty() {
+        return Err(CodegenIrError::unsupported(format!(
+            "{} for runtime mixed callable array with no instance descriptor targets",
+            op_name
+        )));
+    }
+
+    emit_mixed_callable_array_selector_slots(ctx, callable)?;
+    let done_label = ctx.next_label("callable_array_instance_descriptor_done");
+    let miss_label = ctx.next_label(&format!("{}_callable_array_instance_missing", op_name));
+    for target in &targets {
+        let next_label = ctx.next_label("callable_array_instance_next");
+        emit_branch_if_runtime_array_instance_mismatch(ctx, target, &next_label);
+        emit_runtime_array_instance_descriptor_value(ctx, target)?;
+        abi::emit_jump(ctx.emitter, &done_label);
+        ctx.emitter.label(&next_label);
+    }
+    abi::emit_jump(ctx.emitter, &miss_label);
+
+    ctx.emitter.label(&miss_label);
+    emit_runtime_callable_array_no_match_abort(ctx);
+
+    ctx.emitter.label(&done_label);
+    abi::emit_release_temporary_stack(ctx.emitter, MIXED_SELECTOR_BYTES);
+    Ok(())
+}
+
 /// Selects a callable descriptor from a mixed callable-array value.
 fn emit_mixed_callable_array_descriptor_value(
     ctx: &mut FunctionContext<'_>,
@@ -1199,6 +1243,24 @@ pub(super) fn emit_descriptor_reg_invoker_call_with_args(
     visible_args: &[ValueId],
     op_name: &str,
 ) -> Result<()> {
+    emit_descriptor_reg_invoker_mixed_result_with_args(
+        ctx,
+        descriptor_reg,
+        visible_args,
+        op_name,
+        false,
+    )?;
+    store_descriptor_invoker_result(ctx, inst)
+}
+
+/// Calls a loaded descriptor invoker and leaves its boxed Mixed result in the result register.
+pub(super) fn emit_descriptor_reg_invoker_mixed_result_with_args(
+    ctx: &mut FunctionContext<'_>,
+    descriptor_reg: &str,
+    visible_args: &[ValueId],
+    op_name: &str,
+    release_runtime_descriptor: bool,
+) -> Result<()> {
     let invoker_reg = abi::symbol_scratch_reg(ctx.emitter);
     callable_descriptor::emit_load_invoker_from_descriptor(ctx.emitter, invoker_reg, descriptor_reg);
     let ready_label = descriptor_invoker_ready_label(ctx, op_name);
@@ -1207,6 +1269,9 @@ pub(super) fn emit_descriptor_reg_invoker_call_with_args(
 
     ctx.emitter.label(&ready_label);
     emit_invoker_arg_mixed(ctx, visible_args)?;
+    if release_runtime_descriptor {
+        abi::emit_push_reg(ctx.emitter, descriptor_reg);
+    }
     abi::emit_push_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));          // preserve the boxed Mixed argument array across descriptor register setup
     move_reg_to_arg(ctx, descriptor_reg, 0);
     let arg_reg = abi::int_arg_reg_name(ctx.emitter.target, 1);
@@ -1214,7 +1279,10 @@ pub(super) fn emit_descriptor_reg_invoker_call_with_args(
     callable_descriptor::emit_load_invoker_from_descriptor(ctx.emitter, invoker_reg, descriptor_reg);
     abi::emit_call_reg(ctx.emitter, invoker_reg);
     release_invoker_arg_preserving_result(ctx);
-    store_descriptor_invoker_result(ctx, inst)
+    if release_runtime_descriptor {
+        release_saved_runtime_descriptor_preserving_result(ctx);
+    }
+    Ok(())
 }
 
 /// Calls a descriptor pointer through its uniform invoker using a stored Mixed arg container.
@@ -1226,10 +1294,27 @@ fn emit_descriptor_reg_invoker_call_with_mixed_arg(
     op_name: &str,
     release_runtime_descriptor: bool,
 ) -> Result<()> {
+    emit_descriptor_reg_invoker_mixed_result_with_arg_container(
+        ctx,
+        descriptor_reg,
+        arg_mixed,
+        op_name,
+        release_runtime_descriptor,
+    )?;
+    store_descriptor_invoker_result(ctx, inst)
+}
+
+/// Calls a loaded descriptor invoker with an argument container and leaves a Mixed result.
+pub(super) fn emit_descriptor_reg_invoker_mixed_result_with_arg_container(
+    ctx: &mut FunctionContext<'_>,
+    descriptor_reg: &str,
+    arg_mixed: ValueId,
+    op_name: &str,
+    release_runtime_descriptor: bool,
+) -> Result<()> {
     if descriptor_arg_is_prebuilt_mixed_box(ctx, arg_mixed)? {
-        return emit_descriptor_reg_invoker_call_with_prebuilt_mixed_arg(
+        return emit_descriptor_reg_invoker_mixed_result_with_prebuilt_mixed_arg(
             ctx,
-            inst,
             descriptor_reg,
             arg_mixed,
             op_name,
@@ -1237,9 +1322,8 @@ fn emit_descriptor_reg_invoker_call_with_mixed_arg(
         );
     }
 
-    emit_descriptor_reg_invoker_call_with_normalized_arg(
+    emit_descriptor_reg_invoker_mixed_result_with_normalized_arg(
         ctx,
-        inst,
         descriptor_reg,
         arg_mixed,
         op_name,
@@ -1248,9 +1332,8 @@ fn emit_descriptor_reg_invoker_call_with_mixed_arg(
 }
 
 /// Calls a descriptor invoker with a boxed Mixed argument created by EIR lowering.
-fn emit_descriptor_reg_invoker_call_with_prebuilt_mixed_arg(
+fn emit_descriptor_reg_invoker_mixed_result_with_prebuilt_mixed_arg(
     ctx: &mut FunctionContext<'_>,
-    inst: &Instruction,
     descriptor_reg: &str,
     arg_mixed: ValueId,
     op_name: &str,
@@ -1275,13 +1358,12 @@ fn emit_descriptor_reg_invoker_call_with_prebuilt_mixed_arg(
         release_saved_runtime_descriptor_preserving_result(ctx);
     }
     release_prebuilt_invoker_arg_preserving_result(ctx, arg_mixed)?;
-    store_descriptor_invoker_result(ctx, inst)
+    Ok(())
 }
 
 /// Calls a descriptor invoker after cloning and boxing a raw argument-array container.
-fn emit_descriptor_reg_invoker_call_with_normalized_arg(
+fn emit_descriptor_reg_invoker_mixed_result_with_normalized_arg(
     ctx: &mut FunctionContext<'_>,
-    inst: &Instruction,
     descriptor_reg: &str,
     arg_container: ValueId,
     op_name: &str,
@@ -1305,7 +1387,7 @@ fn emit_descriptor_reg_invoker_call_with_normalized_arg(
     abi::emit_call_reg(ctx.emitter, invoker_reg);
     release_invoker_arg_preserving_result(ctx);
     release_saved_descriptor_after_normalized_arg(ctx, release_runtime_descriptor);
-    store_descriptor_invoker_result(ctx, inst)
+    Ok(())
 }
 
 /// Returns the branch-ready label name for a descriptor invoker callsite.
