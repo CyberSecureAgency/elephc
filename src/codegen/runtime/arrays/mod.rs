@@ -22,6 +22,7 @@ mod array_diff_refcounted;
 mod array_diff_key;
 mod array_ensure_unique;
 mod array_fill;
+mod array_fill_assoc;
 mod array_fill_keys;
 mod array_fill_keys_refcounted;
 mod array_fill_refcounted;
@@ -112,6 +113,7 @@ mod range;
 mod incref;
 mod iterable_unsupported_kind;
 mod iterable_write_stdout;
+mod mixed_abs;
 mod mixed_from_value;
 mod mixed_instanceof;
 mod mixed_cast_bool;
@@ -160,6 +162,7 @@ pub use array_diff_key::emit_array_diff_key;
 pub use array_ensure_unique::emit_array_ensure_unique;
 /// Emit array uniqueness enforcement helper.
 pub use array_fill::emit_array_fill;
+pub use array_fill_assoc::emit_array_fill_assoc;
 /// Emit array fill helper.
 pub use array_fill_keys::emit_array_fill_keys;
 /// Emit array fill with keys helper.
@@ -326,6 +329,7 @@ pub use ksort::emit_ksort;
 /// Emit key sort helper.
 pub use natsort::emit_natsort;
 /// Emit natural sort helper.
+pub use mixed_abs::emit_mixed_abs;
 pub use mixed_from_value::emit_mixed_from_value;
 /// Emit Mixed from value conversion helper.
 pub use mixed_instanceof::emit_mixed_instanceof;

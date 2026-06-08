@@ -128,12 +128,12 @@ The currently running fiber is tracked in `_fiber_current`. When execution switc
 
 ```asm
 .comm _concat_buf, 65536    ; 64KB scratch buffer
-.comm _concat_off, 8        ; current write offset (reset per statement)
+.comm _concat_off, 8        ; current write offset (reset per statement, to the frame base)
 ```
 
 The string buffer (`_concat_buf`) is a 64KB scratch region used by all string operations — `itoa`, `ftoa`, `concat`, `strtolower`, `str_replace`, etc. Each operation writes its result at the current offset and advances the offset.
 
-**The buffer is reset to offset 0 at the start of every statement.** This means strings in the buffer are temporary — they only live for the duration of one statement's evaluation.
+**The buffer is reset at the start of every statement — to the frame's inherited base, not necessarily 0.** Strings in the buffer are temporary: they live only for the duration of one statement's evaluation, *plus* (for an argument passed into a call) the lifetime of the callee. See [Cross-call slice arguments](#cross-call-slice-arguments) below.
 
 ### How it works
 
@@ -147,7 +147,15 @@ _concat_buf:
  offset=0    offset=5   offset=6      _concat_off = 17
 ```
 
-Each sub-expression writes its result further into the buffer. After the statement completes (echo writes to stdout), the next statement resets `_concat_off` to 0.
+Each sub-expression writes its result further into the buffer. After the statement completes (echo writes to stdout), the next statement resets `_concat_off` back to the current frame's base offset (0 in `main`).
+
+### Cross-call slice arguments
+
+A string operation returns a *borrowed slice* into `_concat_buf` (a pointer + length), not a heap copy. When such a slice is passed **as an argument** to a function, method, or closure, the callee runs its own statements — and resetting `_concat_off` all the way to 0 would overwrite the caller's slice bytes before the callee could read them.
+
+To prevent that, each frame records, on entry, the `_concat_off` value it inherited from the caller (the high-water mark below which the caller's live slices sit). That value is the frame's **base**: per-statement resets restore `_concat_off` to the base rather than 0, so the callee's own concatenations append *above* the caller's slices instead of clobbering them. `main` (and other root contexts) have a base of 0, so their behaviour is unchanged. The cursor is also saved/restored around each nested call so the caller can keep concatenating after the call returns.
+
+A consequence is that `_concat_buf` usage grows with the depth of nested calls that are *holding live slice arguments* (each frame reserves its caller's region). In practice this depth is shallow; deeply recursive string builders that would accumulate are a separate, pre-existing compile-time limitation, so the 64KB budget is not a concern for ordinary code.
 
 ### Copy-on-store
 
@@ -159,7 +167,7 @@ When a string result is stored to a variable (e.g., `$x = "a" . "b";`), the code
 
 ### Implications
 
-- **No overflow.** Because the buffer resets each statement, only one statement's worth of string operations need to fit in 64KB.
+- **Bounded usage.** Because the buffer resets each statement, only one statement's worth of string operations needs to fit in 64KB — plus the slice arguments held by any enclosing calls on the current stack (see [Cross-call slice arguments](#cross-call-slice-arguments)). For ordinary code this is comfortably within 64KB.
 - **No mutation.** You can't modify a string in place — you always create a new one.
 - **Scratch only.** The buffer is strictly temporary. Anything that needs to survive goes to the heap.
 
@@ -233,6 +241,7 @@ When one of these checks trips, the program exits with a fatal heap-debug error 
 - **`unset()`**: releases the current heap-backed value before nulling the slot
 - **Targeted cycle collection**: when decref reaches a container/object graph that may only be keeping itself alive, `__rt_gc_collect_cycles` counts heap-only incoming edges, marks externally reachable blocks, and deep-frees the remaining unreachable array/hash/object island
 - **Generator frame release**: Generator frames are object-kind heap blocks, but their custom Mixed slots and active `yield from` delegate are released by a Generator-specific branch in object deep-free
+- **Object destructors (`__destruct`)**: at the top of `__rt_object_free_deep`, before any property payloads are released, `__rt_call_object_destructor` looks up the object's class in the class_id-indexed `_class_destruct_ptrs` table and, if the class (or an ancestor) declares `__destruct`, calls it with `$this` borrowed. A bit set in the refcount word marks destruction in progress so a balanced `$tmp = $this;` inside the body cannot re-enter the free path; object resurrection is intentionally not supported (the block is still freed). Classes without a destructor have a `0` table entry and pay only one load and branch
 - **Process exit**: all memory is reclaimed by the OS
 
 ### Configurable heap size

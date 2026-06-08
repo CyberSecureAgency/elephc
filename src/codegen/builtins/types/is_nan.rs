@@ -47,7 +47,9 @@ pub fn emit(
     emitter.comment("is_nan()");
     let ty = emit_expr(&args[0], emitter, ctx, data);
     // -- NaN is the only value that does not equal itself --
-    if ty != PhpType::Float {
+    if matches!(ty, PhpType::Mixed | PhpType::Union(_)) {
+        abi::emit_call_label(emitter, "__rt_mixed_cast_float");                  // unbox a boxed Mixed payload to a double before the NaN check (avoids treating the cell pointer as a value)
+    } else if ty != PhpType::Float {
         abi::emit_int_result_to_float_result(emitter);                          // normalize integer inputs into the active floating-point result register before the NaN check
     }
     match emitter.target.arch {

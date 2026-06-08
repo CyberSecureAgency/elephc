@@ -218,3 +218,71 @@ fn test_min_five_args() {
     let out = compile_and_run("<?php echo min(5, 4, 3, 2, 1);");
     assert_eq!(out, "1");
 }
+
+/// Verifies `abs()` of a boxed Mixed value (a heterogeneous-array element) applies the
+/// numeric absolute value per the runtime tag instead of operating on the boxed-cell
+/// pointer. Before the fix this printed garbage pointers; the int and float results must
+/// both be correct and keep PHP's int→int / float→float formatting.
+#[test]
+fn test_abs_mixed_array_element_preserves_int_and_float() {
+    let out = compile_and_run(
+        r#"<?php $a = [-5, -2.5, 7, -3.25]; foreach ($a as $v) { echo abs($v), ","; }"#,
+    );
+    assert_eq!(out, "5,2.5,7,3.25,");
+}
+
+/// Verifies `pow()` coerces boxed Mixed operands (heterogeneous-array elements) to their
+/// numeric value before exponentiating, instead of converting the boxed-cell pointer.
+/// Covers a Mixed base, a Mixed exponent, and both operands Mixed.
+#[test]
+fn test_pow_mixed_base_and_exponent() {
+    let out = compile_and_run(
+        r#"<?php $a = [-5, -2.5, 4, 3]; echo pow($a[0], 2), "|", pow(2, $a[1]), "|", pow($a[2], $a[3]);"#,
+    );
+    assert_eq!(out, "25|0.17677669529664|64");
+}
+
+/// Verifies `is_float()` of a boxed Mixed value (a heterogeneous-array element) tests the
+/// runtime tag instead of constant-folding to false. Before the fix every element of a
+/// mixed int/float array reported "i"; floats must report "f" while ints/strings/bools
+/// report "i", matching the sibling predicates (is_int already did this).
+#[test]
+fn test_is_float_mixed_array_element_tests_runtime_tag() {
+    let out = compile_and_run(
+        r#"<?php $a = [-5, -2.5, 7, 3.25, "x", true]; foreach ($a as $v) { echo (is_float($v) ? "f" : "i"); }"#,
+    );
+    assert_eq!(out, "ififii");
+}
+
+/// Verifies `is_nan`/`is_finite`/`is_infinite` of a boxed Mixed value cast the payload to a
+/// double (via `__rt_mixed_cast_float`) before the IEEE check, instead of treating the cell
+/// pointer as a float. Iterates a heterogeneous float/int array so the elements are Mixed.
+#[test]
+fn test_is_nan_finite_infinite_mixed_array_element() {
+    let out = compile_and_run(
+        r#"<?php $a = [NAN, 7, INF, 2.5]; foreach ($a as $v) { echo (is_nan($v)?"N":"-"), (is_finite($v)?"F":"-"), (is_infinite($v)?"I":"-"), "|"; }"#,
+    );
+    assert_eq!(out, "N--|-F-|--I|-F-|");
+}
+
+/// Verifies `is_infinite(NAN)` is false. On x86_64 the `ucomisd`/`sete` infinity check set
+/// the zero flag for the unordered NaN comparison and wrongly reported NaN as infinite; the
+/// fix adds a NaN parity guard (the NaN comparison is unordered, never equal to ±Inf).
+#[test]
+fn test_is_infinite_nan_is_false() {
+    let out = compile_and_run(
+        r#"<?php echo (is_infinite(NAN)?"1":"0"), (is_infinite(INF)?"1":"0"), (is_infinite(-INF)?"1":"0"), (is_infinite(2.5)?"1":"0");"#,
+    );
+    assert_eq!(out, "0110");
+}
+
+/// Verifies `is_numeric()` of a boxed Mixed value unboxes the runtime tag and, for a string
+/// payload, runs the numeric-string scan — instead of constant-folding to false. Covers
+/// int/float (numeric), numeric and non-numeric strings, bool, and a bare `.`.
+#[test]
+fn test_is_numeric_mixed_array_element() {
+    let out = compile_and_run(
+        r#"<?php $a = [2.5, "3.14", 5, "x", true, "-7", "."]; foreach ($a as $v) { echo (is_numeric($v) ? "1" : "0"); }"#,
+    );
+    assert_eq!(out, "1110010");
+}

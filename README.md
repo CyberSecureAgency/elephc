@@ -46,7 +46,7 @@ One thing I always missed about PHP was the ability to produce optimized, fast n
 
 Of course, PHP has its limits when it comes to performance-critical or systems-level work. That's why elephc introduces compiler extensions like `packed class` for flat POD records, `buffer<T>` for contiguous typed arrays, `ptr` for raw memory access, and `extern` for FFI — constructs that give PHP developers the tools they need without abandoning the language they already know.
 
-It's not perfect, but **it works**. It's a solid starting point, and more importantly, it's a great way to understand **how a compiler works** and how assembly language operates under the hood.
+It's not perfect, but **it works** — and it has grown into a genuinely capable PHP compiler. It also happens to be a great way to understand **how a compiler works** and how assembly language operates under the hood.
 
 I made the project as modular as possible. Every function has its own codegen file, and each one is **commented line by line**, so you can see exactly how a high-level construct gets translated into its low-level equivalent.
 

@@ -275,6 +275,11 @@ pub struct Context {
     pub pending_action_offset: Option<usize>,
     pub pending_target_offset: Option<usize>,
     pub nested_concat_offset_offset: Option<usize>,
+    /// Hidden frame slot holding the `_concat_off` value inherited from the caller at
+    /// function entry. Per-statement concat resets restore `_concat_off` to this base
+    /// (instead of 0) so a `_concat_buf`-slice argument passed by the caller is preserved
+    /// across the callee's statement boundaries. `None` in `main`/raw contexts (reset to 0).
+    pub concat_base_offset: Option<usize>,
     pub pending_return_value_offset: Option<usize>,
     /// Pre-allocated exception handler slots for try/catch lowering.
     pub try_slot_offsets: Vec<usize>,
@@ -395,6 +400,7 @@ impl Context {
             pending_action_offset: None,
             pending_target_offset: None,
             nested_concat_offset_offset: None,
+            concat_base_offset: None,
             pending_return_value_offset: None,
             try_slot_offsets: Vec::new(),
             next_try_slot_idx: 0,

@@ -42,6 +42,13 @@ pub fn emit(
 ) -> Option<PhpType> {
     emitter.comment("abs()");
     let ty = emit_expr(&args[0], emitter, ctx, data);
+    if matches!(ty, PhpType::Mixed | PhpType::Union(_)) {
+        // The operand is a boxed Mixed cell pointer, not a raw scalar; the runtime helper
+        // unboxes it, applies the integer or float absolute value per the stored tag, and
+        // reboxes — preserving PHP's int→int / float→float result typing.
+        crate::codegen::abi::emit_call_label(emitter, "__rt_abs_mixed");
+        return Some(PhpType::Mixed);
+    }
     if ty == PhpType::Float {
         // -- float absolute value --
         match emitter.target.arch {

@@ -447,6 +447,7 @@ fn emit_function_with_label_and_class(
     ctx.pending_action_offset = Some(ctx.alloc_hidden_slot(8));
     ctx.pending_target_offset = Some(ctx.alloc_hidden_slot(8));
     ctx.nested_concat_offset_offset = Some(ctx.alloc_hidden_slot(8));
+    ctx.concat_base_offset = Some(ctx.alloc_hidden_slot(8));
     ctx.pending_return_value_offset = Some(ctx.alloc_hidden_slot(16));
 
     let vars_size = ctx.stack_offset;
@@ -455,6 +456,16 @@ fn emit_function_with_label_and_class(
     emitter.raw(".align 2");
     emitter.label_global(label);
     super::abi::emit_frame_prologue(emitter, frame_size);
+
+    // Capture the `_concat_off` inherited from the caller as this frame's concat base.
+    // A `_concat_buf`-slice argument lives below this offset; per-statement resets restore
+    // `_concat_off` to the base (not 0) so the callee's own concats append above the
+    // caller's slice instead of clobbering it.
+    if let Some(slot) = ctx.concat_base_offset {
+        let scratch = super::abi::temp_int_reg(emitter.target);
+        super::abi::emit_load_symbol_to_reg(emitter, scratch, "_concat_off", 0);
+        super::abi::store_at_offset(emitter, scratch, slot);
+    }
 
     let mut incoming_args = super::abi::IncomingArgCursor::for_target(emitter.target, 0);
     for (i, (pname, pty)) in sig.params.iter().enumerate() {

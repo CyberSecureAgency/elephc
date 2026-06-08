@@ -106,9 +106,18 @@ pub fn emit_stmt(stmt: &Stmt, emitter: &mut Emitter, ctx: &mut Context, data: &m
     }
 
     // -- reset concat buffer at the start of each statement --
-    // This is safe because any string that needs to persist beyond the current
-    // statement is copied to heap via __rt_str_persist (in emit_store).
-    crate::codegen::abi::emit_store_zero_to_symbol(emitter, "_concat_off", 0);
+    // Reset `_concat_off` to this frame's inherited base (the caller's high-water mark),
+    // not 0, so a `_concat_buf`-slice argument the caller passed stays intact across the
+    // callee's statement boundaries — the callee's own concats append above it instead of
+    // clobbering it. `main`/raw contexts have no base slot and reset to 0. Anything that
+    // must outlive the statement is already copied to heap via __rt_str_persist (emit_store).
+    if let Some(slot) = ctx.concat_base_offset {
+        let scratch = crate::codegen::abi::temp_int_reg(emitter.target);
+        crate::codegen::abi::load_at_offset(emitter, scratch, slot);
+        crate::codegen::abi::emit_store_reg_to_symbol(emitter, scratch, "_concat_off", 0);
+    } else {
+        crate::codegen::abi::emit_store_zero_to_symbol(emitter, "_concat_off", 0);
+    }
 
     match &stmt.kind {
         StmtKind::Synthetic(stmts) => {

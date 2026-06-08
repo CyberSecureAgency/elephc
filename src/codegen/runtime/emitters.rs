@@ -218,6 +218,7 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter, features: RuntimeFeatures) {
     arrays::emit_array_unique_refcounted(emitter);
     arrays::emit_array_rand(emitter);
     arrays::emit_array_fill(emitter);
+    arrays::emit_array_fill_assoc(emitter);
     arrays::emit_array_fill_refcounted(emitter);
     arrays::emit_array_pad(emitter);
     arrays::emit_array_pad_refcounted(emitter);
@@ -262,6 +263,7 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter, features: RuntimeFeatures) {
     arrays::emit_gc_mark_reachable(emitter);
     arrays::emit_gc_collect_cycles(emitter);
     arrays::emit_mixed_from_value(emitter);
+    arrays::emit_mixed_abs(emitter);
     arrays::emit_mixed_instanceof(emitter);
     arrays::emit_iterable_unsupported_kind(emitter);
     arrays::emit_iterable_write_stdout(emitter);
@@ -293,6 +295,7 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter, features: RuntimeFeatures) {
     objects::emit_mixed_array_get(emitter);
     objects::emit_mixed_array_set(emitter);
     objects::emit_new_by_name(emitter);
+    objects::emit_call_object_destructor(emitter);
     objects::emit_json_encode_stdclass(emitter);
 
     // Buffer runtime functions
