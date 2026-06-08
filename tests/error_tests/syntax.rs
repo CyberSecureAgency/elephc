@@ -318,6 +318,25 @@ fn test_error_echo_trailing_comma_requires_argument() {
     expect_error("<?php echo \"A\",;", "Unexpected token");
 }
 
+/// Verifies that a lone comma inside an otherwise-empty call argument list is rejected
+/// (a trailing comma after a real argument is allowed, but `foo(,)` is not, matching PHP).
+#[test]
+fn test_error_leading_comma_in_call_args() {
+    expect_error("<?php foo(,);", "Unexpected token");
+}
+
+/// Verifies that a doubled trailing comma in a call argument list is rejected (`foo(1,,)`).
+#[test]
+fn test_error_double_trailing_comma_in_call_args() {
+    expect_error("<?php foo(1,,);", "Unexpected token");
+}
+
+/// Verifies that a lone comma inside an otherwise-empty parameter list is rejected (`f(,)`).
+#[test]
+fn test_error_leading_comma_in_param_list() {
+    expect_error("<?php function f(,) {}", "Expected parameter variable");
+}
+
 /// Verifies the error diagnostic for break level must be positive.
 #[test]
 fn test_error_break_level_must_be_positive() {
