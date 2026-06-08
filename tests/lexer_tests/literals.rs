@@ -232,6 +232,21 @@ fn test_integer_not_mistaken_for_float() {
     assert_eq!(t[1], Token::IntLiteral(42));
 }
 
+/// Verifies that an empty radix literal (`0x`/`0o`/`0b` with no digits) reports its error at the
+/// start of the literal (the `0`, column 7 in `<?php 0x;`), not one column past the consumed prefix.
+#[test]
+fn test_empty_radix_literal_errors_point_at_literal_start() {
+    for (src, msg) in [
+        ("<?php 0x;", "Expected hex digits"),
+        ("<?php 0o;", "Expected octal digits"),
+        ("<?php 0b;", "Expected binary digits"),
+    ] {
+        let err = tokenize(src).unwrap_err();
+        assert!(err.message.contains(msg), "{src}: got {:?}", err.message);
+        assert_eq!(err.span.col, 7, "{src} should point at the literal start");
+    }
+}
+
 /// Verifies `const NAME = "test";` produces `OpenTag`, `Const`, `Identifier`,
 /// `Assign`, `StringLiteral("test")`, `Semicolon`, `Eof` — confirming const
 /// declaration parsing and string literal extraction.

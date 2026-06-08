@@ -23,6 +23,9 @@ use crate::span::Span;
 /// # Errors
 /// Returns `CompileError` if the file does not open with `<?php`.
 pub fn scan_tokens(source: &str) -> Result<Vec<(Token, Span)>, CompileError> {
+    // A leading UTF-8 byte-order mark (U+FEFF) is ignored, matching editors that save PHP
+    // files as BOM-prefixed UTF-8; stripping it keeps the `<?php` open tag at the start.
+    let source = source.strip_prefix('\u{feff}').unwrap_or(source);
     let mut cursor = Cursor::new(source);
     let mut tokens = Vec::new();
 
