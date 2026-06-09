@@ -68,7 +68,7 @@ pub(super) fn check_builtin(
                             if matches!(m.as_bytes().first(), Some(b'w') | Some(b'a') | Some(b'c') | Some(b'x'))
                     );
                     if write_mode {
-                        checker.require_linux_builtin_library("crypto");
+                        checker.require_builtin_library("elephc_crypto");
                     }
                 }
             }

@@ -78,7 +78,7 @@ pub(super) fn check_builtin(
                 args.first().map(|a| &a.kind)
             {
                 if url.starts_with("phar://") {
-                    checker.require_linux_builtin_library("crypto");
+                    checker.require_builtin_library("elephc_crypto");
                 }
             }
             for arg in args {
