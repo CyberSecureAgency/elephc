@@ -249,6 +249,17 @@ fn hash_hmac_rejects_non_crypto_with_value_error() {
     );
 }
 
+/// Verifies hash_equals() does a timing-safe byte comparison: equal strings are
+/// true, any byte difference is false, and a length mismatch is false.
+#[test]
+fn hash_equals_timing_safe_compare() {
+    assert_eq!(compile_and_run(r#"<?php echo hash_equals("abc","abc") ? "T" : "F";"#), "T");
+    assert_eq!(compile_and_run(r#"<?php echo hash_equals("abc","abd") ? "T" : "F";"#), "F");
+    assert_eq!(compile_and_run(r#"<?php echo hash_equals("abc","abcd") ? "T" : "F";"#), "F");
+    assert_eq!(compile_and_run(r#"<?php echo hash_equals("","") ? "T" : "F";"#), "T");
+    assert_eq!(compile_and_run(r#"<?php echo hash_equals("x","") ? "T" : "F";"#), "F");
+}
+
 /// Verifies `hash()` resolves through PHP's case-insensitive and namespaced builtin lookup.
 #[test]
 fn hash_is_case_insensitive_and_namespaced() {

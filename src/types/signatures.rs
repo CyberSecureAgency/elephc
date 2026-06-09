@@ -200,6 +200,7 @@ pub(crate) fn builtin_call_sig(name: &str) -> Option<FunctionSig> {
         "str_contains" | "str_starts_with" | "str_ends_with" => {
             Some(fixed(&["haystack", "needle"]))
         }
+        "hash_equals" => Some(fixed(&["known_string", "user_string"])),
         "str_replace" | "str_ireplace" => Some(optional(
             &["search", "replace", "subject", "count"],
             3,
@@ -691,7 +692,7 @@ fn general_first_class_callable_builtin_sig(name: &str) -> Option<FunctionSig> {
             &[PhpType::Str],
             PhpType::Int,
         )),
-        "str_contains" | "str_starts_with" | "str_ends_with" => Some(typed_first_class_builtin_sig(
+        "str_contains" | "str_starts_with" | "str_ends_with" | "hash_equals" => Some(typed_first_class_builtin_sig(
             name,
             &[PhpType::Str, PhpType::Str],
             PhpType::Bool,

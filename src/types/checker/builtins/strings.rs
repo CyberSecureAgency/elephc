@@ -323,6 +323,19 @@ pub(super) fn check_builtin(
             checker.require_builtin_library("elephc_crypto");
             Ok(Some(PhpType::Str))
         }
+        "hash_equals" => {
+            if args.len() != 2 {
+                return Err(CompileError::new(
+                    span,
+                    "hash_equals() takes exactly 2 arguments",
+                ));
+            }
+            for arg in args {
+                checker.infer_type(arg, env)?;
+            }
+            // Pure timing-safe byte comparison — no crypto library required.
+            Ok(Some(PhpType::Bool))
+        }
         "sscanf" => {
             if args.len() < 2 {
                 return Err(CompileError::new(span, "sscanf() takes at least 2 arguments"));

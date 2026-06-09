@@ -30,6 +30,7 @@ mod explode;
 mod format_args;
 mod grapheme_strrev;
 mod hash;
+mod hash_equals;
 mod hash_hmac;
 pub(crate) mod hash_crypto;
 mod hex2bin;
@@ -166,6 +167,7 @@ pub fn emit(
         "printf" => printf::emit(name, args, emitter, ctx, data),
         "vprintf" => vprintf::emit(name, args, emitter, ctx, data),
         "hash" => hash::emit(name, args, emitter, ctx, data),
+        "hash_equals" => hash_equals::emit(name, args, emitter, ctx, data),
         "hash_hmac" => hash_hmac::emit(name, args, emitter, ctx, data),
         "sscanf" => sscanf::emit(name, args, emitter, ctx, data),
         _ => None,
