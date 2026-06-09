@@ -475,7 +475,7 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter, features: RuntimeFeatures) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::codegen::platform::{Arch, Target};
+    use crate::codegen::platform::{Arch, Platform, Target};
 
     /// Verifies that AArch64 runtime emits fiber routines.
     #[test]

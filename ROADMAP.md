@@ -97,7 +97,7 @@ Proper type system for PHP compatibility.
 - [x] `addslashes()`, `stripslashes()`
 - [x] `htmlspecialchars()`, `htmlentities()`, `html_entity_decode()`
 - [x] `urlencode()`, `urldecode()`, `rawurlencode()`, `rawurldecode()`
-- [x] `md5()`, `sha1()`, `hash()`
+- [x] `md5()`, `sha1()`, `hash()`, `hash_hmac()`, `hash_file()`, `hash_equals()`, `hash_algos()`, `hash_init()`/`hash_update()`/`hash_final()`/`hash_copy()` — full PHP hash family (sha2/sha3/ripemd/whirlpool/crc32/crc32c/adler32/fnv/joaat and more), backed by the pure-Rust `crates/elephc-crypto` staticlib (RustCrypto). Replaces the macOS-CommonCrypto / Linux-libcrypto system-crypto fork: zero system crypto dependency on every target.
 - [x] `base64_encode()`, `base64_decode()`
 - [x] `bin2hex()`, `hex2bin()`
 - [x] `ctype_alpha()`, `ctype_digit()`, `ctype_alnum()`, `ctype_space()`

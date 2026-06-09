@@ -178,6 +178,13 @@ Read-only. Negative indices count from end. Out-of-bounds returns empty string.
 | `crc32()` | `crc32($str): int` | CRC-32 checksum (standard zlib/PHP polynomial), returned as a non-negative 32-bit integer |
 | `hash()` | `hash($algo, $data, $binary = false): string` | Hash `$data` with the named algorithm (md5, sha1, sha2 family, sha3 family, ripemd, crc32/crc32b, and more). Returns lowercase hex by default, or the raw digest bytes when `$binary` is `true`. An unknown algorithm throws `\ValueError`. |
 | `hash_hmac()` | `hash_hmac($algo, $data, $key, $binary = false): string` | Keyed-hash message authentication code of `$data` under `$key` using the named cryptographic algorithm. Returns lowercase hex by default, or the raw digest bytes when `$binary` is `true`. An unknown algorithm, or a non-cryptographic checksum (crc32/adler/fnv/joaat), throws `\ValueError`. |
+| `hash_file()` | `hash_file($algo, $filename, $binary = false): string\|false` | Hash a file's contents with the named algorithm; returns the digest (hex, or raw bytes when `$binary`), or `false` if the file cannot be read. |
+| `hash_equals()` | `hash_equals($known, $user): bool` | Timing-safe string comparison — constant-time for equal-length strings, returns `false` immediately on a length mismatch. |
+| `hash_algos()` | `hash_algos(): array` | Return the list of supported hash algorithm names. |
+| `hash_init()` | `hash_init($algo): HashContext` | Open an incremental hashing context. An unknown algorithm throws `\ValueError`. (The `HASH_HMAC` flag form is not supported — use `hash_hmac()`.) |
+| `hash_update()` | `hash_update($context, $data): bool` | Feed data into an incremental hashing context. |
+| `hash_final()` | `hash_final($context, $binary = false): string` | Finalize a context and return the digest (hex, or raw bytes when `$binary`). |
+| `hash_copy()` | `hash_copy($context): HashContext` | Clone an incremental hashing context so the original and copy can diverge. |
 | `htmlspecialchars()` | `htmlspecialchars($str): string` | Escape HTML special chars |
 | `htmlentities()` | `htmlentities($str): string` | Alias for htmlspecialchars |
 | `html_entity_decode()` | `html_entity_decode($str): string` | Decode HTML entities |
