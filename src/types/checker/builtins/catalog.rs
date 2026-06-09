@@ -164,6 +164,7 @@ const SUPPORTED_BUILTIN_FUNCTIONS: &[&str] = &[
     "hash",
     "hash_algos",
     "hash_equals",
+    "hash_file",
     "hash_hmac",
     "hex2bin",
     "html_entity_decode",

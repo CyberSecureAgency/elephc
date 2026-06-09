@@ -240,6 +240,7 @@ pub(crate) fn builtin_call_sig(name: &str) -> Option<FunctionSig> {
             3,
             vec![bool_lit(false)],
         )),
+        "hash_file" => Some(optional(&["algo", "filename", "binary"], 2, vec![bool_lit(false)])),
         "md5" | "sha1" => Some(optional(&["string", "binary"], 1, vec![bool_lit(false)])),
         "crc32" => Some(fixed(&["string"])),
         "number_format" => Some(optional(
@@ -776,7 +777,7 @@ fn general_first_class_callable_builtin_sig(name: &str) -> Option<FunctionSig> {
             &[PhpType::Str],
             PhpType::Bool,
         )),
-        "file_get_contents" | "file" | "filesize" | "filemtime" | "fileatime"
+        "file_get_contents" | "hash_file" | "file" | "filesize" | "filemtime" | "fileatime"
         | "filectime" | "fileperms" | "fileowner" | "filegroup" | "fileinode"
         | "filetype" | "stat" | "lstat" | "basename" | "dirname" | "realpath"
         | "pathinfo" | "readlink" | "linkinfo" | "tempnam" => {

@@ -278,6 +278,24 @@ fn hash_algos_lists_supported_and_each_is_hashable() {
     );
 }
 
+/// Verifies hash_file() hashes a file's contents (equal to hash() of the same
+/// bytes), honors $binary, and returns PHP false for a file that cannot be read.
+#[test]
+fn hash_file_hashes_contents_and_false_on_missing() {
+    assert_eq!(
+        compile_and_run(r#"<?php file_put_contents("hf.txt", "hello"); echo hash_file("sha256", "hf.txt");"#),
+        "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+    );
+    assert_eq!(
+        compile_and_run(r#"<?php file_put_contents("hf2.txt", "hello"); echo bin2hex(hash_file("sha256", "hf2.txt", true));"#),
+        "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+    );
+    assert_eq!(
+        compile_and_run(r#"<?php echo hash_file("sha256", "/no/such/elephc/file") === false ? "FALSE" : "STR";"#),
+        "FALSE"
+    );
+}
+
 /// Verifies `hash()` resolves through PHP's case-insensitive and namespaced builtin lookup.
 #[test]
 fn hash_is_case_insensitive_and_namespaced() {
