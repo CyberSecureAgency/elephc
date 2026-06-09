@@ -59,7 +59,33 @@ fn unknown_algorithm_returns_negative() {
 }
 
 #[test]
-fn all_crypto_algorithms_produce_correct_digest_length() {
+fn non_crypto_checksum_vectors_match_php() {
+    // Golden values produced by `php -r 'echo hash($algo, "abc");'` (PHP 8.4).
+    assert_eq!(hash_hex("crc32", b"abc").unwrap(), "73bb8c64");
+    assert_eq!(hash_hex("crc32b", b"abc").unwrap(), "352441c2");
+    assert_eq!(hash_hex("adler32", b"abc").unwrap(), "024d0127");
+    assert_eq!(hash_hex("fnv132", b"abc").unwrap(), "439c2f4b");
+    assert_eq!(hash_hex("fnv1a32", b"abc").unwrap(), "1a47e90b");
+    assert_eq!(hash_hex("fnv164", b"abc").unwrap(), "d8dcca186bafadcb");
+    assert_eq!(hash_hex("fnv1a64", b"abc").unwrap(), "e71fa2190541574b");
+    assert_eq!(hash_hex("joaat", b"abc").unwrap(), "ed131f5b");
+}
+
+#[test]
+fn non_crypto_checksum_empty_string_vectors_match_php() {
+    // PHP 8.4 `hash($algo, "")` golden values.
+    assert_eq!(hash_hex("crc32", b"").unwrap(), "00000000");
+    assert_eq!(hash_hex("crc32b", b"").unwrap(), "00000000");
+    assert_eq!(hash_hex("adler32", b"").unwrap(), "00000001");
+    assert_eq!(hash_hex("fnv132", b"").unwrap(), "811c9dc5");
+    assert_eq!(hash_hex("fnv1a32", b"").unwrap(), "811c9dc5");
+    assert_eq!(hash_hex("fnv164", b"").unwrap(), "cbf29ce484222325");
+    assert_eq!(hash_hex("fnv1a64", b"").unwrap(), "cbf29ce484222325");
+    assert_eq!(hash_hex("joaat", b"").unwrap(), "00000000");
+}
+
+#[test]
+fn all_algorithms_produce_correct_digest_length() {
     // (algorithm name, raw digest size in bytes)
     let cases: &[(&str, usize)] = &[
         ("md2", 16), ("md4", 16), ("md5", 16), ("sha1", 20),
@@ -68,6 +94,8 @@ fn all_crypto_algorithms_produce_correct_digest_length() {
         ("sha3-224", 28), ("sha3-256", 32), ("sha3-384", 48), ("sha3-512", 64),
         ("ripemd128", 16), ("ripemd160", 20), ("ripemd256", 32), ("ripemd320", 40),
         ("whirlpool", 64), ("blake2b512", 64), ("blake2s256", 32),
+        ("crc32", 4), ("crc32b", 4), ("adler32", 4),
+        ("fnv132", 4), ("fnv1a32", 4), ("fnv164", 8), ("fnv1a64", 8), ("joaat", 4),
     ];
     for (algo, len) in cases {
         let hex = hash_hex(algo, b"the quick brown fox")
