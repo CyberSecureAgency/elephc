@@ -222,6 +222,11 @@ pub unsafe extern "C" fn elephc_crypto_clone(ctx: *mut c_void) -> *mut c_void {
 
 /// Frees a context without finalizing (scope-exit / error cleanup).
 ///
+/// Currently UNWIRED on the compiler side by design: elephc has no Resource
+/// scope-cleanup yet, so nothing calls this and an unfinalized context leaks
+/// until process exit (like an unclosed `fopen()` stream). Kept in the ABI for
+/// the planned cleanup pass — see ROADMAP.md (v0.26.x, "Resource scope-cleanup").
+///
 /// # Safety
 /// `ctx` must be a live handle and must not be used afterwards.
 #[no_mangle]

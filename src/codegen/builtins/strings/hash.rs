@@ -20,7 +20,9 @@ use crate::types::PhpType;
 /// Emits a PHP `hash($algo, $data, $binary = false)` call as a runtime helper invocation.
 ///
 /// The algorithm and data strings are evaluated first, in PHP source order
-/// (`$algo` then `$data`), and preserved on the stack while the optional
+/// (`$algo` then `$data`), each through `emit_string_arg` so non-string values
+/// (Mixed, int, float) are coerced into the string ABI register pair, and
+/// preserved on the stack while the optional
 /// `$binary` flag is evaluated and coerced to a 0/1 integer. Before the
 /// `__rt_hash` call the arguments are materialised in the runtime ABI registers
 /// (algo ptr/len, data ptr/len, and the binary flag in AArch64 `x5` / x86_64 `r10`). The
@@ -50,12 +52,15 @@ pub fn emit(
     data: &mut DataSection,
 ) -> Option<PhpType> {
     emitter.comment("hash()");
-    // hash($algo, $data, $binary) — evaluate algo string first
-    emit_expr(&args[0], emitter, ctx, data);
+    // hash($algo, $data, $binary) — evaluate the algo string first. emit_string_arg coerces
+    // each string argument via coerce_to_string, so a Mixed value (e.g. a Mixed-typed
+    // function-call result) is cast through __rt_mixed_cast_string instead of leaving a
+    // boxed cell in the result register with stale string registers.
+    super::args::emit_string_arg(&args[0], emitter, ctx, data);
     match emitter.target.arch {
         Arch::AArch64 => {
             emitter.instruction("stp x1, x2, [sp, #-16]!");                     // preserve the algorithm string while evaluating the data string and binary flag
-            emit_expr(&args[1], emitter, ctx, data);
+            super::args::emit_string_arg(&args[1], emitter, ctx, data);
             emitter.instruction("stp x1, x2, [sp, #-16]!");                     // preserve the data string (PHP evaluates $data before $binary)
             emit_binary_flag(args, 2, emitter, ctx, data);
             emitter.instruction("mov x5, x0");                                  // move the 0/1 binary flag into its runtime argument register on AArch64
@@ -64,7 +69,7 @@ pub fn emit(
         }
         Arch::X86_64 => {
             abi::emit_push_reg_pair(emitter, "rax", "rdx");                     // preserve the algorithm string ptr/len while evaluating the data string and binary flag
-            emit_expr(&args[1], emitter, ctx, data);
+            super::args::emit_string_arg(&args[1], emitter, ctx, data);
             abi::emit_push_reg_pair(emitter, "rax", "rdx");                     // preserve the data string (PHP evaluates $data before $binary)
             emit_binary_flag(args, 2, emitter, ctx, data);
             emitter.instruction("mov r10, rax");                                // move the 0/1 binary flag into its runtime argument register on x86_64

@@ -17,7 +17,7 @@ use crate::codegen::builtins::strings::hash_crypto;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
-use crate::codegen::expr::{coerce_to_truthiness, emit_expr};
+use crate::codegen::expr::{coerce_to_string, coerce_to_truthiness, emit_expr};
 use crate::codegen::{abi, platform::Arch};
 use crate::parser::ast::Expr;
 use crate::types::PhpType;
@@ -39,11 +39,11 @@ pub fn emit(
     emitter.comment("hash_file()");
     let fail = ctx.next_label("hash_file_fail");
     let done = ctx.next_label("hash_file_box");
-    emit_expr(&args[0], emitter, ctx, data);
+    emit_string_arg(&args[0], emitter, ctx, data);
     match emitter.target.arch {
         Arch::AArch64 => {
             emitter.instruction("stp x1, x2, [sp, #-16]!");                     // preserve the algorithm string (evaluated first)
-            emit_expr(&args[1], emitter, ctx, data);
+            emit_string_arg(&args[1], emitter, ctx, data);
             emitter.instruction("stp x1, x2, [sp, #-16]!");                     // preserve the filename string (PHP evaluates $filename before $binary)
             emit_binary_flag(args, emitter, ctx, data);
             emitter.instruction("str x0, [sp, #-16]!");                         // preserve the binary flag; all three args are now evaluated in source order
@@ -66,7 +66,7 @@ pub fn emit(
         }
         Arch::X86_64 => {
             abi::emit_push_reg_pair(emitter, "rax", "rdx");                     // preserve the algorithm string (evaluated first)
-            emit_expr(&args[1], emitter, ctx, data);
+            emit_string_arg(&args[1], emitter, ctx, data);
             abi::emit_push_reg_pair(emitter, "rax", "rdx");                     // preserve the filename string (PHP evaluates $filename before $binary)
             emit_binary_flag(args, emitter, ctx, data);
             abi::emit_push_reg(emitter, "rax");                                 // preserve the binary flag; all three args are now evaluated in source order
@@ -93,6 +93,15 @@ pub fn emit(
     }
     box_file_get_contents_result(emitter, ctx);
     Some(PhpType::Mixed)
+}
+
+/// Evaluates `arg` and coerces it into the string ABI register pair (mirrors
+/// `builtins::strings::args::emit_string_arg`, which is private to the strings
+/// module): a Mixed value is cast through `__rt_mixed_cast_string` instead of
+/// leaving a boxed cell in the result register with stale string registers.
+fn emit_string_arg(arg: &Expr, emitter: &mut Emitter, ctx: &mut Context, data: &mut DataSection) {
+    let ty = emit_expr(arg, emitter, ctx, data);
+    coerce_to_string(emitter, ctx, data, &ty);
 }
 
 /// Materialises the optional `$binary` flag (arg index 2) as a 0/1 integer in the

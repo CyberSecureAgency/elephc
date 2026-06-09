@@ -16,7 +16,6 @@ use super::hash_crypto;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
-use crate::codegen::expr::emit_expr;
 use crate::codegen::{abi, platform::Arch};
 use crate::parser::ast::Expr;
 use crate::types::PhpType;
@@ -26,7 +25,9 @@ use crate::types::PhpType;
 ///
 /// Arguments are evaluated in PHP source order — `$algo`, then `$data`, then
 /// `$key`, then the optional `$binary` flag — and each intermediate string is
-/// preserved on the temporary stack while later sub-expressions evaluate. They
+/// preserved on the temporary stack while later sub-expressions evaluate. The
+/// three string arguments go through `emit_string_arg` so non-string values
+/// (Mixed, int, float) are coerced into the string ABI register pair. They
 /// are then delivered into the `__rt_hash_hmac` entry contract: on AArch64 the
 /// algorithm pair in `x1`/`x2`, the data pair in `x3`/`x4`, the key pair in
 /// `x5`/`x6`, and the binary flag in `x7`; on x86_64 the algorithm pair in
@@ -62,11 +63,11 @@ pub fn emit(
     match emitter.target.arch {
         Arch::AArch64 => {
             // -- evaluate args in PHP source order, preserving each on the stack --
-            emit_expr(&args[0], emitter, ctx, data);
+            super::args::emit_string_arg(&args[0], emitter, ctx, data);
             emitter.instruction("stp x1, x2, [sp, #-16]!");                     // preserve the algorithm string while evaluating the remaining arguments
-            emit_expr(&args[1], emitter, ctx, data);
+            super::args::emit_string_arg(&args[1], emitter, ctx, data);
             emitter.instruction("stp x1, x2, [sp, #-16]!");                     // preserve the data string while evaluating the remaining arguments
-            emit_expr(&args[2], emitter, ctx, data);
+            super::args::emit_string_arg(&args[2], emitter, ctx, data);
             emitter.instruction("stp x1, x2, [sp, #-16]!");                     // preserve the key string while evaluating the binary flag
             emit_binary_flag(args, 3, emitter, ctx, data);
             // -- deliver into the __rt_hash_hmac entry contract --
@@ -77,11 +78,11 @@ pub fn emit(
         }
         Arch::X86_64 => {
             // -- evaluate args in PHP source order, preserving each on the stack --
-            emit_expr(&args[0], emitter, ctx, data);
+            super::args::emit_string_arg(&args[0], emitter, ctx, data);
             abi::emit_push_reg_pair(emitter, "rax", "rdx");                     // preserve the algorithm string while evaluating the remaining arguments
-            emit_expr(&args[1], emitter, ctx, data);
+            super::args::emit_string_arg(&args[1], emitter, ctx, data);
             abi::emit_push_reg_pair(emitter, "rax", "rdx");                     // preserve the data string while evaluating the remaining arguments
-            emit_expr(&args[2], emitter, ctx, data);
+            super::args::emit_string_arg(&args[2], emitter, ctx, data);
             abi::emit_push_reg_pair(emitter, "rax", "rdx");                     // preserve the key string while evaluating the binary flag
             emit_binary_flag(args, 3, emitter, ctx, data);
             // -- deliver into the __rt_hash_hmac entry contract --

@@ -19,7 +19,6 @@ use crate::codegen::builtins::io::stream_arg::emit_stream_fd_arg;
 use crate::codegen::context::Context;
 use crate::codegen::data_section::DataSection;
 use crate::codegen::emit::Emitter;
-use crate::codegen::expr::emit_expr;
 use crate::codegen::{abi, platform::Arch};
 use crate::parser::ast::Expr;
 use crate::types::PhpType;
@@ -35,7 +34,9 @@ pub fn emit_init(
     data: &mut DataSection,
 ) -> Option<PhpType> {
     emitter.comment("hash_init()");
-    emit_expr(&args[0], emitter, ctx, data);
+    // emit_string_arg coerces a Mixed algorithm argument through __rt_mixed_cast_string,
+    // so the string registers never hold a stale pair when the value is a boxed cell.
+    super::args::emit_string_arg(&args[0], emitter, ctx, data);
     hash_crypto::publish_elephc_crypto_function_pointers(emitter);
     abi::emit_call_label(emitter, "__rt_hash_init");                            // open the HashContext (algo ptr/len already in the string registers)
     Some(PhpType::Mixed)

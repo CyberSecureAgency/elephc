@@ -326,13 +326,52 @@ fn hash_init_unknown_algorithm_throws_value_error() {
     );
 }
 
-// NOTE: the source-evaluation-order fix in `hash()`/`hash_file()` (evaluate
-// $data/$filename before $binary) is only OBSERVABLE when two or more arguments
-// have side effects — and that exact shape currently hits a separate, pre-existing
-// stack-corruption bug where a string argument pushed across multiple nested
-// function-call argument evaluations is clobbered (see the project notes). A
-// regression test is intentionally omitted until that bug is fixed; the order fix
-// was verified manually (`hash(m("A",..), m("B",..), m("C",..))` now prints "ABC").
+/// Regression: hash()/hash_init() must coerce a Mixed string argument through
+/// __rt_mixed_cast_string (like md5()/sha1() always did) instead of pushing the
+/// stale string registers left behind by a Mixed-returning call — that garbage
+/// (ptr,len) used to reach elephc-crypto and abort in slice::from_raw_parts.
+/// `m()` is untyped and receives a bool once, so its inferred return is Mixed.
+#[test]
+fn hash_family_coerces_mixed_string_args() {
+    assert_eq!(
+        compile_and_run(r#"<?php function m($s, $r) { echo $s; return $r; } if (m("", false)) { echo "?"; } echo hash("md5", m("b", "x"));"#),
+        "b9dd4e461268c8034f5c8564e155c67a6"
+    );
+    assert_eq!(
+        compile_and_run(r#"<?php function m($s, $r) { echo $s; return $r; } if (m("", false)) { echo "?"; } $c = hash_init(m("", "sha256")); hash_update($c, "abc"); echo hash_final($c);"#),
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    );
+}
+
+/// Regression: hash()/hash_hmac()/hash_file() evaluate arguments in PHP source
+/// order (the echoed labels) even when every argument is a side-effecting call,
+/// and Mixed values land correctly in each slot (algo/data/key strings cast via
+/// __rt_mixed_cast_string, the $binary flag via Mixed truthiness).
+#[test]
+fn hash_family_evaluates_args_in_php_source_order() {
+    assert_eq!(
+        compile_and_run(r#"<?php function m($s, $r) { echo $s; return $r; } echo hash(m("A", "md5"), m("B", "x"), m("C", false));"#),
+        "ABC9dd4e461268c8034f5c8564e155c67a6"
+    );
+    assert_eq!(
+        compile_and_run(r#"<?php function m($s, $r) { echo $s; return $r; } echo hash_hmac(m("A", "sha256"), m("B", "data"), m("C", "key"), m("D", false));"#),
+        "ABCD5031fe3d989c6d1537a013fa6e739da23463fdaec3b70137d828e36ace221bd0"
+    );
+    assert_eq!(
+        compile_and_run(r#"<?php function m($s, $r) { echo $s; return $r; } file_put_contents("hfm.txt", "x"); echo hash_file(m("A", "md5"), m("B", "hfm.txt"), m("C", false));"#),
+        "ABC9dd4e461268c8034f5c8564e155c67a6"
+    );
+}
+
+/// Verifies hash() coerces non-string scalar data like PHP does: an int data
+/// argument hashes its decimal string form (hash("md5", 123) == md5("123")).
+#[test]
+fn hash_coerces_int_data_to_string() {
+    assert_eq!(
+        compile_and_run(r#"<?php echo hash("md5", 123);"#),
+        "202cb962ac59075b964b07152d234b70"
+    );
+}
 
 /// Verifies `hash()` resolves through PHP's case-insensitive and namespaced builtin lookup.
 #[test]
