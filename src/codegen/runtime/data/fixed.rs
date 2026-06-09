@@ -9,8 +9,8 @@
 //! - Fixed symbols are cached across compilations, so only target-independent runtime data belongs here.
 
 use super::{
-    DIRNAME_LEVELS_MSG, PHP_UNAME_MODE_LEN_MSG, PHP_UNAME_MODE_VALUE_MSG,
-    STR_REPEAT_TIMES_MSG,
+    DIRNAME_LEVELS_MSG, HASH_UNKNOWN_ALGO_MSG, PHP_UNAME_MODE_LEN_MSG,
+    PHP_UNAME_MODE_VALUE_MSG, STR_REPEAT_TIMES_MSG,
 };
 use super::super::system;
 use crate::types::checker::builtins::supported_builtin_function_names;
@@ -75,6 +75,10 @@ pub(crate) fn emit_runtime_data_fixed(heap_size: usize) -> String {
     out.push_str(&format!(
         ".globl _str_repeat_times_msg\n_str_repeat_times_msg:\n    .ascii {:?}\n",
         STR_REPEAT_TIMES_MSG
+    ));
+    out.push_str(&format!(
+        ".globl _hash_unknown_algo_msg\n_hash_unknown_algo_msg:\n    .ascii {:?}\n",
+        HASH_UNKNOWN_ALGO_MSG
     ));
     for (label, message) in [
         ("_spl_dll_pop_empty_msg", "Can't pop from an empty datastructure"),
@@ -237,6 +241,11 @@ pub(crate) fn emit_runtime_data_fixed(heap_size: usize) -> String {
     // pairs that the non-client-cert variants ignore. Same late-binding pattern.
     out.push_str(".comm _elephc_tls_attach_fd_client_cert_fn, 8, 3\n");
     out.push_str(".comm _elephc_tls_connect_client_cert_fn, 8, 3\n");
+    // _elephc_crypto_hash_fn: indirect pointer to elephc_crypto_hash, published
+    // only at a hash() call site so the shared runtime __rt_hash can call through
+    // it without the runtime itself naming elephc-crypto. Programs that never
+    // call hash() leave the slot null and do not pull in -lelephc_crypto.
+    out.push_str(".comm _elephc_crypto_hash_fn, 8, 3\n");
     // _tls_sessions: per-fd TLS handle (i64 returned by
     // elephc_tls_attach_fd or 0 when the fd is plain TCP). Indexed by raw
     // fd up to 256; the runtime fread/fwrite/fclose paths consult this

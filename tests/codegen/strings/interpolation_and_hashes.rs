@@ -179,4 +179,56 @@ fn test_hash_sha256() {
     );
 }
 
+/// Verifies `hash()` now reaches the full elephc-crypto algorithm set
+/// (sha512, sha3-256, ripemd160, crc32b) beyond the legacy md5/sha1/sha256.
+#[test]
+fn hash_supports_full_algorithm_set() {
+    assert_eq!(compile_and_run(r#"<?php echo hash("sha256","hello");"#),
+        "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
+    assert_eq!(compile_and_run(r#"<?php echo hash("sha512","hello");"#),
+        "9b71d224bd62f3785d96d46ad3ea3d73319bfbc2890caadae2dff72519673ca72323c3d99ba5c11d7c7acc6e14b8c5da0c4663475c2e5c3adef46f73bcdec043");
+    assert_eq!(compile_and_run(r#"<?php echo hash("sha3-256","hello");"#),
+        "3338be694f50c5f338814986cdf0686453a888b84f424d792af4b9202398f392");
+    assert_eq!(compile_and_run(r#"<?php echo hash("ripemd160","hello");"#),
+        "108f07b8382412612c048d07d13f814118445acd");
+    assert_eq!(compile_and_run(r#"<?php echo hash("crc32b","hello");"#), "3610a686");
+}
+
+/// Verifies md5/sha256 keep byte-for-byte parity through the new crate path,
+/// guarding against a marshalling regression for the previously CommonCrypto-backed algos.
+#[test]
+fn hash_md5_sha256_parity_regression() {
+    assert_eq!(compile_and_run(r#"<?php echo hash("md5","abc");"#),
+        "900150983cd24fb0d6963f7d28e17f72");
+    assert_eq!(compile_and_run(r#"<?php echo hash("sha256","abc");"#),
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+}
+
+/// Verifies the `$binary=true` flag returns the raw digest bytes (not hex),
+/// so bin2hex round-trips to the hex form and strlen reports the raw digest size.
+#[test]
+fn hash_binary_flag_returns_raw_bytes() {
+    assert_eq!(compile_and_run(r#"<?php echo bin2hex(hash("sha256","abc",true));"#),
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    assert_eq!(compile_and_run(r#"<?php echo strlen(hash("sha256","abc",true));"#), "32");
+}
+
+/// Verifies an unknown algorithm throws a catchable `\ValueError` with PHP's message.
+#[test]
+fn hash_unknown_algorithm_throws_value_error() {
+    assert_eq!(
+        compile_and_run(r#"<?php try { hash("nope","x"); } catch (\ValueError $e) { echo $e->getMessage(); }"#),
+        "hash(): Argument #1 ($algo) must be a valid hashing algorithm"
+    );
+}
+
+/// Verifies `hash()` resolves through PHP's case-insensitive and namespaced builtin lookup.
+#[test]
+fn hash_is_case_insensitive_and_namespaced() {
+    assert_eq!(compile_and_run(r#"<?php echo HASH("md5","abc");"#),
+        "900150983cd24fb0d6963f7d28e17f72");
+    assert_eq!(compile_and_run(r#"<?php echo \hash("md5","abc");"#),
+        "900150983cd24fb0d6963f7d28e17f72");
+}
+
 // --- sscanf() ---

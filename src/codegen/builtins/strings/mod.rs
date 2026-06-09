@@ -30,6 +30,7 @@ mod explode;
 mod format_args;
 mod grapheme_strrev;
 mod hash;
+pub(crate) mod hash_crypto;
 mod hex2bin;
 mod html_entity_decode;
 mod htmlentities;

@@ -299,13 +299,15 @@ pub(super) fn check_builtin(
             }))
         }
         "hash" => {
-            if args.len() != 2 {
-                return Err(CompileError::new(span, "hash() takes exactly 2 arguments"));
+            if args.len() < 2 || args.len() > 3 {
+                return Err(CompileError::new(span, "hash() takes 2 or 3 arguments"));
             }
             for arg in args {
                 checker.infer_type(arg, env)?;
             }
-            checker.require_linux_builtin_library("crypto");
+            // hash() routes through the elephc-crypto staticlib (full algorithm
+            // set, raw $binary output, catchable ValueError) on every target.
+            checker.require_builtin_library("elephc_crypto");
             Ok(Some(PhpType::Str))
         }
         "sscanf" => {

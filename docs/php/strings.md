@@ -176,7 +176,7 @@ Read-only. Negative indices count from end. Out-of-bounds returns empty string.
 | `md5()` | `md5($str): string` | MD5 hash (32-char hex) |
 | `sha1()` | `sha1($str): string` | SHA1 hash (40-char hex) |
 | `crc32()` | `crc32($str): int` | CRC-32 checksum (standard zlib/PHP polynomial), returned as a non-negative 32-bit integer |
-| `hash()` | `hash($algo, $data): string` | Hash with algorithm (md5, sha1, sha256) |
+| `hash()` | `hash($algo, $data, $binary = false): string` | Hash `$data` with the named algorithm (md5, sha1, sha2 family, sha3 family, ripemd, crc32/crc32b, and more). Returns lowercase hex by default, or the raw digest bytes when `$binary` is `true`. An unknown algorithm throws `\ValueError`. |
 | `htmlspecialchars()` | `htmlspecialchars($str): string` | Escape HTML special chars |
 | `htmlentities()` | `htmlentities($str): string` | Alias for htmlspecialchars |
 | `html_entity_decode()` | `html_entity_decode($str): string` | Decode HTML entities |

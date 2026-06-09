@@ -193,9 +193,11 @@ fn test_error_ctype_alpha_wrong_args() {
 }
 
 /// Verifies that `hash()` with only one argument produces the correct arity error.
+/// `hash()` now accepts an optional third `$binary` argument, so the message
+/// reports the 2-or-3 arity instead of the legacy fixed-2 wording.
 #[test]
 fn test_error_hash_wrong_args() {
-    expect_error(r#"<?php hash("md5");"#, "hash() takes exactly 2 arguments");
+    expect_error(r#"<?php hash("md5");"#, "hash() takes 2 or 3 arguments");
 }
 
 /// Verifies that `sscanf()` with only one argument produces the correct arity error.
