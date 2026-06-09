@@ -103,3 +103,58 @@ fn all_algorithms_produce_correct_digest_length() {
         assert_eq!(hex.len(), len * 2, "wrong digest length for {algo}");
     }
 }
+
+/// Runs the one-shot HMAC C ABI; returns the lowercase hex digest or None (-1).
+/// Arg order mirrors the ABI: (algo, key, data). PHP's hash_hmac is ($algo,$data,$key).
+fn hmac_hex(algo: &str, key: &[u8], data: &[u8]) -> Option<String> {
+    let mut out = [0u8; 64];
+    let n = unsafe {
+        elephc_crypto_hmac(
+            algo.as_ptr(), algo.len(),
+            key.as_ptr(), key.len(),
+            data.as_ptr(), data.len(),
+            out.as_mut_ptr(),
+        )
+    };
+    if n < 0 { return None; }
+    Some(out[..n as usize].iter().map(|b| format!("{:02x}", b)).collect())
+}
+
+#[test]
+fn hmac_matches_php_golden() {
+    // PHP hash_hmac($algo,$data,$key); helper takes (algo, key, data).
+    assert_eq!(
+        hmac_hex("sha256", b"Jefe", b"what do ya want for nothing?").unwrap(),
+        "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"
+    );
+    assert_eq!(
+        hmac_hex("sha1", b"key", b"abc").unwrap(),
+        "4fd0b215276ef12f2b3e4c8ecac2811498b656fc"
+    );
+    assert_eq!(
+        hmac_hex("md5", b"secret", b"The quick brown fox").unwrap(),
+        "313f4de51b3a46edb724f38a8520c61e"
+    );
+    // 200-byte key exceeds sha256's 64-byte block, exercising the hash-down path.
+    let long_key = vec![b'k'; 200];
+    assert_eq!(
+        hmac_hex("sha256", &long_key, b"abc").unwrap(),
+        "ce632aa86d6a3fd3c79f06217c0a506599d055cd38eb385b16a2939f2488f686"
+    );
+    // sha512 has a 128-byte block (vs 64 for sha1/sha256), exercising that path.
+    assert_eq!(
+        hmac_hex("sha512", b"key", b"abc").unwrap(),
+        "3926a207c8c42b0c41792cbd3e1a1aaaf5f7a25704f62dfc939c4987dd7ce060\
+009c5bb1c2447355b3216f10b537e9afa7b64a4e5391b0d631172d07939e087a"
+    );
+}
+
+#[test]
+fn hmac_rejects_checksums_and_unknown() {
+    // crc32b and adler32 are rejected because they are non-crypto checksums
+    // (block_size == 0), matching PHP's ValueError for hash_hmac over checksums.
+    assert!(hmac_hex("crc32b", b"key", b"abc").is_none());
+    assert!(hmac_hex("adler32", b"key", b"abc").is_none());
+    // tiger is rejected because it is an unknown algorithm (make() returns None).
+    assert!(hmac_hex("tiger", b"key", b"abc").is_none());
+}
