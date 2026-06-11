@@ -176,6 +176,7 @@ pub(super) fn lower_array_to_hash(ctx: &mut FunctionContext<'_>, inst: &Instruct
                 ctx.emitter.instruction("mov rdi, rax");                        // pass the promoted hash to the Mixed-entry conversion helper
                 abi::emit_call_label(ctx.emitter, "__rt_hash_to_mixed");
             }
+            ctx.emitter.label(&done);
         }
     }
     store_if_result(ctx, inst)
