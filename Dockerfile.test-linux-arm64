@@ -1,4 +1,4 @@
-FROM rust:1.87-alpine
+FROM rust:1.95-alpine
 
 RUN apk add --no-cache gcc musl-dev openssl-dev zlib-dev bzip2-dev pcre2-dev gdb strace binutils file
 
