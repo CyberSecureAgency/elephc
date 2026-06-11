@@ -19,7 +19,7 @@ use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 use crate::codegen::Emit;
 use crate::codegen::UNINITIALIZED_TYPED_PROPERTY_SENTINEL;
-use crate::ir::{BasicBlock, Function, Module};
+use crate::ir::{BasicBlock, Function, InstId, Module};
 use crate::names::{
     enum_case_symbol, function_epilogue_symbol, function_symbol, method_symbol, php_symbol_key,
     static_method_symbol, static_property_symbol,
@@ -632,6 +632,7 @@ fn emit_blocks(ctx: &mut FunctionContext<'_>) -> Result<()> {
 fn emit_block(ctx: &mut FunctionContext<'_>, block: &BasicBlock) -> Result<()> {
     ctx.emitter.label(&ctx.block_label(&block.name, block.id.as_raw()));
     for inst_id in &block.instructions {
+        emit_instruction_source_marker(ctx, *inst_id)?;
         lower_inst::lower_instruction(ctx, *inst_id)?;
     }
     let terminator = block
@@ -639,4 +640,19 @@ fn emit_block(ctx: &mut FunctionContext<'_>, block: &BasicBlock) -> Result<()> {
         .as_ref()
         .ok_or_else(|| CodegenIrError::invalid_module(format!("block '{}' has no terminator", block.name)))?;
     lower_term::lower_terminator(ctx, terminator)
+}
+
+/// Emits the source-map marker for an EIR instruction when it carries a real PHP span.
+fn emit_instruction_source_marker(ctx: &mut FunctionContext<'_>, inst_id: InstId) -> Result<()> {
+    let Some(inst) = ctx.function.instruction(inst_id) else {
+        return Err(CodegenIrError::missing_entry("instruction", inst_id.as_raw()));
+    };
+    let Some(span) = inst.span else {
+        return Ok(());
+    };
+    if span.line > 0 {
+        ctx.emitter
+            .comment(&format!("@src line={} col={}", span.line, span.col));
+    }
+    Ok(())
 }
