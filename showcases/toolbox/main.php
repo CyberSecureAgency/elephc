@@ -37,7 +37,7 @@ while ($running) {
         cmd_base64($mode, $input);
     } elseif ($choice === "4") {
         echo "Enter text:\n";
-        $input = readline("");
+        $input = (string)readline("");
         cmd_text_stats($input);
     } elseif ($choice === "5") {
         $input = trim(readline("Number (prefix 0x for hex, 0b for binary): "));

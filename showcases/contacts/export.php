@@ -14,7 +14,12 @@ function cmd_export_csv($contacts, $filename) {
     fputcsv($fp, ["Name", "Email", "Phone", "Notes", "Created"]);
     for ($i = 0; $i < count($contacts); $i++) {
         $c = $contacts[$i];
-        fputcsv($fp, [$c["name"], $c["email"], $c["phone"], $c["notes"], $c["created"]]);
+        $name = (string)$c["name"];
+        $email = (string)$c["email"];
+        $phone = (string)$c["phone"];
+        $notes = (string)$c["notes"];
+        $created = (string)$c["created"];
+        fputcsv($fp, [$name, $email, $phone, $notes, $created]);
     }
     fclose($fp);
     echo "Exported " . count($contacts) . " contacts to " . $filename . "\n";
