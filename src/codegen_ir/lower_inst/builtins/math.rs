@@ -213,6 +213,10 @@ pub(super) fn lower_min_max(
     match result_ty {
         PhpType::Float => lower_float_min_max(ctx, inst, want_max)?,
         PhpType::Int | PhpType::Bool => lower_int_min_max(ctx, inst, want_max)?,
+        PhpType::Mixed | PhpType::Union(_) => {
+            lower_int_min_max(ctx, inst, want_max)?;
+            crate::codegen::emit_box_current_value_as_mixed(ctx.emitter, &PhpType::Int);
+        }
         other => {
             return Err(CodegenIrError::unsupported(format!(
                 "{} for PHP type {:?}",
@@ -790,11 +794,11 @@ fn lower_int_min_max(
     want_max: bool,
 ) -> Result<()> {
     let first = expect_operand(inst, 0)?;
-    require_int_like(ctx.load_value_to_result(first)?, min_max_name(want_max))?;
+    load_numeric_as_int(ctx, first, min_max_name(want_max))?;
     for index in 1..inst.operands.len() {
         abi::emit_push_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));
         let candidate = expect_operand(inst, index)?;
-        require_int_like(ctx.load_value_to_result(candidate)?, min_max_name(want_max))?;
+        load_numeric_as_int(ctx, candidate, min_max_name(want_max))?;
         emit_int_select(ctx, want_max);
     }
     Ok(())
@@ -883,6 +887,34 @@ fn emit_float_select(ctx: &mut FunctionContext<'_>, want_max: bool) {
             ctx.emitter.instruction(&format!("{} xmm1, xmm0", op));             // combine the previous and current floating candidates
             ctx.emitter.instruction("movsd xmm0, xmm1");                        // move the selected floating candidate into the result register
         }
+    }
+}
+
+/// Loads a numeric operand and normalizes integer-like values into the integer result register.
+fn load_numeric_as_int(
+    ctx: &mut FunctionContext<'_>,
+    value: crate::ir::ValueId,
+    name: &str,
+) -> Result<()> {
+    match ctx.load_value_to_result(value)?.codegen_repr() {
+        PhpType::Int | PhpType::Bool => Ok(()),
+        PhpType::TaggedScalar => {
+            crate::codegen::sentinels::emit_tagged_scalar_to_int_null_as_zero(ctx.emitter);
+            Ok(())
+        }
+        PhpType::Void | PhpType::Never => {
+            abi::emit_load_int_immediate(ctx.emitter, abi::int_result_reg(ctx.emitter), 0);
+            Ok(())
+        }
+        PhpType::Mixed | PhpType::Union(_) => {
+            load_value_to_first_int_arg(ctx, value)?;
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_int");
+            Ok(())
+        }
+        other => Err(CodegenIrError::unsupported(format!(
+            "{} for PHP type {:?}",
+            name, other
+        ))),
     }
 }
 

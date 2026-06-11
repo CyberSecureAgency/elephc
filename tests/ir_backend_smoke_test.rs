@@ -1062,6 +1062,11 @@ fn ir_backend_handles_scalar_builtins() {
             "3:2.5:0.9:1024",
         ),
         (
+            "intdiv_mixed_operands",
+            "<?php function pass($v) { return $v; } echo intdiv(pass(9), pass(2));",
+            "4",
+        ),
+        (
             "trig_math",
             "<?php echo round(sin(0.0), 4); echo ':'; echo round(cos(0.0), 4); echo ':'; echo round(tan(0.0), 4);",
             "0:1:0",
@@ -1481,13 +1486,15 @@ echo json_encode(["a/b", "c/d"], JSON_UNESCAPED_SLASHES);
 echo "|";
 echo json_encode(["name" => "Ada", "ok" => true]);
 echo "|";
+echo json_encode(["url" => "https://example.test/a/b", "tags" => ["a", "b"]], JSON_UNESCAPED_SLASHES);
+echo "|";
 echo json_encode([1, 2], JSON_PRETTY_PRINT);
 echo "|";
 echo json_last_error();
 "#;
     assert_eq!(
         compile_and_run_ir_backend("json_encode_builtins", source),
-        "VFD\"x\"|[1,2]|\"hi\"|true|[\"a/b\",\"c/d\"]|{\"name\":\"Ada\",\"ok\":true}|[\n    1,\n    2\n]|0"
+        "VFD\"x\"|[1,2]|\"hi\"|true|[\"a/b\",\"c/d\"]|{\"name\":\"Ada\",\"ok\":true}|{\"url\":\"https://example.test/a/b\",\"tags\":[\"a\",\"b\"]}|[\n    1,\n    2\n]|0"
     );
 }
 
@@ -4198,6 +4205,11 @@ fn ir_backend_handles_basic_indexed_arrays() {
         ("array_set_extends_string", "<?php $a = [\"a\"]; $a[2] = \"z\"; echo count($a); echo \":\"; echo $a[2];", "3:z"),
         ("array_set_empty_sparse_count", "<?php $a = []; $a[2] = 7; echo count($a);", "1"),
         (
+            "array_literal_pushes_nullable_int_reads",
+            "<?php $a = [10, 20]; $b = [$a[0], $a[1]]; echo $b[0]; echo ':'; echo $b[1];",
+            "10:20",
+        ),
+        (
             "array_push_builtin_mutates_local",
             "<?php $a = [10]; array_push($a, 20); echo count($a); echo ' '; echo $a[1];",
             "2 20",
@@ -4256,6 +4268,26 @@ echo $a[3];
     assert_eq!(
         compile_and_run_ir_backend("mixed_indexed_array_literal", source),
         "4:1:N:ok:2"
+    );
+}
+
+/// Verifies indexed-array literals retain Mixed storage when their items come from Mixed indexing.
+#[test]
+fn ir_backend_handles_mixed_access_indexed_array_literals() {
+    let source = r#"<?php
+function emit_fields($contact) {
+    $fields = [$contact["name"], $contact["email"]];
+    echo count($fields);
+    echo ":";
+    echo $fields[0];
+    echo ":";
+    echo $fields[1];
+}
+emit_fields(["name" => "Ada", "email" => "ada@example.test"]);
+"#;
+    assert_eq!(
+        compile_and_run_ir_backend("mixed_access_indexed_array_literal", source),
+        "2:Ada:ada@example.test"
     );
 }
 
@@ -4429,6 +4461,11 @@ fn ir_backend_handles_indexed_array_sorting() {
             "shuffle_indexed_ints",
             "<?php $a = [1, 2, 3]; shuffle($a); echo count($a); echo ':'; echo array_sum($a); echo ':'; echo (in_array(1, $a) ? '1' : '0'); echo (in_array(2, $a) ? '2' : '0'); echo (in_array(3, $a) ? '3' : '0');",
             "3:6:123",
+        ),
+        (
+            "shuffle_nested_string_arrays",
+            "<?php $a = [[\"a\", \"b\"], [\"c\", \"d\"], [\"e\", \"f\"]]; shuffle($a); $total = 0; for ($i = 0; $i < count($a); $i++) { $total += count($a[$i]); } echo count($a); echo ':'; echo $total;",
+            "3:6",
         ),
     ] {
         assert_eq!(compile_and_run_ir_backend(name, source), expected);
@@ -4908,6 +4945,11 @@ fn ir_backend_handles_indexed_array_slice() {
             "<?php $a = [1, true, 3]; $b = array_slice($a, 0, 2); echo count($b); echo ':'; echo $b[0]; echo ':'; echo $b[1];",
             "2:1:1",
         ),
+        (
+            "array_slice_mixed_receiver",
+            "<?php function top($scores) { $b = array_slice($scores, 0, 1); echo count($b); echo ':'; echo $b[0][\"name\"]; } top([[\"name\" => \"Ada\"], [\"name\" => \"Bob\"]]);",
+            "1:Ada",
+        ),
     ] {
         assert_eq!(compile_and_run_ir_backend(name, source), expected);
     }
@@ -4970,6 +5012,16 @@ fn ir_backend_handles_indexed_array_search() {
             "array_search_zero_index_is_not_false",
             "<?php $a = [10, 20, 30]; echo array_search(10, $a) === false ? \"miss\" : \"zero\";",
             "zero",
+        ),
+        (
+            "array_search_string_found",
+            "<?php $a = [\"Ada\", \"Grace\"]; echo array_search(\"Grace\", $a);",
+            "1",
+        ),
+        (
+            "array_search_string_missing",
+            "<?php $a = [\"Ada\", \"Grace\"]; echo array_search(\"Linus\", $a) === false ? \"miss\" : \"hit\";",
+            "miss",
         ),
         (
             "array_search_empty",

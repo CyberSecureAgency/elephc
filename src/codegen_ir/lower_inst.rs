@@ -4463,10 +4463,31 @@ pub(super) fn coerce_loaded_value_to_tagged_scalar(
             crate::codegen::sentinels::emit_tagged_scalar_null(ctx.emitter);
             Ok(PhpType::TaggedScalar)
         }
+        PhpType::Mixed | PhpType::Union(_) => {
+            emit_mixed_result_as_tagged_scalar(ctx);
+            Ok(PhpType::TaggedScalar)
+        }
         other => Err(CodegenIrError::unsupported(format!(
             "conversion from PHP type {:?} to PHP type TaggedScalar",
             other
         ))),
+    }
+}
+
+/// Reorders `__rt_mixed_unbox` output into the inline tagged-scalar result registers.
+fn emit_mixed_result_as_tagged_scalar(ctx: &mut FunctionContext<'_>) {
+    abi::emit_call_label(ctx.emitter, "__rt_mixed_unbox");
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction("mov x9, x0");                              // preserve the unboxed Mixed tag before moving the payload
+            ctx.emitter.instruction("mov x0, x1");                              // place the unboxed payload into the tagged-scalar payload register
+            ctx.emitter.instruction("mov x1, x9");                              // place the unboxed Mixed tag into the tagged-scalar tag register
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("mov r10, rax");                            // preserve the unboxed Mixed tag before moving the payload
+            ctx.emitter.instruction("mov rax, rdi");                            // place the unboxed payload into the tagged-scalar payload register
+            ctx.emitter.instruction("mov rdx, r10");                            // place the unboxed Mixed tag into the tagged-scalar tag register
+        }
     }
 }
 

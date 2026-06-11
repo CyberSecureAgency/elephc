@@ -177,6 +177,10 @@ fn load_numeric_as_int(
             crate::codegen::sentinels::emit_tagged_scalar_to_int_null_as_zero(ctx.emitter);
             Ok(())
         }
+        PhpType::Mixed | PhpType::Union(_) => {
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_int");
+            Ok(())
+        }
         PhpType::Void | PhpType::Never => {
             abi::emit_load_int_immediate(ctx.emitter, abi::int_result_reg(ctx.emitter), 0);
             Ok(())

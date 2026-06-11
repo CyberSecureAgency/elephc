@@ -904,6 +904,12 @@ pub(super) fn lower_array_intersect_key(ctx: &mut FunctionContext<'_>, inst: &In
 pub(super) fn lower_array_slice(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     ensure_arg_count_between(inst, "array_slice", 2, 3)?;
     let array = expect_operand(inst, 0)?;
+    if matches!(
+        ctx.value_php_type(array)?.codegen_repr(),
+        PhpType::Mixed | PhpType::Union(_)
+    ) {
+        return lower_mixed_array_slice(ctx, inst);
+    }
     let offset = expect_operand(inst, 1)?;
     let length = if inst.operands.len() == 3 {
         Some(expect_operand(inst, 2)?)
@@ -918,10 +924,35 @@ pub(super) fn lower_array_slice(ctx: &mut FunctionContext<'_>, inst: &Instructio
     store_if_result(ctx, inst)
 }
 
+/// Lowers `array_slice()` for an indexed array stored inside a boxed Mixed cell.
+fn lower_mixed_array_slice(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    let array = expect_operand(inst, 0)?;
+    let offset = expect_operand(inst, 1)?;
+    let length = if inst.operands.len() == 3 {
+        Some(expect_operand(inst, 2)?)
+    } else {
+        None
+    };
+    let result_elem_ty = result_array_element_type("array_slice", &inst.result_php_type.codegen_repr())?;
+    require_array_slice_result_type(&PhpType::Mixed, &result_elem_ty)?;
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => lower_mixed_array_slice_aarch64(ctx, array, offset, length)?,
+        Arch::X86_64 => lower_mixed_array_slice_x86_64(ctx, array, offset, length)?,
+    }
+    normalize_indexed_array_result(ctx, "array_slice", &PhpType::Mixed, &result_elem_ty)?;
+    store_if_result(ctx, inst)
+}
+
 /// Lowers `array_splice()` by mutating an indexed source array and returning removed elements.
 pub(super) fn lower_array_splice(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
     ensure_arg_count_between(inst, "array_splice", 2, 3)?;
     let array = expect_operand(inst, 0)?;
+    if matches!(
+        ctx.value_php_type(array)?.codegen_repr(),
+        PhpType::Mixed | PhpType::Union(_)
+    ) {
+        return lower_mixed_array_splice(ctx, inst);
+    }
     let offset = expect_operand(inst, 1)?;
     let length = if inst.operands.len() == 3 {
         Some(expect_operand(inst, 2)?)
@@ -936,6 +967,27 @@ pub(super) fn lower_array_splice(ctx: &mut FunctionContext<'_>, inst: &Instructi
     }
     lower_array_splice_call(ctx, array, offset, length, &elem_ty)?;
     normalize_array_splice_result(ctx, &elem_ty, &inst.result_php_type.codegen_repr())?;
+    store_if_result(ctx, inst)
+}
+
+/// Lowers `array_splice()` for an indexed array stored inside a boxed Mixed cell.
+fn lower_mixed_array_splice(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    let array = expect_operand(inst, 0)?;
+    let offset = expect_operand(inst, 1)?;
+    let length = if inst.operands.len() == 3 {
+        Some(expect_operand(inst, 2)?)
+    } else {
+        None
+    };
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => lower_mixed_array_splice_aarch64(ctx, array, offset, length)?,
+        Arch::X86_64 => lower_mixed_array_splice_x86_64(ctx, array, offset, length)?,
+    }
+    normalize_array_splice_result(
+        ctx,
+        &PhpType::Mixed,
+        &inst.result_php_type.codegen_repr(),
+    )?;
     store_if_result(ctx, inst)
 }
 
@@ -1052,9 +1104,9 @@ pub(super) fn lower_natcasesort(ctx: &mut FunctionContext<'_>, inst: &Instructio
     lower_indexed_array_sort(ctx, inst, "natcasesort", "__rt_natcasesort", None)
 }
 
-/// Lowers `shuffle()` for indexed integer arrays by mutating the source array in place.
+/// Lowers `shuffle()` for indexed arrays with 8-byte slots by mutating the source array in place.
 pub(super) fn lower_shuffle(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
-    lower_indexed_array_sort(ctx, inst, "shuffle", "__rt_shuffle", None)
+    lower_indexed_array_shuffle(ctx, inst)
 }
 
 /// Lowers `usort()` for indexed integer arrays with a static user comparator.
@@ -1091,6 +1143,7 @@ pub(super) fn lower_array_search(ctx: &mut FunctionContext<'_>, inst: &Instructi
     match supported_array_search_case(needle_ty, array_ty)? {
         ArraySearchCase::Empty => box_array_search_miss(ctx),
         ArraySearchCase::Scalar => lower_array_search_scalar(ctx, needle, array)?,
+        ArraySearchCase::String => lower_array_search_string(ctx, needle, array)?,
     }
     store_if_result(ctx, inst)
 }
@@ -1230,6 +1283,33 @@ fn lower_indexed_array_sort(
         int_helper
     };
     abi::emit_call_label(ctx.emitter, helper);
+    abi::emit_load_int_immediate(
+        ctx.emitter,
+        abi::int_result_reg(ctx.emitter),
+        0x7fff_ffff_ffff_fffe,
+    );
+    store_if_result(ctx, inst)
+}
+
+/// Calls the mutating shuffle helper for indexed arrays whose payload slots are pointer-sized.
+fn lower_indexed_array_shuffle(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    super::ensure_arg_count(inst, "shuffle", 1)?;
+    let array = expect_operand(inst, 0)?;
+    eight_byte_indexed_array_element_type(ctx.value_php_type(array)?, "shuffle")?;
+    let source_local = source_load_local_slot(ctx, array)?;
+    ensure_unique_sort_source(ctx, array)?;
+    if let Some(slot) = source_local {
+        ctx.store_value_to_local(slot, array)?;
+    }
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.load_value_to_reg(array, "x0")?;
+        }
+        Arch::X86_64 => {
+            ctx.load_value_to_reg(array, "rdi")?;
+        }
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_shuffle");
     abi::emit_load_int_immediate(
         ctx.emitter,
         abi::int_result_reg(ctx.emitter),
@@ -3742,6 +3822,146 @@ fn lower_array_splice_call(
     Ok(())
 }
 
+/// Materializes a boxed-Mixed indexed array for `array_slice()` on AArch64.
+fn lower_mixed_array_slice_aarch64(
+    ctx: &mut FunctionContext<'_>,
+    array: ValueId,
+    offset: ValueId,
+    length: Option<ValueId>,
+) -> Result<()> {
+    let empty_label = ctx.next_label("mixed_array_slice_empty");
+    let done_label = ctx.next_label("mixed_array_slice_done");
+    ctx.load_value_to_reg(array, "x0")?;
+    abi::emit_push_reg(ctx.emitter, "x0");
+    abi::emit_call_label(ctx.emitter, "__rt_mixed_unbox");
+    ctx.emitter.instruction("cmp x0, #4");                                      // require an indexed-array payload before slicing the Mixed cell
+    ctx.emitter.instruction(&format!("b.ne {}", empty_label));                  // return an empty slice for non-array Mixed payloads
+    ctx.emitter.instruction(&format!("cbz x1, {}", empty_label));               // return an empty slice for null array payloads
+    ctx.emitter.instruction("mov x0, x1");                                      // pass the unboxed indexed-array payload to the Mixed conversion helper
+    ctx.emitter.instruction("ldr x1, [x0, #-8]");                               // load indexed-array metadata before Mixed-slot conversion
+    ctx.emitter.instruction("lsr x1, x1, #8");                                  // move the runtime value_type tag into the low bits
+    ctx.emitter.instruction("and x1, x1, #0x7f");                               // isolate the indexed-array value_type tag
+    abi::emit_call_label(ctx.emitter, "__rt_array_to_mixed");
+    abi::emit_pop_reg(ctx.emitter, "x10");
+    ctx.emitter.instruction("str x0, [x10, #8]");                               // publish the converted unique array back into the Mixed cell
+    abi::emit_push_reg(ctx.emitter, "x0");
+    ctx.load_value_to_reg(offset, "x1")?;
+    load_array_slice_length(ctx, length, "x2")?;
+    abi::emit_pop_reg(ctx.emitter, "x0");
+    abi::emit_call_label(ctx.emitter, "__rt_array_slice_refcounted");
+    ctx.emitter.instruction(&format!("b {}", done_label));                      // skip the empty-array fallback after slicing the boxed payload
+    ctx.emitter.label(&empty_label);
+    abi::emit_pop_reg(ctx.emitter, "x9");
+    allocate_empty_mixed_array_result(ctx);
+    ctx.emitter.label(&done_label);
+    Ok(())
+}
+
+/// Materializes a boxed-Mixed indexed array for `array_slice()` on x86_64.
+fn lower_mixed_array_slice_x86_64(
+    ctx: &mut FunctionContext<'_>,
+    array: ValueId,
+    offset: ValueId,
+    length: Option<ValueId>,
+) -> Result<()> {
+    let empty_label = ctx.next_label("mixed_array_slice_empty");
+    let done_label = ctx.next_label("mixed_array_slice_done");
+    ctx.load_value_to_reg(array, "rax")?;
+    abi::emit_push_reg(ctx.emitter, "rax");
+    abi::emit_call_label(ctx.emitter, "__rt_mixed_unbox");
+    ctx.emitter.instruction("cmp rax, 4");                                      // require an indexed-array payload before slicing the Mixed cell
+    ctx.emitter.instruction(&format!("jne {}", empty_label));                   // return an empty slice for non-array Mixed payloads
+    ctx.emitter.instruction("test rdi, rdi");                                   // verify the unboxed indexed-array payload is present
+    ctx.emitter.instruction(&format!("je {}", empty_label));                    // return an empty slice for null array payloads
+    ctx.emitter.instruction("mov rsi, QWORD PTR [rdi - 8]");                    // load indexed-array metadata before Mixed-slot conversion
+    ctx.emitter.instruction("shr rsi, 8");                                      // move the runtime value_type tag into the low bits
+    ctx.emitter.instruction("and rsi, 0x7f");                                   // isolate the indexed-array value_type tag
+    abi::emit_call_label(ctx.emitter, "__rt_array_to_mixed");
+    abi::emit_pop_reg(ctx.emitter, "r10");
+    ctx.emitter.instruction("mov QWORD PTR [r10 + 8], rax");                    // publish the converted unique array back into the Mixed cell
+    abi::emit_push_reg(ctx.emitter, "rax");
+    ctx.load_value_to_reg(offset, "rsi")?;
+    load_array_slice_length(ctx, length, "rdx")?;
+    abi::emit_pop_reg(ctx.emitter, "rdi");
+    abi::emit_call_label(ctx.emitter, "__rt_array_slice_refcounted");
+    ctx.emitter.instruction(&format!("jmp {}", done_label));                    // skip the empty-array fallback after slicing the boxed payload
+    ctx.emitter.label(&empty_label);
+    abi::emit_pop_reg(ctx.emitter, "r11");
+    allocate_empty_mixed_array_result(ctx);
+    ctx.emitter.label(&done_label);
+    Ok(())
+}
+
+/// Materializes and mutates a boxed-Mixed indexed array for `array_splice()` on AArch64.
+fn lower_mixed_array_splice_aarch64(
+    ctx: &mut FunctionContext<'_>,
+    array: ValueId,
+    offset: ValueId,
+    length: Option<ValueId>,
+) -> Result<()> {
+    let drop_label = ctx.next_label("mixed_array_splice_empty");
+    let done_label = ctx.next_label("mixed_array_splice_done");
+    ctx.load_value_to_reg(array, "x0")?;
+    abi::emit_push_reg(ctx.emitter, "x0");
+    abi::emit_call_label(ctx.emitter, "__rt_mixed_unbox");
+    ctx.emitter.instruction("cmp x0, #4");                                      // require an indexed-array payload before splicing the Mixed cell
+    ctx.emitter.instruction(&format!("b.ne {}", drop_label));                   // return an empty removed-elements array for non-array Mixed payloads
+    ctx.emitter.instruction(&format!("cbz x1, {}", drop_label));                // return an empty removed-elements array for null array payloads
+    ctx.emitter.instruction("mov x0, x1");                                      // pass the unboxed indexed-array payload to the Mixed conversion helper
+    ctx.emitter.instruction("ldr x1, [x0, #-8]");                               // load indexed-array metadata before Mixed-slot conversion
+    ctx.emitter.instruction("lsr x1, x1, #8");                                  // move the runtime value_type tag into the low bits
+    ctx.emitter.instruction("and x1, x1, #0x7f");                               // isolate the indexed-array value_type tag
+    abi::emit_call_label(ctx.emitter, "__rt_array_to_mixed");
+    abi::emit_pop_reg(ctx.emitter, "x10");
+    ctx.emitter.instruction("str x0, [x10, #8]");                               // publish the converted unique array back into the Mixed cell
+    abi::emit_push_reg(ctx.emitter, "x0");
+    ctx.load_value_to_reg(offset, "x1")?;
+    load_array_slice_length(ctx, length, "x2")?;
+    abi::emit_pop_reg(ctx.emitter, "x0");
+    abi::emit_call_label(ctx.emitter, "__rt_array_splice_refcounted");
+    ctx.emitter.instruction(&format!("b {}", done_label));                      // skip the empty-array fallback after splicing the boxed payload
+    ctx.emitter.label(&drop_label);
+    abi::emit_pop_reg(ctx.emitter, "x9");
+    allocate_empty_mixed_array_result(ctx);
+    ctx.emitter.label(&done_label);
+    Ok(())
+}
+
+/// Materializes and mutates a boxed-Mixed indexed array for `array_splice()` on x86_64.
+fn lower_mixed_array_splice_x86_64(
+    ctx: &mut FunctionContext<'_>,
+    array: ValueId,
+    offset: ValueId,
+    length: Option<ValueId>,
+) -> Result<()> {
+    let drop_label = ctx.next_label("mixed_array_splice_empty");
+    let done_label = ctx.next_label("mixed_array_splice_done");
+    ctx.load_value_to_reg(array, "rax")?;
+    abi::emit_push_reg(ctx.emitter, "rax");
+    abi::emit_call_label(ctx.emitter, "__rt_mixed_unbox");
+    ctx.emitter.instruction("cmp rax, 4");                                      // require an indexed-array payload before splicing the Mixed cell
+    ctx.emitter.instruction(&format!("jne {}", drop_label));                    // return an empty removed-elements array for non-array Mixed payloads
+    ctx.emitter.instruction("test rdi, rdi");                                   // verify the unboxed indexed-array payload is present
+    ctx.emitter.instruction(&format!("je {}", drop_label));                     // return an empty removed-elements array for null array payloads
+    ctx.emitter.instruction("mov rsi, QWORD PTR [rdi - 8]");                    // load indexed-array metadata before Mixed-slot conversion
+    ctx.emitter.instruction("shr rsi, 8");                                      // move the runtime value_type tag into the low bits
+    ctx.emitter.instruction("and rsi, 0x7f");                                   // isolate the indexed-array value_type tag
+    abi::emit_call_label(ctx.emitter, "__rt_array_to_mixed");
+    abi::emit_pop_reg(ctx.emitter, "r10");
+    ctx.emitter.instruction("mov QWORD PTR [r10 + 8], rax");                    // publish the converted unique array back into the Mixed cell
+    abi::emit_push_reg(ctx.emitter, "rax");
+    ctx.load_value_to_reg(offset, "rsi")?;
+    load_array_slice_length(ctx, length, "rdx")?;
+    abi::emit_pop_reg(ctx.emitter, "rdi");
+    abi::emit_call_label(ctx.emitter, "__rt_array_splice_refcounted");
+    ctx.emitter.instruction(&format!("jmp {}", done_label));                    // skip the empty-array fallback after splicing the boxed payload
+    ctx.emitter.label(&drop_label);
+    abi::emit_pop_reg(ctx.emitter, "r11");
+    allocate_empty_mixed_array_result(ctx);
+    ctx.emitter.label(&done_label);
+    Ok(())
+}
+
 /// Adapts the removed-elements array returned by `array_splice` to the EIR result type.
 fn normalize_array_splice_result(
     ctx: &mut FunctionContext<'_>,
@@ -3762,6 +3982,26 @@ fn normalize_array_splice_result(
             other
         ))),
     }
+}
+
+/// Allocates an empty boxed-Mixed indexed array for dynamic splice fallback paths.
+fn allocate_empty_mixed_array_result(ctx: &mut FunctionContext<'_>) {
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            abi::emit_load_int_immediate(ctx.emitter, "x0", 0);
+            abi::emit_load_int_immediate(ctx.emitter, "x1", 8);
+        }
+        Arch::X86_64 => {
+            abi::emit_load_int_immediate(ctx.emitter, "rdi", 0);
+            abi::emit_load_int_immediate(ctx.emitter, "rsi", 8);
+        }
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_array_new");
+    crate::codegen::emit_array_value_type_stamp(
+        ctx.emitter,
+        abi::int_result_reg(ctx.emitter),
+        &PhpType::Mixed,
+    );
 }
 
 /// Calls the appropriate legacy runtime helper after materializing chunk arguments.
@@ -4143,6 +4383,7 @@ fn source_load_local_slot(ctx: &FunctionContext<'_>, value: ValueId) -> Result<O
 enum ArraySearchCase {
     Empty,
     Scalar,
+    String,
 }
 
 /// Verifies that an indexed-array `array_search()` call can use the scalar search helper.
@@ -4154,6 +4395,7 @@ fn supported_array_search_case(needle_ty: PhpType, array_ty: PhpType) -> Result<
             PhpType::Int | PhpType::Bool if matches!(needle_ty, PhpType::Int | PhpType::Bool) => {
                 Ok(ArraySearchCase::Scalar)
             }
+            PhpType::Str if needle_ty == PhpType::Str => Ok(ArraySearchCase::String),
             elem_ty => Err(CodegenIrError::unsupported(format!(
                 "array_search needle PHP type {:?} for indexed-array element PHP type {:?}",
                 needle_ty,
@@ -4185,6 +4427,105 @@ fn lower_array_search_scalar(
     }
     abi::emit_call_label(ctx.emitter, "__rt_array_search");
     box_array_search_result(ctx);
+    Ok(())
+}
+
+/// Lowers string indexed-array search and boxes the PHP `int|false` result.
+fn lower_array_search_string(
+    ctx: &mut FunctionContext<'_>,
+    needle: ValueId,
+    array: ValueId,
+) -> Result<()> {
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => lower_array_search_string_aarch64(ctx, needle, array),
+        Arch::X86_64 => lower_array_search_string_x86_64(ctx, needle, array),
+    }
+}
+
+/// Emits the AArch64 string-array search loop.
+fn lower_array_search_string_aarch64(
+    ctx: &mut FunctionContext<'_>,
+    needle: ValueId,
+    array: ValueId,
+) -> Result<()> {
+    let loop_label = ctx.next_label("array_search_str_loop");
+    let found_label = ctx.next_label("array_search_str_found");
+    let miss_label = ctx.next_label("array_search_str_miss");
+    let done_label = ctx.next_label("array_search_str_done");
+
+    ctx.load_value_to_reg(array, "x10")?;
+    ctx.emitter.instruction("ldr x9, [x10]");                                   // load indexed string-array length before scanning payload slots
+    ctx.emitter.instruction("add x10, x10, #24");                               // point at the first indexed string-array payload slot
+    ctx.emitter.instruction("mov x12, #0");                                     // start the string search at index zero
+    ctx.emitter.label(&loop_label);
+    ctx.emitter.instruction("cmp x12, x9");                                     // compare the scan index against indexed-array length
+    ctx.emitter.instruction(&format!("b.ge {}", miss_label));                   // finish with false after all string elements are scanned
+    ctx.emitter.instruction("lsl x13, x12, #4");                                // scale the element index by the 16-byte string slot width
+    ctx.emitter.instruction("ldr x1, [x10, x13]");                              // load the current string element pointer for comparison
+    ctx.emitter.instruction("add x14, x13, #8");                                // compute the current string element length-slot offset
+    ctx.emitter.instruction("ldr x2, [x10, x14]");                              // load the current string element length for comparison
+    abi::emit_push_reg_pair(ctx.emitter, "x9", "x10");
+    abi::emit_push_reg(ctx.emitter, "x12");
+    ctx.load_string_value_to_regs(needle, "x3", "x4")?;
+    abi::emit_call_label(ctx.emitter, "__rt_str_eq");
+    abi::emit_pop_reg(ctx.emitter, "x12");
+    abi::emit_pop_reg_pair(ctx.emitter, "x9", "x10");
+    ctx.emitter.instruction(&format!("cbnz x0, {}", found_label));              // stop as soon as the searched string matches an element
+    ctx.emitter.instruction("add x12, x12, #1");                                // advance to the next indexed string element
+    ctx.emitter.instruction(&format!("b {}", loop_label));                      // continue scanning remaining string payload slots
+    ctx.emitter.label(&found_label);
+    ctx.emitter.instruction("mov x1, x12");                                     // move the found index into the mixed helper payload register
+    ctx.emitter.instruction("mov x2, #0");                                      // integer mixed payloads do not use a high word
+    ctx.emitter.instruction("mov x0, #0");                                      // runtime tag 0 = integer
+    abi::emit_call_label(ctx.emitter, "__rt_mixed_from_value");
+    ctx.emitter.instruction(&format!("b {}", done_label));                      // skip false boxing after producing the found index
+    ctx.emitter.label(&miss_label);
+    box_array_search_miss(ctx);
+    ctx.emitter.label(&done_label);
+    Ok(())
+}
+
+/// Emits the x86_64 string-array search loop.
+fn lower_array_search_string_x86_64(
+    ctx: &mut FunctionContext<'_>,
+    needle: ValueId,
+    array: ValueId,
+) -> Result<()> {
+    let loop_label = ctx.next_label("array_search_str_loop");
+    let found_label = ctx.next_label("array_search_str_found");
+    let miss_label = ctx.next_label("array_search_str_miss");
+    let done_label = ctx.next_label("array_search_str_done");
+
+    ctx.load_value_to_reg(array, "r10")?;
+    ctx.emitter.instruction("mov r11, QWORD PTR [r10]");                        // load indexed string-array length before scanning payload slots
+    ctx.emitter.instruction("lea r12, [r10 + 24]");                             // point at the first indexed string-array payload slot
+    ctx.emitter.instruction("xor r13d, r13d");                                  // start the string search at index zero
+    ctx.emitter.label(&loop_label);
+    ctx.emitter.instruction("cmp r13, r11");                                    // compare the scan index against indexed-array length
+    ctx.emitter.instruction(&format!("jge {}", miss_label));                    // finish with false after all string elements are scanned
+    ctx.emitter.instruction("mov rcx, r13");                                    // copy the scan index before scaling it to a byte offset
+    ctx.emitter.instruction("shl rcx, 4");                                      // scale the element index by the 16-byte string slot width
+    ctx.emitter.instruction("mov rdi, QWORD PTR [r12 + rcx]");                  // load the current string element pointer for comparison
+    ctx.emitter.instruction("mov rsi, QWORD PTR [r12 + rcx + 8]");              // load the current string element length for comparison
+    abi::emit_push_reg_pair(ctx.emitter, "r11", "r12");
+    abi::emit_push_reg(ctx.emitter, "r13");
+    ctx.load_string_value_to_regs(needle, "rdx", "rcx")?;
+    abi::emit_call_label(ctx.emitter, "__rt_str_eq");
+    abi::emit_pop_reg(ctx.emitter, "r13");
+    abi::emit_pop_reg_pair(ctx.emitter, "r11", "r12");
+    ctx.emitter.instruction("test rax, rax");                                   // check whether the current string element matched the needle
+    ctx.emitter.instruction(&format!("jne {}", found_label));                   // stop as soon as the searched string matches an element
+    ctx.emitter.instruction("add r13, 1");                                      // advance to the next indexed string element
+    ctx.emitter.instruction(&format!("jmp {}", loop_label));                    // continue scanning remaining string payload slots
+    ctx.emitter.label(&found_label);
+    ctx.emitter.instruction("mov rdi, r13");                                    // move the found index into the mixed helper payload register
+    ctx.emitter.instruction("xor esi, esi");                                    // integer mixed payloads do not use a high word
+    ctx.emitter.instruction("xor eax, eax");                                    // runtime tag 0 = integer
+    abi::emit_call_label(ctx.emitter, "__rt_mixed_from_value");
+    ctx.emitter.instruction(&format!("jmp {}", done_label));                    // skip false boxing after producing the found index
+    ctx.emitter.label(&miss_label);
+    box_array_search_miss(ctx);
+    ctx.emitter.label(&done_label);
     Ok(())
 }
 

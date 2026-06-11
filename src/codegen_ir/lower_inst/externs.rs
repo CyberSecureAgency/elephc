@@ -185,6 +185,15 @@ fn materialize_extern_arg(
                 return Ok(PhpType::Pointer(None));
             }
         }
+        (PhpType::Int | PhpType::Bool, PhpType::TaggedScalar) => {
+            ctx.load_value_to_result(value)?;
+            crate::codegen::sentinels::emit_tagged_scalar_to_int_null_as_zero(ctx.emitter);
+        }
+        (PhpType::Float, PhpType::TaggedScalar) => {
+            ctx.load_value_to_result(value)?;
+            crate::codegen::sentinels::emit_tagged_scalar_to_int_null_as_zero(ctx.emitter);
+            abi::emit_int_result_to_float_result(ctx.emitter);
+        }
         (PhpType::Float, PhpType::Int | PhpType::Bool) => {
             ctx.load_value_to_result(value)?;
             abi::emit_int_result_to_float_result(ctx.emitter);

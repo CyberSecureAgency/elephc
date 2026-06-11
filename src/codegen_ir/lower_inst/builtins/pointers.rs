@@ -403,6 +403,11 @@ fn materialize_word_value(
             ctx.load_value_to_result(value)?;
             Ok(())
         }
+        PhpType::TaggedScalar => {
+            ctx.load_value_to_result(value)?;
+            crate::codegen::sentinels::emit_tagged_scalar_to_int_null_as_zero(ctx.emitter);
+            Ok(())
+        }
         PhpType::Void | PhpType::Never if matches!(policy, WordValuePolicy::Word) => {
             abi::emit_load_int_immediate(ctx.emitter, abi::int_result_reg(ctx.emitter), 0);
             Ok(())

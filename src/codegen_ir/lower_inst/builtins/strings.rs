@@ -2348,9 +2348,9 @@ fn lower_string_replace_x86_64(
 
 /// Materializes AArch64 `str_pad()` runtime arguments.
 fn lower_str_pad_aarch64(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
-    let input = expect_string_operand(ctx, inst, 0, "str_pad")?;
+    let input = expect_operand(inst, 0)?;
     let target_length = expect_operand(inst, 1)?;
-    ctx.load_string_value_to_regs(input, "x1", "x2")?;
+    load_value_as_string_to_regs(ctx, input, "str_pad", "x1", "x2")?;
     ctx.emitter.instruction("stp x1, x2, [sp, #-16]!");                         // preserve the input string while materializing length and pad arguments
     load_as_int(ctx, target_length, "str_pad length")?;
     abi::emit_push_reg(ctx.emitter, "x0");
@@ -2368,8 +2368,8 @@ fn materialize_str_pad_pad_string_aarch64(
     inst: &Instruction,
 ) -> Result<()> {
     if inst.operands.len() >= 3 {
-        let pad_string = expect_string_operand(ctx, inst, 2, "str_pad")?;
-        ctx.load_string_value_to_regs(pad_string, "x1", "x2")?;
+        let pad_string = expect_operand(inst, 2)?;
+        load_value_as_string_to_regs(ctx, pad_string, "str_pad", "x1", "x2")?;
     } else {
         let (label, len) = ctx.data.add_string(b" ");
         abi::emit_symbol_address(ctx.emitter, "x1", &label);
@@ -2396,9 +2396,9 @@ fn materialize_str_pad_type_aarch64(
 
 /// Materializes x86_64 `str_pad()` runtime arguments.
 fn lower_str_pad_x86_64(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
-    let input = expect_string_operand(ctx, inst, 0, "str_pad")?;
+    let input = expect_operand(inst, 0)?;
     let target_length = expect_operand(inst, 1)?;
-    ctx.load_string_value_to_regs(input, "rax", "rdx")?;
+    load_value_as_string_to_regs(ctx, input, "str_pad", "rax", "rdx")?;
     abi::emit_push_reg_pair(ctx.emitter, "rax", "rdx");
     load_as_int(ctx, target_length, "str_pad length")?;
     abi::emit_push_reg(ctx.emitter, "rax");
@@ -2416,8 +2416,8 @@ fn materialize_str_pad_pad_string_x86_64(
     inst: &Instruction,
 ) -> Result<()> {
     if inst.operands.len() >= 3 {
-        let pad_string = expect_string_operand(ctx, inst, 2, "str_pad")?;
-        ctx.load_string_value_to_regs(pad_string, "rax", "rdx")?;
+        let pad_string = expect_operand(inst, 2)?;
+        load_value_as_string_to_regs(ctx, pad_string, "str_pad", "rax", "rdx")?;
     } else {
         let (label, len) = ctx.data.add_string(b" ");
         abi::emit_symbol_address(ctx.emitter, "rax", &label);
@@ -3067,6 +3067,11 @@ fn load_as_int(ctx: &mut FunctionContext<'_>, value: ValueId, name: &str) -> Res
         }
         PhpType::Str => {
             abi::emit_call_label(ctx.emitter, "__rt_str_to_int");
+            Ok(())
+        }
+        PhpType::Mixed | PhpType::Union(_) => {
+            load_value_to_first_int_arg(ctx, value)?;
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_int");
             Ok(())
         }
         other => Err(CodegenIrError::unsupported(format!(

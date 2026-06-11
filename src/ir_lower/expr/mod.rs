@@ -5412,6 +5412,14 @@ fn array_literal_element_type_for_ir(
             }
             ir_array_storage_type(infer_expr_type_syntactic(item))
         }
+        ExprKind::ArrayAccess { array, .. } => array_access_expr_value_type_for_ir(ctx, array)
+            .unwrap_or_else(|| ir_array_storage_type(infer_expr_type_syntactic(item))),
+        ExprKind::PropertyAccess { object, property } => property_access_expr_type_for_ir(
+            ctx,
+            object,
+            property,
+        )
+        .unwrap_or_else(|| ir_array_storage_type(infer_expr_type_syntactic(item))),
         _ => ir_array_storage_type(infer_expr_type_syntactic(item)),
     }
 }

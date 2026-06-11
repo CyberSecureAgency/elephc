@@ -611,6 +611,14 @@ fn lower_array_push_aarch64(
             ctx.emitter.instruction("mov x0, x9");                              // pass the indexed-array receiver to the append helper
             abi::emit_call_label(ctx.emitter, "__rt_array_push_int");
         }
+        PhpType::TaggedScalar if elem_ty.codegen_repr() == PhpType::Int => {
+            ctx.load_value_to_result(value)?;
+            crate::codegen::sentinels::emit_tagged_scalar_to_int_null_as_zero(ctx.emitter);
+            ctx.emitter.instruction("mov x1, x0");                              // pass the nullable integer payload after PHP null-to-zero coercion
+            ctx.load_value_to_reg(array, "x9")?;
+            ctx.emitter.instruction("mov x0, x9");                              // pass the indexed-array receiver to the append helper
+            abi::emit_call_label(ctx.emitter, "__rt_array_push_int");
+        }
         PhpType::Callable => {
             ctx.load_value_to_reg(value, "x0")?;
             abi::emit_incref_if_refcounted(ctx.emitter, &value_ty);
@@ -665,6 +673,14 @@ fn lower_array_push_x86_64(
         PhpType::Int | PhpType::Bool => {
             ctx.load_value_to_reg(array, "r11")?;
             ctx.load_value_to_reg(value, "rsi")?;
+            ctx.emitter.instruction("mov rdi, r11");                            // pass the indexed-array receiver to the append helper
+            abi::emit_call_label(ctx.emitter, "__rt_array_push_int");
+        }
+        PhpType::TaggedScalar if elem_ty.codegen_repr() == PhpType::Int => {
+            ctx.load_value_to_result(value)?;
+            crate::codegen::sentinels::emit_tagged_scalar_to_int_null_as_zero(ctx.emitter);
+            ctx.emitter.instruction("mov rsi, rax");                            // pass the nullable integer payload after PHP null-to-zero coercion
+            ctx.load_value_to_reg(array, "r11")?;
             ctx.emitter.instruction("mov rdi, r11");                            // pass the indexed-array receiver to the append helper
             abi::emit_call_label(ctx.emitter, "__rt_array_push_int");
         }
@@ -1023,7 +1039,12 @@ fn effective_array_set_value_type(
 fn require_supported_array_set_value(value_ty: PhpType, inst: &Instruction) -> Result<PhpType> {
     if matches!(
         value_ty,
-        PhpType::Int | PhpType::Bool | PhpType::Callable | PhpType::Float | PhpType::Str
+        PhpType::Int
+            | PhpType::Bool
+            | PhpType::Callable
+            | PhpType::Float
+            | PhpType::Str
+            | PhpType::TaggedScalar
     ) {
         return Ok(value_ty);
     }

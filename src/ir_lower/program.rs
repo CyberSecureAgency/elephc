@@ -798,6 +798,7 @@ fn push_builtin_spl_metadata_methods(
 ) {
     let mut current = Some(class_name);
     while let Some(name) = current {
+        push_builtin_spl_interface_metadata_methods(methods, module, name);
         for method_name in required_builtin_spl_metadata_methods(name) {
             let method_key = php_method_key(method_name);
             if is_supported_builtin_spl_method(name, &method_key) {
@@ -808,6 +809,42 @@ fn push_builtin_spl_metadata_methods(
             .class_infos
             .get(name)
             .and_then(|class_info| class_info.parent.as_deref());
+    }
+}
+
+/// Adds builtin SPL methods referenced by runtime interface dispatch tables for one class.
+fn push_builtin_spl_interface_metadata_methods(
+    methods: &mut Vec<(String, String)>,
+    module: &Module,
+    class_name: &str,
+) {
+    let Some(class_info) = module.class_infos.get(class_name) else {
+        return;
+    };
+    let mut seen = HashSet::new();
+    let mut stack = class_info.interfaces.iter().map(String::as_str).collect::<Vec<_>>();
+    while let Some(interface_name) = stack.pop() {
+        if !seen.insert(interface_name.to_string()) {
+            continue;
+        }
+        let Some(interface_info) = module.interface_infos.get(interface_name) else {
+            continue;
+        };
+        for method_key in &interface_info.method_order {
+            if let Some(impl_class) = class_info.method_impl_classes.get(method_key) {
+                if is_supported_builtin_spl_method(impl_class, method_key) {
+                    methods.push((impl_class.clone(), method_key.clone()));
+                    continue;
+                }
+            }
+            push_supported_builtin_spl_method_for_receiver(
+                methods,
+                module,
+                class_name,
+                method_key,
+            );
+        }
+        stack.extend(interface_info.parents.iter().map(String::as_str));
     }
 }
 
@@ -977,6 +1014,11 @@ fn required_builtin_spl_metadata_methods(class_name: &str) -> &'static [&'static
             "hasChildren",
             "getChildren",
         ],
+        "DirectoryIterator" => &["current", "key", "next", "rewind", "valid", "seek"],
+        "FilesystemIterator" => &["current", "key"],
+        "GlobIterator" => &["count"],
+        "RecursiveDirectoryIterator" => &["hasChildren", "getChildren"],
+        "RecursiveCachingIterator" => &["hasChildren", "getChildren"],
         _ => &[],
     }
 }
@@ -1060,6 +1102,32 @@ fn is_supported_builtin_spl_method(class_name: &str, method_key: &str) -> bool {
                 | "ftruncate"
                 | "rewind"
                 | "__elephcspilltofile"
+        ),
+        "DirectoryIterator" => matches!(
+            method_key,
+            "__construct"
+                | "current"
+                | "key"
+                | "next"
+                | "rewind"
+                | "seek"
+                | "valid"
+                | "isdot"
+                | "__tostring"
+                | "__elephcrefreshpath"
+        ),
+        "FilesystemIterator" => matches!(
+            method_key,
+            "__construct" | "current" | "key" | "getflags" | "setflags"
+        ),
+        "GlobIterator" => matches!(method_key, "__construct" | "count" | "setflags"),
+        "RecursiveDirectoryIterator" => matches!(
+            method_key,
+            "__construct" | "haschildren" | "getchildren"
+        ),
+        "RecursiveCachingIterator" => matches!(
+            method_key,
+            "__construct" | "haschildren" | "getchildren" | "__elephcassumerecursiveiterator"
         ),
         "EmptyIterator" => matches!(
             method_key,

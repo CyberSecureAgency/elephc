@@ -123,22 +123,24 @@ pub(super) fn patch_builtin_spl_storage_signatures(checker: &mut Checker) {
             }
         }
     }
-    if let Some(class_info) = checker.classes.get_mut("CachingIterator") {
-        for (name, ty) in &mut class_info.properties {
-            if name == "cache" {
-                *ty = PhpType::AssocArray {
+    for class_name in ["CachingIterator", "RecursiveCachingIterator"] {
+        if let Some(class_info) = checker.classes.get_mut(class_name) {
+            for (name, ty) in &mut class_info.properties {
+                if name == "cache" {
+                    *ty = PhpType::AssocArray {
+                        key: Box::new(PhpType::Mixed),
+                        value: Box::new(PhpType::Mixed),
+                    };
+                } else if name == "currentKey" || name == "currentValue" {
+                    *ty = PhpType::Mixed;
+                }
+            }
+            if let Some(sig) = class_info.methods.get_mut(&php_symbol_key("getCache")) {
+                sig.return_type = PhpType::AssocArray {
                     key: Box::new(PhpType::Mixed),
                     value: Box::new(PhpType::Mixed),
                 };
-            } else if name == "currentKey" || name == "currentValue" {
-                *ty = PhpType::Mixed;
             }
-        }
-        if let Some(sig) = class_info.methods.get_mut(&php_symbol_key("getCache")) {
-            sig.return_type = PhpType::AssocArray {
-                key: Box::new(PhpType::Mixed),
-                value: Box::new(PhpType::Mixed),
-            };
         }
     }
 }

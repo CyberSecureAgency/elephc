@@ -417,6 +417,9 @@ pub(super) fn check_builtin(
             for arg in &args[1..] {
                 checker.infer_type(arg, env)?;
             }
+            if matches!(ty, PhpType::Mixed | PhpType::Union(_)) {
+                return Ok(Some(PhpType::Mixed));
+            }
             if !matches!(ty, PhpType::Array(_) | PhpType::AssocArray { .. }) {
                 return Err(CompileError::new(
                     span,

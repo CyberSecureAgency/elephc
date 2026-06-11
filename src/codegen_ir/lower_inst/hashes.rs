@@ -514,7 +514,7 @@ fn materialize_hash_value_aarch64(
             ctx.emitter.instruction("mov x3, x1");                              // pass the owned string pointer as the hash value low word
             ctx.emitter.instruction("mov x4, x2");                              // pass the owned string length as the hash value high word
         }
-        other if other.is_refcounted() && other == storage_value_ty => {
+        other if hash_refcounted_value_matches_storage(other, storage_value_ty) => {
             ctx.load_value_to_result(value)?;
             retain_hash_refcounted_value_if_borrowed(ctx, value, other)?;
             ctx.emitter.instruction("mov x3, x0");                              // pass the retained pointer-backed payload as the hash value low word
@@ -554,7 +554,7 @@ fn materialize_hash_value_x86_64(
             ctx.emitter.instruction("mov rcx, rax");                            // pass the owned string pointer as the hash value low word
             ctx.emitter.instruction("mov r8, rdx");                             // pass the owned string length as the hash value high word
         }
-        other if other.is_refcounted() && other == storage_value_ty => {
+        other if hash_refcounted_value_matches_storage(other, storage_value_ty) => {
             ctx.load_value_to_result(value)?;
             retain_hash_refcounted_value_if_borrowed(ctx, value, other)?;
             ctx.emitter.instruction("mov rcx, rax");                            // pass the retained pointer-backed payload as the hash value low word
@@ -664,6 +664,20 @@ fn retain_hash_refcounted_value_if_borrowed(
         abi::emit_incref_if_refcounted(ctx.emitter, value_ty);
     }
     Ok(())
+}
+
+/// Returns true when a refcounted hash value has the same runtime storage family as the slot.
+fn hash_refcounted_value_matches_storage(value_ty: &PhpType, storage_value_ty: &PhpType) -> bool {
+    if !value_ty.is_refcounted() {
+        return false;
+    }
+    match (value_ty.codegen_repr(), storage_value_ty.codegen_repr()) {
+        (left, right) if left == right => true,
+        (PhpType::Array(_), PhpType::Array(_)) => true,
+        (PhpType::AssocArray { .. }, PhpType::AssocArray { .. }) => true,
+        (PhpType::Object(_), PhpType::Object(_)) => true,
+        _ => false,
+    }
 }
 
 /// Materializes a hash payload as an owned boxed Mixed value for AArch64 hash storage.
@@ -1126,7 +1140,7 @@ fn require_supported_hash_value(
     {
         return Ok(value_ty);
     }
-    if value_ty.is_refcounted() && value_ty == storage_value_ty.codegen_repr() {
+    if hash_refcounted_value_matches_storage(&value_ty, storage_value_ty) {
         return Ok(value_ty);
     }
     Err(CodegenIrError::unsupported(format!(
