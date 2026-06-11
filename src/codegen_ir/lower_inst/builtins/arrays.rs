@@ -116,8 +116,16 @@ pub(super) fn lower_array_fill(ctx: &mut FunctionContext<'_>, inst: &Instruction
     let count = expect_operand(inst, 1)?;
     let value = expect_operand(inst, 2)?;
     let value_ty = ctx.value_php_type(value)?.codegen_repr();
-    require_array_fill_value_type(&value_ty)?;
-    let result_elem_ty = result_array_element_type("array_fill", &inst.result_php_type.codegen_repr())?;
+    let result_ty = inst.result_php_type.codegen_repr();
+    if array_fill_result_is_assoc(&result_ty) {
+        require_array_fill_assoc_value_type(&value_ty)?;
+        require_array_fill_assoc_result_type(&result_ty)?;
+        lower_array_fill_assoc_call(ctx, start, count, value, &value_ty)?;
+        store_if_result(ctx, inst)?;
+        return Ok(());
+    }
+    require_array_fill_indexed_value_type(&value_ty)?;
+    let result_elem_ty = result_array_element_type("array_fill", &result_ty)?;
     require_array_fill_result_type(&value_ty, &result_elem_ty)?;
     lower_array_fill_call(ctx, start, count, value, &value_ty)?;
     normalize_indexed_array_result(ctx, "array_fill", &value_ty, &result_elem_ty)?;
@@ -3023,8 +3031,8 @@ fn ensure_arg_count_between(inst: &Instruction, name: &str, min: usize, max: usi
     )))
 }
 
-/// Verifies that `array_fill()` can store the value through existing runtime helpers.
-fn require_array_fill_value_type(value_ty: &PhpType) -> Result<()> {
+/// Verifies that the indexed `array_fill()` helper can store the fill value.
+fn require_array_fill_indexed_value_type(value_ty: &PhpType) -> Result<()> {
     if matches!(
         value_ty,
         PhpType::Int
@@ -3039,7 +3047,29 @@ fn require_array_fill_value_type(value_ty: &PhpType) -> Result<()> {
         return Ok(());
     }
     Err(CodegenIrError::unsupported(format!(
-        "array_fill value PHP type {:?}",
+        "array_fill indexed value PHP type {:?}",
+        value_ty
+    )))
+}
+
+/// Verifies that the assoc `array_fill()` helper can box the fill value.
+fn require_array_fill_assoc_value_type(value_ty: &PhpType) -> Result<()> {
+    if matches!(
+        value_ty,
+        PhpType::Int
+            | PhpType::Bool
+            | PhpType::Float
+            | PhpType::Str
+            | PhpType::Void
+            | PhpType::Mixed
+            | PhpType::Array(_)
+            | PhpType::AssocArray { .. }
+            | PhpType::Object(_)
+    ) {
+        return Ok(());
+    }
+    Err(CodegenIrError::unsupported(format!(
+        "array_fill assoc value PHP type {:?}",
         value_ty
     )))
 }
@@ -3209,6 +3239,26 @@ fn require_array_fill_result_type(value_ty: &PhpType, result_elem_ty: &PhpType) 
     )))
 }
 
+/// Returns true when `array_fill()` is expected to build a keyed hash result.
+fn array_fill_result_is_assoc(result_ty: &PhpType) -> bool {
+    matches!(result_ty.codegen_repr(), PhpType::AssocArray { .. })
+}
+
+/// Verifies the assoc `array_fill()` result shape expected by the runtime helper.
+fn require_array_fill_assoc_result_type(result_ty: &PhpType) -> Result<()> {
+    match result_ty.codegen_repr() {
+        PhpType::AssocArray { key, value }
+            if key.codegen_repr() == PhpType::Int && value.codegen_repr() == PhpType::Mixed =>
+        {
+            Ok(())
+        }
+        other => Err(CodegenIrError::unsupported(format!(
+            "array_fill assoc result PHP type {:?}",
+            other
+        ))),
+    }
+}
+
 /// Calls the legacy runtime helper after materializing `array_fill()` arguments.
 fn lower_array_fill_call(
     ctx: &mut FunctionContext<'_>,
@@ -3231,6 +3281,72 @@ fn lower_array_fill_call(
     }
     abi::emit_call_label(ctx.emitter, array_fill_runtime_helper(value_ty));
     Ok(())
+}
+
+/// Calls the keyed `array_fill()` runtime helper after materializing the boxed payload fields.
+fn lower_array_fill_assoc_call(
+    ctx: &mut FunctionContext<'_>,
+    start: ValueId,
+    count: ValueId,
+    value: ValueId,
+    value_ty: &PhpType,
+) -> Result<()> {
+    let value_tag = runtime_value_tag("array_fill", value_ty)? as i64;
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.load_value_to_reg(start, "x0")?;
+            ctx.load_value_to_reg(count, "x1")?;
+            materialize_array_fill_assoc_value_words(ctx, value, value_ty, "x2", "x3")?;
+            abi::emit_load_int_immediate(ctx.emitter, "x4", value_tag);
+        }
+        Arch::X86_64 => {
+            ctx.load_value_to_reg(start, "rdi")?;
+            ctx.load_value_to_reg(count, "rsi")?;
+            materialize_array_fill_assoc_value_words(ctx, value, value_ty, "rdx", "rcx")?;
+            abi::emit_load_int_immediate(ctx.emitter, "r8", value_tag);
+        }
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_array_fill_assoc");
+    Ok(())
+}
+
+/// Materializes a fill payload as the low/high words consumed by `__rt_array_fill_assoc`.
+fn materialize_array_fill_assoc_value_words(
+    ctx: &mut FunctionContext<'_>,
+    value: ValueId,
+    value_ty: &PhpType,
+    lo_reg: &str,
+    hi_reg: &str,
+) -> Result<()> {
+    match value_ty.codegen_repr() {
+        PhpType::Str => ctx.load_string_value_to_regs(value, lo_reg, hi_reg),
+        PhpType::Float => {
+            ctx.load_value_to_result(value)?;
+            match ctx.emitter.target.arch {
+                Arch::AArch64 => {
+                    ctx.emitter.instruction(&format!("fmov {}, d0", lo_reg));   // pass the floating-point fill bits as the assoc-fill value low word
+                    ctx.emitter.instruction(&format!("mov {}, #0", hi_reg));    // clear the unused assoc-fill value high word
+                }
+                Arch::X86_64 => {
+                    ctx.emitter.instruction(&format!("movq {}, xmm0", lo_reg)); // pass the floating-point fill bits as the assoc-fill value low word
+                    ctx.emitter.instruction(&format!("xor {}, {}", hi_reg, hi_reg)); // clear the unused assoc-fill value high word
+                }
+            }
+            Ok(())
+        }
+        _ => {
+            ctx.load_value_to_reg(value, lo_reg)?;
+            match ctx.emitter.target.arch {
+                Arch::AArch64 => {
+                    ctx.emitter.instruction(&format!("mov {}, #0", hi_reg));    // clear the unused assoc-fill value high word
+                }
+                Arch::X86_64 => {
+                    ctx.emitter.instruction(&format!("xor {}, {}", hi_reg, hi_reg)); // clear the unused assoc-fill value high word
+                }
+            }
+            Ok(())
+        }
+    }
 }
 
 /// Calls the legacy runtime helper after materializing `array_fill_keys()` arguments.

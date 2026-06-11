@@ -35,7 +35,8 @@ use super::{
 };
 use crate::codegen_ir::fibers;
 use crate::codegen_ir::literal_defaults::{
-    emit_array_literal_default_to_result, emit_boxed_null_literal_to_result,
+    emit_array_literal_default_to_result, emit_assoc_array_literal_default_to_result,
+    emit_boxed_null_literal_to_result,
     emit_boxed_string_literal_default_to_result, emit_empty_assoc_array_literal_to_result,
     emit_string_literal_default_to_result, emit_tagged_null_literal_to_result,
     literal_default_value, LiteralDefaultValue,
@@ -1960,6 +1961,17 @@ fn emit_property_default(
         } => {
             abi::emit_push_reg(ctx.emitter, object_reg);
             emit_array_literal_default_to_result(ctx, elem_type, elements)?;
+            abi::emit_pop_reg(ctx.emitter, object_reg);
+            let int_reg = abi::int_result_reg(ctx.emitter);
+            abi::emit_store_to_address(ctx.emitter, int_reg, object_reg, default.offset);
+            abi::emit_store_zero_to_address(ctx.emitter, object_reg, default.offset + 8);
+        }
+        LiteralDefaultValue::AssocArray {
+            value_type,
+            elements,
+        } => {
+            abi::emit_push_reg(ctx.emitter, object_reg);
+            emit_assoc_array_literal_default_to_result(ctx, value_type, elements)?;
             abi::emit_pop_reg(ctx.emitter, object_reg);
             let int_reg = abi::int_result_reg(ctx.emitter);
             abi::emit_store_to_address(ctx.emitter, int_reg, object_reg, default.offset);

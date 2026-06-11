@@ -541,21 +541,23 @@ fn lower_array_assign(
 ) {
     let array_value = ctx.load_local(array, Some(span));
     let mut index_value = lower_expr(ctx, index);
-    let value = lower_expr(ctx, value);
+    let mut value_value = lower_expr(ctx, value);
     let op = array_set_op(array_value.ir_type);
     if op == Op::ArraySet && index_value.ir_type == IrType::Str {
-        lower_string_key_array_promotion(ctx, array, array_value, index_value, value, span);
+        lower_string_key_array_promotion(ctx, array, array_value, index_value, value_value, span);
         return;
     }
     if op == Op::ArraySet {
         index_value = coerce_to_int_at_span(ctx, index_value, Some(index.span));
+        let array_ty = ctx.builder.value_php_type(array_value.value);
+        value_value = coerce_indexed_array_set_value(ctx, &array_ty, value_value, Some(value.span));
     }
     if op == Op::ArraySet {
         let (array_value, updated_ty, needs_storeback) =
-            prepare_indexed_array_local_set(ctx, array_value, value, span);
+            prepare_indexed_array_local_set(ctx, array_value, value_value, span);
         ctx.emit_void(
             op,
-            vec![array_value.value, index_value.value, value.value],
+            vec![array_value.value, index_value.value, value_value.value],
             None,
             op.default_effects(),
             Some(span),
@@ -563,7 +565,7 @@ fn lower_array_assign(
         finish_indexed_array_local_write(ctx, array, array_value, updated_ty, needs_storeback, span);
         return;
     }
-    ctx.emit_void(op, vec![array_value.value, index_value.value, value.value], None, op.default_effects(), Some(span));
+    ctx.emit_void(op, vec![array_value.value, index_value.value, value_value.value], None, op.default_effects(), Some(span));
 }
 
 /// Promotes an indexed local array to a Mixed-valued associative array for string-key writes.
@@ -678,6 +680,24 @@ fn prepare_indexed_array_local_set(
         return (converted, Some(updated_ty), true);
     }
     prepare_indexed_array_local_write(ctx, array_value, value, span)
+}
+
+/// Coerces miss-capable scalar reads before writing them into a concrete indexed-array slot.
+fn coerce_indexed_array_set_value(
+    ctx: &mut LoweringContext<'_, '_>,
+    array_ty: &PhpType,
+    value: LoweredValue,
+    span: Option<Span>,
+) -> LoweredValue {
+    if value.ir_type != IrType::TaggedScalar {
+        return value;
+    }
+    match array_ty.codegen_repr() {
+        PhpType::Array(elem_ty) if elem_ty.codegen_repr() == PhpType::Int => {
+            coerce_to_int(ctx, value, span)
+        }
+        _ => value,
+    }
 }
 
 /// Returns true when a refcounted indexed-array assignment should use Mixed slots.
@@ -1929,9 +1949,11 @@ fn lower_static_property_array_assign(
     if let Some(property_ty) =
         static_property_type(ctx, receiver, property).filter(is_indexed_array_type)
     {
+        let array_ty = property_ty.clone();
         let property_value = load_static_property_as(ctx, receiver, property, property_ty, span);
         let index = lower_expr(ctx, index);
         let value = lower_expr(ctx, value);
+        let value = coerce_indexed_array_set_value(ctx, &array_ty, value, Some(span));
         ctx.emit_void(
             Op::ArraySet,
             vec![property_value.value, index.value, value.value],
@@ -2042,6 +2064,7 @@ fn lower_property_array_assign(
             crate::ir_lower::ownership::acquire_if_refcounted(ctx, property_value, Some(span));
         let index = lower_expr(ctx, index);
         let value = lower_expr(ctx, value);
+        let value = coerce_indexed_array_set_value(ctx, &property_ty, value, Some(span));
         ctx.emit_void(
             Op::ArraySet,
             vec![property_value.value, index.value, value.value],

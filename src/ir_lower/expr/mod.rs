@@ -4681,10 +4681,32 @@ fn call_return_type_for_args(
     operands: &[crate::ir::ValueId],
 ) -> Option<PhpType> {
     match php_symbol_key(name.trim_start_matches('\\')).as_str() {
+        "array_fill" => array_fill_builtin_return_type_for_args(ctx, args, operands),
         "array_map" => array_map_builtin_return_type(ctx, args, operands),
         "iterator_to_array" => iterator_to_array_builtin_return_type(ctx, args, operands),
         _ => None,
     }
+}
+
+/// Returns `array_fill()` metadata when the literal start expression is still available.
+fn array_fill_builtin_return_type_for_args(
+    ctx: &LoweringContext<'_, '_>,
+    args: &[Expr],
+    operands: &[crate::ir::ValueId],
+) -> Option<PhpType> {
+    if args.len() != 3 {
+        return None;
+    }
+    let value = operands.get(2)?;
+    let value_ty = ctx.builder.value_php_type(*value).codegen_repr();
+    let start_is_literal_zero = matches!(args[0].kind, ExprKind::IntLiteral(0));
+    if !start_is_literal_zero || matches!(value_ty, PhpType::Str) {
+        return Some(PhpType::AssocArray {
+            key: Box::new(PhpType::Int),
+            value: Box::new(PhpType::Mixed),
+        });
+    }
+    Some(PhpType::Array(Box::new(value_ty)))
 }
 
 /// Returns the EIR result metadata for `array_map()` when a callable param signature is known.
