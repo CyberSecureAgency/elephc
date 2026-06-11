@@ -90,6 +90,7 @@ pub(crate) struct LoweringContext<'m, 'f> {
     initialized_slots: HashSet<LocalSlotId>,
     pub functions: &'m HashMap<String, FunctionSig>,
     pub extern_functions: &'m HashMap<String, ExternFunctionSig>,
+    pub extern_globals: &'m HashMap<String, PhpType>,
     pub callable_param_sigs: &'m HashMap<(String, String), FunctionSig>,
     pub(crate) fiber_return_sigs: &'m HashMap<String, FunctionSig>,
     pub classes: &'m HashMap<String, ClassInfo>,
@@ -124,6 +125,7 @@ impl<'m, 'f> LoweringContext<'m, 'f> {
         env: TypeEnv,
         functions: &'m HashMap<String, FunctionSig>,
         extern_functions: &'m HashMap<String, ExternFunctionSig>,
+        extern_globals: &'m HashMap<String, PhpType>,
         callable_param_sigs: &'m HashMap<(String, String), FunctionSig>,
         fiber_return_sigs: &'m HashMap<String, FunctionSig>,
         classes: &'m HashMap<String, ClassInfo>,
@@ -148,6 +150,7 @@ impl<'m, 'f> LoweringContext<'m, 'f> {
             initialized_slots: HashSet::new(),
             functions,
             extern_functions,
+            extern_globals,
             callable_param_sigs,
             fiber_return_sigs,
             classes,
@@ -438,6 +441,9 @@ impl<'m, 'f> LoweringContext<'m, 'f> {
 
     /// Emits a load from a PHP local slot.
     pub(crate) fn load_local(&mut self, name: &str, span: Option<Span>) -> LoweredValue {
+        if let Some(php_type) = self.extern_global_type(name) {
+            return self.load_extern_global(name, php_type, span);
+        }
         let php_type = self.local_type(name);
         let slot = self.declare_local(name, php_type.clone());
         let ir_type = value_ir_type(&php_type);
@@ -476,6 +482,15 @@ impl<'m, 'f> LoweringContext<'m, 'f> {
     pub(crate) fn store_local(&mut self, name: &str, value: LoweredValue, php_type: PhpType, span: Option<Span>) -> LoweredValue {
         self.clear_static_callable_local(name);
         self.clear_fiber_start_sig(name);
+        if let Some(extern_type) = self.extern_global_type(name) {
+            let release_source_after_store = self.value_is_owning_temporary(value);
+            self.store_extern_global_name(name, value, span);
+            self.set_local_type(name, extern_type);
+            if release_source_after_store {
+                crate::ir_lower::ownership::release_if_owned(self, value, span);
+            }
+            return value;
+        }
         let previous_slot = self.local_slots.get(name).copied();
         let previous_type = self.local_type(name);
         let previous_kind = self.local_kinds.get(name).copied().unwrap_or(LocalKind::PhpLocal);
@@ -539,6 +554,57 @@ impl<'m, 'f> LoweringContext<'m, 'f> {
             crate::ir_lower::ownership::release_if_owned(self, source, span);
         }
         value
+    }
+
+    /// Returns the declared PHP type for an extern global visible as a variable.
+    fn extern_global_type(&self, name: &str) -> Option<PhpType> {
+        self.extern_globals.get(name).cloned()
+    }
+
+    /// Emits a read from a C extern global symbol instead of a PHP local slot.
+    fn load_extern_global(
+        &mut self,
+        name: &str,
+        php_type: PhpType,
+        span: Option<Span>,
+    ) -> LoweredValue {
+        let data = self.intern_global_name(name);
+        let ir_type = value_ir_type(&php_type);
+        let ownership = Ownership::for_php_type(&php_type);
+        let value = self
+            .builder
+            .emit_with_effects(
+                Op::ExternGlobalLoad,
+                Vec::new(),
+                Some(Immediate::GlobalName(data)),
+                ir_type,
+                php_type,
+                ownership,
+                Op::ExternGlobalLoad.default_effects(),
+                span,
+            )
+            .expect("extern_global_load produces a value");
+        LoweredValue { value, ir_type }
+    }
+
+    /// Emits a write to a C extern global symbol using the already-lowered source value.
+    fn store_extern_global_name(
+        &mut self,
+        name: &str,
+        value: LoweredValue,
+        span: Option<Span>,
+    ) {
+        let data = self.intern_global_name(name);
+        self.builder.emit_with_effects(
+            Op::ExternGlobalStore,
+            vec![value.value],
+            Some(Immediate::GlobalName(data)),
+            IrType::Void,
+            PhpType::Void,
+            Ownership::NonHeap,
+            Op::ExternGlobalStore.default_effects(),
+            span,
+        );
     }
 
     /// Emits a local storeback for in-place mutations without assignment acquire/release.

@@ -20,6 +20,47 @@ use super::{expect_operand, load_value_to_first_int_arg, store_if_result};
 
 const X86_64_HEAP_MAGIC_HI32: u64 = 0x454C5048;
 
+/// Stack cleanup slots for split builtin string coercions that allocate owned temporaries.
+struct SplitStringTempCleanups {
+    delimiter_offset: Option<usize>,
+    subject_offset: Option<usize>,
+    bytes: usize,
+}
+
+impl SplitStringTempCleanups {
+    /// Builds a cleanup layout with one 16-byte stack slot for each owned string temporary.
+    fn new(delimiter_needs_cleanup: bool, subject_needs_cleanup: bool) -> Self {
+        let mut bytes = 0usize;
+        let delimiter_offset = delimiter_needs_cleanup.then(|| {
+            let offset = bytes;
+            bytes += 16;
+            offset
+        });
+        let subject_offset = subject_needs_cleanup.then(|| {
+            let offset = bytes;
+            bytes += 16;
+            offset
+        });
+        Self {
+            delimiter_offset,
+            subject_offset,
+            bytes,
+        }
+    }
+
+    /// Returns true when no split string coercion produced an owned temporary.
+    fn is_empty(&self) -> bool {
+        self.bytes == 0
+    }
+
+    /// Returns the stack offsets for all saved owned string temporaries.
+    fn offsets(&self) -> impl Iterator<Item = usize> + '_ {
+        [self.delimiter_offset, self.subject_offset]
+            .into_iter()
+            .flatten()
+    }
+}
+
 /// Runtime payload category consumed by one printf-family conversion specifier.
 #[derive(Clone, Copy)]
 pub(super) enum SprintfSpecCat {
@@ -108,8 +149,13 @@ pub(super) fn lower_binary_string_runtime(
 
 /// Lowers `explode(delimiter, string)` into the shared string-array splitter helper.
 pub(super) fn lower_explode(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
-    load_split_pair_args(ctx, inst, "explode")?;
+    let cleanups = plan_split_string_temp_cleanups(ctx, inst)?;
+    if !cleanups.is_empty() {
+        abi::emit_reserve_temporary_stack(ctx.emitter, cleanups.bytes);
+    }
+    load_split_pair_args(ctx, inst, "explode", &cleanups)?;
     abi::emit_call_label(ctx.emitter, "__rt_explode");
+    emit_split_string_temp_cleanups(ctx, &cleanups);
     store_if_result(ctx, inst)
 }
 
@@ -1631,7 +1677,12 @@ fn lower_hash_hmac_x86_64(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> 
 }
 
 /// Materializes delimiter/payload string pairs for split-style array helpers.
-fn load_split_pair_args(ctx: &mut FunctionContext<'_>, inst: &Instruction, name: &str) -> Result<()> {
+fn load_split_pair_args(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+    name: &str,
+    cleanups: &SplitStringTempCleanups,
+) -> Result<()> {
     if inst.operands.len() != 2 {
         return Err(CodegenIrError::invalid_module(format!(
             "{} expected 2 args, got {}",
@@ -1640,8 +1691,8 @@ fn load_split_pair_args(ctx: &mut FunctionContext<'_>, inst: &Instruction, name:
         )));
     }
     match ctx.emitter.target.arch {
-        Arch::AArch64 => load_split_pair_args_aarch64(ctx, inst, name),
-        Arch::X86_64 => load_split_pair_args_x86_64(ctx, inst, name),
+        Arch::AArch64 => load_split_pair_args_aarch64(ctx, inst, name, cleanups),
+        Arch::X86_64 => load_split_pair_args_x86_64(ctx, inst, name, cleanups),
     }
 }
 
@@ -1650,13 +1701,20 @@ fn load_split_pair_args_aarch64(
     ctx: &mut FunctionContext<'_>,
     inst: &Instruction,
     name: &str,
+    cleanups: &SplitStringTempCleanups,
 ) -> Result<()> {
     load_string_arg_to_regs(ctx, inst, 0, name, "x1", "x2")?;
+    if let Some(offset) = cleanups.delimiter_offset {
+        save_split_string_temp(ctx, offset, "x1", "x2");
+    }
     ctx.emitter.instruction("stp x1, x2, [sp, #-16]!");                         // preserve the delimiter string while materializing the subject string
     load_string_arg_to_regs(ctx, inst, 1, name, "x1", "x2")?;
     ctx.emitter.instruction("mov x3, x1");                                      // pass the subject string pointer as the secondary split argument
     ctx.emitter.instruction("mov x4, x2");                                      // pass the subject string length as the secondary split argument
     ctx.emitter.instruction("ldp x1, x2, [sp], #16");                           // restore the delimiter string into primary split argument registers
+    if let Some(offset) = cleanups.subject_offset {
+        save_split_string_temp(ctx, offset, "x3", "x4");
+    }
     Ok(())
 }
 
@@ -1665,14 +1723,86 @@ fn load_split_pair_args_x86_64(
     ctx: &mut FunctionContext<'_>,
     inst: &Instruction,
     name: &str,
+    cleanups: &SplitStringTempCleanups,
 ) -> Result<()> {
     load_string_arg_to_regs(ctx, inst, 0, name, "rax", "rdx")?;
+    if let Some(offset) = cleanups.delimiter_offset {
+        save_split_string_temp(ctx, offset, "rax", "rdx");
+    }
     abi::emit_push_reg_pair(ctx.emitter, "rax", "rdx");
     load_string_arg_to_regs(ctx, inst, 1, name, "rax", "rdx")?;
     ctx.emitter.instruction("mov rdi, rax");                                    // pass the subject string pointer as the secondary split argument
     ctx.emitter.instruction("mov rsi, rdx");                                    // pass the subject string length as the secondary split argument
     abi::emit_pop_reg_pair(ctx.emitter, "rax", "rdx");
+    if let Some(offset) = cleanups.subject_offset {
+        save_split_string_temp(ctx, offset, "rdi", "rsi");
+    }
     Ok(())
+}
+
+/// Plans which split builtin operands produce owned temporary strings during coercion.
+fn plan_split_string_temp_cleanups(
+    ctx: &FunctionContext<'_>,
+    inst: &Instruction,
+) -> Result<SplitStringTempCleanups> {
+    let delimiter = expect_operand(inst, 0)?;
+    let subject = expect_operand(inst, 1)?;
+    Ok(SplitStringTempCleanups::new(
+        value_string_coercion_needs_temp_cleanup(ctx, delimiter)?,
+        value_string_coercion_needs_temp_cleanup(ctx, subject)?,
+    ))
+}
+
+/// Returns true when string coercion for `value` returns a caller-owned heap string.
+fn value_string_coercion_needs_temp_cleanup(
+    ctx: &FunctionContext<'_>,
+    value: ValueId,
+) -> Result<bool> {
+    Ok(matches!(
+        ctx.value_php_type(value)?.codegen_repr(),
+        PhpType::Int
+            | PhpType::Float
+            | PhpType::Bool
+            | PhpType::TaggedScalar
+            | PhpType::Mixed
+            | PhpType::Union(_)
+            | PhpType::Resource(_)
+    ))
+}
+
+/// Saves a string pointer/length pair into the split builtin cleanup area.
+fn save_split_string_temp(
+    ctx: &mut FunctionContext<'_>,
+    offset: usize,
+    ptr_reg: &str,
+    len_reg: &str,
+) {
+    let scratch = abi::symbol_scratch_reg(ctx.emitter);
+    abi::emit_temporary_stack_address(ctx.emitter, scratch, offset);
+    abi::emit_store_to_address(ctx.emitter, ptr_reg, scratch, 0);
+    abi::emit_store_to_address(ctx.emitter, len_reg, scratch, 8);
+}
+
+/// Releases owned split string temporaries while preserving the runtime result.
+fn emit_split_string_temp_cleanups(
+    ctx: &mut FunctionContext<'_>,
+    cleanups: &SplitStringTempCleanups,
+) {
+    if cleanups.is_empty() {
+        return;
+    }
+    for offset in cleanups.offsets() {
+        let shifted_offset = offset + 16;
+        abi::emit_push_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));
+        abi::emit_load_temporary_stack_slot(
+            ctx.emitter,
+            abi::int_result_reg(ctx.emitter),
+            shifted_offset,
+        );
+        abi::emit_call_label(ctx.emitter, "__rt_heap_free_safe");
+        abi::emit_pop_reg(ctx.emitter, abi::int_result_reg(ctx.emitter));
+    }
+    abi::emit_release_temporary_stack(ctx.emitter, cleanups.bytes);
 }
 
 /// Materializes a builtin argument as a PHP string in caller-selected registers.

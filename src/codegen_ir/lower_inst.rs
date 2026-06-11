@@ -83,6 +83,8 @@ pub(super) fn lower_instruction(ctx: &mut FunctionContext<'_>, inst_id: InstId) 
         Op::ReleaseLocalRefCell => lower_release_local_ref_cell(ctx, &inst),
         Op::LoadGlobal => lower_load_global(ctx, &inst),
         Op::StoreGlobal => lower_store_global(ctx, &inst),
+        Op::ExternGlobalLoad => lower_extern_global_load(ctx, &inst),
+        Op::ExternGlobalStore => lower_extern_global_store(ctx, &inst),
         Op::IAdd => arithmetic::lower_int_binop(ctx, &inst, "add", "add"),
         Op::ISub => arithmetic::lower_int_binop(ctx, &inst, "sub", "sub"),
         Op::IMul => arithmetic::lower_int_binop(ctx, &inst, "mul", "imul"),
@@ -5646,6 +5648,107 @@ fn lower_store_global(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Resu
     let ty = ctx.load_value_to_result(value)?;
     ctx.data.add_comm(symbol.clone(), ty.codegen_repr().stack_size().max(8));
     abi::emit_store_result_to_symbol(ctx.emitter, &symbol, &ty, false);
+    Ok(())
+}
+
+/// Lowers a C extern global load into the EIR result slot.
+fn lower_extern_global_load(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    let data = expect_global_name(inst)?;
+    let name = ctx.global_name_data(data)?;
+    let result = inst.result.ok_or_else(|| {
+        CodegenIrError::invalid_module("extern_global_load missing result value")
+    })?;
+    let ty = ctx.value_php_type(result)?;
+    let symbol = ctx.emitter.target.extern_symbol(name);
+    match ty.codegen_repr() {
+        PhpType::Bool
+        | PhpType::Int
+        | PhpType::Resource(_)
+        | PhpType::Pointer(_)
+        | PhpType::Buffer(_)
+        | PhpType::Packed(_)
+        | PhpType::Callable => {
+            abi::emit_load_extern_symbol_to_reg(
+                ctx.emitter,
+                abi::int_result_reg(ctx.emitter),
+                &symbol,
+                0,
+            );
+        }
+        PhpType::Float => {
+            abi::emit_load_extern_symbol_to_reg(
+                ctx.emitter,
+                abi::float_result_reg(ctx.emitter),
+                &symbol,
+                0,
+            );
+        }
+        PhpType::Str => {
+            abi::emit_load_extern_symbol_to_reg(
+                ctx.emitter,
+                abi::int_result_reg(ctx.emitter),
+                &symbol,
+                0,
+            );
+            abi::emit_call_label(ctx.emitter, "__rt_cstr_to_str");
+        }
+        other => {
+            ctx.emitter.comment(&format!(
+                "WARNING: unsupported extern global load for ${} with PHP type {:?}",
+                name, other
+            ));
+            abi::emit_load_int_immediate(ctx.emitter, abi::int_result_reg(ctx.emitter), 0);
+        }
+    }
+    store_if_result(ctx, inst)
+}
+
+/// Lowers a C extern global store from one SSA operand.
+fn lower_extern_global_store(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    let data = expect_global_name(inst)?;
+    let name = ctx.global_name_data(data)?.to_string();
+    let value = expect_operand(inst, 0)?;
+    let ty = ctx.load_value_to_result(value)?.codegen_repr();
+    let symbol = ctx.emitter.target.extern_symbol(&name);
+    match ty {
+        PhpType::Bool
+        | PhpType::Int
+        | PhpType::Resource(_)
+        | PhpType::Pointer(_)
+        | PhpType::Buffer(_)
+        | PhpType::Packed(_)
+        | PhpType::Callable => {
+            abi::emit_store_reg_to_extern_symbol(
+                ctx.emitter,
+                abi::int_result_reg(ctx.emitter),
+                &symbol,
+                0,
+            );
+        }
+        PhpType::Float => {
+            abi::emit_store_reg_to_extern_symbol(
+                ctx.emitter,
+                abi::float_result_reg(ctx.emitter),
+                &symbol,
+                0,
+            );
+        }
+        PhpType::Str => {
+            abi::emit_call_label(ctx.emitter, "__rt_str_to_cstr");
+            abi::emit_store_reg_to_extern_symbol(
+                ctx.emitter,
+                abi::int_result_reg(ctx.emitter),
+                &symbol,
+                0,
+            );
+        }
+        other => {
+            ctx.emitter.comment(&format!(
+                "WARNING: unsupported extern global store for ${} with PHP type {:?}",
+                name, other
+            ));
+        }
+    }
     Ok(())
 }
 
