@@ -2319,6 +2319,13 @@ fn lower_wordwrap_aarch64(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> 
     ctx.emitter.instruction("stp x1, x2, [sp, #-16]!");                         // preserve the input string while materializing width and break arguments
     materialize_wordwrap_width_aarch64(ctx, inst)?;
     materialize_wordwrap_break_aarch64(ctx, inst)?;
+    if inst.operands.len() >= 4 {
+        let cut = expect_operand(inst, 3)?;
+        load_as_int(ctx, cut, "wordwrap cut")?;
+        ctx.emitter.instruction("mov x6, x0");                                  // pass the requested cut_long_words flag to the runtime helper
+    } else {
+        ctx.emitter.instruction("mov x6, #0");                                  // default cut_long_words to false when omitted
+    }
     ctx.emitter.instruction("ldp x1, x2, [sp], #16");                           // restore the input string into primary runtime argument registers
     Ok(())
 }
@@ -2363,6 +2370,13 @@ fn lower_wordwrap_x86_64(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> R
     abi::emit_push_reg_pair(ctx.emitter, "rax", "rdx");
     materialize_wordwrap_width_x86_64(ctx, inst)?;
     materialize_wordwrap_break_x86_64(ctx, inst)?;
+    if inst.operands.len() >= 4 {
+        let cut = expect_operand(inst, 3)?;
+        load_as_int(ctx, cut, "wordwrap cut")?;
+        ctx.emitter.instruction("mov r9, rax");                                 // pass the requested cut_long_words flag to the runtime helper
+    } else {
+        ctx.emitter.instruction("mov r9, 0");                                   // default cut_long_words to false when omitted
+    }
     abi::emit_pop_reg_pair(ctx.emitter, "rax", "rdx");
     Ok(())
 }
@@ -2915,6 +2929,10 @@ fn load_as_int(ctx: &mut FunctionContext<'_>, value: ValueId, name: &str) -> Res
         }
         PhpType::Float => {
             abi::emit_float_result_to_int_result(ctx.emitter);
+            Ok(())
+        }
+        PhpType::TaggedScalar => {
+            crate::codegen::sentinels::emit_tagged_scalar_to_int_null_as_zero(ctx.emitter);
             Ok(())
         }
         PhpType::Str => {

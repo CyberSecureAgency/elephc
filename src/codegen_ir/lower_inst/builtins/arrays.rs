@@ -1014,22 +1014,22 @@ pub(super) fn lower_array_unshift(ctx: &mut FunctionContext<'_>, inst: &Instruct
 
 /// Lowers `sort()` for indexed integer arrays by mutating the source array in place.
 pub(super) fn lower_sort(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
-    lower_indexed_array_sort(ctx, inst, "sort", "__rt_sort_int")
+    lower_indexed_array_sort(ctx, inst, "sort", "__rt_sort_int", Some("__rt_sort_str"))
 }
 
 /// Lowers `rsort()` for indexed integer arrays by mutating the source array in place.
 pub(super) fn lower_rsort(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
-    lower_indexed_array_sort(ctx, inst, "rsort", "__rt_rsort_int")
+    lower_indexed_array_sort(ctx, inst, "rsort", "__rt_rsort_int", Some("__rt_rsort_str"))
 }
 
 /// Lowers `asort()` for indexed integer arrays through the value-sort runtime wrapper.
 pub(super) fn lower_asort(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
-    lower_indexed_array_sort(ctx, inst, "asort", "__rt_asort")
+    lower_indexed_array_sort(ctx, inst, "asort", "__rt_asort", None)
 }
 
 /// Lowers `arsort()` for indexed integer arrays through the descending value-sort wrapper.
 pub(super) fn lower_arsort(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
-    lower_indexed_array_sort(ctx, inst, "arsort", "__rt_arsort")
+    lower_indexed_array_sort(ctx, inst, "arsort", "__rt_arsort", None)
 }
 
 /// Lowers `ksort()` through the legacy key-sort helper surface.
@@ -1044,17 +1044,17 @@ pub(super) fn lower_krsort(ctx: &mut FunctionContext<'_>, inst: &Instruction) ->
 
 /// Lowers `natsort()` for indexed integer arrays through the natural-sort runtime wrapper.
 pub(super) fn lower_natsort(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
-    lower_indexed_array_sort(ctx, inst, "natsort", "__rt_natsort")
+    lower_indexed_array_sort(ctx, inst, "natsort", "__rt_natsort", None)
 }
 
 /// Lowers `natcasesort()` for indexed integer arrays through the case-insensitive wrapper.
 pub(super) fn lower_natcasesort(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
-    lower_indexed_array_sort(ctx, inst, "natcasesort", "__rt_natcasesort")
+    lower_indexed_array_sort(ctx, inst, "natcasesort", "__rt_natcasesort", None)
 }
 
 /// Lowers `shuffle()` for indexed integer arrays by mutating the source array in place.
 pub(super) fn lower_shuffle(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
-    lower_indexed_array_sort(ctx, inst, "shuffle", "__rt_shuffle")
+    lower_indexed_array_sort(ctx, inst, "shuffle", "__rt_shuffle", None)
 }
 
 /// Lowers `usort()` for indexed integer arrays with a static user comparator.
@@ -1205,11 +1205,12 @@ fn lower_indexed_array_sort(
     ctx: &mut FunctionContext<'_>,
     inst: &Instruction,
     name: &str,
-    helper: &str,
+    int_helper: &str,
+    str_helper: Option<&str>,
 ) -> Result<()> {
     super::ensure_arg_count(inst, name, 1)?;
     let array = expect_operand(inst, 0)?;
-    require_indexed_int_sort_array(ctx.value_php_type(array)?, name)?;
+    let elem_ty = indexed_sort_element_type(ctx.value_php_type(array)?, name, str_helper.is_some())?;
     let source_local = source_load_local_slot(ctx, array)?;
     ensure_unique_sort_source(ctx, array)?;
     if let Some(slot) = source_local {
@@ -1223,6 +1224,11 @@ fn lower_indexed_array_sort(
             ctx.load_value_to_reg(array, "rdi")?;
         }
     }
+    let helper = if elem_ty == PhpType::Str {
+        str_helper.expect("string sort helper is required after validation")
+    } else {
+        int_helper
+    };
     abi::emit_call_label(ctx.emitter, helper);
     abi::emit_load_int_immediate(
         ctx.emitter,
@@ -1241,7 +1247,7 @@ fn lower_user_sort_static_callback(
     super::ensure_arg_count(inst, name, 2)?;
     let array = expect_operand(inst, 0)?;
     let callback = expect_operand(inst, 1)?;
-    require_indexed_int_sort_array(ctx.value_php_type(array)?, name)?;
+    indexed_sort_element_type(ctx.value_php_type(array)?, name, false)?;
     let source_local = source_load_local_slot(ctx, array)?;
     ensure_unique_sort_source(ctx, array)?;
     if let Some(slot) = source_local {
@@ -1367,22 +1373,26 @@ fn lower_array_key_sort(
     store_if_result(ctx, inst)
 }
 
-/// Verifies the sort runtime helper can compare the indexed-array payload slots safely.
-fn require_indexed_int_sort_array(ty: PhpType, name: &str) -> Result<()> {
+/// Returns the indexed-array element type accepted by the selected sort helper.
+fn indexed_sort_element_type(
+    ty: PhpType,
+    name: &str,
+    allow_strings: bool,
+) -> Result<PhpType> {
     match ty.codegen_repr() {
-        PhpType::Array(elem)
-            if matches!(
-                elem.codegen_repr(),
-                PhpType::Int | PhpType::Void | PhpType::Never
-            ) =>
-        {
-            Ok(())
+        PhpType::Array(elem) => {
+            let elem = elem.codegen_repr();
+            if matches!(elem, PhpType::Int | PhpType::Void | PhpType::Never)
+                || (allow_strings && elem == PhpType::Str)
+            {
+                return Ok(elem);
+            }
+            Err(CodegenIrError::unsupported(format!(
+                "{} indexed-array element PHP type {:?}",
+                name,
+                elem
+            )))
         }
-        PhpType::Array(elem) => Err(CodegenIrError::unsupported(format!(
-            "{} indexed-array element PHP type {:?}",
-            name,
-            elem.codegen_repr()
-        ))),
         other => Err(CodegenIrError::unsupported(format!("{} for PHP type {:?}", name, other))),
     }
 }

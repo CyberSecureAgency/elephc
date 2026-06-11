@@ -66,8 +66,7 @@ pub(super) fn lower_store_static_property(ctx: &mut FunctionContext<'_>, inst: &
     ensure_static_property_type_supported(&slot.php_type, inst)?;
     let value_ty = ctx.value_php_type(value)?;
     ensure_static_property_value_supported(&slot, &value_ty, inst)?;
-    ctx.load_value_to_result(value)?;
-    box_static_property_value_if_needed(ctx, &slot.php_type, &value_ty);
+    load_static_property_store_value_to_result(ctx, value, &slot.php_type)?;
     let release_previous = !value_is_same_static_property_load(ctx, value, &slot)?;
     if slot.late_bound && !slot.branches.is_empty() {
         let class_id_reg = class_id_work_reg(ctx.emitter);
@@ -513,6 +512,9 @@ fn ensure_static_property_value_supported(
     if value_ty == &slot.php_type {
         return Ok(());
     }
+    if can_store_value_as_tagged_scalar_static_property(value_ty, &slot.php_type) {
+        return Ok(());
+    }
     if matches!(slot.php_type.codegen_repr(), PhpType::Mixed | PhpType::Union(_)) {
         return Ok(());
     }
@@ -538,6 +540,81 @@ fn is_empty_array_for_array_static_property(value_ty: &PhpType, slot_ty: &PhpTyp
         return false;
     }
     matches!(value_elem.codegen_repr(), PhpType::Never | PhpType::Void)
+}
+
+/// Returns true when a value can materialize the inline nullable-int static-property shape.
+fn can_store_value_as_tagged_scalar_static_property(
+    value_ty: &PhpType,
+    slot_ty: &PhpType,
+) -> bool {
+    if slot_ty.codegen_repr() != PhpType::TaggedScalar {
+        return false;
+    }
+    matches!(
+        value_ty.codegen_repr(),
+        PhpType::Int
+            | PhpType::Bool
+            | PhpType::Callable
+            | PhpType::Void
+            | PhpType::Never
+            | PhpType::TaggedScalar
+            | PhpType::Mixed
+            | PhpType::Union(_)
+    )
+}
+
+/// Loads a value in the register shape required by the target static-property slot.
+fn load_static_property_store_value_to_result(
+    ctx: &mut FunctionContext<'_>,
+    value: ValueId,
+    slot_ty: &PhpType,
+) -> Result<()> {
+    let value_ty = ctx.value_php_type(value)?;
+    if slot_ty.codegen_repr() == PhpType::TaggedScalar {
+        match value_ty.codegen_repr() {
+            PhpType::TaggedScalar => {
+                ctx.load_value_to_result(value)?;
+            }
+            PhpType::Int | PhpType::Bool | PhpType::Callable => {
+                ctx.load_value_to_result(value)?;
+                crate::codegen::sentinels::emit_tagged_scalar_from_int_result(ctx.emitter);
+            }
+            PhpType::Void | PhpType::Never => {
+                crate::codegen::sentinels::emit_tagged_scalar_null(ctx.emitter);
+            }
+            PhpType::Mixed | PhpType::Union(_) => {
+                ctx.load_value_to_result(value)?;
+                emit_mixed_result_as_tagged_scalar(ctx);
+            }
+            other => {
+                return Err(CodegenIrError::unsupported(format!(
+                    "static property tagged-scalar store from PHP type {:?}",
+                    other
+                )))
+            }
+        }
+        return Ok(());
+    }
+    ctx.load_value_to_result(value)?;
+    box_static_property_value_if_needed(ctx, slot_ty, &value_ty);
+    Ok(())
+}
+
+/// Reorders `__rt_mixed_unbox` output into the tagged-scalar result register pair.
+fn emit_mixed_result_as_tagged_scalar(ctx: &mut FunctionContext<'_>) {
+    abi::emit_call_label(ctx.emitter, "__rt_mixed_unbox");
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction("mov x9, x0");                              // preserve the unboxed Mixed tag before moving the payload
+            ctx.emitter.instruction("mov x0, x1");                              // place the unboxed payload into the tagged-scalar payload register
+            ctx.emitter.instruction("mov x1, x9");                              // place the unboxed Mixed tag into the tagged-scalar tag register
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("mov r10, rax");                            // preserve the unboxed Mixed tag before moving the payload
+            ctx.emitter.instruction("mov rax, rdi");                            // place the unboxed payload into the tagged-scalar payload register
+            ctx.emitter.instruction("mov rdx, r10");                            // place the unboxed Mixed tag into the tagged-scalar tag register
+        }
+    }
 }
 
 /// Boxes concrete values when the static property storage is Mixed/Union.

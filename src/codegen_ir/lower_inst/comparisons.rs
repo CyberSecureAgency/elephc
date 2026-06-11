@@ -206,6 +206,8 @@ pub(super) fn lower_loose_eq(
         emit_null_string_loose_eq(ctx, lhs, &lhs_ty, rhs, &rhs_ty, is_equal)?;
     } else if string_numeric_comparable(&lhs_ty, &rhs_ty) {
         emit_numeric_string_loose_eq(ctx, lhs, &lhs_ty, rhs, &rhs_ty, is_equal)?;
+    } else if lhs_ty == PhpType::Float && rhs_ty == PhpType::Float {
+        emit_float_compare(ctx, lhs, rhs, is_equal)?;
     } else if loose_intish_comparable(&lhs_ty, &rhs_ty) {
         let compare_truthiness = lhs_ty == PhpType::Bool || rhs_ty == PhpType::Bool;
         emit_intish_compare(ctx, lhs, rhs, is_equal, compare_truthiness)?;
@@ -399,9 +401,22 @@ fn emit_float_bool_from_flags(ctx: &mut FunctionContext<'_>, is_equal: bool) {
             ctx.emitter.instruction(&format!("cset x0, {}", equality_cond(is_equal, ctx.emitter.target.arch))); // materialize numeric-string equality as boolean
         }
         Arch::X86_64 => {
-            ctx.emitter.instruction(&format!("set{} al", equality_cond(is_equal, ctx.emitter.target.arch))); // materialize numeric-string equality in the low byte
+            emit_x86_64_float_equality_result(ctx, is_equal);
             ctx.emitter.instruction("movzx rax, al");                           // widen the numeric-string equality byte into the integer result register
         }
+    }
+}
+
+/// Materializes float equality from x86_64 flags, treating unordered as unequal.
+fn emit_x86_64_float_equality_result(ctx: &mut FunctionContext<'_>, is_equal: bool) {
+    if is_equal {
+        ctx.emitter.instruction("sete al");                                     // materialize ordered float equality in the low byte
+        ctx.emitter.instruction("setnp r10b");                                  // materialize whether the comparison was ordered
+        ctx.emitter.instruction("and al, r10b");                                 // clear equality for unordered NaN comparisons
+    } else {
+        ctx.emitter.instruction("setne al");                                    // materialize ordered float inequality in the low byte
+        ctx.emitter.instruction("setp r10b");                                   // materialize unordered NaN comparison as true for !=
+        ctx.emitter.instruction("or al, r10b");                                  // merge ordered inequality with unordered inequality
     }
 }
 
@@ -576,6 +591,18 @@ fn move_float_result_to_reg(ctx: &mut FunctionContext<'_>, reg: &str) {
 fn emit_spaceship_result(ctx: &mut FunctionContext<'_>, uses_float_compare: bool) {
     match ctx.emitter.target.arch {
         Arch::AArch64 => {
+            if uses_float_compare {
+                let unordered_label = ctx.next_label("spaceship_unordered");
+                let done_label = ctx.next_label("spaceship_done");
+                ctx.emitter.instruction(&format!("b.vs {}", unordered_label));  // PHP treats any NaN spaceship comparison as greater
+                ctx.emitter.instruction("cset x0, gt");                         // set result to 1 when left is greater than right
+                ctx.emitter.instruction("csinv x0, x0, xzr, ge");               // keep 1/0 for greater/equal, or produce -1 for less
+                ctx.emitter.instruction(&format!("b {}", done_label));          // skip the unordered NaN result
+                ctx.emitter.label(&unordered_label);
+                ctx.emitter.instruction("mov x0, #1");                          // unordered float comparisons produce spaceship result 1
+                ctx.emitter.label(&done_label);
+                return;
+            }
             ctx.emitter.instruction("cset x0, gt");                             // set result to 1 when left is greater than right
             ctx.emitter.instruction("csinv x0, x0, xzr, ge");                   // keep 1/0 for greater/equal, or produce -1 for less
         }
@@ -585,6 +612,9 @@ fn emit_spaceship_result(ctx: &mut FunctionContext<'_>, uses_float_compare: bool
             let done_label = ctx.next_label("spaceship_done");
             let greater_jump = if uses_float_compare { "ja" } else { "jg" };
             let less_jump = if uses_float_compare { "jb" } else { "jl" };
+            if uses_float_compare {
+                ctx.emitter.instruction(&format!("jp {}", greater_label));      // PHP treats any NaN spaceship comparison as greater
+            }
             ctx.emitter.instruction(&format!("{} {}", greater_jump, greater_label)); // branch when the left operand is greater
             ctx.emitter.instruction(&format!("{} {}", less_jump, less_label));  // branch when the left operand is less
             ctx.emitter.instruction("mov rax, 0");                              // equal operands produce spaceship result 0
@@ -714,7 +744,7 @@ fn emit_float_compare(
         }
         Arch::X86_64 => {
             ctx.emitter.instruction("ucomisd xmm1, xmm0");                      // compare strict float equality operands
-            ctx.emitter.instruction(&format!("set{} al", equality_cond(is_equal, ctx.emitter.target.arch))); // materialize float equality in the low byte
+            emit_x86_64_float_equality_result(ctx, is_equal);
             ctx.emitter.instruction("movzx rax, al");                           // widen the equality byte into the integer result register
         }
     }

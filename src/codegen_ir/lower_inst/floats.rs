@@ -11,13 +11,13 @@
 
 use crate::codegen::abi;
 use crate::codegen::platform::Arch;
-use crate::ir::Instruction;
+use crate::ir::{CmpPredicate, Instruction};
 use crate::types::PhpType;
 
 use super::super::context::FunctionContext;
 use super::{
-    aarch64_condition, expect_f64, expect_operand, expect_cmp_predicate, require_float,
-    secondary_float_reg, store_if_result, x86_64_float_condition,
+    expect_f64, expect_operand, expect_cmp_predicate, require_float, secondary_float_reg,
+    store_if_result, x86_64_float_condition,
 };
 use crate::codegen_ir::{CodegenIrError, Result};
 
@@ -53,15 +53,47 @@ pub(super) fn lower_float_compare(
     match ctx.emitter.target.arch {
         Arch::AArch64 => {
             ctx.emitter.instruction("fcmp d1, d0");                             // compare float operands for the EIR predicate
-            ctx.emitter.instruction(&format!("cset x0, {}", aarch64_condition(predicate)?)); // materialize the float predicate result as 0 or 1
+            ctx.emitter.instruction(&format!("cset x0, {}", aarch64_float_condition(predicate)?)); // materialize the ordered float predicate result as 0 or 1
         }
         Arch::X86_64 => {
             ctx.emitter.instruction("ucomisd xmm1, xmm0");                      // compare float operands for the EIR predicate
-            ctx.emitter.instruction(&format!("set{} al", x86_64_float_condition(predicate)?)); // materialize the float predicate in the low byte
-            ctx.emitter.instruction("movzx rax, al");                           // widen the predicate byte into the integer result register
+            emit_x86_64_float_predicate_result(ctx, predicate)?;
         }
     }
     store_if_result(ctx, inst)
+}
+
+/// Returns the AArch64 condition for PHP float comparisons, excluding unordered NaN cases.
+fn aarch64_float_condition(predicate: CmpPredicate) -> Result<&'static str> {
+    match predicate {
+        CmpPredicate::Eq => Ok("eq"),
+        CmpPredicate::Ne => Ok("ne"),
+        CmpPredicate::Slt | CmpPredicate::Olt => Ok("mi"),
+        CmpPredicate::Sle | CmpPredicate::Ole => Ok("ls"),
+        CmpPredicate::Sgt | CmpPredicate::Ogt => Ok("gt"),
+        CmpPredicate::Sge | CmpPredicate::Oge => Ok("ge"),
+    }
+}
+
+/// Materializes a PHP float comparison from x86_64 flags, treating unordered as false.
+fn emit_x86_64_float_predicate_result(
+    ctx: &mut FunctionContext<'_>,
+    predicate: CmpPredicate,
+) -> Result<()> {
+    match predicate {
+        CmpPredicate::Ne => {
+            ctx.emitter.instruction("setne al");                                // materialize ordered float inequality in the low byte
+            ctx.emitter.instruction("setp r10b");                               // materialize unordered NaN comparison as true for !=
+            ctx.emitter.instruction("or al, r10b");                              // merge ordered inequality with unordered inequality
+        }
+        predicate => {
+            ctx.emitter.instruction(&format!("set{} al", x86_64_float_condition(predicate)?)); // materialize the ordered float predicate in the low byte
+            ctx.emitter.instruction("setnp r10b");                              // materialize whether the comparison was ordered
+            ctx.emitter.instruction("and al, r10b");                             // clear ordered predicates for unordered NaN comparisons
+        }
+    }
+    ctx.emitter.instruction("movzx rax, al");                                   // widen the predicate byte into the integer result register
+    Ok(())
 }
 
 /// Lowers a two-operand floating-point arithmetic instruction.

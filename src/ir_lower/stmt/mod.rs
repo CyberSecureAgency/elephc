@@ -689,11 +689,14 @@ fn coerce_indexed_array_set_value(
     value: LoweredValue,
     span: Option<Span>,
 ) -> LoweredValue {
-    if value.ir_type != IrType::TaggedScalar {
-        return value;
-    }
     match array_ty.codegen_repr() {
-        PhpType::Array(elem_ty) if elem_ty.codegen_repr() == PhpType::Int => {
+        PhpType::Array(elem_ty)
+            if elem_ty.codegen_repr() == PhpType::Int
+                && matches!(
+                    ctx.builder.value_php_type(value.value).codegen_repr(),
+                    PhpType::Mixed | PhpType::TaggedScalar | PhpType::Union(_)
+                ) =>
+        {
             coerce_to_int(ctx, value, span)
         }
         _ => value,
@@ -2537,11 +2540,11 @@ fn coerce_to_string(
             span,
         ),
         _ => ctx.emit_value(
-            Op::RuntimeCall,
+            Op::Cast,
             vec![value.value],
-            None,
+            Some(Immediate::CastTarget(IrType::Str)),
             PhpType::Str,
-            effects_lookup::runtime_effects(),
+            Op::Cast.default_effects(),
             span,
         ),
     }

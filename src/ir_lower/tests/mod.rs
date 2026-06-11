@@ -42,6 +42,7 @@ fn lower_source_at(source: &str, main_file_path: &Path, parent: &Path) -> crate:
     let (autoload_registry, parsed) = crate::autoload::Registry::build(parent, parsed);
     let ast = crate::resolver::resolve(parsed, parent).expect("resolver failed");
     let ast = crate::autoload::collect_aliases(ast);
+    let ast = crate::pdo_prelude::inject_if_used(ast);
     let ast = crate::name_resolver::resolve(ast).expect("name resolution failed");
     let ast = crate::autoload::run(ast, parent, &autoload_registry).expect("autoload failed");
     let ast = crate::optimize::fold_constants(ast);

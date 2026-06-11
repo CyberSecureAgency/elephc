@@ -327,6 +327,29 @@ fn lower_numeric_binary(
             Some(expr.span),
         );
     }
+    if matches!(
+        op,
+        BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor | BinOp::ShiftLeft | BinOp::ShiftRight
+    ) {
+        let lhs = coerce_to_int(ctx, lhs, left);
+        let rhs = coerce_to_int(ctx, rhs, right);
+        let iop = match op {
+            BinOp::BitAnd => Op::IBitAnd,
+            BinOp::BitOr => Op::IBitOr,
+            BinOp::BitXor => Op::IBitXor,
+            BinOp::ShiftLeft => Op::IShl,
+            BinOp::ShiftRight => Op::IShrA,
+            _ => Op::RuntimeCall,
+        };
+        return ctx.emit_value(
+            iop,
+            vec![lhs.value, rhs.value],
+            None,
+            PhpType::Int,
+            iop.default_effects(),
+            Some(expr.span),
+        );
+    }
     if let Some(mixed_op) = mixed_numeric_op(op) {
         if should_use_mixed_numeric_binop(lhs.ir_type, rhs.ir_type) {
             return lower_mixed_numeric_binary(ctx, lhs, rhs, mixed_op, expr);
@@ -7782,7 +7805,14 @@ fn coerce_to_float_at_span(
     match value.ir_type {
         IrType::F64 => value,
         IrType::I64 => ctx.emit_value(Op::IToF, vec![value.value], None, PhpType::Float, Op::IToF.default_effects(), span),
-        _ => ctx.emit_value(Op::RuntimeCall, vec![value.value], None, PhpType::Float, Effects::all(), span),
+        _ => ctx.emit_value(
+            Op::Cast,
+            vec![value.value],
+            Some(Immediate::CastTarget(IrType::F64)),
+            PhpType::Float,
+            Op::Cast.default_effects(),
+            span,
+        ),
     }
 }
 
@@ -7812,7 +7842,14 @@ fn coerce_to_string_at_span(
         IrType::I64 | IrType::TaggedScalar => ctx.emit_value(Op::IToStr, vec![value.value], None, PhpType::Str, Op::IToStr.default_effects(), span),
         IrType::F64 => ctx.emit_value(Op::FToStr, vec![value.value], None, PhpType::Str, Op::FToStr.default_effects(), span),
         _ => {
-            let result = ctx.emit_value(Op::RuntimeCall, vec![value.value], None, PhpType::Str, Effects::all(), span);
+            let result = ctx.emit_value(
+                Op::Cast,
+                vec![value.value],
+                Some(Immediate::CastTarget(IrType::Str)),
+                PhpType::Str,
+                Op::Cast.default_effects(),
+                span,
+            );
             release_stringified_source_if_owned(ctx, value, span);
             result
         }

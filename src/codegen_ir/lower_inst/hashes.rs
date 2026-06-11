@@ -686,6 +686,14 @@ fn materialize_hash_mixed_value_aarch64(
         ctx.emitter.instruction("mov x4, xzr");                                 // boxed iterable Mixed cells do not use the high payload word
         return Ok(());
     }
+    if matches!(storage_value_ty, PhpType::Mixed | PhpType::Iterable)
+        && value_ty == &PhpType::TaggedScalar
+    {
+        box_hash_value_for_mixed_storage(ctx, value, value_ty)?;
+        ctx.emitter.instruction("mov x3, x0");                                  // pass the boxed tagged-scalar Mixed cell as the hash value low word
+        ctx.emitter.instruction("mov x4, xzr");                                 // boxed tagged-scalar Mixed cells do not use the high payload word
+        return Ok(());
+    }
     materialize_hash_concrete_value_aarch64(ctx, value, value_ty)
 }
 
@@ -709,6 +717,14 @@ fn materialize_hash_mixed_value_x86_64(
         ctx.emitter.instruction("xor r8, r8");                                  // boxed iterable Mixed cells do not use the high payload word
         return Ok(());
     }
+    if matches!(storage_value_ty, PhpType::Mixed | PhpType::Iterable)
+        && value_ty == &PhpType::TaggedScalar
+    {
+        box_hash_value_for_mixed_storage(ctx, value, value_ty)?;
+        ctx.emitter.instruction("mov rcx, rax");                                // pass the boxed tagged-scalar Mixed cell as the hash value low word
+        ctx.emitter.instruction("xor r8, r8");                                  // boxed tagged-scalar Mixed cells do not use the high payload word
+        return Ok(());
+    }
     materialize_hash_concrete_value_x86_64(ctx, value, value_ty)
 }
 
@@ -730,6 +746,9 @@ fn box_hash_value_for_mixed_storage(
 /// Returns the runtime value tag to store for one hash-set payload.
 fn hash_set_value_tag(value_ty: &PhpType, storage_value_ty: &PhpType) -> i64 {
     if matches!(storage_value_ty, PhpType::Mixed | PhpType::Iterable) {
+        if value_ty.codegen_repr() == PhpType::TaggedScalar {
+            return crate::codegen::runtime_value_tag(&PhpType::Mixed) as i64;
+        }
         crate::codegen::runtime_value_tag(&value_ty.codegen_repr()) as i64
     } else {
         crate::codegen::runtime_value_tag(storage_value_ty) as i64
@@ -1084,6 +1103,7 @@ fn require_supported_hash_value(
                 | PhpType::Str
                 | PhpType::Void
                 | PhpType::Mixed
+                | PhpType::TaggedScalar
                 | PhpType::Array(_)
                 | PhpType::AssocArray { .. }
                 | PhpType::Iterable

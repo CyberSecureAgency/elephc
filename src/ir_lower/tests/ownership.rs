@@ -10,16 +10,27 @@
 
 use crate::ir::print_module;
 
+/// Returns the printed EIR for `main`, excluding built-in helper and property-init functions.
+fn main_function_text(text: &str) -> &str {
+    let start = text.find("function main()").expect("expected lowered main function");
+    let tail = &text[start..];
+    match tail[1..].find("\n  function ") {
+        Some(next_function) => &tail[..1 + next_function],
+        None => tail,
+    }
+}
+
 /// Verifies storing a freshly allocated array releases the temporary producer after the store.
 #[test]
 fn fresh_array_local_assignment_releases_source_after_store() {
     let module = super::lower_source("<?php $a = [1];");
     let text = print_module(&module);
-    let store = text.find("store_local").expect("expected local store in lowered IR");
-    let release = text.find("release").expect("expected release in lowered IR");
-    assert!(text.contains("acquire"), "expected acquire in {text}");
+    let main = main_function_text(&text);
+    let store = main.find("store_local").expect("expected local store in lowered IR");
+    let release = main.find("release").expect("expected release in lowered IR");
+    assert!(main.contains("acquire"), "expected acquire in {text}");
     assert!(store < release, "expected release after store in {text}");
-    assert_eq!(text.matches("release").count(), 1, "expected one release in {text}");
+    assert_eq!(main.matches("release").count(), 1, "expected one release in {text}");
 }
 
 /// Verifies storing a freshly returned `array_column()` result releases the producer.
@@ -77,9 +88,10 @@ $x->a[] = 1;
 fn overwriting_array_local_emits_release() {
     let module = super::lower_source("<?php $a = [1]; $a = [2];");
     let text = print_module(&module);
-    assert!(text.contains("acquire"), "expected acquire in {text}");
-    assert!(text.contains("release"), "expected release in {text}");
-    assert_eq!(text.matches("array_new").count(), 2, "expected two arrays in {text}");
+    let main = main_function_text(&text);
+    assert!(main.contains("acquire"), "expected acquire in {text}");
+    assert!(main.contains("release"), "expected release in {text}");
+    assert_eq!(main.matches("array_new").count(), 2, "expected two arrays in {text}");
 }
 
 /// Verifies string locals participate in explicit ownership operations.
