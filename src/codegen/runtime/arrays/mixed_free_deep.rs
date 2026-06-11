@@ -35,10 +35,20 @@ pub fn emit_mixed_free_deep(emitter: &mut Emitter) {
     emitter.instruction("cmp x9, #4");                                          // does the boxed payload hold a heap-backed child?
     emitter.instruction("b.lo __rt_mixed_free_deep_box");                       // scalars/bools/floats/null need no nested release
     emitter.instruction("cmp x9, #7");                                          // do boxed heap-backed tags stay within the supported range?
+    emitter.instruction("b.eq __rt_mixed_free_deep_value_any");                 // boxed mixed cells release through the uniform dispatcher
+    emitter.instruction("cmp x9, #10");                                         // does the boxed payload hold a callable descriptor?
+    emitter.instruction("b.eq __rt_mixed_free_deep_callable");                  // callable descriptors release through the descriptor helper
+    emitter.instruction("cmp x9, #7");                                          // restore the heap-backed upper-bound comparison for array/hash/object tags
     emitter.instruction("b.hi __rt_mixed_free_deep_box");                       // unknown tags are ignored by mixed deep-free
+    emitter.label("__rt_mixed_free_deep_value_any");
     emitter.instruction("ldr x0, [x0, #8]");                                    // load the boxed heap child pointer
     emitter.instruction("bl __rt_decref_any");                                  // release the boxed child through the uniform dispatcher
     emitter.instruction("b __rt_mixed_free_deep_box");                          // free the mixed cell storage after releasing the child
+
+    emitter.label("__rt_mixed_free_deep_callable");
+    emitter.instruction("ldr x0, [x0, #8]");                                    // load the boxed callable descriptor pointer
+    emitter.instruction("bl __rt_callable_descriptor_release");                 // release the callable descriptor owned by the mixed cell
+    emitter.instruction("b __rt_mixed_free_deep_box");                          // free the mixed cell storage after releasing the descriptor
 
     emitter.label("__rt_mixed_free_deep_string");
     emitter.instruction("ldr x0, [x0, #8]");                                    // load the boxed string pointer
@@ -75,10 +85,20 @@ fn emit_mixed_free_deep_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("cmp r10, 4");                                          // does the mixed cell point at a heap-backed child such as array/hash/object/mixed?
     emitter.instruction("jl __rt_mixed_free_deep_box");                         // scalar, bool, float, and null payloads can skip directly to freeing the mixed box storage itself
     emitter.instruction("cmp r10, 7");                                          // do the heap-backed child tags stay within the supported runtime range?
+    emitter.instruction("je __rt_mixed_free_deep_value_any");                   // boxed mixed cells release through the uniform dispatcher
+    emitter.instruction("cmp r10, 10");                                         // does the boxed payload hold a callable descriptor?
+    emitter.instruction("je __rt_mixed_free_deep_callable");                    // callable descriptors release through the descriptor helper
+    emitter.instruction("cmp r10, 7");                                          // restore the heap-backed upper-bound comparison for array/hash/object tags
     emitter.instruction("jg __rt_mixed_free_deep_box");                         // unknown tags are ignored by the current x86_64 mixed deep-free helper
+    emitter.label("__rt_mixed_free_deep_value_any");
     emitter.instruction("mov rax, QWORD PTR [rax + 8]");                        // load the boxed string pointer from the mixed payload before releasing it
     emitter.instruction("call __rt_decref_any");                                // release the boxed heap-backed child through the uniform x86_64 dispatcher before freeing the mixed box
     emitter.instruction("jmp __rt_mixed_free_deep_box");                        // free the mixed box storage itself after the boxed heap-backed child has been released
+
+    emitter.label("__rt_mixed_free_deep_callable");
+    emitter.instruction("mov rax, QWORD PTR [rax + 8]");                        // load the boxed callable descriptor pointer from the mixed payload
+    emitter.instruction("call __rt_callable_descriptor_release");               // release the callable descriptor owned by the mixed cell
+    emitter.instruction("jmp __rt_mixed_free_deep_box");                        // free the mixed box storage itself after the descriptor has been released
 
     emitter.label("__rt_mixed_free_deep_string");
     emitter.instruction("mov rax, QWORD PTR [rax + 8]");                        // load the boxed string pointer from the mixed payload before releasing it

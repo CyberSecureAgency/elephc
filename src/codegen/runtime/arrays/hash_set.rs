@@ -185,6 +185,8 @@ pub fn emit_hash_set(emitter: &mut Emitter) {
     emitter.instruction("b.eq __rt_hash_set_write_value");                      // null has no heap pointer, skip release
     emitter.instruction("cmp x13, #1");                                         // is the overwritten value a string?
     emitter.instruction("b.eq __rt_hash_set_release_any");                      // strings release through the uniform dispatcher
+    emitter.instruction("cmp x13, #10");                                        // is the overwritten value a callable descriptor?
+    emitter.instruction("b.eq __rt_hash_set_release_callable");                 // callable descriptors release through the descriptor helper
     emitter.instruction("cmp x13, #4");                                         // is the overwritten value a heap-backed payload?
     emitter.instruction("b.hs __rt_hash_set_release_any");                      // tags 4-7 all release through the uniform dispatcher
     emitter.instruction("b __rt_hash_set_write_value");                         // scalars/bools/floats do not need release before overwrite
@@ -192,6 +194,12 @@ pub fn emit_hash_set(emitter: &mut Emitter) {
     emitter.label("__rt_hash_set_release_any");
     emitter.instruction("ldr x0, [x12, #24]");                                  // load the previous heap-backed value pointer from the entry
     emitter.instruction("bl __rt_decref_any");                                  // release the overwritten payload through the uniform dispatcher
+    emitter.instruction("b __rt_hash_set_recompute_entry");                     // recompute the entry address after the release helper
+
+    emitter.label("__rt_hash_set_release_callable");
+    emitter.instruction("ldr x0, [x12, #24]");                                  // load the previous callable descriptor pointer from the entry
+    emitter.instruction("bl __rt_callable_descriptor_release");                 // release the overwritten callable descriptor
+    emitter.instruction("b __rt_hash_set_recompute_entry");                     // recompute the entry address after the release helper
 
     emitter.label("__rt_hash_set_recompute_entry");
     emitter.instruction("ldr x5, [sp, #0]");                                    // reload hash table pointer after helper call
@@ -357,6 +365,8 @@ fn emit_hash_set_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("je __rt_hash_set_write_value_x");                      // null owns no heap payload and can be overwritten directly
     emitter.instruction("cmp r13, 1");                                          // check whether the overwritten value is an owned string
     emitter.instruction("je __rt_hash_set_release_any_x");                      // string values release through the uniform dispatcher
+    emitter.instruction("cmp r13, 10");                                         // check whether the overwritten value is a callable descriptor
+    emitter.instruction("je __rt_hash_set_release_callable_x");                 // callable descriptors release through the descriptor helper
     emitter.instruction("cmp r13, 4");                                          // check whether the overwritten value is heap backed
     emitter.instruction("jae __rt_hash_set_release_any_x");                     // arrays, hashes, objects, and boxed mixed values need release
     emitter.instruction("jmp __rt_hash_set_write_value_x");                     // scalar values own no heap payload
@@ -364,6 +374,13 @@ fn emit_hash_set_linux_x86_64(emitter: &mut Emitter) {
     emitter.label("__rt_hash_set_release_any_x");
     emitter.instruction("mov rax, QWORD PTR [r12 + 24]");                       // pass the overwritten heap-backed payload to the uniform release dispatcher
     emitter.instruction("call __rt_decref_any");                                // release the overwritten hash value before storing the replacement
+    emitter.instruction("jmp __rt_hash_set_recompute_entry_x");                 // recompute the entry address after the release helper
+
+    emitter.label("__rt_hash_set_release_callable_x");
+    emitter.instruction("mov rax, QWORD PTR [r12 + 24]");                       // pass the overwritten callable descriptor to the descriptor release helper
+    emitter.instruction("call __rt_callable_descriptor_release");               // release the overwritten callable descriptor before storing the replacement
+
+    emitter.label("__rt_hash_set_recompute_entry_x");
     emitter.instruction("mov r10, QWORD PTR [rbp - 8]");                        // reload the hash-table pointer after the release helper clobbered caller-saved registers
     emitter.instruction("mov r11, QWORD PTR [rbp - 56]");                       // reload the current probe index for entry-address reconstruction
     emitter.instruction("mov r12, r11");                                        // copy the probe index before scaling it into a byte offset

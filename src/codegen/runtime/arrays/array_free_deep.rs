@@ -78,6 +78,8 @@ pub fn emit_array_free_deep(emitter: &mut Emitter) {
     emitter.instruction("cmp x10, #6");                                         // is this an array of objects / callables?
     emitter.instruction("b.eq __rt_array_free_deep_loop_setup");                // boxed mixed values need decref_any cleanup too
     emitter.instruction("cmp x10, #7");                                         // is this an array of boxed mixed values?
+    emitter.instruction("b.eq __rt_array_free_deep_loop_setup");                // boxed mixed values need decref_any cleanup too
+    emitter.instruction("cmp x10, #10");                                        // is this an array of callable descriptors?
     emitter.instruction("b.ne __rt_array_free_deep_struct");                    // scalar arrays need no per-element cleanup
 
     // -- free each releasable element --
@@ -109,7 +111,14 @@ pub fn emit_array_free_deep(emitter: &mut Emitter) {
 
     emitter.label("__rt_array_free_deep_release");
     emitter.instruction("str x12, [sp, #8]");                                   // save index (reuse slot, length in x10)
+    emitter.instruction("cmp x10, #10");                                        // is this slot a callable descriptor payload?
+    emitter.instruction("b.eq __rt_array_free_deep_release_callable");          // callable descriptors use the descriptor release helper
     emitter.instruction("bl __rt_decref_any");                                  // release the heap-backed slot payload if needed
+    emitter.instruction("b __rt_array_free_deep_after_release");                // skip the callable-specific release path
+
+    emitter.label("__rt_array_free_deep_release_callable");
+    emitter.instruction("bl __rt_callable_descriptor_release");                 // release the callable descriptor stored in this slot
+    emitter.label("__rt_array_free_deep_after_release");
 
     // -- advance --
     emitter.instruction("ldr x12, [sp, #8]");                                   // restore index
@@ -188,6 +197,8 @@ fn emit_array_free_deep_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("cmp ecx, 6");                                          // does this indexed array store object / callable pointers?
     emitter.instruction("je __rt_array_free_deep_loop_setup");                  // nested objects need decref_any cleanup
     emitter.instruction("cmp ecx, 7");                                          // does this indexed array store boxed mixed values?
+    emitter.instruction("je __rt_array_free_deep_loop_setup");                  // boxed mixed values need decref_any cleanup
+    emitter.instruction("cmp ecx, 10");                                         // does this indexed array store callable descriptors?
     emitter.instruction("jne __rt_array_free_deep_struct");                     // scalar indexed arrays need no per-element cleanup
 
     emitter.label("__rt_array_free_deep_loop_setup");
@@ -214,7 +225,14 @@ fn emit_array_free_deep_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov rax, QWORD PTR [r11 + rcx + 24]");                 // load the persisted string pointer from the current indexed-array string slot
 
     emitter.label("__rt_array_free_deep_release");
+    emitter.instruction("cmp ecx, 10");                                         // is this slot a callable descriptor payload?
+    emitter.instruction("je __rt_array_free_deep_release_callable");            // callable descriptors use the descriptor release helper
     emitter.instruction("call __rt_decref_any");                                // release the heap-backed child payload if the current indexed-array slot owns one
+    emitter.instruction("jmp __rt_array_free_deep_after_release");              // skip the callable-specific release path
+
+    emitter.label("__rt_array_free_deep_release_callable");
+    emitter.instruction("call __rt_callable_descriptor_release");               // release the callable descriptor stored in this slot
+    emitter.label("__rt_array_free_deep_after_release");
     emitter.instruction("add QWORD PTR [rbp - 24], 1");                         // advance the indexed-array loop index to the next logical slot
     emitter.instruction("jmp __rt_array_free_deep_loop");                       // continue scanning indexed-array slots until every owned child payload is released
 

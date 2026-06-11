@@ -45,6 +45,7 @@ const MIXED_TAG_OBJECT: i64 = 6;
 const STRING_METHOD_OFFSET: usize = 0;
 const STRING_CLASS_OFFSET: usize = 16;
 const STRING_SELECTOR_BYTES: usize = 32;
+const MIXED_TAG_CALLABLE: i64 = 10;
 
 /// Resolved user function candidate for a runtime string callable.
 struct RuntimeStringFunctionTarget {
@@ -120,6 +121,13 @@ pub(super) fn lower_callable_descriptor_invoke(
             arg_mixed,
             "callable_descriptor_invoke",
         ),
+        PhpType::Mixed | PhpType::Union(_) => lower_mixed_callable_descriptor_invoke(
+            ctx,
+            inst,
+            callable,
+            arg_mixed,
+            "callable_descriptor_invoke",
+        ),
         PhpType::Array(elem) if elem.codegen_repr() == PhpType::Mixed => {
             lower_runtime_mixed_callable_array_descriptor_invoke(
                 ctx,
@@ -150,6 +158,76 @@ pub(super) fn lower_callable_descriptor_invoke(
             "callable_descriptor_invoke for callable PHP type {:?}",
             other
         ))),
+    }
+}
+
+/// Lowers descriptor invocation when the callable traveled through a boxed Mixed value.
+fn lower_mixed_callable_descriptor_invoke(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+    callable: ValueId,
+    arg_mixed: ValueId,
+    op_name: &str,
+) -> Result<()> {
+    let descriptor_reg = abi::nested_call_reg(ctx.emitter);
+    let fatal_label = ctx.next_label("mixed_callable_not_callable");
+    let done_label = ctx.next_label("mixed_callable_done");
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.load_value_to_reg(callable, "x0")?;
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_unbox");
+            ctx.emitter.instruction(&format!("cmp x0, #{}", MIXED_TAG_CALLABLE)); // check whether the boxed Mixed payload is a callable descriptor
+            ctx.emitter.instruction(&format!("b.ne {}", fatal_label));          // fatal when the boxed Mixed value is not callable
+            ctx.emitter.instruction(&format!("mov {}, x1", descriptor_reg));    // keep the unboxed callable descriptor in the nested-call register
+        }
+        Arch::X86_64 => {
+            ctx.load_value_to_reg(callable, "rax")?;
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_unbox");
+            ctx.emitter.instruction(&format!("cmp rax, {}", MIXED_TAG_CALLABLE)); // check whether the boxed Mixed payload is a callable descriptor
+            ctx.emitter.instruction(&format!("jne {}", fatal_label));           // fatal when the boxed Mixed value is not callable
+            ctx.emitter.instruction(&format!("mov {}, rdi", descriptor_reg));   // keep the unboxed callable descriptor in the nested-call register
+        }
+    }
+    emit_descriptor_reg_invoker_call_with_mixed_arg(
+        ctx,
+        inst,
+        descriptor_reg,
+        arg_mixed,
+        op_name,
+        false,
+    )?;
+    abi::emit_jump(ctx.emitter, &done_label);
+
+    ctx.emitter.label(&fatal_label);
+    emit_mixed_callable_not_callable_fatal(ctx, op_name);
+    ctx.emitter.label(&done_label);
+    Ok(())
+}
+
+/// Emits a fatal diagnostic for a boxed Mixed value that is called but is not callable.
+fn emit_mixed_callable_not_callable_fatal(ctx: &mut FunctionContext<'_>, op_name: &str) {
+    let message = format!(
+        "Fatal error: Unsupported EIR {} mixed value is not callable\n",
+        op_name
+    );
+    let (message_label, message_len) = ctx.data.add_string(message.as_bytes());
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction("mov x0, #2");                              // write the non-callable Mixed diagnostic to stderr
+            ctx.emitter.adrp("x1", &message_label);                             // load the non-callable Mixed diagnostic page
+            ctx.emitter.add_lo12("x1", "x1", &message_label);                  // resolve the non-callable Mixed diagnostic address
+            ctx.emitter.instruction(&format!("mov x2, #{}", message_len));      // pass the non-callable Mixed diagnostic byte length to write
+            ctx.emitter.syscall(4);
+            abi::emit_exit(ctx.emitter, 1);
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("mov edi, 2");                              // write the non-callable Mixed diagnostic to stderr
+            abi::emit_symbol_address(ctx.emitter, "rsi", &message_label);
+            ctx.emitter.instruction(&format!("mov edx, {}", message_len));      // pass the non-callable Mixed diagnostic byte length to write
+            ctx.emitter.instruction("mov eax, 1");                              // Linux x86_64 syscall 1 = write
+            ctx.emitter.instruction("syscall");                                 // emit the non-callable Mixed diagnostic before terminating
+            abi::emit_exit(ctx.emitter, 1);
+        }
     }
 }
 

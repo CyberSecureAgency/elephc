@@ -42,6 +42,8 @@ pub fn emit_mixed_from_value(emitter: &mut Emitter) {
     emitter.instruction("b.eq __rt_mixed_from_value_retain");                   // refcounted child pointers must be retained for the boxed owner
     emitter.instruction("cmp x0, #7");                                          // does this mixed payload hold another mixed cell?
     emitter.instruction("b.eq __rt_mixed_from_value_retain");                   // nested mixed cells must also be retained
+    emitter.instruction("cmp x0, #10");                                         // does this mixed payload hold a callable descriptor?
+    emitter.instruction("b.eq __rt_mixed_from_value_retain");                   // callable descriptors are retained for the boxed owner
     emitter.instruction("b __rt_mixed_from_value_alloc");                       // scalars can be boxed without additional retention
 
     emitter.label("__rt_mixed_from_value_string");
@@ -94,6 +96,8 @@ fn emit_mixed_from_value_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("je __rt_mixed_from_value_retain");                     // retain objects before storing them inside the mixed cell
     emitter.instruction("cmp rax, 7");                                          // detect nested mixed cells that participate in refcounted ownership
     emitter.instruction("je __rt_mixed_from_value_retain");                     // retain nested mixed cells before storing them inside the parent mixed cell
+    emitter.instruction("cmp rax, 10");                                         // detect callable descriptors that participate in callable ownership
+    emitter.instruction("je __rt_mixed_from_value_retain");                     // retain callable descriptors before storing them inside the mixed cell
     emitter.instruction("jmp __rt_mixed_from_value_alloc");                     // scalars can be boxed directly without additional ownership work
 
     emitter.label("__rt_mixed_from_value_string");

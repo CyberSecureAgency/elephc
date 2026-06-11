@@ -3923,6 +3923,7 @@ fn runtime_value_tag(name: &str, elem: &PhpType) -> Result<u8> {
         PhpType::Object(_) => Ok(6),
         PhpType::Mixed => Ok(7),
         PhpType::Void => Ok(8),
+        PhpType::Callable => Ok(10),
         other => Err(CodegenIrError::unsupported(format!(
             "{} Mixed widening for element PHP type {:?}",
             name, other

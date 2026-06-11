@@ -120,6 +120,8 @@ pub fn emit_hash_free_deep(emitter: &mut Emitter) {
     emitter.instruction("b.eq __rt_hash_free_deep_value_any");                  // objects release through the uniform dispatch helper
     emitter.instruction("cmp x14, #7");                                         // is this a boxed mixed value?
     emitter.instruction("b.eq __rt_hash_free_deep_value_any");                  // mixed cells release through the uniform dispatch helper
+    emitter.instruction("cmp x14, #10");                                        // is this a callable descriptor value?
+    emitter.instruction("b.eq __rt_hash_free_deep_value_callable");             // callable descriptors release through the descriptor helper
     emitter.instruction("b __rt_hash_free_deep_next");                          // plain scalars need no cleanup
 
     emitter.label("__rt_hash_free_deep_value_any");
@@ -127,6 +129,13 @@ pub fn emit_hash_free_deep(emitter: &mut Emitter) {
     emitter.instruction("str x11, [sp, #24]");                                  // preserve loop index across helper call
     emitter.instruction("bl __rt_decref_any");                                  // release the heap-backed value through the uniform dispatcher
     emitter.instruction("ldr x11, [sp, #24]");                                  // restore loop index after helper call
+    emitter.instruction("b __rt_hash_free_deep_next");                          // continue after releasing the heap-backed hash value
+
+    emitter.label("__rt_hash_free_deep_value_callable");
+    emitter.instruction("ldr x0, [x13, #24]");                                  // load the callable descriptor pointer from the entry payload
+    emitter.instruction("str x11, [sp, #24]");                                  // preserve loop index across descriptor release
+    emitter.instruction("bl __rt_callable_descriptor_release");                 // release the callable descriptor owned by the hash entry
+    emitter.instruction("ldr x11, [sp, #24]");                                  // restore loop index after descriptor release
 
     emitter.label("__rt_hash_free_deep_next");
     emitter.instruction("add x11, x11, #1");                                    // advance to the next slot
@@ -229,6 +238,8 @@ fn emit_hash_free_deep_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("je __rt_hash_free_deep_value_object");                 // release nested object payloads through object decref
     emitter.instruction("cmp r8, 7");                                           // detect boxed mixed payloads in the current bootstrap subset
     emitter.instruction("je __rt_hash_free_deep_value_mixed");                  // release boxed mixed payloads through mixed decref
+    emitter.instruction("cmp r8, 10");                                          // detect callable descriptor payloads stored in associative-array entries
+    emitter.instruction("je __rt_hash_free_deep_value_callable");               // release callable descriptors through the descriptor helper
     emitter.instruction("jmp __rt_hash_free_deep_next");                        // plain scalar payloads do not require any additional cleanup
 
     emitter.label("__rt_hash_free_deep_value_string");
@@ -264,6 +275,11 @@ fn emit_hash_free_deep_linux_x86_64(emitter: &mut Emitter) {
     emitter.label("__rt_hash_free_deep_value_mixed");
     emitter.instruction("mov rax, QWORD PTR [rcx + 24]");                       // load the boxed mixed pointer stored in the current hash-entry payload
     emitter.instruction("call __rt_decref_mixed");                              // release the boxed mixed payload through the x86_64 mixed decref helper
+    emitter.instruction("jmp __rt_hash_free_deep_next");                        // continue scanning entries after releasing the boxed mixed payload
+
+    emitter.label("__rt_hash_free_deep_value_callable");
+    emitter.instruction("mov rax, QWORD PTR [rcx + 24]");                       // load the callable descriptor pointer stored in the current hash-entry payload
+    emitter.instruction("call __rt_callable_descriptor_release");               // release the callable descriptor owned by the hash entry
 
     emitter.label("__rt_hash_free_deep_next");
     emitter.instruction("add QWORD PTR [rbp - 24], 1");                         // advance the entry-scan index to the next hash slot

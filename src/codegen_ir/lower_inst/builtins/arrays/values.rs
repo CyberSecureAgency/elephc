@@ -340,6 +340,7 @@ fn indexed_array_value_type_tag(value_ty: &PhpType) -> Option<i64> {
         PhpType::Object(_) => Some(6),
         PhpType::Mixed | PhpType::Union(_) => Some(7),
         PhpType::Void => Some(8),
+        PhpType::Callable => Some(10),
         _ => None,
     }
 }
