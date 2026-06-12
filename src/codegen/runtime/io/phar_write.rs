@@ -12,6 +12,8 @@
 //! - `__rt_phar_write_finalize` from the `fclose` emitter for that same fd.
 //! - `__rt_file_put_contents_maybe_phar` from non-literal `file_put_contents()`
 //!   lowering when a runtime string may be a `phar://` URL.
+//! - `__rt_phar_write_open_url` from `__rt_fopen_maybe_phar` when a non-literal
+//!   `phar://` URL is opened in a write-capable mode.
 //!
 //! Key details:
 //! - State lives in fixed `.bss` globals for the buffered payload, the target
@@ -20,9 +22,9 @@
 //!   entry into a SHA1-signed native PHAR so existing entries are preserved. The
 //!   assembly fallback still emits a single-entry SHA1-signed archive for paths
 //!   that do not publish the bridge.
-//! - Runtime-built `file_put_contents()` URLs use a separate bridge entry that
-//!   receives the complete `phar://archive/entry` string and performs the split
-//!   in Rust.
+//! - Runtime-built `file_put_contents()` and write-mode `fopen()` URLs use a
+//!   separate bridge entry that receives the complete `phar://archive/entry`
+//!   string and performs the split in Rust.
 //! - Current limits: one phar-write stream at a time, uncompressed payloads only,
 //!   no tar/zip writes, and no private-key signing variants.
 
@@ -56,7 +58,33 @@ pub fn emit_phar_write(emitter: &mut Emitter) {
     emitter.instruction("str x1, [x12]");                                       // buffer length starts at the template length
     abi::emit_symbol_address(emitter, "x12", "_phar_write_tpl_len");
     emitter.instruction("str x1, [x12]");                                       // record the template length for finalize
+    abi::emit_symbol_address(emitter, "x12", "_phar_write_url_len");
+    emitter.instruction("str xzr, [x12]");                                      // mark this stream as a literal archive/entry write
     emitter.instruction("ret");                                                 // return to the fopen caller
+    emitter.blank();
+    emitter.comment("--- runtime: phar_write open_url ---");
+    emitter.label_global("__rt_phar_write_open_url");
+    // __rt_phar_write_open_url(x0 = full phar:// URL ptr, x1 = URL len): persist
+    // the URL for fclose(), then start an empty payload buffer.
+    emitter.instruction("sub sp, sp, #16");                                     // allocate a 16-byte frame for the persist call
+    emitter.instruction("stp x29, x30, [sp]");                                  // save frame pointer and return address
+    emitter.instruction("mov x29, sp");                                         // establish the helper frame pointer
+    emitter.instruction("mov x2, x1");                                          // str_persist arg length = URL length
+    emitter.instruction("mov x1, x0");                                          // str_persist arg pointer = URL pointer
+    emitter.instruction("bl __rt_str_persist");                                 // copy the runtime-built URL into persistent heap storage
+    abi::emit_symbol_address(emitter, "x9", "_phar_write_url_ptr");
+    emitter.instruction("str x1, [x9]");                                        // record the persistent phar:// URL pointer for finalize
+    abi::emit_symbol_address(emitter, "x9", "_phar_write_url_len");
+    emitter.instruction("str x2, [x9]");                                        // record the persistent phar:// URL length for finalize
+    abi::emit_symbol_address(emitter, "x9", "_phar_write_len");
+    emitter.instruction("str xzr, [x9]");                                       // dynamic stream payload starts at buffer offset zero
+    abi::emit_symbol_address(emitter, "x9", "_phar_write_tpl_len");
+    emitter.instruction("str xzr, [x9]");                                       // no manifest template precedes a dynamic stream payload
+    emitter.instruction("mov w0, #0x5000");                                     // low half of the phar-write descriptor 0x50000000
+    emitter.instruction("lsl w0, w0, #16");                                     // form the phar-write synthetic descriptor
+    emitter.instruction("ldp x29, x30, [sp]");                                  // restore frame pointer and return address
+    emitter.instruction("add sp, sp, #16");                                     // release the helper frame
+    emitter.instruction("ret");                                                 // return the synthetic stream descriptor
     emitter.blank();
     emitter.comment("--- runtime: phar_write append ---");
     emitter.label_global("__rt_phar_write_append");
@@ -96,6 +124,24 @@ pub fn emit_phar_write(emitter: &mut Emitter) {
     emitter.instruction("sub x11, x9, x10");                                    // content length = total - template
     abi::emit_symbol_address(emitter, "x12", "_phar_write_out");
     emitter.instruction("add x13, x12, x10");                                   // entry anchor = buffer base + template length
+    // -- runtime-built fopen("phar://...","w") stores the full URL for the bridge --
+    abi::emit_symbol_address(emitter, "x14", "_phar_write_url_len");
+    emitter.instruction("ldr x15, [x14]");                                      // load full phar:// URL length for dynamic write streams
+    emitter.instruction("cbz x15, __rt_phar_write_finalize_entry_bridge");      // zero URL length means literal archive/entry slots are active
+    abi::emit_symbol_address(emitter, "x14", "_elephc_phar_put_url_fn");
+    emitter.instruction("ldr x14, [x14]");                                      // load the optional native PHAR URL writer bridge pointer
+    emitter.instruction("cbz x14, __rt_phar_write_finalize_bridge_fail");       // dynamic phar:// writes require the URL bridge
+    abi::emit_symbol_address(emitter, "x0", "_phar_write_url_ptr");
+    emitter.instruction("ldr x0, [x0]");                                        // bridge arg 0 = full phar:// URL pointer
+    emitter.instruction("mov x1, x15");                                         // bridge arg 1 = full phar:// URL length
+    emitter.instruction("mov x2, x13");                                         // bridge arg 2 = buffered entry payload pointer
+    emitter.instruction("mov x3, x11");                                         // bridge arg 3 = buffered entry payload length
+    emitter.instruction("blr x14");                                             // insert/update the entry through the Rust PHAR URL bridge
+    emitter.instruction("cmn x0, #1");                                          // did the bridge report usize::MAX failure?
+    emitter.instruction("b.eq __rt_phar_write_finalize_bridge_fail");           // bridge failure makes fclose() false
+    emitter.instruction("mov x0, #1");                                          // fclose() returns true after a successful bridge write
+    emitter.instruction("b __rt_phar_write_finalize_return");                   // skip the literal archive/entry bridge
+    emitter.label("__rt_phar_write_finalize_entry_bridge");
     // -- prefer the elephc-phar bridge so existing native entries are preserved --
     abi::emit_symbol_address(emitter, "x14", "_elephc_phar_put_entry_fn");
     emitter.instruction("ldr x14, [x14]");                                      // load the optional native PHAR writer bridge pointer
@@ -250,6 +296,24 @@ fn emit_phar_write_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("mov QWORD PTR [r8], rsi");                             // length starts at the template length
     abi::emit_symbol_address(emitter, "r8", "_phar_write_tpl_len");             // template length slot
     emitter.instruction("mov QWORD PTR [r8], rsi");                             // record the template length for finalize
+    abi::emit_symbol_address(emitter, "r8", "_phar_write_url_len");             // dynamic URL length slot
+    emitter.instruction("mov QWORD PTR [r8], 0");                               // mark this stream as a literal archive/entry write
+    emitter.instruction("ret");                                                 // return to the fopen caller
+    emitter.blank();
+    emitter.comment("--- runtime: phar_write open_url ---");
+    emitter.label_global("__rt_phar_write_open_url");
+    // __rt_phar_write_open_url(rdi = full phar:// URL ptr, rsi = URL len).
+    emitter.instruction("push rbp");                                            // align the stack and preserve the caller frame pointer
+    emitter.instruction("mov rbp, rsp");                                        // establish the helper frame pointer
+    emitter.instruction("mov rax, rdi");                                        // str_persist arg pointer = URL pointer
+    emitter.instruction("mov rdx, rsi");                                        // str_persist arg length = URL length
+    emitter.instruction("call __rt_str_persist");                               // copy the runtime-built URL into persistent heap storage
+    abi::emit_store_reg_to_symbol(emitter, "rax", "_phar_write_url_ptr", 0);    // record the persistent phar:// URL pointer for finalize
+    abi::emit_store_reg_to_symbol(emitter, "rdx", "_phar_write_url_len", 0);    // record the persistent phar:// URL length for finalize
+    abi::emit_store_imm_to_symbol(emitter, "_phar_write_len", 0, 0);            // dynamic stream payload starts at buffer offset zero
+    abi::emit_store_imm_to_symbol(emitter, "_phar_write_tpl_len", 0, 0);        // no manifest template precedes a dynamic stream payload
+    emitter.instruction("mov eax, 0x50000000");                                 // return the phar-write synthetic descriptor
+    emitter.instruction("pop rbp");                                             // restore the caller frame pointer
     emitter.instruction("ret");                                                 // return to the fopen caller
     emitter.blank();
     emitter.comment("--- runtime: phar_write append ---");
@@ -287,6 +351,25 @@ fn emit_phar_write_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("sub r11, r10");                                        // ... minus the template length
     abi::emit_symbol_address(emitter, "rcx", "_phar_write_out");                // buffer base
     emitter.instruction("add rcx, r10");                                        // entry anchor = base + template length
+    // -- runtime-built fopen("phar://...","w") stores the full URL for the bridge --
+    abi::emit_load_symbol_to_reg(emitter, "rax", "_phar_write_url_len", 0);     // load full phar:// URL length for dynamic write streams
+    emitter.instruction("test rax, rax");                                       // is this a dynamic URL write stream?
+    emitter.instruction("jz __rt_phar_write_finalize_entry_bridge_x86");        // zero URL length means literal archive/entry slots are active
+    abi::emit_load_symbol_to_reg(emitter, "r10", "_elephc_phar_put_url_fn", 0); // load the optional native PHAR URL writer bridge pointer
+    emitter.instruction("test r10, r10");                                       // was the URL writer bridge published?
+    emitter.instruction("jz __rt_phar_write_finalize_bridge_fail_x86");         // dynamic phar:// writes require the URL bridge
+    emitter.instruction("mov r8, rcx");                                         // bridge arg 2 = buffered entry payload pointer
+    emitter.instruction("mov r9, r11");                                         // bridge arg 3 = buffered entry payload length
+    emitter.instruction("mov rsi, rax");                                        // bridge arg 1 = full phar:// URL length
+    abi::emit_load_symbol_to_reg(emitter, "rdi", "_phar_write_url_ptr", 0);     // bridge arg 0 = full phar:// URL pointer
+    emitter.instruction("mov rdx, r8");                                         // bridge arg 2 = buffered entry payload pointer
+    emitter.instruction("mov rcx, r9");                                         // bridge arg 3 = buffered entry payload length
+    emitter.instruction("call r10");                                            // insert/update the entry through the Rust PHAR URL bridge
+    emitter.instruction("cmp rax, -1");                                         // did the bridge report usize::MAX failure?
+    emitter.instruction("je __rt_phar_write_finalize_bridge_fail_x86");         // bridge failure makes fclose() false
+    emitter.instruction("mov eax, 1");                                          // fclose() returns true after a successful bridge write
+    emitter.instruction("jmp __rt_phar_write_finalize_return_x86");             // skip the literal archive/entry bridge
+    emitter.label("__rt_phar_write_finalize_entry_bridge_x86");
     // -- prefer the elephc-phar bridge so existing native entries are preserved --
     abi::emit_load_symbol_to_reg(emitter, "r10", "_elephc_phar_put_entry_fn", 0); // load the optional native PHAR writer bridge pointer
     emitter.instruction("test r10, r10");                                       // was the writer bridge published?

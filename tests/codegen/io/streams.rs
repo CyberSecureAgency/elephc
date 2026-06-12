@@ -1956,6 +1956,24 @@ echo file_get_contents("phar://" . $archive . "/dir/two.txt");
     assert_eq!(out, "5|5|alpha|bravo");
 }
 
+/// Runtime-built phar:// URLs passed to write-mode fopen() preserve the full URL
+/// until fclose(), then update the native PHAR through the URL bridge.
+#[test]
+fn test_fopen_dynamic_phar_write_preserves_existing_entries() {
+    let out = compile_and_run(
+        r#"<?php
+$archive = "dynamic_stream.phar";
+echo file_put_contents("phar://" . $archive . "/one.txt", "alpha") . "|";
+$f = fopen("phar://" . $archive . "/dir/two.txt", "w");
+echo fwrite($f, "stream") . "|";
+echo (fclose($f) ? "closed" : "failed") . "|";
+echo file_get_contents("phar://" . $archive . "/one.txt") . "|";
+echo file_get_contents("phar://" . $archive . "/dir/two.txt");
+"#,
+    );
+    assert_eq!(out, "5|6|closed|alpha|stream");
+}
+
 /// `file_get_contents()` of a literal `phar://` URL decodes the entry at compile
 /// time (like the fopen read fast path) and returns its bytes as a string; a
 /// missing entry returns `false`.

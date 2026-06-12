@@ -2,8 +2,8 @@
 //! Emits the runtime `phar://` read helpers: `__rt_phar_read_entry`, which reads
 //! and parses a PHAR archive at run time and materializes a named entry as a
 //! readable stream, and `__rt_fopen_maybe_phar`, the `fopen` gate that
-//! routes a non-literal `phar://...` read URL to it (and everything else to
-//! `__rt_fopen`).
+//! routes a non-literal `phar://...` read URL to it, and write-mode URLs to
+//! the PHAR writer's dynamic URL open helper.
 //!
 //! Called from:
 //! - `crate::codegen::runtime::emitters::emit_runtime()` (and the minimal x86
@@ -16,7 +16,8 @@
 //!   (src/codegen/builtins/io/phar_stream.rs). Literal `phar://` URLs still take
 //!   the compile-time fast path (bytes embedded in the binary); only non-literal
 //!   URLs reach here. Runtime reads support native uncompressed, gzip, and
-//!   bzip2-compressed PHAR entries; write-modify remains out of scope.
+//!   bzip2-compressed PHAR entries; runtime write opens preserve the full URL
+//!   until `fclose()` so the native bridge can split archive and entry names.
 //! - Reuses `__rt_file_get_contents` (reads the whole archive into a heap buffer)
 //!   and tail-calls `__rt_data_stream` (writes the matched entry to an unlinked
 //!   tmpfile and rewinds it) so the resulting fd behaves like any read stream.
@@ -277,13 +278,27 @@ pub fn emit_phar_read(emitter: &mut Emitter) {
     emitter.instruction("ldrb w9, [x1, #6]");                                   // '/'
     emitter.instruction("cmp w9, #0x2f");                                       // compare runtime values for the next branch
     emitter.instruction("b.ne __rt_fopen_maybe_phar_plain");                    // branch when the checked value is nonzero or different
-    emitter.instruction("cbz x4, __rt_fopen_maybe_phar_plain");                 // empty mode → not a read open
+    emitter.instruction("cbz x4, __rt_fopen_maybe_phar_plain");                 // empty mode → not a PHAR wrapper open
     emitter.instruction("ldrb w9, [x3, #0]");                                   // mode[0]
     emitter.instruction("cmp w9, #0x72");                                       // 'r' (read)?
-    emitter.instruction("b.ne __rt_fopen_maybe_phar_plain");                    // write/append modes stay literal-only
+    emitter.instruction("b.eq __rt_fopen_maybe_phar_read");                     // read modes use the runtime PHAR reader
+    emitter.instruction("cmp w9, #0x77");                                       // 'w' (write/truncate)?
+    emitter.instruction("b.eq __rt_fopen_maybe_phar_write");                    // write modes use the runtime PHAR writer
+    emitter.instruction("cmp w9, #0x61");                                       // 'a' (append)?
+    emitter.instruction("b.eq __rt_fopen_maybe_phar_write");                    // append modes currently rewrite through the PHAR writer
+    emitter.instruction("cmp w9, #0x63");                                       // 'c' (create)?
+    emitter.instruction("b.eq __rt_fopen_maybe_phar_write");                    // create modes use the runtime PHAR writer
+    emitter.instruction("cmp w9, #0x78");                                       // 'x' (create new)?
+    emitter.instruction("b.eq __rt_fopen_maybe_phar_write");                    // exclusive create modes use the runtime PHAR writer
+    emitter.instruction("b __rt_fopen_maybe_phar_plain");                       // unsupported PHAR mode falls back to generic open
+    emitter.label("__rt_fopen_maybe_phar_read");
     emitter.instruction("mov x0, x1");                                          // url ptr → __rt_phar_read_entry arg0
     emitter.instruction("mov x1, x2");                                          // url len → __rt_phar_read_entry arg1
     emitter.instruction("b __rt_phar_read_entry");                              // tail-call the runtime phar reader
+    emitter.label("__rt_fopen_maybe_phar_write");
+    emitter.instruction("mov x0, x1");                                          // url ptr → __rt_phar_write_open_url arg0
+    emitter.instruction("mov x1, x2");                                          // url len → __rt_phar_write_open_url arg1
+    emitter.instruction("b __rt_phar_write_open_url");                          // tail-call the runtime PHAR writer opener
     emitter.label("__rt_fopen_maybe_phar_plain");
     emitter.instruction("b __rt_fopen");                                        // tail-call the generic open (args intact)
 
@@ -724,13 +739,27 @@ fn emit_phar_read_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("jne __rt_fopen_maybe_phar_plain_x86");                 // branch when the checked value is nonzero or different
     emitter.instruction("cmp BYTE PTR [rax + 6], 0x2f");                        // '/'
     emitter.instruction("jne __rt_fopen_maybe_phar_plain_x86");                 // branch when the checked value is nonzero or different
-    emitter.instruction("test rsi, rsi");                                       // empty mode → not a read open
+    emitter.instruction("test rsi, rsi");                                       // empty mode → not a PHAR wrapper open
     emitter.instruction("jz __rt_fopen_maybe_phar_plain_x86");                  // branch when the checked value is zero or equal
     emitter.instruction("cmp BYTE PTR [rdi + 0], 0x72");                        // mode[0] == 'r'?
-    emitter.instruction("jne __rt_fopen_maybe_phar_plain_x86");                 // write/append stay literal-only
+    emitter.instruction("je __rt_fopen_maybe_phar_read_x86");                   // read modes use the runtime PHAR reader
+    emitter.instruction("cmp BYTE PTR [rdi + 0], 0x77");                        // mode[0] == 'w'?
+    emitter.instruction("je __rt_fopen_maybe_phar_write_x86");                  // write modes use the runtime PHAR writer
+    emitter.instruction("cmp BYTE PTR [rdi + 0], 0x61");                        // mode[0] == 'a'?
+    emitter.instruction("je __rt_fopen_maybe_phar_write_x86");                  // append modes currently rewrite through the PHAR writer
+    emitter.instruction("cmp BYTE PTR [rdi + 0], 0x63");                        // mode[0] == 'c'?
+    emitter.instruction("je __rt_fopen_maybe_phar_write_x86");                  // create modes use the runtime PHAR writer
+    emitter.instruction("cmp BYTE PTR [rdi + 0], 0x78");                        // mode[0] == 'x'?
+    emitter.instruction("je __rt_fopen_maybe_phar_write_x86");                  // exclusive create modes use the runtime PHAR writer
+    emitter.instruction("jmp __rt_fopen_maybe_phar_plain_x86");                 // unsupported PHAR mode falls back to generic open
+    emitter.label("__rt_fopen_maybe_phar_read_x86");
     emitter.instruction("mov rdi, rax");                                        // url ptr → __rt_phar_read_entry arg0
     emitter.instruction("mov rsi, rdx");                                        // url len → __rt_phar_read_entry arg1
     emitter.instruction("jmp __rt_phar_read_entry");                            // tail-call the runtime phar reader
+    emitter.label("__rt_fopen_maybe_phar_write_x86");
+    emitter.instruction("mov rdi, rax");                                        // url ptr → __rt_phar_write_open_url arg0
+    emitter.instruction("mov rsi, rdx");                                        // url len → __rt_phar_write_open_url arg1
+    emitter.instruction("jmp __rt_phar_write_open_url");                        // tail-call the runtime PHAR writer opener
     emitter.label("__rt_fopen_maybe_phar_plain_x86");
     emitter.instruction("jmp __rt_fopen");                                      // tail-call the generic open (args intact)
 

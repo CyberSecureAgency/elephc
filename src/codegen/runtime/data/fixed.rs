@@ -547,8 +547,10 @@ pub(crate) fn emit_runtime_data_fixed(heap_size: usize) -> String {
     // phar:// write stream state. _phar_write_out is the 1 MiB in-memory
     // payload buffer (template prefix + entry content); _phar_write_len is the
     // bytes used; _phar_write_tpl_len locates the entry payload. The path and
-    // entry ptr/len pairs let __rt_phar_write_finalize call the elephc-phar
-    // read-modify-write bridge. One stream at a time; synthetic fd 0x50000000.
+    // entry ptr/len pairs let literal writes call the elephc-phar
+    // read-modify-write bridge. The url ptr/len pair keeps a runtime-built
+    // phar:// URL alive until fclose() can route it through the URL bridge.
+    // One stream at a time; synthetic fd 0x50000000.
     out.push_str(".comm _phar_write_out, 1048576, 3\n");
     out.push_str(".comm _phar_write_len, 8, 3\n");
     out.push_str(".comm _phar_write_tpl_len, 8, 3\n");
@@ -556,6 +558,8 @@ pub(crate) fn emit_runtime_data_fixed(heap_size: usize) -> String {
     out.push_str(".comm _phar_write_path_len, 8, 3\n");
     out.push_str(".comm _phar_write_entry_ptr, 8, 3\n");
     out.push_str(".comm _phar_write_entry_len, 8, 3\n");
+    out.push_str(".comm _phar_write_url_ptr, 8, 3\n");
+    out.push_str(".comm _phar_write_url_len, 8, 3\n");
     // _stream_open_opened_path_scratch: 16-byte scratch backing the 5th
     // `?string &$opened_path` parameter of stream_open. The runtime passes
     // its address so wrappers that follow the PHP-faithful signature can

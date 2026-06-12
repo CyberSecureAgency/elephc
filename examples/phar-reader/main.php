@@ -41,8 +41,12 @@ $out_archive = "examples/phar-reader/runtime-write.phar";
 @unlink($out_archive);
 echo file_put_contents("phar://" . $out_archive . "/generated.txt", "created at runtime\n") . " bytes written\n";
 echo file_put_contents("phar://" . $out_archive . "/nested/info.txt", "nested payload\n") . " bytes written\n";
+$stream = fopen("phar://" . $out_archive . "/streamed.txt", "w");
+echo fwrite($stream, "stream payload\n") . " bytes streamed\n";
+fclose($stream);
 echo file_get_contents("phar://" . $out_archive . "/generated.txt");
 echo file_get_contents("phar://" . $out_archive . "/nested/info.txt");
+echo file_get_contents("phar://" . $out_archive . "/streamed.txt");
 
 // A missing entry returns false, like any failed fopen().
 $missing = @fopen("phar://examples/phar-reader/app.phar/does-not-exist.txt", "r");

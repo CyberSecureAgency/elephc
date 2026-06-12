@@ -74,8 +74,9 @@ pub(super) fn check_builtin(
                     }
                 }
             } else {
-                // Non-literal paths can route to a phar:// entry at run time,
-                // including tar/zip variants through the elephc-phar bridge.
+                // Non-literal paths can route to a phar:// entry at run time
+                // for reads or write-mode opens. Reads may use tar/zip and
+                // compressed entries through the elephc-phar/zlib/bz2 bridge.
                 checker.require_builtin_library("elephc_phar");
                 checker.require_builtin_library("z");
                 checker.require_builtin_library("bz2");

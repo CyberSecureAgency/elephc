@@ -210,6 +210,7 @@ pub(super) fn lower_fopen(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> 
     }
     if filename_literal.is_none() {
         publish_dynamic_phar_function_pointers(ctx);
+        publish_dynamic_phar_write_function_pointer(ctx);
     }
     match ctx.emitter.target.arch {
         Arch::AArch64 => {
