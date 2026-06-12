@@ -655,3 +655,13 @@ fn test_error_static_type_outside_class() {
         "Cannot use 'static' as a type outside of a class",
     );
 }
+
+/// Verifies that variable variables (`$$name`) are rejected with an explanatory message, since
+/// elephc allocates locals to fixed compile-time slots with no runtime variable-name table.
+#[test]
+fn test_error_variable_variables_unsupported() {
+    expect_error(
+        "<?php $x = \"y\"; $$x = 1;",
+        "Variable variables (`$$name`) are not supported",
+    );
+}
