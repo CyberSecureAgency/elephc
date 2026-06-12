@@ -212,12 +212,18 @@ pub(super) fn check_types_impl(
             name,
             backing_type,
             cases,
+            implements,
+            methods,
+            constants,
         } = &stmt.kind
         {
             if let Err(error) = build_enum_info(
                 name,
                 backing_type.as_ref(),
                 cases,
+                implements,
+                methods,
+                constants,
                 stmt.span,
                 &mut checker,
                 &mut next_class_id,

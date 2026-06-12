@@ -11,7 +11,7 @@
 use crate::errors::CompileError;
 use crate::lexer::Token;
 use crate::parser::ast::{
-    ClassConst, ClassMethod, ClassProperty, PropertyHooks, Stmt, StmtKind, TraitUse,
+    ClassConst, ClassMethod, ClassProperty, EnumCaseDecl, PropertyHooks, Stmt, StmtKind, TraitUse,
     TypeExpr, Visibility,
 };
 use crate::parser::expr::parse_expr;
@@ -103,7 +103,7 @@ pub(in crate::parser::stmt) fn parse_trait_decl(
     };
 
     expect_token(tokens, pos, &Token::LBrace, "Expected '{' after trait name")?;
-    let (trait_uses, properties, methods, constants) =
+    let (trait_uses, properties, methods, constants, _cases) =
         parse_class_like_body(tokens, pos, "trait", false)?;
     expect_token(tokens, pos, &Token::RBrace, "Expected '}' at end of trait")?;
 
@@ -136,6 +136,7 @@ pub(in crate::parser::stmt) fn parse_class_like_body(
         Vec<ClassProperty>,
         Vec<ClassMethod>,
         Vec<ClassConst>,
+        Vec<EnumCaseDecl>,
     ),
     CompileError,
 > {
@@ -143,6 +144,7 @@ pub(in crate::parser::stmt) fn parse_class_like_body(
     let mut properties = Vec::new();
     let mut methods = Vec::new();
     let mut constants = Vec::new();
+    let mut cases = Vec::new();
 
     while *pos < tokens.len() && !matches!(tokens[*pos].0, Token::RBrace | Token::Eof) {
         // Capture any `#[...]` attribute groups attached to the next member —
@@ -160,6 +162,45 @@ pub(in crate::parser::stmt) fn parse_class_like_body(
                 ));
             }
             trait_uses.push(parse_trait_use(tokens, pos, member_span)?);
+            continue;
+        }
+
+        // Enum cases. Cases carry no visibility modifiers, so they are handled before the
+        // modifier scan; `case` outside an enum is a hard error.
+        if tokens[*pos].0 == Token::Case {
+            if owner_kind != "enum" {
+                return Err(CompileError::new(
+                    member_span,
+                    "'case' is only valid inside an enum",
+                ));
+            }
+            *pos += 1; // consume 'case'
+            let case_name = match tokens.get(*pos).map(|(t, _)| t) {
+                Some(Token::Identifier(name)) => {
+                    let name = name.clone();
+                    *pos += 1;
+                    name
+                }
+                _ => {
+                    return Err(CompileError::new(
+                        member_span,
+                        "Expected case name after 'case'",
+                    ))
+                }
+            };
+            let value = if *pos < tokens.len() && tokens[*pos].0 == Token::Assign {
+                *pos += 1;
+                Some(parse_expr(tokens, pos)?)
+            } else {
+                None
+            };
+            expect_semicolon(tokens, pos)?;
+            cases.push(EnumCaseDecl {
+                name: case_name,
+                value,
+                span: member_span,
+                attributes: member_attributes,
+            });
             continue;
         }
 
@@ -366,7 +407,7 @@ pub(in crate::parser::stmt) fn parse_class_like_body(
         ));
     }
 
-    Ok((trait_uses, properties, methods, constants))
+    Ok((trait_uses, properties, methods, constants, cases))
 }
 
 /// Appends promoted constructor properties to the class properties list.

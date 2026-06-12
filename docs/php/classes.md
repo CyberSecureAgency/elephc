@@ -587,6 +587,51 @@ echo Color::from(2) === Color::Green; // 1
 ```
 Pure and backed enums. `->value`, `::from()`, `::tryFrom()`, `::cases()`. Only `int` and `string` backing types.
 
+### Enum methods, constants, and interfaces
+
+Enums may declare instance methods, static methods, constants, and an `implements` clause. Instance methods dispatch on the case singleton, so `$this` is the case:
+
+```php
+<?php
+interface HasLabel {
+    public function label(): string;
+}
+
+enum Suit: string implements HasLabel {
+    case Hearts = "H";
+    case Spades = "S";
+
+    const COUNT = 2;
+
+    public function label(): string {
+        return match ($this) {
+            Suit::Hearts => "Hearts",
+            Suit::Spades => "Spades",
+        };
+    }
+
+    public function code(): string {
+        return $this->value;          // backing value
+    }
+
+    public static function default(): self {
+        return Suit::Hearts;          // static factory
+    }
+}
+
+echo Suit::Hearts->label();           // Hearts
+echo Suit::default()->code();         // H
+```
+
+Rules:
+
+- Instance methods may use `$this` (the case), `match ($this)`, the backing `$this->value`, and `self::CONST`.
+- Static methods dispatch like class static methods and can act as factories.
+- An enum can `implements` one or more interfaces and be used through them.
+- `self`/`static` type hints in enum methods resolve to the enum.
+
+Current limitations: the `$this->name` property is not yet readable inside a method, a constant referenced as `EnumName::CONST` from outside the enum is not yet resolved (use `self::CONST` inside the enum), and using a trait inside an enum is not supported.
+
 ### Built-in `SortDirection`
 
 PHP 8.6's global unit enum is available without a user declaration:
