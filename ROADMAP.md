@@ -711,6 +711,7 @@ and 0.x validation rather than by speculative pass work.
 - [ ] Runtime routine dead stripping — include or link only runtime helpers reachable from the generated program instead of carrying the whole target runtime slice
 - [ ] Tail-call optimization — direct tail self- and mutual-recursion lowering on top of EIR (`Br` to function entry with parameter rebinding)
 - [ ] Performance within 2x of C -O0 on compute benchmarks
+- [ ] DOOM showcase performance gate after EIR optimizations — build and run a reproducible SDL benchmark for `showcases/doom`, track AST fallback vs EIR FPS / generated assembly size / runtime helper counts, and require no large real-world regression before legacy backend removal
 - [ ] Real-world CLI tools compiled as validation
 - [ ] Keep the legacy AST → ASM backend available as a fallback until real-world validation has passed; do not remove it before this gate
 - [ ] Remove the deprecated `--ast-backend` CLI flag after validation; report it as unsupported once the IR backend is the only backend
