@@ -70,7 +70,7 @@ streams are unbuffered, so the accepted buffer size does not change behavior.
 | `php://memory`, `php://temp` | Seekable in-memory streams backed by an anonymous temporary buffer. `php://temp/maxmemory:N` is accepted and ignored. |
 | `php://filter` | Opens an underlying resource and attaches one built-in filter at open time, for example `php://filter/read=string.toupper/resource=php://temp`. |
 | `data://` | RFC 2397 inline payload streams. Base64 and percent-decoded payloads are supported. The URI must be a string literal. |
-| `phar://` | Read or write a single PHAR entry. Literal reads happen at compile time and embed the entry in the binary; non-literal reads happen at runtime for uncompressed entries. |
+| `phar://` | Read or write a single PHAR entry. Literal reads happen at compile time and embed the entry in the binary; non-literal reads happen at runtime for uncompressed, gzip, and bzip2 entries. |
 | `ftp://` | Anonymous binary passive FTP read streams. `fopen()` requires a literal URL; `file_get_contents()` also accepts runtime string URLs. Credentials in the URL are ignored in v1. |
 | `ftps://` | Explicit FTP over TLS using `AUTH TLS`, with TLS on both control and data channels. `fopen()` requires a literal URL; `file_get_contents()` also accepts runtime string URLs. |
 | `http://` | HTTP/1.0 `GET` read streams. `fopen()` requires a literal URL; `file_get_contents()` also accepts runtime string URLs. v1 does not follow redirects and buffers up to 1 MiB. |
@@ -88,7 +88,7 @@ only, no key/private-key signing variants, and no tar/zip PHAR variants.
 `file_get_contents($url)` recognizes runtime `http://`, `https://`, `ftp://`,
 and `ftps://` strings before falling back to `phar://`/filesystem handling.
 Because the scheme is not known statically, non-literal `file_get_contents()`
-conservatively links `elephc-tls`.
+conservatively links `elephc-tls`, zlib, and libbz2.
 
 `https://`, `ftps://`, and `stream_socket_enable_crypto()` use `elephc-tls`
 (rustls, the `ring` crypto provider, and Mozilla webpki roots). TLS contexts can

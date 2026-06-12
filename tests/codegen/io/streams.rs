@@ -1611,6 +1611,18 @@ struct TestPharEntry<'a> {
     flags: u32,
 }
 
+// Precomputed bzip2 blob for `"bzip2-compressed phar entry. "` repeated eight
+// times. bzip2-rs is decode-only, so tests keep this stable fixture inline.
+const BZIP2_PHAR_BLOB: &[u8] = &[
+    0x42, 0x5a, 0x68, 0x39, 0x31, 0x41, 0x59, 0x26, 0x53, 0x59, 0x61, 0x39,
+    0xa6, 0xe8, 0x00, 0x00, 0x1f, 0x99, 0x80, 0x40, 0x03, 0x10, 0x00, 0x3e,
+    0x63, 0xdc, 0x30, 0x20, 0x00, 0x70, 0x53, 0x09, 0xa6, 0x80, 0xd3, 0x10,
+    0x2a, 0xa8, 0x0c, 0x43, 0x46, 0x1a, 0x9b, 0x0b, 0x0a, 0x0e, 0x46, 0x45,
+    0xc5, 0x44, 0xc5, 0x05, 0x46, 0x06, 0xe3, 0xa1, 0x21, 0x03, 0x22, 0x42,
+    0xc2, 0xe2, 0x63, 0x02, 0xe2, 0x82, 0x07, 0x82, 0x82, 0x05, 0x44, 0x0f,
+    0xc5, 0xdc, 0x91, 0x4e, 0x14, 0x24, 0x18, 0x4e, 0x69, 0xba, 0x00,
+];
+
 /// Builds a native-format PHAR (PHP stub + manifest + data section) from
 /// explicit per-entry stored bytes and flags, matching the byte layout PHP's
 /// `Phar` class produces. crc32 and signature are omitted because the reader
@@ -1859,6 +1871,35 @@ fn test_fopen_phar_reads_gzip_entry() {
     assert_eq!(out, format!("{}|gzip", content.len()));
 }
 
+/// Verifies compiled PHP output for dynamic fopen phar reads gzip entry.
+#[test]
+fn test_fopen_phar_runtime_path_reads_gzip_entry() {
+    // The runtime phar reader must inflate gzip entries when the archive path
+    // arrives through string concatenation instead of the compile-time literal
+    // fast path.
+    let content = b"gzip-compressed phar entry payload, repeated for ratio. ".repeat(8);
+    let mut encoder =
+        flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
+    std::io::Write::write_all(&mut encoder, &content).unwrap();
+    let stored = encoder.finish().unwrap();
+    assert!(stored.len() < content.len(), "fixture should actually compress");
+    let phar = build_phar(&[TestPharEntry {
+        name: "z.txt",
+        uncompressed_size: content.len() as u32,
+        stored: &stored,
+        flags: 0x0000_11a4, // gzip (0x1000) | 0644
+    }]);
+    let path = std::env::temp_dir().join(format!("elephc_phar_rt_gz_{}.phar", std::process::id()));
+    std::fs::write(&path, &phar).unwrap();
+    let src = format!(
+        r#"<?php $p = "{p}"; $f = fopen("phar://" . $p . "/z.txt", "r"); $s = fread($f, 8192); fclose($f); echo strlen($s) . "|" . substr($s, 0, 4);"#,
+        p = path.display()
+    );
+    let out = compile_and_run(&src);
+    std::fs::remove_file(&path).ok();
+    assert_eq!(out, format!("{}|gzip", content.len()));
+}
+
 /// Verifies compiled PHP output for fopen phar reads bzip2 entry.
 #[test]
 fn test_fopen_phar_reads_bzip2_entry() {
@@ -1885,6 +1926,28 @@ fn test_fopen_phar_reads_bzip2_entry() {
     std::fs::write(&path, &phar).unwrap();
     let src = format!(
         r#"<?php $f = fopen("phar://{p}/b.txt", "r"); $s = fread($f, 4096); fclose($f); echo strlen($s) . "|" . substr($s, 0, 26);"#,
+        p = path.display()
+    );
+    let out = compile_and_run(&src);
+    std::fs::remove_file(&path).ok();
+    assert_eq!(out, "232|bzip2-compressed phar entr");
+}
+
+/// Verifies compiled PHP output for dynamic file_get_contents phar reads bzip2 entry.
+#[test]
+fn test_file_get_contents_phar_runtime_path_reads_bzip2_entry() {
+    // Dynamic file_get_contents() routes through the runtime phar reader, so it
+    // must publish libbz2 and decompress bzip2-compressed entry payloads there.
+    let phar = build_phar(&[TestPharEntry {
+        name: "b.txt",
+        uncompressed_size: 232,
+        stored: BZIP2_PHAR_BLOB,
+        flags: 0x0000_21a4, // bzip2 (0x2000) | 0644
+    }]);
+    let path = std::env::temp_dir().join(format!("elephc_phar_rt_bz_{}.phar", std::process::id()));
+    std::fs::write(&path, &phar).unwrap();
+    let src = format!(
+        r#"<?php $p = "{p}"; $s = file_get_contents("phar://" . $p . "/b.txt"); echo strlen($s) . "|" . substr($s, 0, 26);"#,
         p = path.display()
     );
     let out = compile_and_run(&src);

@@ -1,7 +1,7 @@
 //! Purpose:
 //! Emits the runtime `phar://` read helpers: `__rt_phar_read_entry`, which reads
-//! and parses a PHAR archive at run time and materializes a named uncompressed
-//! entry as a readable stream, and `__rt_fopen_maybe_phar`, the `fopen` gate that
+//! and parses a PHAR archive at run time and materializes a named entry as a
+//! readable stream, and `__rt_fopen_maybe_phar`, the `fopen` gate that
 //! routes a non-literal `phar://...` read URL to it (and everything else to
 //! `__rt_fopen`).
 //!
@@ -15,15 +15,21 @@
 //! - This is the RUNTIME counterpart to the compile-time `parse_phar_entry`
 //!   (src/codegen/builtins/io/phar_stream.rs). Literal `phar://` URLs still take
 //!   the compile-time fast path (bytes embedded in the binary); only non-literal
-//!   URLs reach here. Milestone 2 scope: one named UNCOMPRESSED entry; gzip/bzip2
-//!   entries and write-modify are out of scope.
+//!   URLs reach here. Runtime reads support native uncompressed, gzip, and
+//!   bzip2-compressed PHAR entries; write-modify remains out of scope.
 //! - Reuses `__rt_file_get_contents` (reads the whole archive into a heap buffer)
 //!   and tail-calls `__rt_data_stream` (writes the matched entry to an unlinked
 //!   tmpfile and rewinds it) so the resulting fd behaves like any read stream.
+//! - zlib/libbz2 entry points are called through runtime function-pointer slots
+//!   that EIR call sites publish only for dynamic PHAR-capable reads.
 //! - The archive/entry split is the `.phar/` boundary (matching the write path);
 //!   a runtime archive path without `.phar/` in its name is unsupported in M2.
 
 use crate::codegen::{abi, emit::Emitter, platform::Arch};
+
+const PHAR_FLAG_GZIP: u32 = 0x0000_1000;
+const PHAR_FLAG_BZIP2: u32 = 0x0000_2000;
+const X86_64_HEAP_MAGIC_HI32: u64 = 0x454C5048;
 
 /// Emits `__rt_phar_read_entry` and `__rt_fopen_maybe_phar` for the active target.
 pub fn emit_phar_read(emitter: &mut Emitter) {
@@ -185,15 +191,37 @@ pub fn emit_phar_read(emitter: &mut Emitter) {
     emitter.label("__rt_phar_read_name_match");
     // q at name start, x13 = name_len, x10 = data_section, x12 = data_offset.
     emitter.instruction("add x14, x9, x13");                                    // q + name_len (start of uncompressed field)
-    emitter.instruction("add x14, x14, #8");                                    // &compressed = q + name_len + 8
-    emitter.instruction("ldr w15, [x19, x14]");                                 // content length = compressed size
+    emitter.instruction("ldr w21, [x19, x14]");                                 // uncompressed size recorded in the entry manifest
+    emitter.instruction("add x15, x14, #8");                                    // &compressed = q + name_len + 8
+    emitter.instruction("ldr w22, [x19, x15]");                                 // compressed/stored byte count for this entry
+    emitter.instruction("add x15, x14, #16");                                   // &flags = q + name_len + 16
+    emitter.instruction("ldr w24, [x19, x15]");                                 // entry flags, including gzip/bzip2 compression bits
     emitter.instruction("add x14, x10, x12");                                   // data_section + data_offset
-    emitter.instruction("add x14, x14, x15");                                   // + content length (end offset)
-    emitter.instruction("cmp x14, x20");                                        // bounds: content within N?
+    emitter.instruction("add x15, x14, x22");                                   // end offset after the stored entry bytes
+    emitter.instruction("cmp x15, x20");                                        // bounds: stored content within N?
     emitter.instruction("b.gt __rt_phar_read_fail");                            // branch when comparison is above target
-    emitter.instruction("add x0, x19, x10");                                    // buffer + data_section
-    emitter.instruction("add x0, x0, x12");                                     // + data_offset = content ptr
-    emitter.instruction("mov x1, x15");                                         // content length
+    emitter.instruction("add x23, x19, x14");                                   // content ptr = buffer + data_section + data_offset
+    emitter.instruction(&format!("tst x24, #{:#x}", PHAR_FLAG_GZIP));           // is this PHAR entry gzip-compressed?
+    emitter.instruction("b.ne __rt_phar_read_name_match_gzip");                 // gzip entries need raw DEFLATE inflation
+    emitter.instruction(&format!("tst x24, #{:#x}", PHAR_FLAG_BZIP2));          // is this PHAR entry bzip2-compressed?
+    emitter.instruction("b.ne __rt_phar_read_name_match_bzip2");                // bzip2 entries need libbz2 decompression
+    emitter.instruction("mov x0, x23");                                         // uncompressed content pointer
+    emitter.instruction("mov x1, x22");                                         // uncompressed content length
+    emitter.instruction("b __rt_phar_read_name_match_stream");                  // stream the already-plain entry bytes
+    emitter.label("__rt_phar_read_name_match_gzip");
+    emitter.instruction("mov x0, x23");                                         // compressed content pointer
+    emitter.instruction("mov x1, x22");                                         // compressed content length
+    emitter.instruction("mov x2, x21");                                         // expected uncompressed byte length
+    emitter.instruction("bl __rt_phar_inflate_raw");                            // inflate the raw-DEFLATE PHAR entry payload
+    emitter.instruction("cbz x0, __rt_phar_read_fail");                         // decompression failure makes the entry unreadable
+    emitter.instruction("b __rt_phar_read_name_match_stream");                  // stream the inflated entry bytes
+    emitter.label("__rt_phar_read_name_match_bzip2");
+    emitter.instruction("mov x0, x23");                                         // compressed content pointer
+    emitter.instruction("mov x1, x22");                                         // compressed content length
+    emitter.instruction("mov x2, x21");                                         // expected uncompressed byte length
+    emitter.instruction("bl __rt_phar_bzip2_decompress");                       // decompress the bzip2 PHAR entry payload
+    emitter.instruction("cbz x0, __rt_phar_read_fail");                         // decompression failure makes the entry unreadable
+    emitter.label("__rt_phar_read_name_match_stream");
     emitter.instruction("bl __rt_data_stream");                                 // materialize a readable fd over the entry; x0 = fd
     emitter.instruction("b __rt_phar_read_done");                               // continue at target label
 
@@ -206,6 +234,8 @@ pub fn emit_phar_read(emitter: &mut Emitter) {
     emitter.instruction("ldp x29, x30, [sp, #48]");                             // restore frame pointer and return address
     emitter.instruction("add sp, sp, #64");                                     // release the helper frame
     emitter.instruction("ret");                                                 // return the entry stream descriptor
+
+    emit_phar_decompress_helpers_arm64(emitter);
 
     // ===== __rt_fopen_maybe_phar(x1=fname ptr, x2=fname len, x3=mode ptr, x4=mode len) =====
     emitter.blank();
@@ -297,6 +327,151 @@ pub fn emit_phar_read(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the failure (boxed false)
     emitter.label("__rt_fgc_phar_plain");
     emitter.instruction("b __rt_file_get_contents");                            // tail-call the generic reader (args intact)
+}
+
+/// Emits ARM64 helpers that decompress PHAR entry payloads through published
+/// zlib/libbz2 function-pointer slots instead of direct runtime references.
+fn emit_phar_decompress_helpers_arm64(emitter: &mut Emitter) {
+    emitter.blank();
+    emitter.comment("--- runtime: phar decompress helpers ---");
+
+    // ===== __rt_phar_inflate_raw(x0=src, x1=src_len, x2=out_len) -> x0=ptr, x1=len =====
+    emitter.label("__rt_phar_inflate_raw");
+    emitter.instruction("sub sp, sp, #192");                                    // reserve z_stream, saved arguments, and return state
+    emitter.instruction("stp x29, x30, [sp, #176]");                            // save frame pointer and return address
+    emitter.instruction("add x29, sp, #176");                                   // establish the helper frame pointer
+    emitter.instruction("str x0, [sp, #112]");                                  // save the compressed source pointer
+    emitter.instruction("str x1, [sp, #120]");                                  // save the compressed source length
+    emitter.instruction("str x2, [sp, #128]");                                  // save the expected uncompressed length
+    abi::emit_symbol_address(emitter, "x9", "_phar_zlib_inflate_init2_fn");
+    emitter.instruction("ldr x9, [x9]");                                        // load the published inflateInit2_ function pointer
+    emitter.instruction("cbz x9, __rt_phar_inflate_fail");                      // missing zlib publisher means compressed PHAR reads fail
+    abi::emit_symbol_address(emitter, "x9", "_phar_zlib_inflate_fn");
+    emitter.instruction("ldr x9, [x9]");                                        // load the published inflate function pointer
+    emitter.instruction("cbz x9, __rt_phar_inflate_fail");                      // missing zlib publisher means compressed PHAR reads fail
+    abi::emit_symbol_address(emitter, "x9", "_phar_zlib_inflate_end_fn");
+    emitter.instruction("ldr x9, [x9]");                                        // load the published inflateEnd function pointer
+    emitter.instruction("cbz x9, __rt_phar_inflate_fail");                      // missing zlib publisher means compressed PHAR reads fail
+
+    emitter.instruction("mov x0, x2");                                          // allocation size = expected decompressed bytes
+    emitter.instruction("cbnz x0, __rt_phar_inflate_alloc");                    // non-empty output can allocate its exact size
+    emitter.instruction("mov x0, #1");                                          // empty entries still need a non-null buffer sentinel
+    emitter.label("__rt_phar_inflate_alloc");
+    emitter.instruction("bl __rt_heap_alloc");                                  // allocate the decompressed entry buffer
+    emitter.instruction("mov x9, #1");                                          // heap kind 1 = persisted string payload
+    emitter.instruction("str x9, [x0, #-8]");                                   // stamp the decompressed buffer as an owned string
+    emitter.instruction("str x0, [sp, #136]");                                  // save the destination buffer pointer
+
+    // -- zero the z_stream before handing it to zlib --
+    emitter.instruction("mov x9, #0");                                          // z_stream byte clear index
+    emitter.label("__rt_phar_inflate_zero");
+    emitter.instruction("cmp x9, #112");                                        // cleared the whole z_stream struct?
+    emitter.instruction("b.ge __rt_phar_inflate_zeroed");                       // the z_stream is ready for initialization
+    emitter.instruction("strb wzr, [sp, x9]");                                  // zero one z_stream byte
+    emitter.instruction("add x9, x9, #1");                                      // advance the clear index
+    emitter.instruction("b __rt_phar_inflate_zero");                            // continue clearing z_stream bytes
+    emitter.label("__rt_phar_inflate_zeroed");
+
+    // -- inflateInit2_(strm, -15, version, size): -15 selects raw DEFLATE --
+    emitter.instruction("mov x0, sp");                                          // arg 0 = z_stream pointer
+    emitter.instruction("mov x1, #-15");                                        // arg 1 = raw-DEFLATE window bits
+    abi::emit_symbol_address(emitter, "x2", "_zlib_version");
+    emitter.instruction("mov x3, #112");                                        // arg 3 = sizeof(z_stream)
+    abi::emit_symbol_address(emitter, "x9", "_phar_zlib_inflate_init2_fn");
+    emitter.instruction("ldr x9, [x9]");                                        // reload the published inflateInit2_ pointer
+    emitter.instruction("blr x9");                                              // initialize the raw-inflate stream
+    emitter.instruction("cmp x0, #0");                                          // did zlib initialize successfully?
+    emitter.instruction("b.ne __rt_phar_inflate_fail");                         // failed initialization makes the entry unreadable
+
+    // -- point the stream at the PHAR payload and fixed-size output buffer --
+    emitter.instruction("ldr x9, [sp, #112]");                                  // reload compressed source pointer
+    emitter.instruction("str x9, [sp, #0]");                                    // z_stream.next_in = source pointer
+    emitter.instruction("ldr x9, [sp, #120]");                                  // reload compressed source length
+    emitter.instruction("str w9, [sp, #8]");                                    // z_stream.avail_in = source length
+    emitter.instruction("ldr x9, [sp, #136]");                                  // reload destination buffer pointer
+    emitter.instruction("str x9, [sp, #24]");                                   // z_stream.next_out = destination buffer
+    emitter.instruction("ldr x9, [sp, #128]");                                  // reload expected decompressed length
+    emitter.instruction("str w9, [sp, #32]");                                   // z_stream.avail_out = exact output capacity
+
+    // -- inflate the whole entry in one Z_FINISH pass, then end the stream --
+    emitter.instruction("mov x0, sp");                                          // arg 0 = z_stream pointer
+    emitter.instruction("mov x1, #4");                                          // arg 1 = Z_FINISH
+    abi::emit_symbol_address(emitter, "x9", "_phar_zlib_inflate_fn");
+    emitter.instruction("ldr x9, [x9]");                                        // reload the published inflate pointer
+    emitter.instruction("blr x9");                                              // inflate the compressed PHAR entry payload
+    emitter.instruction("str x0, [sp, #144]");                                  // save the zlib status code
+    emitter.instruction("ldr x9, [sp, #40]");                                   // z_stream.total_out = inflated length
+    emitter.instruction("str x9, [sp, #152]");                                  // save the actual inflated byte count
+    emitter.instruction("mov x0, sp");                                          // arg 0 = z_stream pointer
+    abi::emit_symbol_address(emitter, "x9", "_phar_zlib_inflate_end_fn");
+    emitter.instruction("ldr x9, [x9]");                                        // reload the published inflateEnd pointer
+    emitter.instruction("blr x9");                                              // release zlib's internal inflate state
+
+    emitter.instruction("ldr x9, [sp, #144]");                                  // reload the inflate status code
+    emitter.instruction("cmp x9, #1");                                          // did inflate reach Z_STREAM_END?
+    emitter.instruction("b.ne __rt_phar_inflate_fail");                         // partial or failed inflate makes the entry unreadable
+    emitter.instruction("ldr x9, [sp, #152]");                                  // reload the actual inflated byte count
+    emitter.instruction("ldr x10, [sp, #128]");                                 // reload the expected uncompressed byte count
+    emitter.instruction("cmp x9, x10");                                         // did zlib produce the manifest-declared size?
+    emitter.instruction("b.ne __rt_phar_inflate_fail");                         // size mismatch means the archive entry is invalid
+    emitter.instruction("ldr x0, [sp, #136]");                                  // return the decompressed buffer pointer
+    emitter.instruction("mov x1, x9");                                          // return the decompressed buffer length
+    emitter.instruction("b __rt_phar_inflate_done");                            // skip the failure result
+    emitter.label("__rt_phar_inflate_fail");
+    emitter.instruction("mov x0, #0");                                          // null pointer reports decompression failure
+    emitter.instruction("mov x1, #0");                                          // failure has no output bytes
+    emitter.label("__rt_phar_inflate_done");
+    emitter.instruction("ldp x29, x30, [sp, #176]");                            // restore frame pointer and return address
+    emitter.instruction("add sp, sp, #192");                                    // release the z_stream helper frame
+    emitter.instruction("ret");                                                 // return decompressed bytes or null on failure
+
+    // ===== __rt_phar_bzip2_decompress(x0=src, x1=src_len, x2=out_len) -> x0=ptr, x1=len =====
+    emitter.label("__rt_phar_bzip2_decompress");
+    emitter.instruction("sub sp, sp, #80");                                     // reserve bzip2 decompression scratch state
+    emitter.instruction("stp x29, x30, [sp, #64]");                             // save frame pointer and return address
+    emitter.instruction("add x29, sp, #64");                                    // establish the helper frame pointer
+    emitter.instruction("str x0, [sp, #0]");                                    // save the compressed source pointer
+    emitter.instruction("str x1, [sp, #8]");                                    // save the compressed source length
+    emitter.instruction("str x2, [sp, #16]");                                   // save the expected uncompressed length
+    abi::emit_symbol_address(emitter, "x9", "_phar_bz2_decompress_fn");
+    emitter.instruction("ldr x9, [x9]");                                        // load the published BZ2 decompressor pointer
+    emitter.instruction("cbz x9, __rt_phar_bzip2_fail");                        // missing libbz2 publisher means compressed PHAR reads fail
+    emitter.instruction("mov x0, x2");                                          // allocation size = expected decompressed bytes
+    emitter.instruction("cbnz x0, __rt_phar_bzip2_alloc");                      // non-empty output can allocate its exact size
+    emitter.instruction("mov x0, #1");                                          // empty entries still need a non-null buffer sentinel
+    emitter.label("__rt_phar_bzip2_alloc");
+    emitter.instruction("bl __rt_heap_alloc");                                  // allocate the decompressed entry buffer
+    emitter.instruction("mov x9, #1");                                          // heap kind 1 = persisted string payload
+    emitter.instruction("str x9, [x0, #-8]");                                   // stamp the decompressed buffer as an owned string
+    emitter.instruction("str x0, [sp, #24]");                                   // save the destination buffer pointer
+    emitter.instruction("ldr x9, [sp, #16]");                                   // reload expected decompressed length
+    emitter.instruction("str w9, [sp, #32]");                                   // destLen in/out value for libbz2
+
+    emitter.instruction("ldr x0, [sp, #24]");                                   // arg 0 = destination buffer
+    emitter.instruction("add x1, sp, #32");                                     // arg 1 = &destLen
+    emitter.instruction("ldr x2, [sp, #0]");                                    // arg 2 = compressed source pointer
+    emitter.instruction("ldr w3, [sp, #8]");                                    // arg 3 = compressed source length
+    emitter.instruction("mov w4, #0");                                          // arg 4 = small = false
+    emitter.instruction("mov w5, #0");                                          // arg 5 = verbosity = 0
+    abi::emit_symbol_address(emitter, "x9", "_phar_bz2_decompress_fn");
+    emitter.instruction("ldr x9, [x9]");                                        // reload the published BZ2 decompressor pointer
+    emitter.instruction("blr x9");                                              // decompress the bzip2 PHAR entry payload
+    emitter.instruction("cmp w0, #0");                                          // did libbz2 report success?
+    emitter.instruction("b.ne __rt_phar_bzip2_fail");                           // non-zero status makes the entry unreadable
+    emitter.instruction("ldr w9, [sp, #32]");                                   // destLen now holds the decompressed byte count
+    emitter.instruction("ldr x10, [sp, #16]");                                  // reload the expected uncompressed byte count
+    emitter.instruction("cmp x9, x10");                                         // did libbz2 produce the manifest-declared size?
+    emitter.instruction("b.ne __rt_phar_bzip2_fail");                           // size mismatch means the archive entry is invalid
+    emitter.instruction("ldr x0, [sp, #24]");                                   // return the decompressed buffer pointer
+    emitter.instruction("mov x1, x9");                                          // return the decompressed buffer length
+    emitter.instruction("b __rt_phar_bzip2_done");                              // skip the failure result
+    emitter.label("__rt_phar_bzip2_fail");
+    emitter.instruction("mov x0, #0");                                          // null pointer reports decompression failure
+    emitter.instruction("mov x1, #0");                                          // failure has no output bytes
+    emitter.label("__rt_phar_bzip2_done");
+    emitter.instruction("ldp x29, x30, [sp, #64]");                             // restore frame pointer and return address
+    emitter.instruction("add sp, sp, #80");                                     // release the bzip2 helper frame
+    emitter.instruction("ret");                                                 // return decompressed bytes or null on failure
 }
 
 /// x86_64 Linux variant of the runtime `phar://` read helpers.
@@ -450,17 +625,41 @@ fn emit_phar_read_linux_x86_64(emitter: &mut Emitter) {
 
     emitter.label("__rt_phar_read_name_match_x86");
     // q at name start, r9 = name_len, rbx = data_section, r10 = data_offset.
-    emitter.instruction("lea rax, [r8 + r9]");                                  // q + name_len (uncompressed field)
-    emitter.instruction("add rax, 8");                                          // &compressed = q + name_len + 8
-    emitter.instruction("mov eax, DWORD PTR [r12 + rax]");                      // content length = compressed size
+    emitter.instruction("lea rcx, [r8 + r9]");                                  // q + name_len (uncompressed field)
+    emitter.instruction("mov r11d, DWORD PTR [r12 + rcx]");                     // uncompressed size recorded in the entry manifest
+    emitter.instruction("lea rax, [rcx + 8]");                                  // &compressed = q + name_len + 8
+    emitter.instruction("mov eax, DWORD PTR [r12 + rax]");                      // compressed/stored byte count for this entry
+    emitter.instruction("lea rdx, [rcx + 16]");                                 // &flags = q + name_len + 16
+    emitter.instruction("mov r8d, DWORD PTR [r12 + rdx]");                      // entry flags, including gzip/bzip2 compression bits
     emitter.instruction("mov rcx, rbx");                                        // data_section
     emitter.instruction("add rcx, r10");                                        // + data_offset
     emitter.instruction("mov rdx, rcx");                                        // end offset = data_section + data_offset ...
-    emitter.instruction("add rdx, rax");                                        // ... + content length
+    emitter.instruction("add rdx, rax");                                        // ... + stored content length
     emitter.instruction("cmp rdx, r13");                                        // bounds: content within N?
     emitter.instruction("jg __rt_phar_read_fail_x86");                          // branch when comparison is above target
     emitter.instruction("lea rdi, [r12 + rcx]");                                // content ptr = buffer + data_section + data_offset
-    emitter.instruction("mov rsi, rax");                                        // content length
+    emitter.instruction("mov rsi, rax");                                        // stored content length
+    emitter.instruction(&format!("test r8d, {:#x}", PHAR_FLAG_GZIP));           // is this PHAR entry gzip-compressed?
+    emitter.instruction("jnz __rt_phar_read_name_match_gzip_x86");              // gzip entries need raw DEFLATE inflation
+    emitter.instruction(&format!("test r8d, {:#x}", PHAR_FLAG_BZIP2));          // is this PHAR entry bzip2-compressed?
+    emitter.instruction("jnz __rt_phar_read_name_match_bzip2_x86");             // bzip2 entries need libbz2 decompression
+    emitter.instruction("jmp __rt_phar_read_name_match_stream_x86");            // stream the already-plain entry bytes
+    emitter.label("__rt_phar_read_name_match_gzip_x86");
+    emitter.instruction("mov rdx, r11");                                        // expected uncompressed byte length
+    emitter.instruction("call __rt_phar_inflate_raw");                          // inflate the raw-DEFLATE PHAR entry payload
+    emitter.instruction("test rax, rax");                                       // did decompression return a buffer?
+    emitter.instruction("jz __rt_phar_read_fail_x86");                          // decompression failure makes the entry unreadable
+    emitter.instruction("mov rdi, rax");                                        // pass the inflated content pointer to data_stream
+    emitter.instruction("mov rsi, rdx");                                        // pass the inflated content length to data_stream
+    emitter.instruction("jmp __rt_phar_read_name_match_stream_x86");            // stream the inflated entry bytes
+    emitter.label("__rt_phar_read_name_match_bzip2_x86");
+    emitter.instruction("mov rdx, r11");                                        // expected uncompressed byte length
+    emitter.instruction("call __rt_phar_bzip2_decompress");                     // decompress the bzip2 PHAR entry payload
+    emitter.instruction("test rax, rax");                                       // did decompression return a buffer?
+    emitter.instruction("jz __rt_phar_read_fail_x86");                          // decompression failure makes the entry unreadable
+    emitter.instruction("mov rdi, rax");                                        // pass the decompressed content pointer to data_stream
+    emitter.instruction("mov rsi, rdx");                                        // pass the decompressed content length to data_stream
+    emitter.label("__rt_phar_read_name_match_stream_x86");
     emitter.instruction("call __rt_data_stream");                               // materialize a readable fd; rax = fd
     emitter.instruction("jmp __rt_phar_read_done_x86");                         // continue at target label
 
@@ -475,6 +674,8 @@ fn emit_phar_read_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("pop r12");                                             // restore callee-saved r12
     emitter.instruction("pop rbp");                                             // restore the caller frame pointer
     emitter.instruction("ret");                                                 // return the entry stream descriptor
+
+    emit_phar_decompress_helpers_x86_64(emitter);
 
     // ===== __rt_fopen_maybe_phar(rax=fname ptr, rdx=fname len, rdi=mode ptr, rsi=mode len) =====
     emitter.blank();
@@ -555,4 +756,144 @@ fn emit_phar_read_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("ret");                                                 // return the failure (boxed false)
     emitter.label("__rt_fgc_phar_plain_x86");
     emitter.instruction("jmp __rt_file_get_contents");                          // tail-call the generic reader (args intact)
+}
+
+/// Emits x86_64 helpers that decompress PHAR entry payloads through published
+/// zlib/libbz2 function-pointer slots instead of direct runtime references.
+fn emit_phar_decompress_helpers_x86_64(emitter: &mut Emitter) {
+    emitter.blank();
+    emitter.comment("--- runtime: phar decompress helpers ---");
+
+    // ===== __rt_phar_inflate_raw(rdi=src, rsi=src_len, rdx=out_len) -> rax=ptr, rdx=len =====
+    emitter.label("__rt_phar_inflate_raw");
+    emitter.instruction("push rbp");                                            // preserve the caller frame pointer
+    emitter.instruction("mov rbp, rsp");                                        // establish the helper frame pointer
+    emitter.instruction("sub rsp, 176");                                        // reserve z_stream, saved arguments, and return state
+    emitter.instruction("mov QWORD PTR [rsp + 112], rdi");                      // save the compressed source pointer
+    emitter.instruction("mov QWORD PTR [rsp + 120], rsi");                      // save the compressed source length
+    emitter.instruction("mov QWORD PTR [rsp + 128], rdx");                      // save the expected uncompressed length
+    abi::emit_load_symbol_to_reg(emitter, "r9", "_phar_zlib_inflate_init2_fn", 0); // load the published inflateInit2_ function pointer
+    emitter.instruction("test r9, r9");                                         // was the zlib initializer published?
+    emitter.instruction("jz __rt_phar_inflate_fail_x86");                       // missing zlib publisher means compressed PHAR reads fail
+    abi::emit_load_symbol_to_reg(emitter, "r9", "_phar_zlib_inflate_fn", 0);    // load the published inflate function pointer
+    emitter.instruction("test r9, r9");                                         // was the zlib inflate function published?
+    emitter.instruction("jz __rt_phar_inflate_fail_x86");                       // missing zlib publisher means compressed PHAR reads fail
+    abi::emit_load_symbol_to_reg(emitter, "r9", "_phar_zlib_inflate_end_fn", 0); // load the published inflateEnd function pointer
+    emitter.instruction("test r9, r9");                                         // was the zlib cleanup function published?
+    emitter.instruction("jz __rt_phar_inflate_fail_x86");                       // missing zlib publisher means compressed PHAR reads fail
+
+    emitter.instruction("mov rax, rdx");                                        // allocation size = expected decompressed bytes
+    emitter.instruction("test rax, rax");                                       // is the output entry empty?
+    emitter.instruction("jnz __rt_phar_inflate_alloc_x86");                     // non-empty output can allocate its exact size
+    emitter.instruction("mov rax, 1");                                          // empty entries still need a non-null buffer sentinel
+    emitter.label("__rt_phar_inflate_alloc_x86");
+    emitter.instruction("call __rt_heap_alloc");                                // allocate the decompressed entry buffer
+    emitter.instruction(&format!("mov r10, 0x{:x}", (X86_64_HEAP_MAGIC_HI32 << 32) | 1)); // materialize the owned-string heap kind word
+    emitter.instruction("mov QWORD PTR [rax - 8], r10");                        // stamp the decompressed buffer as an owned string
+    emitter.instruction("mov QWORD PTR [rsp + 136], rax");                      // save the destination buffer pointer
+
+    // -- zero the z_stream before handing it to zlib --
+    emitter.instruction("xor r9, r9");                                          // z_stream byte clear index
+    emitter.label("__rt_phar_inflate_zero_x86");
+    emitter.instruction("cmp r9, 112");                                         // cleared the whole z_stream struct?
+    emitter.instruction("jge __rt_phar_inflate_zeroed_x86");                    // the z_stream is ready for initialization
+    emitter.instruction("mov BYTE PTR [rsp + r9], 0");                          // zero one z_stream byte
+    emitter.instruction("inc r9");                                              // advance the clear index
+    emitter.instruction("jmp __rt_phar_inflate_zero_x86");                      // continue clearing z_stream bytes
+    emitter.label("__rt_phar_inflate_zeroed_x86");
+
+    // -- inflateInit2_(strm, -15, version, size): -15 selects raw DEFLATE --
+    emitter.instruction("mov rdi, rsp");                                        // arg 0 = z_stream pointer
+    emitter.instruction("mov esi, -15");                                        // arg 1 = raw-DEFLATE window bits
+    abi::emit_symbol_address(emitter, "rdx", "_zlib_version");                  // arg 2 = zlib version string
+    emitter.instruction("mov ecx, 112");                                        // arg 3 = sizeof(z_stream)
+    abi::emit_load_symbol_to_reg(emitter, "r9", "_phar_zlib_inflate_init2_fn", 0); // reload the published inflateInit2_ pointer
+    emitter.instruction("call r9");                                             // initialize the raw-inflate stream
+    emitter.instruction("test eax, eax");                                       // did zlib initialize successfully?
+    emitter.instruction("jnz __rt_phar_inflate_fail_x86");                      // failed initialization makes the entry unreadable
+
+    // -- point the stream at the PHAR payload and fixed-size output buffer --
+    emitter.instruction("mov r9, QWORD PTR [rsp + 112]");                       // reload compressed source pointer
+    emitter.instruction("mov QWORD PTR [rsp + 0], r9");                         // z_stream.next_in = source pointer
+    emitter.instruction("mov r9, QWORD PTR [rsp + 120]");                       // reload compressed source length
+    emitter.instruction("mov DWORD PTR [rsp + 8], r9d");                        // z_stream.avail_in = source length
+    emitter.instruction("mov r9, QWORD PTR [rsp + 136]");                       // reload destination buffer pointer
+    emitter.instruction("mov QWORD PTR [rsp + 24], r9");                        // z_stream.next_out = destination buffer
+    emitter.instruction("mov r9, QWORD PTR [rsp + 128]");                       // reload expected decompressed length
+    emitter.instruction("mov DWORD PTR [rsp + 32], r9d");                       // z_stream.avail_out = exact output capacity
+
+    // -- inflate the whole entry in one Z_FINISH pass, then end the stream --
+    emitter.instruction("mov rdi, rsp");                                        // arg 0 = z_stream pointer
+    emitter.instruction("mov esi, 4");                                          // arg 1 = Z_FINISH
+    abi::emit_load_symbol_to_reg(emitter, "r9", "_phar_zlib_inflate_fn", 0);    // reload the published inflate pointer
+    emitter.instruction("call r9");                                             // inflate the compressed PHAR entry payload
+    emitter.instruction("mov QWORD PTR [rsp + 144], rax");                      // save the zlib status code
+    emitter.instruction("mov r9, QWORD PTR [rsp + 40]");                        // z_stream.total_out = inflated length
+    emitter.instruction("mov QWORD PTR [rsp + 152], r9");                       // save the actual inflated byte count
+    emitter.instruction("mov rdi, rsp");                                        // arg 0 = z_stream pointer
+    abi::emit_load_symbol_to_reg(emitter, "r9", "_phar_zlib_inflate_end_fn", 0); // reload the published inflateEnd pointer
+    emitter.instruction("call r9");                                             // release zlib's internal inflate state
+
+    emitter.instruction("cmp QWORD PTR [rsp + 144], 1");                        // did inflate reach Z_STREAM_END?
+    emitter.instruction("jne __rt_phar_inflate_fail_x86");                      // partial or failed inflate makes the entry unreadable
+    emitter.instruction("mov r9, QWORD PTR [rsp + 152]");                       // reload the actual inflated byte count
+    emitter.instruction("cmp r9, QWORD PTR [rsp + 128]");                       // did zlib produce the manifest-declared size?
+    emitter.instruction("jne __rt_phar_inflate_fail_x86");                      // size mismatch means the archive entry is invalid
+    emitter.instruction("mov rax, QWORD PTR [rsp + 136]");                      // return the decompressed buffer pointer
+    emitter.instruction("mov rdx, r9");                                         // return the decompressed buffer length
+    emitter.instruction("jmp __rt_phar_inflate_done_x86");                      // skip the failure result
+    emitter.label("__rt_phar_inflate_fail_x86");
+    emitter.instruction("xor eax, eax");                                        // null pointer reports decompression failure
+    emitter.instruction("xor edx, edx");                                        // failure has no output bytes
+    emitter.label("__rt_phar_inflate_done_x86");
+    emitter.instruction("add rsp, 176");                                        // release the z_stream helper frame
+    emitter.instruction("pop rbp");                                             // restore the caller frame pointer
+    emitter.instruction("ret");                                                 // return decompressed bytes or null on failure
+
+    // ===== __rt_phar_bzip2_decompress(rdi=src, rsi=src_len, rdx=out_len) -> rax=ptr, rdx=len =====
+    emitter.label("__rt_phar_bzip2_decompress");
+    emitter.instruction("push rbp");                                            // preserve the caller frame pointer
+    emitter.instruction("mov rbp, rsp");                                        // establish the helper frame pointer
+    emitter.instruction("sub rsp, 80");                                         // reserve bzip2 decompression scratch state
+    emitter.instruction("mov QWORD PTR [rsp + 0], rdi");                        // save the compressed source pointer
+    emitter.instruction("mov QWORD PTR [rsp + 8], rsi");                        // save the compressed source length
+    emitter.instruction("mov QWORD PTR [rsp + 16], rdx");                       // save the expected uncompressed length
+    abi::emit_load_symbol_to_reg(emitter, "r10", "_phar_bz2_decompress_fn", 0); // load the published BZ2 decompressor pointer
+    emitter.instruction("test r10, r10");                                       // was the bzip2 decompressor published?
+    emitter.instruction("jz __rt_phar_bzip2_fail_x86");                         // missing libbz2 publisher means compressed PHAR reads fail
+    emitter.instruction("mov rax, rdx");                                        // allocation size = expected decompressed bytes
+    emitter.instruction("test rax, rax");                                       // is the output entry empty?
+    emitter.instruction("jnz __rt_phar_bzip2_alloc_x86");                       // non-empty output can allocate its exact size
+    emitter.instruction("mov rax, 1");                                          // empty entries still need a non-null buffer sentinel
+    emitter.label("__rt_phar_bzip2_alloc_x86");
+    emitter.instruction("call __rt_heap_alloc");                                // allocate the decompressed entry buffer
+    emitter.instruction(&format!("mov r10, 0x{:x}", (X86_64_HEAP_MAGIC_HI32 << 32) | 1)); // materialize the owned-string heap kind word
+    emitter.instruction("mov QWORD PTR [rax - 8], r10");                        // stamp the decompressed buffer as an owned string
+    emitter.instruction("mov QWORD PTR [rsp + 24], rax");                       // save the destination buffer pointer
+    emitter.instruction("mov r9, QWORD PTR [rsp + 16]");                        // reload expected decompressed length
+    emitter.instruction("mov DWORD PTR [rsp + 32], r9d");                       // destLen in/out value for libbz2
+
+    emitter.instruction("mov rdi, QWORD PTR [rsp + 24]");                       // arg 0 = destination buffer
+    emitter.instruction("lea rsi, [rsp + 32]");                                 // arg 1 = &destLen
+    emitter.instruction("mov rdx, QWORD PTR [rsp + 0]");                        // arg 2 = compressed source pointer
+    emitter.instruction("mov ecx, DWORD PTR [rsp + 8]");                        // arg 3 = compressed source length
+    emitter.instruction("xor r8d, r8d");                                        // arg 4 = small = false
+    emitter.instruction("xor r9d, r9d");                                        // arg 5 = verbosity = 0
+    abi::emit_load_symbol_to_reg(emitter, "r10", "_phar_bz2_decompress_fn", 0); // reload the published BZ2 decompressor pointer
+    emitter.instruction("call r10");                                            // decompress the bzip2 PHAR entry payload
+    emitter.instruction("test eax, eax");                                       // did libbz2 report success?
+    emitter.instruction("jnz __rt_phar_bzip2_fail_x86");                        // non-zero status makes the entry unreadable
+    emitter.instruction("mov r9d, DWORD PTR [rsp + 32]");                       // destLen now holds the decompressed byte count
+    emitter.instruction("cmp r9, QWORD PTR [rsp + 16]");                        // did libbz2 produce the manifest-declared size?
+    emitter.instruction("jne __rt_phar_bzip2_fail_x86");                        // size mismatch means the archive entry is invalid
+    emitter.instruction("mov rax, QWORD PTR [rsp + 24]");                       // return the decompressed buffer pointer
+    emitter.instruction("mov rdx, r9");                                         // return the decompressed buffer length
+    emitter.instruction("jmp __rt_phar_bzip2_done_x86");                        // skip the failure result
+    emitter.label("__rt_phar_bzip2_fail_x86");
+    emitter.instruction("xor eax, eax");                                        // null pointer reports decompression failure
+    emitter.instruction("xor edx, edx");                                        // failure has no output bytes
+    emitter.label("__rt_phar_bzip2_done_x86");
+    emitter.instruction("add rsp, 80");                                         // release the bzip2 helper frame
+    emitter.instruction("pop rbp");                                             // restore the caller frame pointer
+    emitter.instruction("ret");                                                 // return decompressed bytes or null on failure
 }

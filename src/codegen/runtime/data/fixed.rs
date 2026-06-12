@@ -212,6 +212,9 @@ pub(crate) fn emit_runtime_data_fixed(heap_size: usize) -> String {
     out.push_str(".comm _zstream_handles, 2048, 3\n");
     out.push_str(".comm _zlib_fwrite_fn, 8, 3\n");
     out.push_str(".comm _zlib_close_fn, 8, 3\n");
+    out.push_str(".comm _phar_zlib_inflate_init2_fn, 8, 3\n");
+    out.push_str(".comm _phar_zlib_inflate_fn, 8, 3\n");
+    out.push_str(".comm _phar_zlib_inflate_end_fn, 8, 3\n");
     out.push_str(".globl _zlib_version\n_zlib_version:\n    .asciz \"1\"\n");
     // bzip2.compress write-filter state: per-fd bz_stream pointer table
     // (_bzstream_handles, indexed by fd) plus the indirect fn-pointer slots the
@@ -219,6 +222,7 @@ pub(crate) fn emit_runtime_data_fixed(heap_size: usize) -> String {
     out.push_str(".comm _bzstream_handles, 2048, 3\n");
     out.push_str(".comm _bz2_fwrite_fn, 8, 3\n");
     out.push_str(".comm _bz2_close_fn, 8, 3\n");
+    out.push_str(".comm _phar_bz2_decompress_fn, 8, 3\n");
     // convert.iconv.* WRITE-filter state: per-fd iconv_t descriptor table
     // (_iconv_handles) plus the indirect fn-pointer slots the shared runtime
     // calls through so it never names libc iconv (which needs -liconv on macOS).

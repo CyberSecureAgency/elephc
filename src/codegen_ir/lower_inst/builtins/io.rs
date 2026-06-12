@@ -42,15 +42,47 @@ pub(super) fn lower_file_get_contents(
 ) -> Result<()> {
     super::ensure_arg_count(inst, "file_get_contents", 1)?;
     let path = expect_operand(inst, 0)?;
-    if let Some(path_literal) = optional_const_string_operand(ctx, path)? {
+    let path_literal = optional_const_string_operand(ctx, path)?;
+    if let Some(path_literal) = path_literal.as_deref() {
         if path_literal.starts_with("phar://") {
-            return lower_literal_phar_file_get_contents(ctx, inst, &path_literal);
+            return lower_literal_phar_file_get_contents(ctx, inst, path_literal);
         }
+    }
+    if path_literal.is_none() {
+        publish_phar_decompress_function_pointers(ctx);
     }
     load_string_to_result(ctx, path, "file_get_contents filename")?;
     abi::emit_call_label(ctx.emitter, "__rt_file_get_contents_maybe_url");
     box_owned_string_or_false_result(ctx, "fgc");
     store_if_result(ctx, inst)
+}
+
+/// Publishes zlib/libbz2 decompressor entry points into runtime slots used by
+/// dynamic `phar://` reads.
+fn publish_phar_decompress_function_pointers(ctx: &mut FunctionContext<'_>) {
+    const ENTRIES: &[(&str, &str)] = &[
+        ("inflateInit2_", "_phar_zlib_inflate_init2_fn"),
+        ("inflate", "_phar_zlib_inflate_fn"),
+        ("inflateEnd", "_phar_zlib_inflate_end_fn"),
+        ("BZ2_bzBuffToBuffDecompress", "_phar_bz2_decompress_fn"),
+    ];
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            for (c_name, slot) in ENTRIES {
+                let extern_sym = ctx.emitter.target.extern_symbol(c_name);
+                abi::emit_extern_symbol_address(ctx.emitter, "x9", &extern_sym);
+                abi::emit_symbol_address(ctx.emitter, "x10", slot);
+                ctx.emitter.instruction("str x9, [x10]");                       // publish the decompressor entry into its runtime slot
+            }
+        }
+        Arch::X86_64 => {
+            for (c_name, slot) in ENTRIES {
+                let extern_sym = ctx.emitter.target.extern_symbol(c_name);
+                abi::emit_extern_symbol_address(ctx.emitter, "r9", &extern_sym);
+                abi::emit_store_reg_to_symbol(ctx.emitter, "r9", slot, 0);     // publish the decompressor entry into its runtime slot
+            }
+        }
+    }
 }
 
 /// Lowers `hash_file(algo, filename, binary?)` by reading bytes then hashing them.
@@ -111,32 +143,36 @@ pub(super) fn lower_fopen(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> 
     ensure_arg_count_between(inst, "fopen", 2, 4)?;
     let filename = expect_operand(inst, 0)?;
     let mode = expect_operand(inst, 1)?;
-    if let Some(path) = optional_const_string_operand(ctx, filename)? {
+    let filename_literal = optional_const_string_operand(ctx, filename)?;
+    if let Some(path) = filename_literal.as_deref() {
         if path.starts_with("php://filter/") {
-            return lower_literal_php_filter_fopen(ctx, inst, &path);
+            return lower_literal_php_filter_fopen(ctx, inst, path);
         }
-        if let Some(fd) = php_standard_stream_fd(&path).or_else(|| php_fd_stream(&path)) {
+        if let Some(fd) = php_standard_stream_fd(path).or_else(|| php_fd_stream(path)) {
             emit_fd_result(ctx, fd);
             box_stream_fd_or_false_result(ctx, "fopen");
             return store_if_result(ctx, inst);
         }
-        if is_php_memory_stream(&path) {
+        if is_php_memory_stream(path) {
             abi::emit_call_label(ctx.emitter, "__rt_tmpfile");
             box_stream_fd_or_false_result(ctx, "fopen");
             return store_if_result(ctx, inst);
         }
         if path.starts_with("data://") {
-            return lower_literal_data_fopen(ctx, inst, &path);
+            return lower_literal_data_fopen(ctx, inst, path);
         }
         if path.starts_with("ftp://") {
-            return lower_literal_ftp_fopen(ctx, inst, &path);
+            return lower_literal_ftp_fopen(ctx, inst, path);
         }
         if path.starts_with("phar://") && !literal_fopen_mode_is_write(ctx, mode)? {
-            return lower_literal_phar_fopen_read(ctx, inst, &path);
+            return lower_literal_phar_fopen_read(ctx, inst, path);
         }
         if path.starts_with("http://") {
-            return lower_literal_http_fopen(ctx, inst, &path);
+            return lower_literal_http_fopen(ctx, inst, path);
         }
+    }
+    if filename_literal.is_none() {
+        publish_phar_decompress_function_pointers(ctx);
     }
     match ctx.emitter.target.arch {
         Arch::AArch64 => {

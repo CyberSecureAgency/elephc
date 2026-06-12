@@ -71,6 +71,11 @@ pub(super) fn check_builtin(
                         checker.require_builtin_library("elephc_crypto");
                     }
                 }
+            } else {
+                // Non-literal paths can route to a compressed phar:// entry at
+                // run time, so publish/link both decompression libraries.
+                checker.require_builtin_library("z");
+                checker.require_builtin_library("bz2");
             }
             for arg in args {
                 checker.infer_type(arg, env)?;
