@@ -72,8 +72,9 @@ pub(super) fn check_builtin(
                     }
                 }
             } else {
-                // Non-literal paths can route to a compressed phar:// entry at
-                // run time, so publish/link both decompression libraries.
+                // Non-literal paths can route to a phar:// entry at run time,
+                // including tar/zip variants through the elephc-phar bridge.
+                checker.require_builtin_library("elephc_phar");
                 checker.require_builtin_library("z");
                 checker.require_builtin_library("bz2");
             }

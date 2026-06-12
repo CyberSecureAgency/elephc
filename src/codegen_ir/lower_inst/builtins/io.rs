@@ -49,7 +49,7 @@ pub(super) fn lower_file_get_contents(
         }
     }
     if path_literal.is_none() {
-        publish_phar_decompress_function_pointers(ctx);
+        publish_dynamic_phar_function_pointers(ctx);
     }
     load_string_to_result(ctx, path, "file_get_contents filename")?;
     abi::emit_call_label(ctx.emitter, "__rt_file_get_contents_maybe_url");
@@ -57,10 +57,11 @@ pub(super) fn lower_file_get_contents(
     store_if_result(ctx, inst)
 }
 
-/// Publishes zlib/libbz2 decompressor entry points into runtime slots used by
+/// Publishes bridge/decompressor entry points into runtime slots used by
 /// dynamic `phar://` reads.
-fn publish_phar_decompress_function_pointers(ctx: &mut FunctionContext<'_>) {
+fn publish_dynamic_phar_function_pointers(ctx: &mut FunctionContext<'_>) {
     const ENTRIES: &[(&str, &str)] = &[
+        ("elephc_phar_extract_url", "_elephc_phar_extract_url_fn"),
         ("inflateInit2_", "_phar_zlib_inflate_init2_fn"),
         ("inflate", "_phar_zlib_inflate_fn"),
         ("inflateEnd", "_phar_zlib_inflate_end_fn"),
@@ -175,7 +176,7 @@ pub(super) fn lower_fopen(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> 
         }
     }
     if filename_literal.is_none() {
-        publish_phar_decompress_function_pointers(ctx);
+        publish_dynamic_phar_function_pointers(ctx);
     }
     match ctx.emitter.target.arch {
         Arch::AArch64 => {

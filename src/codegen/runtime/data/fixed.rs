@@ -287,6 +287,14 @@ pub(crate) fn emit_runtime_data_fixed(heap_size: usize) -> String {
     out.push_str(".comm _elephc_crypto_update_fn, 8, 3\n");
     out.push_str(".comm _elephc_crypto_final_fn, 8, 3\n");
     out.push_str(".comm _elephc_crypto_clone_fn, 8, 3\n");
+    // _elephc_phar_extract_url_fn: indirect pointer to the elephc-phar bridge
+    // reader. Dynamic phar:// paths publish it before calling the runtime
+    // reader; literal phar:// paths are still decoded at compile time.
+    out.push_str(".p2align 3\n.globl _elephc_phar_extract_url_fn\n_elephc_phar_extract_url_fn:\n    .quad 0\n");
+    // _phar_extract_len: output-length scratch written by elephc_phar_extract_url
+    // and consumed immediately by __rt_phar_read_entry before __rt_data_stream
+    // copies the bytes into a temp-file-backed descriptor.
+    out.push_str(".p2align 3\n.globl _phar_extract_len\n_phar_extract_len:\n    .quad 0\n");
     // _tls_sessions: per-fd TLS handle (i64 returned by
     // elephc_tls_attach_fd or 0 when the fd is plain TCP). Indexed by raw
     // fd up to 256; the runtime fread/fwrite/fclose paths consult this

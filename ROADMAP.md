@@ -569,6 +569,7 @@ PHP-visible surface, not the internal commits.
 - [x] Phase 41 — `stream_get_contents($stream, ?$length, $offset = -1)`: the optional `$length` (max bytes) and `$offset` (seek-before-read) arguments are honored. A finite `$length` routes through `__rt_stream_get_contents_bounded`, which loops via `__rt_fread` until `$length` bytes are accumulated, EOF is reached, or an empty read is produced; `$offset >= 0` seeks first (lseek for a normal fd, the wrapper's `stream_seek` for a synthetic fd) and returns PHP `false` if the seek fails; a `null`/negative `$length` reads to EOF. The read-all/wrapper-drain path remains factored into `emit_read_all_from_fd`, and the builtin is typed/codegenerated as `string|false`. ARM64 + x86_64 (both Docker-verified)
 - [x] Phase 42 — `stream_copy_to_stream($from, $to, ?$length, $offset = -1)`: the optional `$length`/`$offset` are honored via a single capped, feof-gated `__rt_fread`/`__rt_fwrite` loop that works for any real/wrapper fd combination (seeks `$from` by `$offset >= 0` and returns PHP `false` if that seek fails, stops at `$length` bytes copied or source EOF; `null`/negative `$length` copies to EOF). The no-extra-args fast path (real fds → `__rt_stream_copy_to_stream`, wrapper fds → compiled loop) is unchanged, and the builtin is typed/codegenerated as `int|false`. ARM64 + x86_64 (both Docker-verified)
 - [x] Phase 43 — `file_get_contents()` over `http://`/`https://`/`ftp://`/`ftps://` URLs: a literal URL opens the matching wrapper (the fd-producing core of each wrapper factored into a shared `emit_open_fd`), slurps the whole body via the TLS-aware `__rt_stream_get_contents`, persists it to owned heap with `__rt_str_persist`, and returns it (`false` on a failed open) — the same wrappers as `fopen()`, so `file_get_contents` now covers every URL scheme `fopen` does. Non-literal URL strings now route through `__rt_file_get_contents_maybe_url`, which recognizes runtime `http://`, `https://`, `ftp://`, and `ftps://` before falling back to the phar/filesystem helper. Literal `https://`/`ftps://` URLs pull in `-lelephc_tls` via the checker; non-literal `file_get_contents()` links it conservatively because the runtime scheme is unknown. ARM64 + x86_64 (both Docker-verified)
+- [x] Phase 44 — `phar://` tar/zip container reads: literal `fopen()` / `file_get_contents()` PHAR URLs and non-literal runtime PHAR URLs can now read native PHAR, tar-based PHAR, and zip-based PHAR containers. The new pure-Rust `elephc-phar` bridge is built as a staticlib for runtime reads and as an rlib for compile-time literal extraction, keeping generated assembly target-aware without duplicating archive parsers. Native PHAR gzip/bzip2 entries and ZIP deflate entries decode transparently; ZIP64, encrypted ZIP entries, ZIP data descriptors, tar/zip writes, and the OOP `Phar`/`PharData` API remain deferred. Tests: `test_fopen_phar_literal_tar_entry`, `test_file_get_contents_phar_literal_zip_deflate_entry`, `test_file_get_contents_phar_runtime_tar_entry`, `test_fopen_phar_runtime_zip_deflate_entry`. ARM64 + x86_64 (both Docker-verified)
 
 ### Streams — remaining work (subsystem considered *partially complete*; merged as-is)
 
@@ -594,8 +595,10 @@ none are needed for typical stream usage.
   SHA1-signed entry per archive, via a single open stream. Deferred: multi-entry
   archives, modifying an existing archive (read-modify-write), compressed
   entries, and OpenSSL key signing (only SHA1 today).
-- [ ] **`phar://` tar/zip variants** — only the native PHAR (phar) format is
-  supported; the tar- and zip-based PHAR containers are not.
+- [x] **`phar://` tar/zip variants** — native PHAR, tar-based PHAR, and
+  zip-based PHAR containers are readable through literal and runtime PHAR URLs.
+  ZIP64, encrypted ZIP entries, ZIP data descriptors, and tar/zip writes remain
+  deferred.
 - [ ] **`Phar` / `PharData` OOP API** — the object-oriented archive API is not
   implemented (multi-week; depends on the advanced read/write items above).
 - [x] **TLS `ciphers` / `security_level`** — accepted without error but *not

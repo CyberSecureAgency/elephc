@@ -506,6 +506,7 @@ dependencies = [
  "bzip2-rs",
  "elephc-crypto",
  "elephc-pdo",
+ "elephc-phar",
  "elephc-tls",
  "flate2",
  "rustls",
@@ -542,6 +543,14 @@ dependencies = [
  "rust_decimal",
  "serde_json",
  "uuid",
+]
+
+[[package]]
+name = "elephc-phar"
+version = "0.1.0"
+dependencies = [
+ "bzip2-rs",
+ "flate2",
 ]
 
 [[package]]

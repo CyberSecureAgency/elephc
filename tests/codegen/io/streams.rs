@@ -1669,6 +1669,93 @@ fn build_minimal_phar(entries: &[(&str, &[u8])]) -> Vec<u8> {
     build_phar(&raw)
 }
 
+/// Builds a minimal POSIX tar archive with regular-file entries.
+fn build_tar_phar_container(entries: &[(&str, &[u8])]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for (name, content) in entries {
+        let mut header = [0u8; 512];
+        header[..name.len()].copy_from_slice(name.as_bytes());
+        let size = format!("{:011o}\0", content.len());
+        header[124..124 + size.len()].copy_from_slice(size.as_bytes());
+        header[156] = b'0';
+        header[257..263].copy_from_slice(b"ustar\0");
+        header[263..265].copy_from_slice(b"00");
+        for byte in &mut header[148..156] {
+            *byte = b' ';
+        }
+        let checksum: u32 = header.iter().map(|&b| b as u32).sum();
+        let checksum = format!("{:06o}\0 ", checksum);
+        header[148..156].copy_from_slice(checksum.as_bytes());
+        out.extend_from_slice(&header);
+        out.extend_from_slice(content);
+        let padded_len = ((content.len() + 511) / 512) * 512;
+        out.resize(out.len() + padded_len - content.len(), 0);
+    }
+    out.extend_from_slice(&[0u8; 1024]);
+    out
+}
+
+/// Builds a ZIP archive with ordinary store/deflate entries and a central directory.
+fn build_zip_phar_container(entries: &[(&str, &[u8], bool)]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut central = Vec::new();
+    for (name, content, deflate) in entries {
+        let local_offset = out.len() as u32;
+        let stored = if *deflate {
+            let mut encoder =
+                flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
+            std::io::Write::write_all(&mut encoder, content).unwrap();
+            encoder.finish().unwrap()
+        } else {
+            content.to_vec()
+        };
+        let method = if *deflate { 8u16 } else { 0u16 };
+        out.extend_from_slice(&0x0403_4b50u32.to_le_bytes());
+        out.extend_from_slice(&20u16.to_le_bytes());
+        out.extend_from_slice(&0u16.to_le_bytes());
+        out.extend_from_slice(&method.to_le_bytes());
+        out.extend_from_slice(&0u16.to_le_bytes());
+        out.extend_from_slice(&0u16.to_le_bytes());
+        out.extend_from_slice(&0u32.to_le_bytes());
+        out.extend_from_slice(&(stored.len() as u32).to_le_bytes());
+        out.extend_from_slice(&(content.len() as u32).to_le_bytes());
+        out.extend_from_slice(&(name.len() as u16).to_le_bytes());
+        out.extend_from_slice(&0u16.to_le_bytes());
+        out.extend_from_slice(name.as_bytes());
+        out.extend_from_slice(&stored);
+
+        central.extend_from_slice(&0x0201_4b50u32.to_le_bytes());
+        central.extend_from_slice(&20u16.to_le_bytes());
+        central.extend_from_slice(&20u16.to_le_bytes());
+        central.extend_from_slice(&0u16.to_le_bytes());
+        central.extend_from_slice(&method.to_le_bytes());
+        central.extend_from_slice(&0u16.to_le_bytes());
+        central.extend_from_slice(&0u16.to_le_bytes());
+        central.extend_from_slice(&0u32.to_le_bytes());
+        central.extend_from_slice(&(stored.len() as u32).to_le_bytes());
+        central.extend_from_slice(&(content.len() as u32).to_le_bytes());
+        central.extend_from_slice(&(name.len() as u16).to_le_bytes());
+        central.extend_from_slice(&0u16.to_le_bytes());
+        central.extend_from_slice(&0u16.to_le_bytes());
+        central.extend_from_slice(&0u16.to_le_bytes());
+        central.extend_from_slice(&0u16.to_le_bytes());
+        central.extend_from_slice(&0u32.to_le_bytes());
+        central.extend_from_slice(&local_offset.to_le_bytes());
+        central.extend_from_slice(name.as_bytes());
+    }
+    let central_offset = out.len() as u32;
+    out.extend_from_slice(&central);
+    out.extend_from_slice(&0x0605_4b50u32.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out.extend_from_slice(&(entries.len() as u16).to_le_bytes());
+    out.extend_from_slice(&(entries.len() as u16).to_le_bytes());
+    out.extend_from_slice(&(central.len() as u32).to_le_bytes());
+    out.extend_from_slice(&central_offset.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out
+}
+
 /// Verifies compiled PHP output for fopen phar reads uncompressed entry.
 #[test]
 fn test_fopen_phar_reads_uncompressed_entry() {
@@ -1983,6 +2070,78 @@ fn test_file_get_contents_phar_runtime_path_reads_bzip2_entry() {
     let out = compile_and_run(&src);
     std::fs::remove_file(&path).ok();
     assert_eq!(out, "232|bzip2-compressed phar entr");
+}
+
+/// Verifies a literal `fopen("phar://...")` URL can read a tar-based PHAR container.
+#[test]
+fn test_fopen_phar_literal_tar_entry() {
+    let archive = build_tar_phar_container(&[
+        ("plain.txt", b"plain"),
+        ("dir/tar.txt", b"tar payload"),
+    ]);
+    let path = std::env::temp_dir().join(format!("elephc_phar_tar_lit_{}.tar", std::process::id()));
+    std::fs::write(&path, &archive).unwrap();
+    let src = format!(
+        r#"<?php $f = fopen("phar://{p}/dir/tar.txt", "r"); echo fread($f, 64); fclose($f);"#,
+        p = path.display()
+    );
+    let out = compile_and_run(&src);
+    std::fs::remove_file(&path).ok();
+    assert_eq!(out, "tar payload");
+}
+
+/// Verifies a literal `file_get_contents("phar://...")` URL can read a deflated ZIP PHAR entry.
+#[test]
+fn test_file_get_contents_phar_literal_zip_deflate_entry() {
+    let archive = build_zip_phar_container(&[
+        ("plain.txt", b"stored", false),
+        ("deflated.txt", b"deflated zip payload", true),
+    ]);
+    let path = std::env::temp_dir().join(format!("elephc_phar_zip_lit_{}.zip", std::process::id()));
+    std::fs::write(&path, &archive).unwrap();
+    let src = format!(
+        r#"<?php echo file_get_contents("phar://{p}/deflated.txt");"#,
+        p = path.display()
+    );
+    let out = compile_and_run(&src);
+    std::fs::remove_file(&path).ok();
+    assert_eq!(out, "deflated zip payload");
+}
+
+/// Verifies a dynamic `file_get_contents()` PHAR URL uses the runtime bridge for tar containers.
+#[test]
+fn test_file_get_contents_phar_runtime_tar_entry() {
+    let archive = build_tar_phar_container(&[
+        ("plain.txt", b"plain"),
+        ("dir/runtime.txt", b"runtime tar payload"),
+    ]);
+    let path = std::env::temp_dir().join(format!("elephc_phar_tar_rt_{}.tar", std::process::id()));
+    std::fs::write(&path, &archive).unwrap();
+    let src = format!(
+        r#"<?php $p = "{p}"; echo file_get_contents("phar://" . $p . "/dir/runtime.txt");"#,
+        p = path.display()
+    );
+    let out = compile_and_run(&src);
+    std::fs::remove_file(&path).ok();
+    assert_eq!(out, "runtime tar payload");
+}
+
+/// Verifies a dynamic `fopen()` PHAR URL uses the runtime bridge for deflated ZIP entries.
+#[test]
+fn test_fopen_phar_runtime_zip_deflate_entry() {
+    let archive = build_zip_phar_container(&[
+        ("plain.txt", b"stored", false),
+        ("dir/deflated.txt", b"runtime zip payload", true),
+    ]);
+    let path = std::env::temp_dir().join(format!("elephc_phar_zip_rt_{}.zip", std::process::id()));
+    std::fs::write(&path, &archive).unwrap();
+    let src = format!(
+        r#"<?php $p = "{p}"; $f = fopen("phar://" . $p . "/dir/deflated.txt", "r"); echo fread($f, 64); fclose($f);"#,
+        p = path.display()
+    );
+    let out = compile_and_run(&src);
+    std::fs::remove_file(&path).ok();
+    assert_eq!(out, "runtime zip payload");
 }
 
 /// Verifies compiled PHP output for stream socket server creates listening socket.

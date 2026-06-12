@@ -37,6 +37,10 @@ const TEST_BRIDGE_STATICLIBS: &[TestBridgeStaticlib] = &[
         lib_name: "elephc_crypto",
         package: "elephc-crypto",
     },
+    TestBridgeStaticlib {
+        lib_name: "elephc_phar",
+        package: "elephc-phar",
+    },
 ];
 
 /// Assemble `asm` to `obj_path` by piping the source through `as`'s stdin so
@@ -143,6 +147,10 @@ fn requested_bridge_staticlibs<'a>(
 
 /// Builds any requested bridge staticlibs missing from the debug target directory.
 fn ensure_bridge_staticlibs(actual_link_libs: &[&str], bridge_staticlib_dir: &str) {
+    let _guard = BRIDGE_STATICLIB_BUILD_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .expect("bridge staticlib build lock poisoned");
     for bridge in requested_bridge_staticlibs(actual_link_libs) {
         let archive_path =
             Path::new(bridge_staticlib_dir).join(format!("lib{}.a", bridge.lib_name));
@@ -187,7 +195,7 @@ pub(crate) fn link_binary(
 ) {
     let actual_link_libs = effective_link_libs(extra_link_libs);
 
-    // The elephc-tls, elephc-pdo, and elephc-crypto bridge staticlibs all live in
+    // The bridge staticlibs all live in
     // `<target>/debug` alongside the test binaries; surface that directory on the
     // linker search path automatically whenever a compiled program links any
     // bridge, so PDO/crypto tests get the same robust, absolute `-L` as TLS
@@ -196,7 +204,12 @@ pub(crate) fn link_binary(
     // falling back to the in-tree target/.
     let needs_bridge_staticlib = actual_link_libs
         .iter()
-        .any(|l| *l == "elephc_tls" || *l == "elephc_pdo" || *l == "elephc_crypto");
+        .any(|l| {
+            *l == "elephc_tls"
+                || *l == "elephc_pdo"
+                || *l == "elephc_crypto"
+                || *l == "elephc_phar"
+        });
     let bridge_staticlib_dir = match std::env::var("CARGO_TARGET_DIR") {
         Ok(dir) if !dir.is_empty() => format!("{}/debug", dir),
         _ => format!("{}/target/debug", env!("CARGO_MANIFEST_DIR")),
@@ -270,8 +283,8 @@ pub(crate) fn link_binary(
             }
             // Math and POSIX regex libraries needed on Linux
             ld_cmd.args(["-lm", "-lpthread"]);
-            // rustls (elephc-tls) and the elephc-pdo bridge staticlib (PDO)
-            // both pull in the dynamic loader for the libc unwinder on Linux.
+            // Rust bridge staticlibs pull in the dynamic loader for the libc
+            // unwinder on Linux.
             if needs_bridge_staticlib {
                 ld_cmd.arg("-ldl");
             }

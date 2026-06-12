@@ -53,6 +53,19 @@ pub fn emit_phar_read(emitter: &mut Emitter) {
     emitter.instruction("stp x21, x22, [sp, #16]");                             // save callee-saved x21/x22
     emitter.instruction("stp x23, x24, [sp, #32]");                             // save callee-saved x23/x24
 
+    // -- bridge reader for native/tar/zip PHAR containers when published --
+    abi::emit_symbol_address(emitter, "x9", "_elephc_phar_extract_url_fn");
+    emitter.instruction("ldr x9, [x9]");                                        // load the optional elephc-phar bridge entry pointer
+    emitter.instruction("cbz x9, __rt_phar_read_asm_fallback");                 // use the assembly reader when no bridge was published
+    abi::emit_symbol_address(emitter, "x2", "_phar_extract_len");
+    emitter.instruction("blr x9");                                              // elephc_phar_extract_url(url_ptr, url_len, &len)
+    emitter.instruction("cbz x0, __rt_phar_read_fail");                         // bridge miss means archive or entry was not readable
+    abi::emit_symbol_address(emitter, "x9", "_phar_extract_len");
+    emitter.instruction("ldr x1, [x9]");                                        // load the extracted entry byte length
+    emitter.instruction("bl __rt_data_stream");                                 // copy bridge bytes into a readable temp stream
+    emitter.instruction("b __rt_phar_read_done");                               // return the bridge-created descriptor
+    emitter.label("__rt_phar_read_asm_fallback");
+
     // -- split the URL at ".phar/" (x0 = url ptr, x1 = url len) --
     emitter.instruction("mov x9, #7");                                          // scan index i = 7 (past "phar://")
     emitter.label("__rt_phar_read_split_loop");
@@ -491,6 +504,20 @@ fn emit_phar_read_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("push r15");                                            // save callee-saved r15
     emitter.instruction("push rbx");                                            // save callee-saved rbx (data_section)
     emitter.instruction("sub rsp, 8");                                          // realign rsp to 16 (6 pushes left it 8-off) for the nested calls
+
+    // -- bridge reader for native/tar/zip PHAR containers when published --
+    abi::emit_load_symbol_to_reg(emitter, "r9", "_elephc_phar_extract_url_fn", 0); // load the optional elephc-phar bridge entry pointer
+    emitter.instruction("test r9, r9");                                         // was the bridge reader published?
+    emitter.instruction("jz __rt_phar_read_asm_fallback_x86");                  // use the assembly reader when no bridge was published
+    abi::emit_symbol_address(emitter, "rdx", "_phar_extract_len");              // pass output-length scratch to the bridge
+    emitter.instruction("call r9");                                             // elephc_phar_extract_url(url_ptr, url_len, &len)
+    emitter.instruction("test rax, rax");                                       // did the bridge find archive bytes?
+    emitter.instruction("jz __rt_phar_read_fail_x86");                          // bridge miss means archive or entry was not readable
+    emitter.instruction("mov rdi, rax");                                        // pass extracted bytes to data_stream
+    abi::emit_load_symbol_to_reg(emitter, "rsi", "_phar_extract_len", 0);       // load the extracted entry byte length
+    emitter.instruction("call __rt_data_stream");                               // copy bridge bytes into a readable temp stream
+    emitter.instruction("jmp __rt_phar_read_done_x86");                         // return the bridge-created descriptor
+    emitter.label("__rt_phar_read_asm_fallback_x86");
 
     // -- split the URL at ".phar/" (rdi = url ptr, rsi = url len) --
     emitter.instruction("mov r8, 7");                                           // scan index i = 7 (past "phar://")

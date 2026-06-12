@@ -38,8 +38,8 @@ pub(super) fn check_builtin(
             }
             // A literal https:///ftps:// URL is read at run time over TLS.
             // Non-literal paths route through the runtime URL dispatcher, so
-            // conservatively link TLS plus the PHAR decompression libraries
-            // because the scheme and PHAR entry flags are unknown.
+            // conservatively link TLS plus the PHAR bridge/decompression
+            // libraries because the scheme and PHAR entry flags are unknown.
             if let Some(crate::parser::ast::ExprKind::StringLiteral(url)) =
                 args.first().map(|a| &a.kind)
             {
@@ -48,6 +48,7 @@ pub(super) fn check_builtin(
                 }
             } else {
                 checker.require_builtin_library("elephc_tls");
+                checker.require_builtin_library("elephc_phar");
                 checker.require_builtin_library("z");
                 checker.require_builtin_library("bz2");
             }

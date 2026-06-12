@@ -12,9 +12,10 @@
 //!   compile time (relative paths resolve against the compiler's working
 //!   directory), the requested entry's uncompressed bytes are embedded in the
 //!   binary's data section, and reads come from that embedded copy — mirroring
-//!   how `data://` lowers a literal payload. Read-only entries from the native
-//!   PHAR format; uncompressed, gzip (raw-DEFLATE), and bzip2 entries are all
-//!   decompressed at compile time.
+//!   how `data://` lowers a literal payload. Read-only entries from native PHAR,
+//!   tar-based PHAR, and zip-based PHAR containers are supported; native gzip
+//!   (raw-DEFLATE), native bzip2, and zip deflate entries are decompressed at
+//!   compile time.
 //! - A missing archive or a missing entry lowers to PHP `false`, matching a
 //!   failed `fopen()`.
 //! - PHAR binary layout parsed here (all integers little-endian): a PHP stub
@@ -243,6 +244,9 @@ pub(crate) fn emit_file_put_contents_write(
 /// from the inner entry, reads and parses the archive, and returns the entry
 /// payload, or `None` on any failure (missing file/entry, compressed entry).
 pub(crate) fn extract_phar_entry(url: &str) -> Option<Vec<u8>> {
+    if let Some(bytes) = elephc_phar::extract_url_bytes(url.as_bytes()) {
+        return Some(bytes);
+    }
     let rest = url.strip_prefix("phar://")?;
     let (archive, entry) = split_archive_entry(rest)?;
     let archive_bytes = std::fs::read(archive).ok()?;
