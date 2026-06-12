@@ -183,3 +183,56 @@ fn test_parse_new_parent_with_args() {
 }
 
 // --- Static closures ---
+
+/// Verifies that `self`, `static`, and `parent` parse as named type expressions in method
+/// return position, kept symbolic for the checker to resolve to the enclosing class later.
+#[test]
+fn test_parse_relative_class_return_types() {
+    let stmts = parse_source(
+        "<?php class C { public function a(): self {} public static function b(): static {} public function c(): parent {} }",
+    );
+    match &stmts[0].kind {
+        StmtKind::ClassDecl { methods, .. } => {
+            assert_eq!(
+                methods[0].return_type,
+                Some(TypeExpr::Named(Name::unqualified("self")))
+            );
+            assert_eq!(
+                methods[1].return_type,
+                Some(TypeExpr::Named(Name::unqualified("static")))
+            );
+            assert_eq!(
+                methods[2].return_type,
+                Some(TypeExpr::Named(Name::unqualified("parent")))
+            );
+        }
+        _ => panic!("Expected ClassDecl"),
+    }
+}
+
+/// Verifies that `self` parses in parameter and (nullable) property type positions.
+#[test]
+fn test_parse_relative_class_param_and_property_types() {
+    let stmts = parse_source(
+        "<?php class C { public ?self $next = null; public function link(self $other): void {} }",
+    );
+    match &stmts[0].kind {
+        StmtKind::ClassDecl {
+            properties,
+            methods,
+            ..
+        } => {
+            assert_eq!(
+                properties[0].type_expr,
+                Some(TypeExpr::Nullable(Box::new(TypeExpr::Named(
+                    Name::unqualified("self")
+                ))))
+            );
+            assert_eq!(
+                methods[0].params[0].1,
+                Some(TypeExpr::Named(Name::unqualified("self")))
+            );
+        }
+        _ => panic!("Expected ClassDecl"),
+    }
+}

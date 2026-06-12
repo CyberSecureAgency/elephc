@@ -430,6 +430,42 @@ class Child extends Base {
 
 `new static()` follows PHP late static binding and constructs an instance of the called class.
 
+## Relative class types (`self`, `static`, `parent`)
+
+`self`, `static`, and `parent` may be used as type declarations on method parameters, method return types, and properties. They resolve to the enclosing class (`self`, `static`) or its parent (`parent`):
+
+```php
+<?php
+class Money {
+    public function __construct(public int $amount) {}
+
+    // `self` return type: enables fluent chaining.
+    public function add(self $other): self {
+        return new Money($this->amount + $other->amount);
+    }
+}
+
+class Node {
+    public ?self $next = null;     // a same-class (nullable) property
+    public function __construct(public int $value) {}
+}
+
+trait Fluent {
+    // In a trait, `static` resolves to the class that uses the trait.
+    public function copy(): static {
+        return clone $this;
+    }
+}
+```
+
+Rules:
+
+- `self` and `static` resolve to the class the member is declared in; `parent` resolves to that class's parent.
+- They are accepted in parameter, return, and property type positions, and may be combined with the nullable shorthand (`?self`) or unions (`self|null`).
+- Used inside a trait, `self`/`static` resolve to the class that uses the trait, not the trait itself.
+- Using `self`, `static`, or `parent` as a type outside of a class is rejected.
+- For type checking, `static` is treated as the declaring class. A `static` return type chained directly on its declaring class works as expected; when a `static`-returning method is inherited and called on a subclass, the result is typed as the declaring class rather than the subclass.
+
 ## Dynamic instantiation (`new $variable()`)
 
 `new $variable()` constructs an instance whose class is selected at runtime from a string variable:

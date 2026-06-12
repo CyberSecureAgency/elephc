@@ -636,3 +636,22 @@ fn test_error_union_trailing_pipe() {
         "Expected type expression",
     );
 }
+
+/// Verifies that the relative class type `self` is rejected when used as a type outside of any
+/// class body (a free function), where it has no enclosing class to resolve to.
+#[test]
+fn test_error_self_type_outside_class() {
+    expect_error(
+        "<?php function f(): self { return 1; }",
+        "Cannot use 'self' as a type outside of a class",
+    );
+}
+
+/// Verifies that `static` is likewise rejected as a free-function parameter type.
+#[test]
+fn test_error_static_type_outside_class() {
+    expect_error(
+        "<?php function f(static $x): int { return 1; }",
+        "Cannot use 'static' as a type outside of a class",
+    );
+}

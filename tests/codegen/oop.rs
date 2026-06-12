@@ -23,6 +23,8 @@ mod modifiers_and_properties;
 mod callables;
 #[path = "oop/union_types.rs"]
 mod union_types;
+#[path = "oop/relative_types.rs"]
+mod relative_types;
 #[path = "oop/misc.rs"]
 mod misc;
 #[path = "oop/attributes.rs"]

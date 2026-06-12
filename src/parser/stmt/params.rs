@@ -245,6 +245,21 @@ fn parse_atomic_type_expr(
             *pos += 1;
             Ok(TypeExpr::Bool)
         }
+        // `self`, `static`, and `parent` are relative class types. They are kept symbolic here
+        // (their concrete class is not known until inheritance/trait flattening) and resolved to
+        // the enclosing class by `substitute_relative_class_types` before type checking.
+        Some(Token::Self_) => {
+            *pos += 1;
+            Ok(TypeExpr::Named(Name::unqualified("self")))
+        }
+        Some(Token::Static) => {
+            *pos += 1;
+            Ok(TypeExpr::Named(Name::unqualified("static")))
+        }
+        Some(Token::Parent) => {
+            *pos += 1;
+            Ok(TypeExpr::Named(Name::unqualified("parent")))
+        }
         Some(Token::Identifier(_)) | Some(Token::Backslash) => Ok(TypeExpr::Named(parse_name(
             tokens,
             pos,
