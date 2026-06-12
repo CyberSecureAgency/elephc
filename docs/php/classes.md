@@ -514,6 +514,30 @@ echo gettype($bad);                      // "NULL"
 
 elephc resolves the class name case-insensitively against compile-time class metadata, matching PHP class lookup. A match dispatches through the same allocation path as `new ClassName()`, including constructor calls, declared property defaults, and supported built-in/SPL runtime storage initialization. An unknown name currently yields PHP `null`; the missing-class fatal path is not yet tightened.
 
+## Dynamic method and static calls
+
+A method or static method can be called by a name held in a variable:
+
+```php
+<?php
+class Calculator {
+    public function add(int $a, int $b): int { return $a + $b; }
+    public static function version(): string { return "1.0"; }
+}
+
+$calc = new Calculator();
+$method = "add";
+echo $calc->$method(2, 3);        // 5 — dynamic instance method
+echo $calc->{$method}(2, 3);      // 5 — brace form
+
+$class = "Calculator";
+echo $class::version();           // 1.0 — dynamic static call
+$static = "version";
+echo $class::$static();           // 1.0 — both class and method dynamic
+```
+
+`$obj->$name(...)` and `$class::$name(...)` are equivalent to `call_user_func([$obj, $name], ...)` / `call_user_func([$class, $name], ...)`. Arguments are forwarded. A nullsafe dynamic method call (`$obj?->$name()`) is not yet supported.
+
 ## Anonymous classes (`new class {}`)
 
 An anonymous class defines and instantiates a class in one expression. It may take constructor arguments, extend a class, and implement interfaces:

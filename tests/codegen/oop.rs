@@ -29,6 +29,8 @@ mod relative_types;
 mod anonymous_classes;
 #[path = "oop/intersection_types.rs"]
 mod intersection_types;
+#[path = "oop/dynamic_dispatch.rs"]
+mod dynamic_dispatch;
 #[path = "oop/misc.rs"]
 mod misc;
 #[path = "oop/attributes.rs"]

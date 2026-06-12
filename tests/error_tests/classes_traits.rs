@@ -620,3 +620,12 @@ fn test_error_anonymous_class_missing_body() {
         "Expected '{' to open anonymous class body",
     );
 }
+
+/// Verifies that a nullsafe dynamic method call (`$obj?->$m()`) is rejected (not yet supported).
+#[test]
+fn test_error_nullsafe_dynamic_method_call() {
+    expect_error(
+        "<?php $obj?->$m();",
+        "Nullsafe dynamic method calls are not supported yet",
+    );
+}
