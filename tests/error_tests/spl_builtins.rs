@@ -246,6 +246,15 @@ fn test_error_phar_compress_files_wrong_args() {
     );
 }
 
+/// Verifies that `Phar::setMetadata()` requires a metadata value.
+#[test]
+fn test_error_phar_set_metadata_wrong_args() {
+    expect_error(
+        "<?php $p = new Phar(\"x.phar\"); $p->setMetadata();",
+        "expects 1 arguments, got 0",
+    );
+}
+
 /// Verifies that `SplHeap` stays abstract and cannot be instantiated directly.
 #[test]
 fn test_error_spl_heap_is_abstract() {

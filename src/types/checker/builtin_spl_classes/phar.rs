@@ -1,6 +1,6 @@
 //! Purpose:
 //! Injects the supported `Phar` and `PharData` builtin class metadata.
-//! Provides the first OOP archive surface by mapping methods and ArrayAccess onto `phar://` URLs.
+//! Provides the OOP archive surface by mapping methods and ArrayAccess onto `phar://` URLs or object storage.
 //!
 //! Called from:
 //! - `super::inject_builtin_spl_classes()`.
@@ -43,12 +43,17 @@ fn insert_phar_like_class(class_map: &mut HashMap<String, FlattenedClass>, name:
     );
 }
 
-/// Builds the private archive-path property shared by `Phar` and `PharData`.
+/// Builds the private object state shared by `Phar` and `PharData`.
 fn phar_properties() -> Vec<ClassProperty> {
-    vec![storage_property("path", TypeExpr::Str)]
+    vec![
+        storage_property("path", TypeExpr::Str),
+        storage_property("metadata", TypeExpr::Str),
+        storage_property("hasMetadata", TypeExpr::Bool),
+        storage_property("stub", TypeExpr::Str),
+    ]
 }
 
-/// Builds the supported constructor, write helper, and ArrayAccess methods for PHAR objects.
+/// Builds the supported constructor, metadata/stub helpers, write helpers, and ArrayAccess methods.
 fn phar_methods() -> Vec<ClassMethod> {
     vec![
         method_with_body(
@@ -56,6 +61,70 @@ fn phar_methods() -> Vec<ClassMethod> {
             vec![param("filename", TypeExpr::Str)],
             Some(TypeExpr::Void),
             phar_construct_body(),
+        ),
+        method_with_body(
+            "__toString",
+            Vec::new(),
+            Some(TypeExpr::Str),
+            return_body(phar_path_expr()),
+        ),
+        method_with_body(
+            "getPath",
+            Vec::new(),
+            Some(TypeExpr::Str),
+            return_body(phar_path_expr()),
+        ),
+        method_with_body(
+            "getPathname",
+            Vec::new(),
+            Some(TypeExpr::Str),
+            return_body(phar_path_expr()),
+        ),
+        method_with_body(
+            "getFilename",
+            Vec::new(),
+            Some(TypeExpr::Str),
+            return_body(function_call("basename", vec![phar_path_expr()])),
+        ),
+        method_with_body(
+            "setMetadata",
+            vec![param("metadata", TypeExpr::Str)],
+            Some(TypeExpr::Void),
+            phar_set_metadata_body(),
+        ),
+        method_with_body(
+            "getMetadata",
+            vec![param_default(
+                "unserializeOptions",
+                array_type(),
+                empty_array_expr(),
+            )],
+            Some(mixed_type()),
+            phar_get_metadata_body(),
+        ),
+        method_with_body(
+            "hasMetadata",
+            Vec::new(),
+            Some(TypeExpr::Bool),
+            return_body(property_access(this_expr(), "hasMetadata")),
+        ),
+        method_with_body(
+            "delMetadata",
+            Vec::new(),
+            Some(TypeExpr::Bool),
+            phar_del_metadata_body(),
+        ),
+        method_with_body(
+            "setStub",
+            vec![param("stub", TypeExpr::Str)],
+            Some(TypeExpr::Bool),
+            phar_set_stub_body(),
+        ),
+        method_with_body(
+            "getStub",
+            Vec::new(),
+            Some(TypeExpr::Str),
+            return_body(property_access(this_expr(), "stub")),
         ),
         method_with_body(
             "offsetExists",
@@ -113,7 +182,46 @@ fn phar_methods() -> Vec<ClassMethod> {
 
 /// Builds constructor body that stores the archive path on the object.
 fn phar_construct_body() -> Vec<crate::parser::ast::Stmt> {
-    vec![property_assign_stmt(this_expr(), "path", var_expr("filename"))]
+    vec![
+        property_assign_stmt(this_expr(), "path", var_expr("filename")),
+        property_assign_stmt(this_expr(), "metadata", string_expr("")),
+        property_assign_stmt(this_expr(), "hasMetadata", bool_expr(false)),
+        property_assign_stmt(this_expr(), "stub", string_expr("<?php __HALT_COMPILER(); ?>")),
+    ]
+}
+
+/// Builds `setMetadata()` as per-object metadata storage.
+fn phar_set_metadata_body() -> Vec<crate::parser::ast::Stmt> {
+    vec![
+        property_assign_stmt(this_expr(), "metadata", var_expr("metadata")),
+        property_assign_stmt(this_expr(), "hasMetadata", bool_expr(true)),
+    ]
+}
+
+/// Builds `getMetadata()` with PHP's null result before metadata is set.
+fn phar_get_metadata_body() -> Vec<crate::parser::ast::Stmt> {
+    vec![if_stmt(
+        property_access(this_expr(), "hasMetadata"),
+        return_body(property_access(this_expr(), "metadata")),
+        Some(return_body(null_expr())),
+    )]
+}
+
+/// Builds `delMetadata()` by clearing the per-object metadata state.
+fn phar_del_metadata_body() -> Vec<crate::parser::ast::Stmt> {
+    vec![
+        property_assign_stmt(this_expr(), "metadata", string_expr("")),
+        property_assign_stmt(this_expr(), "hasMetadata", bool_expr(false)),
+        return_stmt(bool_expr(true)),
+    ]
+}
+
+/// Builds `setStub()` as per-object stub storage.
+fn phar_set_stub_body() -> Vec<crate::parser::ast::Stmt> {
+    vec![
+        property_assign_stmt(this_expr(), "stub", var_expr("stub")),
+        return_stmt(bool_expr(true)),
+    ]
 }
 
 /// Builds `offsetExists()` as a `file_get_contents()` false check.
@@ -194,6 +302,11 @@ fn phar_entry_url_expr(offset: Expr) -> Expr {
         BinOp::Concat,
         cast_expr(CastType::String, offset),
     )
+}
+
+/// Returns the archive path stored by the constructor.
+fn phar_path_expr() -> Expr {
+    property_access(this_expr(), "path")
 }
 
 /// Builds the currently exposed PHAR format, compression, and signature constants.

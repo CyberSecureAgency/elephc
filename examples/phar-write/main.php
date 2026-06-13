@@ -33,6 +33,8 @@ $oop->addFromString("hello.txt", "written through addFromString\n");
 $oop["array-access.txt"] = "written through ArrayAccess\n";
 $oop["temporary.txt"] = "this entry will be deleted\n";
 unset($oop["temporary.txt"]);
+$oop->setMetadata("demo");
+$oop->setStub("<?php echo 'elephc phar'; __HALT_COMPILER(); ?>");
 $oop->compressFiles(Phar::GZ);
 $oop->decompressFiles();
 
@@ -50,5 +52,7 @@ echo "via file_get_contents: " . file_get_contents("phar://" . $archive . "/gree
 echo "oop addFromString: " . $oop["hello.txt"];
 echo "oop array access: " . $oop["array-access.txt"];
 echo "oop unset removed temporary entry: " . (isset($oop["temporary.txt"]) ? "no\n" : "yes\n");
+echo "oop metadata kind: " . $oop->getMetadata() . "\n";
+echo "oop stub length: " . strlen($oop->getStub()) . "\n";
 $oop->delete("array-access.txt");
 echo "oop delete removed array-access entry: " . (isset($oop["array-access.txt"]) ? "no\n" : "yes\n");

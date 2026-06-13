@@ -2104,6 +2104,33 @@ echo $pd["note.txt"];
     assert_eq!(out, "alpha|bravo|tar");
 }
 
+/// `Phar` and `PharData` expose object-level metadata, stub, and path helpers.
+#[test]
+fn test_phar_oop_metadata_stub_and_path_helpers() {
+    let out = compile_and_run(
+        r#"<?php
+$p = new Phar("meta.phar");
+echo ($p->hasMetadata() ? "bad|" : "no-meta|");
+echo ($p->getMetadata() === null ? "null|" : "bad|");
+$p->setMetadata("app:3");
+echo ($p->hasMetadata() ? "has-meta|" : "bad|");
+echo $p->getMetadata() . "|";
+echo ($p->delMetadata() ? "cleared|" : "bad|");
+echo ($p->hasMetadata() ? "bad|" : "no-meta|");
+$p->setStub("<?php echo 'stub'; __HALT_COMPILER(); ?>");
+echo $p->getStub() . "|";
+echo $p->getPath() . "|" . $p->getPathname() . "|" . $p->getFilename() . "|";
+$pd = new PharData("meta.tar");
+$pd->setMetadata("tar-meta");
+echo $pd->getMetadata() . "|" . $pd->__toString();
+"#,
+    );
+    assert_eq!(
+        out,
+        "no-meta|null|has-meta|app:3|cleared|no-meta|<?php echo 'stub'; __HALT_COMPILER(); ?>|meta.phar|meta.phar|meta.phar|tar-meta|meta.tar"
+    );
+}
+
 /// `Phar::compressFiles()` and `decompressFiles()` rewrite native PHAR entry
 /// compression while preserving readable payloads.
 #[test]
