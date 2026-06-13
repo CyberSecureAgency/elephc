@@ -124,7 +124,7 @@ jobs:
         run: cargo build --release
 
       - name: Build release bridge staticlibs
-        run: cargo build --release -p elephc-tls -p elephc-pdo -p elephc-crypto
+        run: cargo build --release -p elephc-tls -p elephc-pdo -p elephc-crypto -p elephc-phar
 
       - name: Strip binary
         run: strip target/release/elephc
