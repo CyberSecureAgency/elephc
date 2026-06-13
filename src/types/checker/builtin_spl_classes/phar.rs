@@ -72,7 +72,7 @@ fn insert_phar_file_info_class(class_map: &mut HashMap<String, FlattenedClass>) 
 fn phar_properties() -> Vec<ClassProperty> {
     vec![
         storage_property("path", TypeExpr::Str),
-        storage_property("metadata", TypeExpr::Str),
+        storage_property("metadata", mixed_type()),
         storage_property("hasMetadata", TypeExpr::Bool),
         storage_property("stub", TypeExpr::Str),
         storage_property("entries", array_type()),
@@ -115,7 +115,7 @@ fn phar_methods() -> Vec<ClassMethod> {
         ),
         method_with_body(
             "setMetadata",
-            vec![param("metadata", TypeExpr::Str)],
+            vec![param("metadata", mixed_type())],
             Some(TypeExpr::Void),
             phar_set_metadata_body(),
         ),
@@ -273,7 +273,7 @@ fn phar_file_info_methods() -> Vec<ClassMethod> {
 fn phar_construct_body() -> Vec<crate::parser::ast::Stmt> {
     vec![
         property_assign_stmt(this_expr(), "path", var_expr("filename")),
-        property_assign_stmt(this_expr(), "metadata", string_expr("")),
+        property_assign_stmt(this_expr(), "metadata", null_expr()),
         property_assign_stmt(this_expr(), "hasMetadata", bool_expr(false)),
         property_assign_stmt(this_expr(), "stub", string_expr("<?php __HALT_COMPILER(); ?>")),
         property_assign_stmt(
@@ -305,7 +305,7 @@ fn phar_get_metadata_body() -> Vec<crate::parser::ast::Stmt> {
 /// Builds `delMetadata()` by clearing the per-object metadata state.
 fn phar_del_metadata_body() -> Vec<crate::parser::ast::Stmt> {
     vec![
-        property_assign_stmt(this_expr(), "metadata", string_expr("")),
+        property_assign_stmt(this_expr(), "metadata", null_expr()),
         property_assign_stmt(this_expr(), "hasMetadata", bool_expr(false)),
         return_stmt(bool_expr(true)),
     ]

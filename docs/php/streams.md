@@ -89,7 +89,7 @@ can rewrite ZIP entries between stored and deflated forms. `Phar` and
 `PharData` expose a
 baseline OOP surface with constructors, format/compression/signature constants,
 `addFromString()`, `delete()`, `compressFiles()`, `decompressFiles()`,
-string metadata/stub accessors, path helpers, and ArrayAccess read/write/isset
+mixed metadata/string stub accessors, path helpers, and ArrayAccess read/write/isset
 over the same `phar://` paths. ArrayAccess reads return `PharFileInfo` objects
 with `getContent()` for payload reads. `foreach` over a `Phar` / `PharData`
 object visits entries scanned from the archive at construction time plus entries
@@ -97,10 +97,10 @@ written through that object, yielding `entryName => PharFileInfo`.
 `unlink("phar://archive/entry")` and `unset($phar["entry"])` remove entries
 while preserving sibling entries. Native PHAR compression controls support
 `Phar::GZ`, `Phar::BZ2`, and `Phar::NONE`; ZIP compression controls support
-`Phar::GZ` and `Phar::NONE`. Current limits: metadata and stub strings
+`Phar::GZ` and `Phar::NONE`. Current limits: metadata values and stub strings
 are stored on the archive object and are not serialized into the archive file;
-tar compression controls, non-string metadata values, and key/private-key
-signing variants are not implemented.
+tar compression controls and key/private-key signing variants are not
+implemented.
 
 `file_get_contents($url)` recognizes runtime `http://`, `https://`, `ftp://`,
 and `ftps://` strings before falling back to `phar://`/filesystem handling.

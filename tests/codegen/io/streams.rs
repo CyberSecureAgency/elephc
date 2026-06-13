@@ -2121,6 +2121,14 @@ echo ($p->getMetadata() === null ? "null|" : "bad|");
 $p->setMetadata("app:3");
 echo ($p->hasMetadata() ? "has-meta|" : "bad|");
 echo $p->getMetadata() . "|";
+$p->setMetadata(["kind" => "app", "version" => 3]);
+$meta = $p->getMetadata();
+echo $meta["kind"] . ":" . $meta["version"] . "|";
+$p->setMetadata(42);
+echo $p->getMetadata() . "|";
+$p->setMetadata(null);
+echo ($p->hasMetadata() ? "has-null|" : "bad|");
+echo ($p->getMetadata() === null ? "null-meta|" : "bad|");
 echo ($p->delMetadata() ? "cleared|" : "bad|");
 echo ($p->hasMetadata() ? "bad|" : "no-meta|");
 $p->setStub("<?php echo 'stub'; __HALT_COMPILER(); ?>");
@@ -2133,7 +2141,7 @@ echo $pd->getMetadata() . "|" . $pd->__toString();
     );
     assert_eq!(
         out,
-        "no-meta|null|has-meta|app:3|cleared|no-meta|<?php echo 'stub'; __HALT_COMPILER(); ?>|meta.phar|meta.phar|meta.phar|tar-meta|meta.tar"
+        "no-meta|null|has-meta|app:3|app:3|42|has-null|null-meta|cleared|no-meta|<?php echo 'stub'; __HALT_COMPILER(); ?>|meta.phar|meta.phar|meta.phar|tar-meta|meta.tar"
     );
 }
 
