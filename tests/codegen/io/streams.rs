@@ -2067,21 +2067,27 @@ $p = new Phar("oop.phar");
 $p["one.txt"] = "alpha";
 $p["dir/two.txt"] = "bravo";
 echo class_exists("phar") ? "class|" : "missing|";
+echo class_exists("pharfileinfo") ? "info-class|" : "missing-info|";
 echo ($p instanceof ArrayAccess) ? "aa|" : "no-aa|";
-echo $p["one.txt"] . "|";
-echo $p["dir/two.txt"] . "|";
-echo ($p["missing.txt"] === false ? "missing|" : "bad|");
+$info = $p["one.txt"];
+echo ($info instanceof SplFileInfo) ? "spl-info|" : "bad-info|";
+echo get_class($info) . "|";
+echo $info->getContent() . "|";
+echo $info->getFilename() . "|";
+echo $info->getPathname() . "|";
+echo $p["dir/two.txt"]->getContent() . "|";
+echo ($p["missing.txt"]->getContent() === false ? "missing|" : "bad|");
 echo (isset($p["one.txt"]) ? "yes|" : "no|");
 echo (isset($p["missing.txt"]) ? "bad|" : "no|");
 $pd = new PharData("oop.tar");
 $pd["note.txt"] = "tar";
-echo $pd["note.txt"] . "|";
+echo $pd["note.txt"]->getContent() . "|";
 echo Phar::GZ . "|" . PharData::TAR;
 "#,
     );
     assert_eq!(
         out,
-        "class|aa|alpha|bravo|missing|yes|no|tar|4096|2"
+        "class|info-class|aa|spl-info|PharFileInfo|alpha|one.txt|phar://oop.phar/one.txt|bravo|missing|yes|no|tar|4096|2"
     );
 }
 
@@ -2094,11 +2100,11 @@ fn test_phar_oop_add_from_string_writes_entries() {
 $p = new Phar("add.phar");
 $p->addFromString("one.txt", "alpha");
 $p->addFromString("dir/two.txt", "bravo");
-echo $p["one.txt"] . "|";
-echo $p["dir/two.txt"] . "|";
+echo $p["one.txt"]->getContent() . "|";
+echo $p["dir/two.txt"]->getContent() . "|";
 $pd = new PharData("add.tar");
 $pd->addFromString("note.txt", "tar");
-echo $pd["note.txt"];
+echo $pd["note.txt"]->getContent();
 "#,
     );
     assert_eq!(out, "alpha|bravo|tar");
@@ -2141,15 +2147,15 @@ $p = new Phar("compress.phar");
 $p->addFromString("one.txt", "alpha alpha alpha");
 $p->addFromString("two.txt", "bravo bravo bravo");
 $p->compressFiles(Phar::GZ);
-echo $p["one.txt"] . "|";
+echo $p["one.txt"]->getContent() . "|";
 echo ($p->decompressFiles() ? "plain|" : "bad|");
-echo $p["two.txt"] . "|";
+echo $p["two.txt"]->getContent() . "|";
 $zip = new PharData("compress.zip");
 $zip->addFromString("zip.txt", "zip zip zip");
 $zip->compressFiles(Phar::GZ);
-echo $zip["zip.txt"] . "|";
+echo $zip["zip.txt"]->getContent() . "|";
 echo ($zip->decompressFiles() ? "zip-plain|" : "zip-bad|");
-echo $zip["zip.txt"] . "|";
+echo $zip["zip.txt"]->getContent() . "|";
 echo (function_exists("__elephc_phar_set_compression") ? "visible" : "hidden");
 "#,
     );
@@ -2170,12 +2176,12 @@ $p->addFromString("one.txt", "alpha");
 $p->addFromString("two.txt", "bravo");
 echo ($p->delete("one.txt") ? "deleted|" : "bad|");
 echo (isset($p["one.txt"]) ? "bad|" : "missing|");
-echo $p["two.txt"] . "|";
+echo $p["two.txt"]->getContent() . "|";
 $pd = new PharData("delete-method.tar");
 $pd->addFromString("one.txt", "tar-one");
 $pd->addFromString("two.txt", "tar-two");
 echo ($pd->delete("one.txt") ? "deleted|" : "bad|");
-echo $pd["two.txt"];
+echo $pd["two.txt"]->getContent();
 "#,
     );
     assert_eq!(out, "deleted|missing|bravo|deleted|tar-two");
@@ -2192,13 +2198,13 @@ $p["one.txt"] = "alpha";
 $p["two.txt"] = "bravo";
 unset($p["one.txt"]);
 echo (isset($p["one.txt"]) ? "bad|" : "missing|");
-echo $p["two.txt"] . "|";
+echo $p["two.txt"]->getContent() . "|";
 $pd = new PharData("unset.tar");
 $pd["one.txt"] = "tar-one";
 $pd["two.txt"] = "tar-two";
 unset($pd["one.txt"]);
 echo (isset($pd["one.txt"]) ? "bad|" : "missing|");
-echo $pd["two.txt"];
+echo $pd["two.txt"]->getContent();
 "#,
     );
     assert_eq!(out, "missing|bravo|missing|tar-two");

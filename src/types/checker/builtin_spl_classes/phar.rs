@@ -21,6 +21,7 @@ use super::common::*;
 pub(super) fn insert_classes(class_map: &mut HashMap<String, FlattenedClass>) {
     insert_phar_like_class(class_map, "Phar");
     insert_phar_like_class(class_map, "PharData");
+    insert_phar_file_info_class(class_map);
 }
 
 /// Inserts one PHAR-like archive class with the shared ArrayAccess surface.
@@ -38,6 +39,26 @@ fn insert_phar_like_class(class_map: &mut HashMap<String, FlattenedClass>, name:
             methods: phar_methods(),
             attributes: Vec::new(),
             constants: phar_constants(),
+            used_traits: Vec::new(),
+        },
+    );
+}
+
+/// Inserts the PHAR entry info class used by archive ArrayAccess reads.
+fn insert_phar_file_info_class(class_map: &mut HashMap<String, FlattenedClass>) {
+    class_map.insert(
+        "PharFileInfo".to_string(),
+        FlattenedClass {
+            name: "PharFileInfo".to_string(),
+            extends: Some("SplFileInfo".to_string()),
+            implements: Vec::new(),
+            is_abstract: false,
+            is_final: false,
+            is_readonly_class: false,
+            properties: Vec::new(),
+            methods: phar_file_info_methods(),
+            attributes: Vec::new(),
+            constants: Vec::new(),
             used_traits: Vec::new(),
         },
     );
@@ -135,7 +156,7 @@ fn phar_methods() -> Vec<ClassMethod> {
         method_with_body(
             "offsetGet",
             vec![param("offset", mixed_type())],
-            Some(mixed_type()),
+            Some(named_type("PharFileInfo")),
             phar_offset_get_body(),
         ),
         method_with_body(
@@ -176,6 +197,57 @@ fn phar_methods() -> Vec<ClassMethod> {
             vec![param("offset", mixed_type())],
             Some(TypeExpr::Void),
             phar_offset_unset_body(),
+        ),
+    ]
+}
+
+/// Builds the entry-level PHAR file info methods.
+fn phar_file_info_methods() -> Vec<ClassMethod> {
+    vec![
+        method_with_body(
+            "__construct",
+            vec![param("filename", TypeExpr::Str)],
+            Some(TypeExpr::Void),
+            vec![property_assign_stmt(this_expr(), "path", var_expr("filename"))],
+        ),
+        method_with_body(
+            "__toString",
+            Vec::new(),
+            Some(TypeExpr::Str),
+            return_body(property_access(this_expr(), "path")),
+        ),
+        method_with_body(
+            "getPath",
+            Vec::new(),
+            Some(TypeExpr::Str),
+            return_body(function_call(
+                "dirname",
+                vec![property_access(this_expr(), "path")],
+            )),
+        ),
+        method_with_body(
+            "getFilename",
+            Vec::new(),
+            Some(TypeExpr::Str),
+            return_body(function_call(
+                "basename",
+                vec![property_access(this_expr(), "path")],
+            )),
+        ),
+        method_with_body(
+            "getPathname",
+            Vec::new(),
+            Some(TypeExpr::Str),
+            return_body(property_access(this_expr(), "path")),
+        ),
+        method_with_body(
+            "getContent",
+            Vec::new(),
+            Some(mixed_type()),
+            return_body(function_call(
+                "file_get_contents",
+                vec![property_access(this_expr(), "path")],
+            )),
         ),
     ]
 }
@@ -233,10 +305,10 @@ fn phar_offset_exists_body() -> Vec<crate::parser::ast::Stmt> {
     ))
 }
 
-/// Builds `offsetGet()` as a `file_get_contents()` read.
+/// Builds `offsetGet()` as a `PharFileInfo` entry object.
 fn phar_offset_get_body() -> Vec<crate::parser::ast::Stmt> {
-    return_body(function_call(
-        "file_get_contents",
+    return_body(new_object_expr(
+        "PharFileInfo",
         vec![phar_entry_url_expr(var_expr("offset"))],
     ))
 }

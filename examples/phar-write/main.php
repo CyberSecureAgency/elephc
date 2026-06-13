@@ -49,8 +49,8 @@ fclose($in);
 // it slurps the whole entry in one call.
 echo "via file_get_contents: " . file_get_contents("phar://" . $archive . "/greeting.txt");
 
-echo "oop addFromString: " . $oop["hello.txt"];
-echo "oop array access: " . $oop["array-access.txt"];
+echo "oop addFromString: " . $oop["hello.txt"]->getContent();
+echo "oop array access: " . $oop["array-access.txt"]->getContent();
 echo "oop unset removed temporary entry: " . (isset($oop["temporary.txt"]) ? "no\n" : "yes\n");
 echo "oop metadata kind: " . $oop->getMetadata() . "\n";
 echo "oop stub length: " . strlen($oop->getStub()) . "\n";

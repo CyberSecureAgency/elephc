@@ -1477,6 +1477,35 @@ fn is_supported_builtin_spl_method(class_name: &str, method_key: &str) -> bool {
                 | "decompressfiles"
                 | "delete"
         ),
+        "PharFileInfo" => matches!(
+            method_key,
+            "__construct"
+                | "getcontent"
+                | "__tostring"
+                | "getpath"
+                | "getfilename"
+                | "getextension"
+                | "getbasename"
+                | "getpathname"
+                | "getperms"
+                | "getinode"
+                | "getsize"
+                | "getowner"
+                | "getgroup"
+                | "getatime"
+                | "getmtime"
+                | "getctime"
+                | "gettype"
+                | "iswritable"
+                | "iswriteable"
+                | "isreadable"
+                | "isexecutable"
+                | "isfile"
+                | "isdir"
+                | "islink"
+                | "getlinktarget"
+                | "getrealpath"
+        ),
         "IteratorIterator" => matches!(
             method_key,
             "current"

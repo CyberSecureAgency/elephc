@@ -228,6 +228,15 @@ fn test_error_phar_cannot_be_redeclared() {
     );
 }
 
+/// Verifies that `PharFileInfo` cannot be redeclared as a user class.
+#[test]
+fn test_error_phar_file_info_cannot_be_redeclared() {
+    expect_error(
+        "<?php class PharFileInfo {}",
+        "Cannot redeclare built-in class: PharFileInfo",
+    );
+}
+
 /// Verifies that `Phar::addFromString()` enforces its two required arguments.
 #[test]
 fn test_error_phar_add_from_string_wrong_args() {

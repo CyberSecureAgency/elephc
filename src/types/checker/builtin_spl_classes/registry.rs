@@ -57,7 +57,7 @@ pub(super) const SPL_CLASS_NAMES: &[&str] = &[
     "SplObjectStorage",
 ];
 
-const PHAR_CLASS_NAMES: &[&str] = &["Phar", "PharData"];
+const PHAR_CLASS_NAMES: &[&str] = &["Phar", "PharData", "PharFileInfo"];
 
 /// Ensures no redeclarations is available before the caller continues.
 pub(super) fn ensure_no_redeclarations(
