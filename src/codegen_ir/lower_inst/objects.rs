@@ -2560,6 +2560,12 @@ pub(super) fn lower_dynamic_prop_get(
     if let Some(property) = const_string_operand(ctx, property_value)? {
         return lower_const_dynamic_prop_get(ctx, object, property, inst);
     }
+    if matches!(ctx.value_php_type(object)?.codegen_repr(), PhpType::Mixed | PhpType::Union(_)) {
+        return lower_runtime_dynamic_mixed_prop_get(ctx, inst, object, property_value);
+    }
+    if object_is_builtin_stdclass(ctx, object)? {
+        return lower_runtime_dynamic_stdclass_prop_get(ctx, inst, object, property_value);
+    }
     lower_runtime_dynamic_declared_prop_get(ctx, object, property_value, inst)
 }
 
@@ -2570,6 +2576,18 @@ fn lower_const_dynamic_prop_get(
     property: &str,
     inst: &Instruction,
 ) -> Result<()> {
+    if matches!(ctx.value_php_type(object)?.codegen_repr(), PhpType::Mixed | PhpType::Union(_)) {
+        return lower_mixed_prop_get(ctx, inst, object, property);
+    }
+    if object_is_builtin_stdclass(ctx, object)? {
+        return lower_stdclass_prop_get(ctx, inst, object, property);
+    }
+    if let Some(class_name) = magic_get_receiver_class(ctx, object, property)? {
+        return lower_magic_get_prop(ctx, inst, object, &class_name, property);
+    }
+    if let Some(offset) = dynamic_property_hash_offset_for_object(ctx, object, property)? {
+        return lower_allow_dynamic_prop_get(ctx, inst, object, property, offset);
+    }
     let slot = resolve_property_slot(ctx, object, property, inst)?;
     let base_reg = abi::symbol_scratch_reg(ctx.emitter);
     ctx.load_value_to_reg(object, base_reg)?;
@@ -2578,6 +2596,52 @@ fn lower_const_dynamic_prop_get(
     }
     emit_property_load(ctx, &slot, base_reg)?;
     materialize_loaded_property_result(ctx, inst, &slot.php_type)?;
+    store_if_result(ctx, inst)
+}
+
+/// Lowers a runtime-name dynamic property read from a boxed `Mixed` receiver.
+fn lower_runtime_dynamic_mixed_prop_get(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+    object: ValueId,
+    property_value: ValueId,
+) -> Result<()> {
+    ensure_runtime_dynamic_property_name(ctx, property_value, inst)?;
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.load_value_to_reg(object, "x0")?;
+            ctx.load_string_value_to_regs(property_value, "x1", "x2")?;
+        }
+        Arch::X86_64 => {
+            ctx.load_value_to_reg(object, "rdi")?;
+            ctx.load_string_value_to_regs(property_value, "rsi", "rdx")?;
+        }
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_mixed_property_get");
+    cast_loaded_mixed_pointer_to_result(ctx, &inst.result_php_type.codegen_repr())?;
+    store_if_result(ctx, inst)
+}
+
+/// Lowers a runtime-name dynamic property read from a statically known `stdClass`.
+fn lower_runtime_dynamic_stdclass_prop_get(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+    object: ValueId,
+    property_value: ValueId,
+) -> Result<()> {
+    ensure_runtime_dynamic_property_name(ctx, property_value, inst)?;
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.load_value_to_reg(object, "x0")?;
+            ctx.load_string_value_to_regs(property_value, "x1", "x2")?;
+        }
+        Arch::X86_64 => {
+            ctx.load_value_to_reg(object, "rdi")?;
+            ctx.load_string_value_to_regs(property_value, "rsi", "rdx")?;
+        }
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_stdclass_get");
+    cast_loaded_mixed_pointer_to_result(ctx, &inst.result_php_type.codegen_repr())?;
     store_if_result(ctx, inst)
 }
 
