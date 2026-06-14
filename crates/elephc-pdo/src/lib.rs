@@ -89,6 +89,12 @@ fn coltext_cell() -> &'static Mutex<CString> {
     C.get_or_init(|| Mutex::new(CString::default()))
 }
 
+/// Static byte buffer for the most recent `elephc_pdo_column_data_ptr` result.
+fn coldata_cell() -> &'static Mutex<Vec<u8>> {
+    static C: OnceLock<Mutex<Vec<u8>>> = OnceLock::new();
+    C.get_or_init(|| Mutex::new(Vec::new()))
+}
+
 /// Static buffer for the most recent `elephc_pdo_driver_name` result.
 fn drivername_cell() -> &'static Mutex<CString> {
     static C: OnceLock<Mutex<CString>> = OnceLock::new();
@@ -104,6 +110,19 @@ fn store_cstr(cell: &'static Mutex<CString>, s: &str) -> *const c_char {
     let mut guard = cell.lock().unwrap();
     *guard = cstr;
     guard.as_ptr()
+}
+
+/// Stores raw bytes into the per-result static data buffer and returns a pointer
+/// to the first byte, or null for an empty buffer. Valid until the next column
+/// data pointer call; elephc copies it immediately through `ptr_read_string`.
+fn store_bytes(bytes: Vec<u8>) -> *const c_char {
+    let mut guard = coldata_cell().lock().unwrap();
+    *guard = bytes;
+    if guard.is_empty() {
+        std::ptr::null()
+    } else {
+        guard.as_ptr() as *const c_char
+    }
 }
 
 /// Reads a null-terminated C string argument as a `&str` (the shape elephc's
@@ -122,7 +141,7 @@ unsafe fn cstr_arg<'a>(p: *const c_char) -> Option<&'a str> {
 /// Returns the bridge ABI version. Bumped when the C ABI shape changes.
 #[no_mangle]
 pub extern "C" fn elephc_pdo_version() -> i32 {
-    3
+    5
 }
 
 /// Returns a pointer to the lowercase PDO driver name for a connection
@@ -388,10 +407,7 @@ pub unsafe extern "C" fn elephc_pdo_prepare(conn_id: i64, sql: *const c_char) ->
 /// # Safety
 /// `name` must point to a NUL-terminated string valid for the duration of the call.
 #[no_mangle]
-pub unsafe extern "C" fn elephc_pdo_bind_parameter_index(
-    stmt_id: i64,
-    name: *const c_char,
-) -> i64 {
+pub unsafe extern "C" fn elephc_pdo_bind_parameter_index(stmt_id: i64, name: *const c_char) -> i64 {
     let guard = stmts().lock().unwrap();
     let Some(name) = cstr_arg(name) else {
         return 0;
@@ -547,7 +563,7 @@ pub extern "C" fn elephc_pdo_column_name(stmt_id: i64, i: i64) -> *const c_char 
 }
 
 /// Returns the SQLite-compatible type code for the current row's column `i`
-/// (0-based): 1=int, 2=float, 3=text, 4=blob (SQLite only), 5=null.
+/// (0-based): 1=int, 2=float, 3=text, 4=blob/bytea, 5=null.
 #[no_mangle]
 pub extern "C" fn elephc_pdo_column_type(stmt_id: i64, i: i64) -> i64 {
     let guard = stmts().lock().unwrap();
@@ -598,6 +614,55 @@ pub extern "C" fn elephc_pdo_column_text(stmt_id: i64, i: i64) -> *const c_char 
     store_cstr(coltext_cell(), &text)
 }
 
+/// Returns the byte length of the current row's column `i` rendered as PDO text
+/// or BLOB bytes. Unlike `elephc_pdo_column_text`, this path preserves embedded
+/// NUL bytes when paired with `elephc_pdo_column_data_ptr`.
+#[no_mangle]
+pub extern "C" fn elephc_pdo_column_data_len(stmt_id: i64, i: i64) -> i64 {
+    let guard = stmts().lock().unwrap();
+    match guard.get(&stmt_id) {
+        Some(Stmt::Sqlite(s)) => s.column_data(i).len() as i64,
+        Some(Stmt::Postgres(s)) => s.column_data(i).len() as i64,
+        Some(Stmt::Mysql(s)) => s.column_data(i).len() as i64,
+        None => 0,
+    }
+}
+
+/// Returns a pointer to the current row's column `i` rendered as raw bytes.
+/// The pointer remains valid until the next `elephc_pdo_column_data_ptr` call.
+#[no_mangle]
+pub extern "C" fn elephc_pdo_column_data_ptr(stmt_id: i64, i: i64) -> *const c_char {
+    let bytes = {
+        let guard = stmts().lock().unwrap();
+        match guard.get(&stmt_id) {
+            Some(Stmt::Sqlite(s)) => s.column_data(i),
+            Some(Stmt::Postgres(s)) => s.column_data(i),
+            Some(Stmt::Mysql(s)) => s.column_data(i),
+            None => Vec::new(),
+        }
+    };
+    store_bytes(bytes)
+}
+
+/// Returns one byte from the current row's column `i` rendered as raw data.
+/// Out-of-range handles, columns, and offsets return `0`.
+#[no_mangle]
+pub extern "C" fn elephc_pdo_column_data_byte(stmt_id: i64, i: i64, offset: i64) -> i64 {
+    let Ok(offset) = usize::try_from(offset) else {
+        return 0;
+    };
+    let bytes = {
+        let guard = stmts().lock().unwrap();
+        match guard.get(&stmt_id) {
+            Some(Stmt::Sqlite(s)) => s.column_data(i),
+            Some(Stmt::Postgres(s)) => s.column_data(i),
+            Some(Stmt::Mysql(s)) => s.column_data(i),
+            None => Vec::new(),
+        }
+    };
+    bytes.get(offset).copied().unwrap_or(0) as i64
+}
+
 /// Finalizes a statement and removes it from the table. Unknown handles return
 /// `0`; success returns `1`.
 #[no_mangle]
@@ -630,10 +695,18 @@ mod tests {
         CString::new(s).unwrap()
     }
 
-    /// The ABI version constant is the v3 (sqlite + pgsql + mysql) surface.
+    /// Reads a bridge raw-data pointer and length into owned bytes.
+    unsafe fn read_bytes(p: *const c_char, len: i64) -> Vec<u8> {
+        if p.is_null() || len <= 0 {
+            return Vec::new();
+        }
+        std::slice::from_raw_parts(p as *const u8, len as usize).to_vec()
+    }
+
+    /// The ABI version constant is the v5 (sqlite + pgsql + mysql + raw data) surface.
     #[test]
-    fn version_is_v3() {
-        assert_eq!(elephc_pdo_version(), 3);
+    fn version_is_v5() {
+        assert_eq!(elephc_pdo_version(), 5);
     }
 
     /// A DSN for an unsupported driver is rejected with a driver error.
@@ -667,7 +740,10 @@ mod tests {
 
         let ins = cs("INSERT INTO users (name, score) VALUES ('Alice', 9.5)");
         assert_eq!(unsafe { elephc_pdo_exec(conn, ins.as_ptr()) }, 1);
-        assert_eq!(unsafe { elephc_pdo_last_insert_id(conn, std::ptr::null()) }, 1);
+        assert_eq!(
+            unsafe { elephc_pdo_last_insert_id(conn, std::ptr::null()) },
+            1
+        );
 
         let sql = cs("SELECT id, name, score FROM users WHERE id = ?");
         let stmt = unsafe { elephc_pdo_prepare(conn, sql.as_ptr()) };
@@ -681,6 +757,37 @@ mod tests {
         assert_eq!(unsafe { read(elephc_pdo_column_text(stmt, 1)) }, "Alice");
         assert_eq!(elephc_pdo_column_double(stmt, 2), 9.5);
         assert_eq!(elephc_pdo_step(stmt), 0);
+
+        assert_eq!(elephc_pdo_finalize(stmt), 1);
+        elephc_pdo_close(conn);
+    }
+
+    /// SQLite BLOB data returned through the raw data API preserves embedded NUL
+    /// bytes instead of truncating through the legacy C-string bridge.
+    #[test]
+    fn sqlite_blob_round_trip_preserves_embedded_nul() {
+        let dsn = cs("sqlite::memory:");
+        let conn = unsafe { elephc_pdo_open(dsn.as_ptr()) };
+        assert!(conn > 0, "open failed");
+
+        let ddl = cs("CREATE TABLE blobs (data BLOB)");
+        assert_eq!(unsafe { elephc_pdo_exec(conn, ddl.as_ptr()) }, 0);
+
+        let ins = cs("INSERT INTO blobs (data) VALUES (x'410042')");
+        assert_eq!(unsafe { elephc_pdo_exec(conn, ins.as_ptr()) }, 1);
+
+        let sql = cs("SELECT data FROM blobs");
+        let stmt = unsafe { elephc_pdo_prepare(conn, sql.as_ptr()) };
+        assert!(stmt > 0, "prepare failed");
+        assert_eq!(elephc_pdo_step(stmt), 1);
+        assert_eq!(elephc_pdo_column_type(stmt, 0), 4);
+        assert_eq!(elephc_pdo_column_data_len(stmt, 0), 3);
+        let ptr = elephc_pdo_column_data_ptr(stmt, 0);
+        assert_eq!(unsafe { read_bytes(ptr, 3) }, b"A\0B");
+        assert_eq!(elephc_pdo_column_data_byte(stmt, 0, 0), 65);
+        assert_eq!(elephc_pdo_column_data_byte(stmt, 0, 1), 0);
+        assert_eq!(elephc_pdo_column_data_byte(stmt, 0, 2), 66);
+        assert_eq!(elephc_pdo_column_data_byte(stmt, 0, 3), 0);
 
         assert_eq!(elephc_pdo_finalize(stmt), 1);
         elephc_pdo_close(conn);

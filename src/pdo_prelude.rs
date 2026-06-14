@@ -65,6 +65,9 @@ extern "elephc_pdo" {
     function elephc_pdo_column_int(int $stmt, int $i): int;
     function elephc_pdo_column_double(int $stmt, int $i): float;
     function elephc_pdo_column_text(int $stmt, int $i): string;
+    function elephc_pdo_column_data_len(int $stmt, int $i): int;
+    function elephc_pdo_column_data_ptr(int $stmt, int $i): ptr;
+    function elephc_pdo_column_data_byte(int $stmt, int $i, int $offset): int;
     function elephc_pdo_finalize(int $stmt): int;
     function elephc_pdo_driver_name(int $conn): string;
 }
@@ -78,11 +81,14 @@ class PDO {
     const FETCH_BOTH = 4;
     const FETCH_OBJ = 5;
     const FETCH_COLUMN = 7;
+    const FETCH_CLASS = 8;
+    const FETCH_INTO = 9;
     const PARAM_NULL = 0;
     const PARAM_INT = 1;
     const PARAM_STR = 2;
     const PARAM_BOOL = 5;
     const ATTR_ERRMODE = 3;
+    const ATTR_PERSISTENT = 12;
     const ATTR_DRIVER_NAME = 16;
     const ERRMODE_SILENT = 0;
     const ERRMODE_WARNING = 1;
@@ -90,10 +96,12 @@ class PDO {
 
     private int $conn;
     private int $errMode;
+    private bool $persistent;
     private array $attributes;
 
     public function __construct(string $dsn, ?string $username = null, ?string $password = null, ?array $options = null) {
         $this->errMode = 2;
+        $this->persistent = false;
         $this->attributes = [];
         // SQLite ignores credentials. For PostgreSQL and MySQL, the user/password
         // may be passed as the PDO constructor arguments (PHP-style); fold them
@@ -136,6 +144,8 @@ class PDO {
     public function setAttribute(int $attribute, $value): bool {
         if ($attribute == 3) {
             $this->errMode = (int) $value;
+        } elseif ($attribute == 12) {
+            $this->persistent = (bool) $value;
         }
         $this->attributes[$attribute] = $value;
         return true;
@@ -144,6 +154,9 @@ class PDO {
     public function getAttribute(int $attribute): mixed {
         if ($attribute == 3) {
             return $this->errMode;
+        }
+        if ($attribute == 12) {
+            return $this->persistent;
         }
         if ($attribute == 16) {
             return elephc_pdo_driver_name($this->conn);
@@ -169,7 +182,7 @@ class PDO {
             $this->fail(elephc_pdo_errmsg($this->conn));
             return false;
         }
-        return new PDOStatement($_handle, $this->conn);
+        return new PDOStatement($_handle, $this->conn, $this->errMode);
     }
 
     public function query(string $query): PDOStatement|bool {
@@ -177,7 +190,9 @@ class PDO {
         if ($_statement === false) {
             return false;
         }
-        $_statement->execute();
+        if ($_statement->execute() === false) {
+            return false;
+        }
         return $_statement;
     }
 
@@ -188,15 +203,27 @@ class PDO {
     }
 
     public function beginTransaction(): bool {
-        return elephc_pdo_begin($this->conn) == 1;
+        if (elephc_pdo_begin($this->conn) != 1) {
+            $this->fail(elephc_pdo_errmsg($this->conn));
+            return false;
+        }
+        return true;
     }
 
     public function commit(): bool {
-        return elephc_pdo_commit($this->conn) == 1;
+        if (elephc_pdo_commit($this->conn) != 1) {
+            $this->fail(elephc_pdo_errmsg($this->conn));
+            return false;
+        }
+        return true;
     }
 
     public function rollBack(): bool {
-        return elephc_pdo_rollback($this->conn) == 1;
+        if (elephc_pdo_rollback($this->conn) != 1) {
+            $this->fail(elephc_pdo_errmsg($this->conn));
+            return false;
+        }
+        return true;
     }
 
     public function errorCode(): string {
@@ -239,7 +266,9 @@ class PDO {
 class PDOStatement implements Iterator {
     private int $stmt;
     private int $conn;
+    private int $errMode;
     private int $fetchMode;
+    private $fetchTarget;
     private array $boundParams;
     private array $boundValues;
     private array $boundTypes;
@@ -248,10 +277,12 @@ class PDOStatement implements Iterator {
     private $iterRow;
     private int $iterKey;
 
-    public function __construct(int $handle, int $connection) {
+    public function __construct(int $handle, int $connection, int $errMode = 2) {
         $this->stmt = $handle;
         $this->conn = $connection;
+        $this->errMode = $errMode;
         $this->fetchMode = 4;
+        $this->fetchTarget = null;
         $this->boundParams = [];
         $this->boundValues = [];
         $this->boundTypes = [];
@@ -265,12 +296,21 @@ class PDOStatement implements Iterator {
         $this->iterKey = 0;
     }
 
-    public function setFetchMode(int $mode, $classOrColumn = null): bool {
-        // The optional second argument is the column index for FETCH_COLUMN (PHP
-        // requires it for that mode; other supported modes ignore it).
+    private function fail(string $message): void {
+        if ($this->errMode == 2) {
+            throw new PDOException($message);
+        }
+        if ($this->errMode == 1) {
+            fwrite(STDERR, "PDO error: " . $message . "\n");
+        }
+    }
+
+    public function setFetchMode(int $mode, mixed $classOrColumn = null): bool {
         $this->fetchMode = $mode;
-        if ($classOrColumn !== null) {
+        if ($mode == 7 && $classOrColumn !== null) {
             $this->fetchColumn = (int) $classOrColumn;
+        } elseif (($mode == 8 || $mode == 9) && $classOrColumn !== null) {
+            $this->fetchTarget = $classOrColumn;
         }
         return true;
     }
@@ -343,7 +383,12 @@ class PDOStatement implements Iterator {
         // now; SELECT-style statements (column_count > 0) are stepped lazily by
         // fetch() so the first row is not consumed here.
         if (elephc_pdo_column_count($this->stmt) == 0) {
-            elephc_pdo_step($this->stmt);
+            $_step = elephc_pdo_step($this->stmt);
+            if ($_step < 0) {
+                $this->fail(elephc_pdo_errmsg($this->conn));
+                $this->rowCount = elephc_pdo_changes($this->conn);
+                return false;
+            }
         }
         // Snapshot the affected-row count now, so rowCount() reports this
         // statement's result even if another statement runs on the same
@@ -364,15 +409,33 @@ class PDOStatement implements Iterator {
         } elseif ($_type == 5) {
             return null;
         }
-        return elephc_pdo_column_text($this->stmt, $index);
+        $_len = elephc_pdo_column_data_len($this->stmt, $index);
+        $_out = "";
+        for ($_j = 0; $_j < $_len; $_j++) {
+            $_out = $_out . chr(elephc_pdo_column_data_byte($this->stmt, $index, $_j));
+        }
+        return $_out;
     }
 
-    public function fetch(int $mode = 0): mixed {
+    private function assignColumns(mixed $object, int $count): mixed {
+        for ($_i = 0; $_i < $count; $_i++) {
+            $_value = $this->columnValue($_i);
+            $_name = elephc_pdo_column_name($this->stmt, $_i);
+            $object->{$_name} = $_value;
+        }
+        return $object;
+    }
+
+    public function fetch(int $mode = 0, mixed $classOrObject = null): mixed {
         if ($mode == 0) {
             $mode = $this->fetchMode;
         }
         $_rc = elephc_pdo_step($this->stmt);
-        if ($_rc != 1) {
+        if ($_rc < 0) {
+            $this->fail(elephc_pdo_errmsg($this->conn));
+            return false;
+        }
+        if ($_rc == 0) {
             return false;
         }
         $_count = elephc_pdo_column_count($this->stmt);
@@ -383,17 +446,28 @@ class PDOStatement implements Iterator {
             return $this->columnValue($this->fetchColumn);
         }
         if ($mode == 5) {
-            // FETCH_OBJ: build the associative row, then round-trip through JSON
-            // so json_decode yields a stdClass with one property per column.
-            // (elephc does not yet support dynamic property assignment, so this
-            // is how the object is materialized; numeric column names degrade to
-            // an array, matching how json_decode treats list-shaped objects.)
-            $_assoc = [];
-            for ($_i = 0; $_i < $_count; $_i++) {
-                $_name = elephc_pdo_column_name($this->stmt, $_i);
-                $_assoc[$_name] = $this->columnValue($_i);
+            // FETCH_OBJ: materialize a real stdClass and assign each column as a
+            // dynamic property, preserving numeric property names and binary data.
+            return $this->assignColumns(new stdClass(), $_count);
+        }
+        if ($mode == 8) {
+            if ($classOrObject !== null) {
+                return $this->assignColumns(new $classOrObject(), $_count);
             }
-            return json_decode(json_encode($_assoc));
+            if ($this->fetchTarget !== null) {
+                $_classTarget = $this->fetchTarget;
+                return $this->assignColumns(new $_classTarget(), $_count);
+            }
+            return $this->assignColumns(new stdClass(), $_count);
+        }
+        if ($mode == 9) {
+            if ($classOrObject !== null) {
+                return $this->assignColumns($classOrObject, $_count);
+            }
+            if ($this->fetchTarget !== null) {
+                return $this->assignColumns($this->fetchTarget, $_count);
+            }
+            return $this->assignColumns(new stdClass(), $_count);
         }
         if ($mode == 3) {
             $_numRow = [];
@@ -420,13 +494,13 @@ class PDOStatement implements Iterator {
         return $_bothRow;
     }
 
-    public function fetchAll(int $mode = 0): array {
+    public function fetchAll(int $mode = 0, mixed $classOrObject = null): array {
         if ($mode == 0) {
             $mode = $this->fetchMode;
         }
         $_rows = [];
         while (true) {
-            $_row = $this->fetch($mode);
+            $_row = $this->fetch($mode, $classOrObject);
             if ($_row === false) {
                 break;
             }
@@ -437,7 +511,11 @@ class PDOStatement implements Iterator {
 
     public function fetchColumn(int $column = 0): mixed {
         $_rc = elephc_pdo_step($this->stmt);
-        if ($_rc != 1) {
+        if ($_rc < 0) {
+            $this->fail(elephc_pdo_errmsg($this->conn));
+            return false;
+        }
+        if ($_rc == 0) {
             return false;
         }
         return $this->columnValue($column);
