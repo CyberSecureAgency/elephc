@@ -1375,6 +1375,10 @@ fn lower_non_local_assignment_write(
     value: &Expr,
     span: Span,
 ) {
+    if let ExprKind::DynamicPropertyAccess { object, property } = &target.kind {
+        lower_dynamic_property_assign(ctx, object, property, value, span);
+        return;
+    }
     let Some(kind) = non_local_assignment_stmt_kind(target, value) else {
         lower_expr(ctx, value);
         return;
@@ -1424,6 +1428,26 @@ fn non_local_assignment_stmt_kind(target: &Expr, value: &Expr) -> Option<StmtKin
         }
         _ => None,
     }
+}
+
+/// Lowers a runtime-name property write (`$object->{$property} = $value`).
+fn lower_dynamic_property_assign(
+    ctx: &mut LoweringContext<'_, '_>,
+    object: &Expr,
+    property: &Expr,
+    value: &Expr,
+    span: Span,
+) {
+    let object = lower_expr(ctx, object);
+    let property = lower_expr(ctx, property);
+    let value = lower_expr(ctx, value);
+    ctx.emit_void(
+        Op::DynamicPropSet,
+        vec![object.value, property.value, value.value],
+        None,
+        Op::DynamicPropSet.default_effects(),
+        Some(span),
+    );
 }
 
 /// Lowers pre/post increment and decrement expressions.
@@ -7093,7 +7117,7 @@ fn lower_method_call(
         op.default_effects(),
         Some(expr.span),
     );
-    release_owned_call_arg_temporaries(ctx, &arg_values, expr.span);
+    release_owned_call_arg_temporaries(ctx, &arg_values, Some(call.value), expr.span);
     call
 }
 
@@ -7311,14 +7335,15 @@ fn lower_method_call_with_receiver(
         op.default_effects(),
         Some(expr.span),
     );
-    release_owned_call_arg_temporaries(ctx, &arg_values, expr.span);
+    release_owned_call_arg_temporaries(ctx, &arg_values, Some(call.value), expr.span);
     call
 }
 
-/// Releases normalized call arguments that were allocated only for this call.
+/// Releases normalized call arguments that cannot be returned by this call.
 fn release_owned_call_arg_temporaries(
     ctx: &mut LoweringContext<'_, '_>,
     args: &[crate::ir::ValueId],
+    result: Option<crate::ir::ValueId>,
     span: Span,
 ) {
     for value in args {
@@ -7328,8 +7353,42 @@ fn release_owned_call_arg_temporaries(
             ir_type: value_ir_type(&php_type),
         };
         if ctx.value_is_owning_temporary(lowered) {
+            if call_result_may_alias_arg(ctx, *value, result) {
+                continue;
+            }
             crate::ir_lower::ownership::release_if_owned(ctx, lowered, Some(span));
         }
+    }
+}
+
+/// Returns true when a call result can legally be the same refcounted payload as an argument.
+fn call_result_may_alias_arg(
+    ctx: &LoweringContext<'_, '_>,
+    arg: crate::ir::ValueId,
+    result: Option<crate::ir::ValueId>,
+) -> bool {
+    let Some(result) = result else {
+        return false;
+    };
+    let arg_ty = ctx.builder.value_php_type(arg).codegen_repr();
+    let result_ty = ctx.builder.value_php_type(result).codegen_repr();
+    if !Ownership::php_type_needs_lifetime_tracking(&arg_ty)
+        || !Ownership::php_type_needs_lifetime_tracking(&result_ty)
+    {
+        return false;
+    }
+    match (&arg_ty, &result_ty) {
+        (PhpType::Mixed | PhpType::Union(_), _) | (_, PhpType::Mixed | PhpType::Union(_)) => true,
+        (PhpType::Object(_), PhpType::Object(_)) => true,
+        (PhpType::Array(_), PhpType::Array(_)) => true,
+        (
+            PhpType::AssocArray { .. },
+            PhpType::AssocArray { .. } | PhpType::Array(_) | PhpType::Iterable,
+        ) => true,
+        (PhpType::Str, PhpType::Str) => true,
+        (PhpType::Callable, PhpType::Callable) => true,
+        (PhpType::Buffer(_), PhpType::Buffer(_)) => true,
+        _ => arg_ty == result_ty,
     }
 }
 
