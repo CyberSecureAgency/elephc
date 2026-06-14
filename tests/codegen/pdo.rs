@@ -502,8 +502,8 @@ echo ":" . $db->getAttribute(PDO::ATTR_DRIVER_NAME);
 }
 
 /// `ATTR_PERSISTENT` is accepted through constructor options and setAttribute(),
-/// and can be read back even though elephc's standalone binaries do not pool
-/// process-global PDO handles.
+/// can be read back, and constructor-level truthy values opt into the
+/// process-local DSN pool.
 #[test]
 fn test_pdo_persistent_attribute_round_trip() {
     let out = compile_and_run(
