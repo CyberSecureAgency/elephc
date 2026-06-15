@@ -154,6 +154,36 @@ echo "|" . (($same === $into) ? "same" : "different") . ":" . $into->id . ":" . 
     assert_eq!(out, "Row:1:Ada|same:2:Bob");
 }
 
+/// `setFetchMode()` stores the class/object target used by later no-argument
+/// `fetch()` calls for `FETCH_CLASS` and `FETCH_INTO`.
+#[test]
+fn test_pdo_set_fetch_mode_class_and_into_targets() {
+    let out = compile_and_run(
+        r#"<?php
+class Row {
+    public mixed $id;
+    public mixed $name;
+}
+
+$db = new PDO("sqlite::memory:");
+$db->exec("CREATE TABLE t (id INTEGER, name TEXT)");
+$db->exec("INSERT INTO t VALUES (1, 'Ada'), (2, 'Bob')");
+
+$stmt = $db->query("SELECT id, name FROM t WHERE id = 1");
+$stmt->setFetchMode(PDO::FETCH_CLASS, Row::class);
+$row = $stmt->fetch();
+echo (($row instanceof Row) ? "Row" : "not-row") . ":" . $row->id . ":" . $row->name;
+
+$stmt2 = $db->query("SELECT id, name FROM t WHERE id = 2");
+$into = new Row();
+$stmt2->setFetchMode(PDO::FETCH_INTO, $into);
+$same = $stmt2->fetch();
+echo "|" . (($same === $into) ? "same" : "different") . ":" . $into->id . ":" . $into->name;
+"#,
+    );
+    assert_eq!(out, "Row:1:Ada|same:2:Bob");
+}
+
 /// `fetchAll()` drains every row into an array, and `count()` reports the total.
 #[test]
 fn test_pdo_fetch_all() {
@@ -502,8 +532,8 @@ echo ":" . $db->getAttribute(PDO::ATTR_DRIVER_NAME);
 }
 
 /// `ATTR_PERSISTENT` is accepted through constructor options and setAttribute(),
-/// and can be read back even though elephc's standalone binaries do not pool
-/// process-global PDO handles.
+/// can be read back, and constructor-level truthy values opt into the
+/// process-local DSN pool.
 #[test]
 fn test_pdo_persistent_attribute_round_trip() {
     let out = compile_and_run(
@@ -515,6 +545,40 @@ echo ":" . ($db->getAttribute(PDO::ATTR_PERSISTENT) ? "1" : "0");
 "#,
     );
     assert_eq!(out, "1:0");
+}
+
+/// Constructor-level `ATTR_PERSISTENT` opens through the process-local DSN pool:
+/// two `sqlite::memory:` handles with the option share the same in-memory DB.
+#[test]
+fn test_pdo_persistent_sqlite_memory_reuses_connection() {
+    let out = compile_and_run(
+        r#"<?php
+$a = new PDO("sqlite::memory:", null, null, [PDO::ATTR_PERSISTENT => true]);
+$a->exec("CREATE TABLE pdo_persist (n INTEGER)");
+$a->exec("INSERT INTO pdo_persist VALUES (42)");
+
+$b = new PDO("sqlite::memory:", null, null, [PDO::ATTR_PERSISTENT => true]);
+echo $b->query("SELECT n FROM pdo_persist")->fetchColumn();
+"#,
+    );
+    assert_eq!(out, "42");
+}
+
+/// Non-persistent `sqlite::memory:` connections stay isolated, so the persistent
+/// pool only applies when requested by constructor options.
+#[test]
+fn test_pdo_nonpersistent_sqlite_memory_stays_isolated() {
+    let out = compile_and_run(
+        r#"<?php
+$a = new PDO("sqlite::memory:");
+$a->exec("CREATE TABLE pdo_isolated (n INTEGER)");
+$a->exec("INSERT INTO pdo_isolated VALUES (7)");
+
+$b = new PDO("sqlite::memory:", null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_SILENT]);
+echo ($b->query("SELECT n FROM pdo_isolated") === false) ? "isolated" : "shared";
+"#,
+    );
+    assert_eq!(out, "isolated");
 }
 
 /// `ERRMODE_SILENT` suppresses exceptions: `exec()`, `query()`, and `prepare()`

@@ -32,6 +32,11 @@ sidebar:
 
 Integer-form numeric literals keep the `int` type only while they fit in PHP's signed 64-bit range. Larger decimal, hexadecimal, octal, or binary literals are promoted to `float`, matching PHP on 64-bit builds.
 
+The internal `PhpType` model also includes `TaggedScalar`, which is not PHP
+syntax and cannot be written in source code. Codegen uses it only for the
+default tagged null representation of `int|null` values, storing an inline
+`{payload, tag}` pair instead of a heap-boxed `mixed` cell.
+
 ### Never
 
 `never` marks a function, method, closure, or interface method that **must not return normally**. The function body is expected to either `throw`, call `exit()`/`die()`, or loop forever.
