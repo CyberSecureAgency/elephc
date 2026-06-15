@@ -111,3 +111,31 @@ fn test_example_dynamic_dispatch_compiles_and_runs() {
     let out = compile_and_run(include_str!("../../../examples/dynamic-dispatch/main.php"));
     assert_eq!(out, "Hello, world\nLOUD!\ncommands: greet, shout\n");
 }
+
+/// Verifies a dynamic static method call on a literal class name (`C::$method()`), which has a
+/// dynamic method name but a statically-named class. Regression test — this form previously
+/// failed to parse with "Expected ';'".
+#[test]
+fn test_dynamic_static_call_on_literal_class() {
+    let out = compile_and_run(
+        "<?php
+        class C { public static function greet(): string { return \"hi\"; } }
+        $m = \"greet\";
+        echo C::$m();
+        ",
+    );
+    assert_eq!(out, "hi");
+}
+
+/// Verifies that a dynamic static call on a literal class name forwards arguments correctly.
+#[test]
+fn test_dynamic_static_call_on_literal_class_with_args() {
+    let out = compile_and_run(
+        "<?php
+        class Calc { public static function add(int $a, int $b): int { return $a + $b; } }
+        $op = \"add\";
+        echo Calc::$op(4, 5);
+        ",
+    );
+    assert_eq!(out, "9");
+}

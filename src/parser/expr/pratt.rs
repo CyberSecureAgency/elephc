@@ -105,9 +105,11 @@ pub(super) fn parse_expr_bp(
                 };
                 if *pos < tokens.len() && tokens[*pos].0 == Token::LParen {
                     *pos += 1; // consume '('
+                    let dynamic_args = crate::parser::expr::parse_args(tokens, pos, span)?;
+                    reject_named_args_in_dynamic_call(&dynamic_args, span)?;
                     let mut call_args =
                         vec![Expr::new(ExprKind::ArrayLiteral(vec![lhs, member]), span)];
-                    call_args.extend(crate::parser::expr::parse_args(tokens, pos, span)?);
+                    call_args.extend(dynamic_args);
                     lhs = Expr::new(
                         ExprKind::FunctionCall {
                             name: crate::names::Name::unqualified("call_user_func"),
@@ -139,13 +141,14 @@ pub(super) fn parse_expr_bp(
                             // `$obj->$method(args)` reuses the runtime dynamic-dispatch path by
                             // desugaring to `call_user_func([$obj, $method], ...args)`.
                             *pos += 1; // consume '('
+                            let dynamic_args =
+                                crate::parser::expr::parse_args(tokens, pos, arrow_span)?;
+                            reject_named_args_in_dynamic_call(&dynamic_args, arrow_span)?;
                             let mut call_args = vec![Expr::new(
                                 ExprKind::ArrayLiteral(vec![lhs, property]),
                                 arrow_span,
                             )];
-                            call_args.extend(crate::parser::expr::parse_args(
-                                tokens, pos, arrow_span,
-                            )?);
+                            call_args.extend(dynamic_args);
                             lhs = Expr::new(
                                 ExprKind::FunctionCall {
                                     name: crate::names::Name::unqualified("call_user_func"),
@@ -537,6 +540,27 @@ enum AssignmentOperator {
     Assign,
     Compound(BinOp),
     NullCoalesce,
+}
+
+/// Rejects named arguments in a dynamic call (`$obj->$m(...)`, `$cls::$m(...)`, `C::$m(...)`).
+///
+/// The callee method name is a runtime value, so its parameter names are unknown at compile time
+/// and named arguments cannot be matched to positions. Emits a clear diagnostic instead of letting
+/// the internal `call_user_func` desugaring surface a confusing error.
+pub(in crate::parser) fn reject_named_args_in_dynamic_call(
+    args: &[Expr],
+    span: Span,
+) -> Result<(), CompileError> {
+    if args
+        .iter()
+        .any(|arg| matches!(arg.kind, ExprKind::NamedArg { .. }))
+    {
+        return Err(CompileError::new(
+            span,
+            "Named arguments are not supported in dynamic calls; the target method is not known at compile time",
+        ));
+    }
+    Ok(())
 }
 
 /// Looks up assignment operator binding power.

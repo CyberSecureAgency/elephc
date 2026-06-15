@@ -110,6 +110,18 @@ pub(crate) fn parse_type_expr(
         ));
     }
 
+    // `?A&B` is a syntax error in PHP: the nullable shorthand may not be combined with an
+    // intersection. Reject it rather than silently dropping a member.
+    if matches!(ty, TypeExpr::Nullable(_))
+        && matches!(tokens.get(*pos).map(|(t, _)| t), Some(Token::Ampersand))
+        && type_starts_at(tokens, *pos + 1)
+    {
+        return Err(CompileError::new(
+            span,
+            "Nullable shorthand cannot be combined with intersection types",
+        ));
+    }
+
     // Intersection type `A&B`: an `&` immediately followed by another type. A bare `&` followed
     // by a `$variable`/`...` is the by-reference marker, handled by the parameter parser, so it is
     // left in place here.

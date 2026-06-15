@@ -660,6 +660,34 @@ pub(super) fn parse_named_expr(
             Some(Token::Variable(property)) => {
                 let property = property.clone();
                 *pos += 1;
+                if *pos < tokens.len() && tokens[*pos].0 == Token::LParen {
+                    // `C::$method(args)` is a dynamic static method call. Desugar to
+                    // `call_user_func([C::class, $method], ...args)` so it reuses the runtime
+                    // dynamic-dispatch path, exactly like the variable-receiver form `$c::$m()`.
+                    *pos += 1; // consume '('
+                    let dynamic_args = parse_args(tokens, pos, span)?;
+                    crate::parser::expr::pratt::reject_named_args_in_dynamic_call(
+                        &dynamic_args,
+                        span,
+                    )?;
+                    let receiver = Expr::new(
+                        ExprKind::ClassConstant {
+                            receiver: StaticReceiver::Named(name),
+                        },
+                        span,
+                    );
+                    let method_expr = Expr::new(ExprKind::Variable(property), span);
+                    let mut call_args =
+                        vec![Expr::new(ExprKind::ArrayLiteral(vec![receiver, method_expr]), span)];
+                    call_args.extend(dynamic_args);
+                    return Ok(Expr::new(
+                        ExprKind::FunctionCall {
+                            name: crate::names::Name::unqualified("call_user_func"),
+                            args: call_args,
+                        },
+                        span,
+                    ));
+                }
                 return Ok(Expr::new(
                     ExprKind::StaticPropertyAccess {
                         receiver: StaticReceiver::Named(name),

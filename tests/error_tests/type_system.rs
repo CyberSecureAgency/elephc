@@ -665,3 +665,14 @@ fn test_error_variable_variables_unsupported() {
         "Variable variables (`$$name`) are not supported",
     );
 }
+
+/// Verifies that the nullable shorthand cannot be combined with an intersection type (`?A&B`),
+/// which is a syntax error in PHP. Previously this silently parsed and dropped a member.
+#[test]
+fn test_error_nullable_intersection_type_rejected() {
+    assert!(
+        check_source("<?php interface A {} interface B {} function f(?A&B $x): int { return 1; }")
+            .is_err(),
+        "?A&B should be rejected, not silently accepted",
+    );
+}

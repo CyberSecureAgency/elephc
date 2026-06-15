@@ -205,3 +205,23 @@ fn test_example_property_hooks_compiles_and_runs() {
     let out = compile_and_run(include_str!("../../../examples/property-hooks/main.php"));
     assert_eq!(out, "Jane Doe\nJANE DOE\ncelsius=100, fahrenheit=212\n");
 }
+
+/// Verifies a get-only hooked property whose name has uppercase letters: reading it works without
+/// the recursion guard spuriously flagging the backing-slot write as a write to a read-only hooked
+/// property. Regression test for case-insensitive accessor-name matching.
+#[test]
+fn test_mixed_case_get_only_hooked_property() {
+    let out = compile_and_run(
+        "<?php
+        class C {
+            private int $store = 0;
+            public int $Total { get { return $this->store; } }
+            public function set(int $v): void { $this->store = $v; }
+        }
+        $c = new C();
+        $c->set(5);
+        echo $c->Total;
+        ",
+    );
+    assert_eq!(out, "5");
+}

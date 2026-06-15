@@ -260,10 +260,13 @@ fn check_object_property_write(
         let has_set_hook = class_info
             .methods
             .contains_key(&php_symbol_key(&property_hook_set_method(property)));
+        // `current_method` is stored as a lowercased symbol key, so compare against the lowercased
+        // accessor names too — otherwise a mixed-case property (e.g. `$Total`) spuriously trips
+        // the read-only check from inside its own accessor.
         let in_own_accessor = checker.current_class.as_deref() == Some(class_name)
             && checker.current_method.as_deref().is_some_and(|method| {
-                method == property_hook_get_method(property)
-                    || method == property_hook_set_method(property)
+                method == php_symbol_key(&property_hook_get_method(property))
+                    || method == php_symbol_key(&property_hook_set_method(property))
             });
         if has_get_hook && !has_set_hook && !in_own_accessor {
             return Err(CompileError::new(
