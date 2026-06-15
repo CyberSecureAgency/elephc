@@ -30,12 +30,10 @@ jobs:
         run: brew install pcre2
 
       - name: Build bridge staticlibs
-        # The codegen test runner links compiled programs against libelephc_tls.a
-        # (https:// / TLS), libelephc_pdo.a (PDO), and libelephc_crypto.a (hash /
-        # HMAC family), which `cargo test` / nextest do not produce on their own
-        # (the crates are pulled in as rlib dev-dependencies, not the staticlibs
-        # the external linker needs). Build them explicitly first.
-        run: cargo build -p elephc-tls -p elephc-pdo -p elephc-crypto
+        # The codegen test runner links compiled programs against bridge
+        # staticlibs (TLS, PDO, crypto, PHAR), which `cargo test` / nextest do
+        # not produce on their own. Build them explicitly first.
+        run: cargo build -p elephc-tls -p elephc-pdo -p elephc-crypto -p elephc-phar
 
       - name: Run non-codegen tests
         run: cargo nextest run --workspace -E 'not binary(codegen_tests)' --no-fail-fast -j 8
@@ -66,7 +64,7 @@ jobs:
         run: brew install pcre2
 
       - name: Build bridge staticlibs
-        run: cargo build -p elephc-tls -p elephc-pdo -p elephc-crypto
+        run: cargo build -p elephc-tls -p elephc-pdo -p elephc-crypto -p elephc-phar
 
       - name: Run codegen test shard
         run: cargo nextest run --test codegen_tests --partition hash:${{ matrix.shard }}/16 --no-fail-fast -j 8
@@ -126,7 +124,7 @@ jobs:
         run: cargo build --release
 
       - name: Build release bridge staticlibs
-        run: cargo build --release -p elephc-tls -p elephc-pdo -p elephc-crypto
+        run: cargo build --release -p elephc-tls -p elephc-pdo -p elephc-crypto -p elephc-phar
 
       - name: Strip binary
         run: strip target/release/elephc
@@ -138,7 +136,12 @@ jobs:
       - name: Create tarball
         run: |
           cd target/release
-          tar czf elephc-${{ steps.version.outputs.version }}-aarch64-apple-darwin.tar.gz elephc libelephc_tls.a libelephc_pdo.a
+          tar czf elephc-${{ steps.version.outputs.version }}-aarch64-apple-darwin.tar.gz \
+            elephc \
+            libelephc_tls.a \
+            libelephc_pdo.a \
+            libelephc_crypto.a \
+            libelephc_phar.a
           shasum -a 256 elephc-${{ steps.version.outputs.version }}-aarch64-apple-darwin.tar.gz > elephc-${{ steps.version.outputs.version }}-aarch64-apple-darwin.tar.gz.sha256
 
       - name: Create GitHub Release
@@ -180,6 +183,8 @@ jobs:
               bin.install "elephc"
               lib.install "libelephc_tls.a"
               lib.install "libelephc_pdo.a"
+              lib.install "libelephc_crypto.a"
+              lib.install "libelephc_phar.a"
             end
 
             test do
@@ -188,16 +193,26 @@ jobs:
               assert_equal "hello", shell_output("#{testpath}/hello")
 
               # Exercise the TLS bridge (https wrapper).
-              (testpath/"https.php").write('<?php $h = fopen("https://example.com/", "r"); echo is_resource($h);')
+              (testpath/"https.php").write('<?php \$h = fopen("https://example.com/", "r"); echo is_resource(\$h);')
               system bin/"elephc", "https.php"
               assert_predicate testpath/"https", :exist?
 
               # Exercise the PDO bridge (SQLite driver is bundled; no external
               # DB client or server required). This also validates that
-              # libelephc_pdo.a is discoverable in the Homebrew `lib/` layout.
-              (testpath/"pdo.php").write('<?php $db = new PDO("sqlite::memory:"); $db->exec("CREATE TABLE t(id INTEGER)"); echo "pdo-ok";')
+              # libelephc_pdo.a is discoverable in the Homebrew lib/ layout.
+              (testpath/"pdo.php").write('<?php \$db = new PDO("sqlite::memory:"); \$db->exec("CREATE TABLE t(id INTEGER)"); echo "pdo-ok";')
               system bin/"elephc", "pdo.php"
               assert_equal "pdo-ok", shell_output("#{testpath}/pdo")
+
+              # Exercise the crypto bridge used by hash()/hash_hmac().
+              (testpath/"hash.php").write('<?php echo hash("sha256", "abc");')
+              system bin/"elephc", "hash.php"
+              assert_equal "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", shell_output("#{testpath}/hash")
+
+              # Exercise the PHAR bridge from the Homebrew lib/ layout.
+              (testpath/"phar.php").write('<?php file_put_contents("phar://brew.phar/entry.txt", "phar-ok"); \$p = "brew.phar"; echo file_get_contents("phar://" . \$p . "/entry.txt");')
+              system bin/"elephc", "phar.php"
+              assert_equal "phar-ok", shell_output("#{testpath}/phar")
             end
           end
           EOF

@@ -75,6 +75,11 @@ The `&` is recognized as an intersection only when it is followed by another typ
 
 Current limitation: the value is typed as its **first** listed member, so member access resolves against that member (`$widget->render()` above, from `Renderable`). Methods declared only on later members are not yet resolved, and argument compatibility is checked against the first member. Full structural intersection resolution is planned.
 
+The internal `PhpType` model also includes `TaggedScalar`, which is not PHP
+syntax and cannot be written in source code. Codegen uses it only for the
+default tagged null representation of `int|null` values, storing an inline
+`{payload, tag}` pair instead of a heap-boxed `mixed` cell.
+
 ### Never
 
 `never` marks a function, method, closure, or interface method that **must not return normally**. The function body is expected to either `throw`, call `exit()`/`die()`, or loop forever.
@@ -238,7 +243,6 @@ Narrowing applies to function and method parameters. A parameter whose call site
 These standard PHP filesystem functions are intentionally absent from elephc because they have no meaningful semantics in a compiled native binary:
 
 - `move_uploaded_file()`, `is_uploaded_file()` — both rely on the PHP-FPM/SAPI request lifecycle (the `$_FILES` superglobal and a per-request "uploaded files" registry). A standalone compiled binary has no such request scope.
-- `realpath_cache_get()`, `realpath_cache_size()` — expose a per-request realpath cache that elephc does not maintain. `clearstatcache()` is provided as a no-op for source-level compatibility.
 - `fgetss()` — deprecated in PHP 7.3 and removed in PHP 8.0. New code should use `strip_tags()` on the result of `fgets()`.
 
 ### Compiler diagnostics

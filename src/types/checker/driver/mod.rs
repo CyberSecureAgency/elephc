@@ -35,6 +35,7 @@ use super::builtin_spl_classes::{
 };
 use super::builtin_spl_exceptions::inject_builtin_spl_exceptions;
 use super::builtin_stdclass::inject_builtin_stdclass;
+use super::builtin_user_filter::inject_builtin_user_filter;
 use super::schema::{
     build_class_info_recursive, build_enum_info, build_interface_info_recursive,
 };
@@ -164,6 +165,9 @@ pub(super) fn check_types_impl(
         errors.extend(error.flatten());
     }
     if let Err(error) = inject_builtin_stdclass(&mut class_map) {
+        errors.extend(error.flatten());
+    }
+    if let Err(error) = inject_builtin_user_filter(&mut class_map) {
         errors.extend(error.flatten());
     }
     if let Err(error) =

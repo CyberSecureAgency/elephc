@@ -1039,6 +1039,9 @@ fn lower_foreach(
 fn foreach_value_type(source_ty: &PhpType) -> PhpType {
     match source_ty.codegen_repr() {
         PhpType::Array(elem) if elem.codegen_repr() == PhpType::Callable => PhpType::Callable,
+        PhpType::Object(class_name) if class_name == "Phar" || class_name == "PharData" => {
+            PhpType::Object("PharFileInfo".to_string())
+        }
         _ => PhpType::Mixed,
     }
 }
