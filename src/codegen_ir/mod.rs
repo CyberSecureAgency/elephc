@@ -96,10 +96,14 @@ pub fn generate_user_asm_from_ir(
         false,
         Emit::Executable,
         &exported_functions,
+        true,
     )
 }
 
 /// Generates user-code assembly from EIR using the same artifact options as the CLI pipeline.
+///
+/// `regalloc_linear` selects the linear-scan register allocator; when false the
+/// backend keeps every value on the stack (the `--regalloc=stack` fallback).
 pub fn generate_user_asm_from_ir_with_options(
     module: &Module,
     gc_stats: bool,
@@ -107,6 +111,7 @@ pub fn generate_user_asm_from_ir_with_options(
     requires_elephc_tls: bool,
     emit: Emit,
     exported_functions: &HashMap<String, ExportedFunction>,
+    regalloc_linear: bool,
 ) -> Result<String> {
     let mut emitter = match emit {
         Emit::Cdylib => Emitter::new_pic(module.target),
@@ -124,6 +129,7 @@ pub fn generate_user_asm_from_ir_with_options(
         heap_debug,
         requires_elephc_tls,
         emit,
+        regalloc_linear,
     )?;
     Ok(finalize_user_asm(module, emitter, data, emit, exported_functions))
 }

@@ -19,8 +19,9 @@ use crate::codegen::{
     emit_write_literal_stderr,
 };
 use crate::codegen::context::TRY_HANDLER_SLOT_SIZE;
-use crate::codegen::platform::Arch;
+use crate::codegen::platform::{Arch, Target};
 use crate::ir::{Function, Immediate, LocalKind, LocalSlotId, Op, Terminator, ValueDef};
+use crate::ir_passes::{allocate_registers, Allocation};
 use crate::types::PhpType;
 
 use super::context::FunctionContext;
@@ -28,17 +29,36 @@ use super::value_placement::{self, ValuePlacement};
 
 const FRAME_FOOTER_BYTES: usize = 16;
 
-/// Complete fixed frame layout for Phase 04 spill slots and addressable locals.
+/// Complete fixed frame layout for spill slots, addressable locals, and the
+/// callee-saved registers the register allocator decided to use.
 pub(super) struct FrameLayout {
     pub(super) value_placement: ValuePlacement,
     pub(super) local_offsets: HashMap<LocalSlotId, usize>,
     pub(super) try_handler_offsets: HashMap<i64, usize>,
     pub(super) concat_base_offset: usize,
     pub(super) frame_size: usize,
+    pub(super) allocation: Allocation,
+    pub(super) callee_saved_offsets: Vec<(&'static str, usize)>,
 }
 
-/// Computes fixed stack slots for SSA values and EIR locals.
-pub(super) fn layout_for_function(function: &Function) -> FrameLayout {
+/// Computes the register allocation and fixed stack slots for a function.
+///
+/// Every SSA value keeps a spill slot (register-allocated values simply leave
+/// theirs unused), and each callee-saved register the allocator uses gets a
+/// dedicated save slot so the prologue/epilogue can preserve it. When
+/// `regalloc_linear` is false the allocation is all-spilled, reproducing the
+/// original stack-only behavior.
+pub(super) fn layout_for_function(
+    function: &Function,
+    target: Target,
+    regalloc_linear: bool,
+) -> FrameLayout {
+    let allocation = if regalloc_linear {
+        allocate_registers(function, target)
+    } else {
+        Allocation::all_spilled()
+    };
+
     let value_placement = value_placement::allocate(function);
     let mut local_offsets = HashMap::new();
     let mut offset = value_placement.total_slot_bytes;
@@ -56,6 +76,11 @@ pub(super) fn layout_for_function(function: &Function) -> FrameLayout {
         offset += TRY_HANDLER_SLOT_SIZE;
         try_handler_offsets.insert(token, offset);
     }
+    let mut callee_saved_offsets = Vec::new();
+    for reg in allocation.used_callee_saved() {
+        offset += 8;
+        callee_saved_offsets.push((*reg, offset));
+    }
     offset += 8;
     let concat_base_offset = offset;
     let frame_size = align_to_16(offset + FRAME_FOOTER_BYTES);
@@ -65,6 +90,34 @@ pub(super) fn layout_for_function(function: &Function) -> FrameLayout {
         try_handler_offsets,
         concat_base_offset,
         frame_size,
+        allocation,
+        callee_saved_offsets,
+    }
+}
+
+/// Saves the callee-saved registers the allocator used into their reserved
+/// frame slots, preserving the caller's values for the function's lifetime.
+fn emit_callee_saved_saves(ctx: &mut FunctionContext<'_>) {
+    if ctx.callee_saved_offsets.is_empty() {
+        return;
+    }
+    ctx.emitter
+        .comment("save callee-saved registers used by the register allocator");
+    for (reg, offset) in ctx.callee_saved_offsets.clone() {
+        abi::store_at_offset(ctx.emitter, reg, offset);
+    }
+}
+
+/// Restores the callee-saved registers saved by `emit_callee_saved_saves`,
+/// returning the caller's values before frame teardown.
+fn emit_callee_saved_restores(ctx: &mut FunctionContext<'_>) {
+    if ctx.callee_saved_offsets.is_empty() {
+        return;
+    }
+    ctx.emitter
+        .comment("restore callee-saved registers used by the register allocator");
+    for (reg, offset) in ctx.callee_saved_offsets.clone() {
+        abi::load_at_offset(ctx.emitter, reg, offset);
     }
 }
 
@@ -94,6 +147,7 @@ pub(super) fn emit_main_prologue(ctx: &mut FunctionContext<'_>) {
     ctx.emitter.entry_label();
     abi::emit_frame_prologue(ctx.emitter, ctx.frame_size);
     capture_concat_base(ctx);
+    emit_callee_saved_saves(ctx);
     ctx.emitter.comment("save argc/argv to globals");
     abi::emit_store_process_args_to_globals(ctx.emitter);
     if ctx.heap_debug {
@@ -118,6 +172,7 @@ pub(super) fn emit_function_prologue_with_label(
     ctx.emitter.label_global(entry_label);
     abi::emit_frame_prologue(ctx.emitter, ctx.frame_size);
     capture_concat_base(ctx);
+    emit_callee_saved_saves(ctx);
     let mut incoming_args = abi::IncomingArgCursor::for_target(ctx.emitter.target, 0);
     for (index, param) in ctx.function.params.iter().enumerate() {
         let slot = LocalSlotId::from_raw(index as u32);
@@ -160,6 +215,7 @@ pub(super) fn emit_main_epilogue(ctx: &mut FunctionContext<'_>) {
     ctx.emitter.blank();
     ctx.emitter.comment("epilogue + exit(0)");
     emit_main_local_epilogue_cleanup(ctx);
+    emit_callee_saved_restores(ctx);
     abi::emit_frame_restore(ctx.emitter, ctx.frame_size);
     if ctx.gc_stats {
         emit_gc_stats(ctx);
@@ -562,6 +618,7 @@ pub(super) fn emit_function_epilogue(ctx: &mut FunctionContext<'_>) {
         .expect("codegen_ir bug: user function has no epilogue label");
     ctx.emitter.label(&label);
     emit_function_local_epilogue_cleanup(ctx);
+    emit_callee_saved_restores(ctx);
     abi::emit_frame_restore(ctx.emitter, ctx.frame_size);
     abi::emit_return(ctx.emitter);
     ctx.epilogue_emitted = true;

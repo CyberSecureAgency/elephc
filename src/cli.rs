@@ -15,7 +15,7 @@ pub(crate) use crate::codegen::Emit;
 use crate::codegen::platform::Target;
 
 /// Usage string printed to stderr when command-line arguments are invalid or missing.
-pub(crate) const USAGE: &str = "Usage: elephc [--target TARGET] [--heap-size=BYTES] [--gc-stats] [--heap-debug] [--emit-ir] [--ir-backend] [--ast-backend] [--emit-asm] [--emit KIND] [--check] [--null-repr=sentinel|tagged] [--timings] [--source-map] [--define SYMBOL] [--link LIB|-lLIB] [--link-path DIR|-LDIR] [--framework NAME] <source.php>";
+pub(crate) const USAGE: &str = "Usage: elephc [--target TARGET] [--heap-size=BYTES] [--gc-stats] [--heap-debug] [--emit-ir] [--ir-backend] [--ast-backend] [--emit-asm] [--emit KIND] [--check] [--null-repr=sentinel|tagged] [--regalloc=linear|stack] [--timings] [--source-map] [--define SYMBOL] [--link LIB|-lLIB] [--link-path DIR|-LDIR] [--framework NAME] <source.php>";
 
 /// Backend selected for assembly generation after frontend and optimization passes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -39,6 +39,7 @@ pub(crate) struct CliConfig {
     pub(crate) check_only: bool,
     pub(crate) emit_timings: bool,
     pub(crate) emit_source_map: bool,
+    pub(crate) regalloc_linear: bool,
     pub(crate) target: Target,
     pub(crate) extra_link_libs: Vec<String>,
     pub(crate) extra_link_paths: Vec<String>,
@@ -75,6 +76,13 @@ pub(crate) fn parse_args(args: &[String]) -> CliConfig {
         Ok("tagged") => crate::codegen::NullRepr::Tagged,
         Ok("sentinel") => crate::codegen::NullRepr::Sentinel,
         _ => crate::codegen::NullRepr::default(),
+    };
+    // The register allocator is on by default; an env override lets the test
+    // harness compile the whole suite under the stack fallback for comparison.
+    let mut regalloc_linear = match std::env::var("ELEPHC_REGALLOC").as_deref() {
+        Ok("stack") => false,
+        Ok("linear") => true,
+        _ => true,
     };
 
     let mut i = 1;
@@ -114,6 +122,8 @@ pub(crate) fn parse_args(args: &[String]) -> CliConfig {
             emit_source_map = true;
         } else if let Some(value) = arg.strip_prefix("--null-repr=") {
             null_repr = parse_null_repr(value);
+        } else if let Some(value) = arg.strip_prefix("--regalloc=") {
+            regalloc_linear = parse_regalloc(value);
         } else if arg == "--define" {
             i += 1;
             let symbol = required_value(args, i, "Missing symbol after --define");
@@ -188,6 +198,7 @@ pub(crate) fn parse_args(args: &[String]) -> CliConfig {
         check_only,
         emit_timings,
         emit_source_map,
+        regalloc_linear,
         target,
         extra_link_libs,
         extra_link_paths,
@@ -240,6 +251,15 @@ fn parse_null_repr(value: &str) -> crate::codegen::NullRepr {
         "sentinel" => crate::codegen::NullRepr::Sentinel,
         "tagged" => crate::codegen::NullRepr::Tagged,
         other => fail(&format!("Unknown null representation: {}", other)),
+    }
+}
+
+/// Parse a `--regalloc=` value into the linear-scan toggle, or fail.
+fn parse_regalloc(value: &str) -> bool {
+    match value {
+        "linear" => true,
+        "stack" => false,
+        other => fail(&format!("Unknown register allocator: {}", other)),
     }
 }
 

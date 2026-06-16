@@ -48,6 +48,7 @@ pub(crate) fn compile(config: CliConfig) {
         check_only,
         emit_timings,
         emit_source_map,
+        regalloc_linear,
         target,
         mut extra_link_libs,
         extra_link_paths,
@@ -286,6 +287,7 @@ pub(crate) fn compile(config: CliConfig) {
             requires_elephc_tls,
             emit,
             &exported_functions,
+            regalloc_linear,
         ) {
             Ok(asm) => asm,
             Err(err) => {
