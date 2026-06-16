@@ -133,7 +133,7 @@ fn block_facts(func: &Function, block: &BasicBlock) -> BlockFacts {
     let successors = block
         .terminator
         .as_ref()
-        .map(terminator_successors)
+        .map(crate::ir_passes::cfg::successors)
         .unwrap_or_default();
 
     BlockFacts {
@@ -145,7 +145,7 @@ fn block_facts(func: &Function, block: &BasicBlock) -> BlockFacts {
 
 /// Collects every value used by a terminator: branch arguments, conditions,
 /// switch scrutinees, returned/thrown values, and generator suspend operands.
-fn terminator_uses(term: &Terminator) -> Vec<ValueId> {
+pub(super) fn terminator_uses(term: &Terminator) -> Vec<ValueId> {
     match term {
         Terminator::Br { args, .. } => args.clone(),
         Terminator::CondBr {
@@ -186,27 +186,5 @@ fn terminator_uses(term: &Terminator) -> Vec<ValueId> {
             uses
         }
         Terminator::Fatal { .. } | Terminator::Unreachable => Vec::new(),
-    }
-}
-
-/// Collects the successor blocks branched to by a terminator.
-fn terminator_successors(term: &Terminator) -> Vec<BlockId> {
-    match term {
-        Terminator::Br { target, .. } => vec![*target],
-        Terminator::CondBr {
-            then_target,
-            else_target,
-            ..
-        } => vec![*then_target, *else_target],
-        Terminator::Switch { cases, default, .. } => {
-            let mut targets: Vec<BlockId> = cases.iter().map(|case| case.target).collect();
-            targets.push(*default);
-            targets
-        }
-        Terminator::GeneratorSuspend { resume, .. } => vec![*resume],
-        Terminator::Return { .. }
-        | Terminator::Throw { .. }
-        | Terminator::Fatal { .. }
-        | Terminator::Unreachable => Vec::new(),
     }
 }

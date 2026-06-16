@@ -8,4 +8,5 @@
 //! - Functions are built with `crate::ir::Builder` so the tests exercise the
 //!   real IR data model without going through AST lowering.
 
+mod intervals_test;
 mod liveness_test;
