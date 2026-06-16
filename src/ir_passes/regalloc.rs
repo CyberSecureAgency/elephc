@@ -224,7 +224,10 @@ fn is_float_reg(reg: &str) -> bool {
 fn int_pool(target: Target) -> &'static [&'static str] {
     match target.arch {
         Arch::AArch64 => &["x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28"],
-        Arch::X86_64 => &["rbx", "r14", "r15"],
+        // Only rbx is reliably preserved across the hand-written x86_64 runtime
+        // routines and shared heap-marker codegen; r14/r15 are used there as
+        // scratch without ABI-compliant save/restore, so they are not allocated.
+        Arch::X86_64 => &["rbx"],
     }
 }
 

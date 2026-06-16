@@ -1106,9 +1106,11 @@ Only callee-saved registers are allocated, so values survive calls without
 spilling and never collide with the scratch or result registers the emitters
 use. The prologue saves and the epilogue restores exactly the callee-saved
 registers the allocator used. On aarch64 the pools are `x21`–`x28` and
-`d8`–`d14`; on x86_64 they are `rbx`, `r14`, `r15`. SysV x86_64 has no
-callee-saved XMM registers, so float values are never register-allocated there
-and stay in stack slots.
+`d8`–`d14`. On x86_64 only `rbx` is allocated: `r14` and `r15` are used as
+scratch by hand-written runtime routines and shared heap-marker codegen without
+ABI-compliant save/restore, so they are not safe to hold values across calls.
+SysV x86_64 also has no callee-saved XMM registers, so float values are never
+register-allocated there and stay in stack slots.
 
 The first cut register-allocates only single-word `NonHeap` scalars (`I64`,
 `F64`) that are neither block parameters nor branch arguments, keeping the
