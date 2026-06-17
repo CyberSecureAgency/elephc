@@ -20,6 +20,7 @@
 use crate::ir::{DataPool, Function, Module};
 
 use super::identity_arith::IdentityArith;
+use super::peephole::Peephole;
 
 /// Maximum fixed-point sweeps before the driver gives up on a function. Real
 /// passes are idempotent and converge in a couple of sweeps; exceeding this cap
@@ -42,10 +43,9 @@ pub trait IrPass {
 }
 
 /// Builds the ordered set of transformation passes run on every function. Later
-/// v0.25.x passes (peephole, DCE, branch simplification, CSE, LICM, …) register
-/// here.
+/// v0.25.x passes (DCE, branch simplification, CSE, LICM, …) register here.
 fn default_passes() -> Vec<Box<dyn IrPass>> {
-    vec![Box::new(IdentityArith)]
+    vec![Box::new(IdentityArith), Box::new(Peephole)]
 }
 
 /// Runs the default pass pipeline over every function-like body in the module.

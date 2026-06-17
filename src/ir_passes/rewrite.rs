@@ -71,6 +71,26 @@ pub(crate) fn neutralize_to_nop(inst: &mut Instruction) {
     inst.effects = Op::Nop.default_effects();
 }
 
+/// Counts how many times each value is *used* across all instruction operands
+/// and terminator slots. Definitions are not counted. Used by peephole patterns
+/// that act only on single-use values (e.g. paired acquire/release).
+pub(crate) fn count_value_uses(function: &Function) -> HashMap<ValueId, usize> {
+    let mut counts: HashMap<ValueId, usize> = HashMap::new();
+    for inst in &function.instructions {
+        for &operand in &inst.operands {
+            *counts.entry(operand).or_insert(0) += 1;
+        }
+    }
+    for block in &function.blocks {
+        if let Some(terminator) = block.terminator.as_ref() {
+            for value in super::liveness::terminator_uses(terminator) {
+                *counts.entry(value).or_insert(0) += 1;
+            }
+        }
+    }
+    counts
+}
+
 /// Returns the instruction that defines `value`, if it is instruction-defined.
 pub(crate) fn defining_instruction(function: &Function, value: ValueId) -> Option<&Instruction> {
     let ValueDef::Instruction { inst, .. } = function.value(value)?.def else {
