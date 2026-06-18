@@ -3,6 +3,9 @@
 All notable changes to elephc, a PHP-to-native compiler written in Rust.
 Releases are listed newest first.
 
+## [Unreleased]
+- EIR dead instruction elimination over CFG liveness, registered after identity and peephole passes and gated by `--ir-opt`.
+
 ## [0.24.3] - 2026-06-17
 - EIR peephole optimization pass: box/unbox cancellation, scalar load/store forwarding, paired acquire/release cancellation, string-literal concat folding, and redundant move/borrow cleanup.
 

@@ -33,6 +33,7 @@ PHP source
   -> dce               AST dead-code elimination
   -> ir-lower          AST -> EIR lowering + EIR validation
   -> ir-opt            EIR optimization passes (fixed-point driver)
+  -> ir-print          print EIR and stop (with --emit-ir)
   -> runtime-cache     build/reuse the prebuilt runtime object
   -> codegen-ir        EIR -> target assembly
   -> write-asm         write the generated assembly
@@ -72,9 +73,13 @@ behind a flag.
   dominance, ownership, and effect invariants. See
   [The EIR Design](../internals/the-ir.md).
 - **ir-opt** — the [EIR optimization passes](optimization.md#eir-optimization-passes)
-  run a fixed-point driver over each function (currently identity arithmetic
-  folding). In debug/test builds the function is re-validated after every pass.
-  This phase can be turned off with [`--no-ir-opt`](optimization.md#eir-optimization-passes).
+  run a fixed-point driver over each function: identity arithmetic folding,
+  local peephole rewrites, and CFG-aware dead-instruction elimination. In
+  debug/test builds the function is re-validated after every pass. This phase
+  can be turned off with [`--no-ir-opt`](optimization.md#eir-optimization-passes).
+- **ir-print** — only present with [`--emit-ir`](output-and-diagnostics.md#--emit-ir);
+  formats the optimized or unoptimized EIR textual form, prints it to stdout,
+  and stops before runtime preparation or code generation.
 - **runtime-cache** — the hand-written runtime is assembled once and cached in
   `~/.cache/elephc/`, then reused across compiles. See
   [The Runtime](../internals/the-runtime.md).

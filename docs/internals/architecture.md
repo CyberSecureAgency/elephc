@@ -126,8 +126,8 @@ PHP source (.php)
 ┌─────────────┐
 │ EIR passes  │  src/ir_passes/
 │             │  Fixed-point optimization pass driver (identity folding,
-│             │  peephole, …) and linear-scan register allocation (liveness,
-│             │  intervals, pools)
+│             │  peephole rewrites, dead-instruction elimination) plus
+│             │  linear-scan register allocation (liveness, intervals, pools)
 │             │  over EIR functions before codegen.
 └──────┬──────┘
        │
@@ -183,7 +183,7 @@ src/
 ├── optimize/                  Constant folding, constant propagation, control-flow pruning, normalization, dead-code elimination
 ├── ir/                        EIR types, builder, validator, printer, effects, and tests
 ├── ir_lower/                  Active checked-AST to EIR lowering
-├── ir_passes/                 EIR optimization pass driver, identity folding, peephole patterns, and linear-scan register allocation
+├── ir_passes/                 EIR optimization pass driver, identity folding, peephole patterns, dead-instruction elimination, and linear-scan register allocation
 ├── codegen_ir/                Active EIR to target assembly backend
 ├── runtime_cache.rs           Cached shared runtime object preparation
 ├── source_map.rs              Assembly comment markers → JSON sidecar map
