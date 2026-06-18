@@ -353,3 +353,19 @@ fn test_is_numeric_mixed_array_element() {
     );
     assert_eq!(out, "1110010");
 }
+
+/// Regression: a user-defined function in a namespace whose name collides with a procedural
+/// date/time alias (e.g. `date_diff`) must NOT be hijacked into the OOP desugaring. The name
+/// resolver only rewrites the alias when no user function of that name is declared.
+#[test]
+fn test_namespaced_user_function_shadows_date_alias() {
+    let out = compile_and_run(
+        r#"<?php
+namespace App;
+function date_diff($a, $b) { return "user:" . ($a + $b); }
+function timezone_name_get($x) { return "tz:" . $x; }
+echo date_diff(1, 2), "|", timezone_name_get(5);
+"#,
+    );
+    assert_eq!(out, "user:3|tz:5");
+}

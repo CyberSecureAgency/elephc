@@ -84,7 +84,16 @@ pub(super) fn resolve_expr(
             .collect();
             // Procedural date/time aliases desugar to the equivalent OOP construction or method
             // call (e.g. date_create($s) -> new DateTime($s), date_diff($a, $b) -> $a->diff($b)).
-            if let Some(rewritten) = rewrite_date_procedural_alias(&function_name, &resolved_args) {
+            // Skip the rewrite when the resolved name is a user-declared function, so a
+            // user-defined (e.g. namespaced `App\date_diff`) call is never hijacked.
+            if symbols.declares_function(&function_name) {
+                ExprKind::FunctionCall {
+                    name: resolved_name(function_name),
+                    args: resolved_args,
+                }
+            } else if let Some(rewritten) =
+                rewrite_date_procedural_alias(&function_name, &resolved_args)
+            {
                 rewritten
             } else {
                 ExprKind::FunctionCall {
@@ -316,6 +325,7 @@ pub(super) fn resolve_expr(
                     &resolved_receiver,
                     StaticReceiver::Named(name)
                         if name.last_segment().is_some_and(|seg| seg.eq_ignore_ascii_case("DateTimeZone"))
+                            && !symbols.declares_class_like(&name.as_canonical())
                 )
             {
                 ExprKind::FunctionCall {
