@@ -219,6 +219,17 @@ fn test_gmdate_epoch_is_utc() {
     assert_eq!(out, "1970-01-01 00:00:00");
 }
 
+/// Regression: `gmdate("T")` must report `"GMT"` (PHP's UTC abbreviation for the GMT path) on every
+/// target, while `date("T")` in the UTC default zone reports `"UTC"`. macOS `gmtime()` sets
+/// `tm_zone = "UTC"`, so the gmdate path now emits the literal `"GMT"` instead of trusting libc.
+#[test]
+fn test_gmdate_t_token_is_gmt() {
+    let out = compile_and_run(
+        "<?php date_default_timezone_set(\"UTC\"); echo gmdate(\"T\", 0), \"|\", date(\"T\", 0);",
+    );
+    assert_eq!(out, "GMT|UTC");
+}
+
 /// Verifies `gmdate()` formats the leap day 2024-02-29 (timestamp 1709251199 = 23:59:59 UTC).
 #[test]
 fn test_gmdate_leap_day() {

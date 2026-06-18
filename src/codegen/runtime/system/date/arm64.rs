@@ -1104,6 +1104,20 @@ pub(super) fn emit_date_arm64(emitter: &mut Emitter) {
 
     // -- format: T (timezone abbreviation from tm_zone, e.g. CEST/CET/UTC) --
     emitter.label("__rt_date_fmt_T");
+    emitter.instruction("ldr x4, [sp, #56]");                                   // load the UTC-vs-local flag (1 = gmdate)
+    emitter.instruction("cbz x4, __rt_date_T_local");                           // date() → read libc tm_zone
+    // gmdate() always reports "GMT" regardless of libc's tm_zone (macOS gmtime yields "UTC").
+    emitter.instruction("ldr x9, [sp, #32]");                                   // load output position
+    emitter.instruction("mov w11, #71");                                        // 'G'
+    emitter.instruction("strb w11, [x9]");                                      // write 'G'
+    emitter.instruction("mov w11, #77");                                        // 'M'
+    emitter.instruction("strb w11, [x9, #1]");                                  // write 'M'
+    emitter.instruction("mov w11, #84");                                        // 'T'
+    emitter.instruction("strb w11, [x9, #2]");                                  // write 'T'
+    emitter.instruction("add x9, x9, #3");                                      // advance output position past "GMT"
+    emitter.instruction("str x9, [sp, #32]");                                   // save the advanced output position
+    emitter.instruction("b __rt_date_T_done");                                  // continue
+    emitter.label("__rt_date_T_local");
     emitter.instruction("ldr x1, [sp, #24]");                                   // load tm pointer
     emitter.instruction("ldr x1, [x1, #48]");                                   // load tm_zone (char* abbreviation, offset 48)
     emitter.instruction("cbz x1, __rt_date_T_done");                            // no abbreviation available → emit nothing
