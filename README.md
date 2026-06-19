@@ -1,20 +1,32 @@
 <p align="center">
-  <img src="assets/logo.png" alt="elephc logo" width="400">
+  <img src="assets/logo-mark.png" alt="elephc logo" width="130">
 </p>
 
-# elephc
+<h1 align="center">elephc</h1>
 
-[![GitHub Stars](https://img.shields.io/github/stars/illegalstudio/elephc?style=flat-square&logo=github&label=stars)](https://github.com/illegalstudio/elephc/stargazers)
-[![GitHub Downloads](https://img.shields.io/github/downloads/illegalstudio/elephc/total?style=flat-square&logo=github&label=downloads)](https://github.com/illegalstudio/elephc/releases)
-[![Unique Cloners](.github/traffic/clones-badge.svg)](https://github.com/illegalstudio/elephc)
-[![License: MIT](https://img.shields.io/github/license/illegalstudio/elephc?style=flat-square)](LICENSE)
-[![Follow @nahime0 on X](https://img.shields.io/badge/Follow%20%40nahime0-000000?logo=x&logoColor=white)](https://x.com/nahime0)
+<p align="center">
+  <em>Write PHP. Ship a native binary.</em>
+</p>
+
+<p align="center">
+  <a href="https://github.com/illegalstudio/elephc/stargazers"><img src="https://img.shields.io/github/stars/illegalstudio/elephc?style=flat-square&logo=github&label=stars" alt="Stars"></a>
+  <a href="https://github.com/illegalstudio/elephc/releases"><img src="https://img.shields.io/github/downloads/illegalstudio/elephc/total?style=flat-square&logo=github&label=downloads" alt="Downloads"></a>
+  <a href="https://github.com/illegalstudio/elephc"><img src=".github/traffic/clones-badge.svg" alt="Unique Cloners"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/illegalstudio/elephc?style=flat-square" alt="License: MIT"></a>
+  <a href="https://x.com/nahime0"><img src="https://img.shields.io/badge/Follow%20%40nahime0-000000?logo=x&logoColor=white" alt="Follow @nahime0 on X"></a>
+</p>
+
+<p align="center">
+  <strong>3 native targets &middot; no interpreter &middot; no VM &middot; no Zend Engine &middot; zero runtime dependencies &middot; single standalone binary</strong>
+</p>
+
+<p align="center">
+  A PHP-to-native compiler that takes a subset of PHP and compiles it directly to native assembly, producing standalone binaries for <strong>macOS ARM64</strong>, <strong>Linux ARM64</strong>, and <strong>Linux x86_64</strong>. No opcode fallback &mdash; just real machine code that runs DOOM and a native async HTTP server.
+</p>
 
 > 🐦 **[Follow me on X (@nahime0)](https://x.com/nahime0) for updates, new features, and behind-the-scenes development.**
 
 ---
-
-A PHP-to-native compiler. Takes a subset of PHP and compiles it directly to native assembly, producing standalone binaries for the currently supported targets: **macOS ARM64**, **Linux ARM64**, and **Linux x86_64**. No interpreter, no VM, no Zend Engine, no opcode fallback.
 
 > **If you like the idea or find it useful, please star the repo** — it helps others discover it and keeps the project going.
 
@@ -523,7 +535,7 @@ The **[docs/](docs/)** directory is a complete wiki covering every aspect of the
 
 If you're new to compilers or assembly, start from the top and work your way down. No prior low-level knowledge required.
 
-For runnable language samples, see `examples/`. For the benchmark harness and CI trend artifacts that compare elephc against PHP and equivalent C fixtures, see `benchmarks/README.md`. For a focused perf comparison, see `benchmarks/hot-path-buffer-vs-arrays`.
+For runna ble language samples, see `examples/`. For the benchmark harness and CI trend artifacts that compare elephc against PHP and equivalent C fixtures, see `benchmarks/README.md`. For a focused perf comparison, see `benchmarks/hot-path-buffer-vs-arrays`.
 
 ## License
 
