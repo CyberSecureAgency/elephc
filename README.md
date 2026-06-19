@@ -2,7 +2,7 @@
   <img src="assets/logo-mark.png" alt="elephc logo" width="130">
 </p>
 
-<h1 align="center">elephc</h1>
+<h1 align="center">Elephc</h1>
 
 <p align="center">
   <em>Write PHP. Ship a native binary.</em>
