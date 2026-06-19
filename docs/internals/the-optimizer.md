@@ -431,6 +431,8 @@ fixed-point pass driver (`src/ir_passes/driver.rs`) after lowering, starting wit
 identity arithmetic folding (`x + 0`, `x * 1`, `x ^ x`, …) and local peephole
 patterns (box/unbox cancellation, scalar load/store forwarding, paired
 acquire/release cancellation, string-literal concat folding, redundant
-`move`/`borrow` cleanup). These are rewrites the AST optimizer cannot express
-well because they need value identity, basic blocks, or dominance; see
+`move`/`borrow` cleanup), followed by CFG-aware dead instruction elimination for
+unused pure result-producing EIR instructions. These are rewrites the
+AST optimizer cannot express well because they need value identity, basic
+blocks, liveness, or dominance; see
 [Optimization Passes](the-ir.md#optimization-passes).

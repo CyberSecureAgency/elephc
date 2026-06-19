@@ -948,6 +948,22 @@ phase commits them, sharing `replace_all_uses`, `resolve_chains`, and
   `persistent` so cleanup never frees the literal. Nested concats converge across
   driver sweeps.
 
+### Dead Instruction Elimination
+
+The third registered transform (`src/ir_passes/dead_inst.rs`) removes
+result-producing instructions whose values are not live over the CFG and whose
+effect metadata says they are pure. It computes liveness with successor live-in
+sets, initializes each block's backward walk with those live-out values plus
+terminator uses, and then neutralizes dead instructions to `nop`.
+
+Neutralization preserves instruction/result value table slots, so the validator
+does not need value renumbering or block-list surgery. Read-only, allocation,
+mutation, refcounting, output, warning, fatal, throw, and deopt-capable
+instructions stay intact; dead read elimination is deferred until a later pass
+can prove equivalent PHP and ownership behavior. Dead chains in one block
+collapse during the backward walk; chains that cross block boundaries converge
+through the fixed-point pass driver after liveness is recomputed.
+
 ## AST Lowering Catalogue
 
 Lowering must cover every variant in `src/parser/ast/expr.rs` and

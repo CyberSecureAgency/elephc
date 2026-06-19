@@ -99,6 +99,27 @@ You can see the effect with [`--emit-ir`](output-and-diagnostics.md#--emit-ir):
 `$x = $argc; echo $x;` forwards the load so the `echo` reads the stored value and
 the `load_local` becomes a `nop`.
 
+### Dead instruction elimination
+
+The third registered pass computes CFG liveness and neutralizes unused
+result-producing instructions whose effect metadata says they are pure. This
+cleans up dead values exposed by earlier EIR rewrites. For example, identity
+folding can turn `$argc + 0` into `$argc`; dead-instruction elimination then
+drops the now-unused `const_i64 0` from optimized EIR.
+
+The pass is deliberately conservative. It keeps read-only, allocation,
+mutation, refcounting, output, warning, fatal, throw, and deopt-capable
+instructions even when their results are unused. The goal is to remove dead pure
+arithmetic and literal scaffolding without changing PHP-visible behavior or
+ownership cleanup.
+
+You can compare the shape directly:
+
+```bash
+elephc --emit-ir app.php
+elephc --emit-ir --no-ir-opt app.php
+```
+
 Later releases add more EIR passes (dead-store elimination, branch
 simplification, common-subexpression elimination, loop-invariant code motion,
 small-function inlining) to this same driver.
