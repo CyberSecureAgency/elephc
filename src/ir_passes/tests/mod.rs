@@ -9,6 +9,7 @@
 //!   real IR data model without going through AST lowering.
 
 mod dead_inst_test;
+mod dead_store_test;
 mod driver_test;
 mod identity_arith_test;
 mod intervals_test;

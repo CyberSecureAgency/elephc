@@ -20,6 +20,7 @@
 use crate::ir::{DataPool, Function, Module};
 
 use super::dead_inst::DeadInst;
+use super::dead_store::DeadStore;
 use super::identity_arith::IdentityArith;
 use super::peephole::Peephole;
 
@@ -43,13 +44,16 @@ pub trait IrPass {
     fn run(&self, function: &mut Function, data: &mut DataPool) -> bool;
 }
 
-/// Builds the ordered set of transformation passes run on every function. Later
-/// v0.25.x passes (DCE, branch simplification, CSE, LICM, …) register here.
+/// Builds the ordered set of transformation passes run on every function:
+/// identity arithmetic folding, peephole rewrites, dead instruction elimination,
+/// and dead store elimination. Later v0.25.x passes (branch simplification, CSE,
+/// LICM, …) register here.
 fn default_passes() -> Vec<Box<dyn IrPass>> {
     vec![
         Box::new(IdentityArith),
         Box::new(Peephole),
         Box::new(DeadInst),
+        Box::new(DeadStore),
     ]
 }
 
