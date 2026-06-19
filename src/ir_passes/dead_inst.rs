@@ -61,6 +61,12 @@ fn collect_dead_instructions(function: &Function) -> Vec<InstId> {
             let inst = function
                 .instruction(inst_id)
                 .expect("block references a valid instruction");
+            if inst.op == Op::Nop {
+                if let Some(result) = inst.result {
+                    live.remove(&result);
+                }
+                continue;
+            }
             if instruction_is_dead(inst, &live) {
                 dead.push(inst_id);
                 continue;
@@ -80,5 +86,5 @@ fn instruction_is_dead(inst: &Instruction, live: &HashSet<ValueId>) -> bool {
     let Some(result) = inst.result else {
         return false;
     };
-    inst.op != Op::Nop && !live.contains(&result) && inst.effects.is_pure()
+    !live.contains(&result) && inst.effects.is_pure()
 }

@@ -10,6 +10,7 @@
 
 use crate::ir::{
     validate_function, Builder, DataPool, Function, IrType, LocalKind, Op, Ownership, Terminator,
+    ValueDef,
 };
 use crate::ir_passes::dead_inst::DeadInst;
 use crate::ir_passes::driver::{run_function_passes, IrPass};
@@ -157,6 +158,77 @@ fn fixed_point_driver_removes_cross_block_dead_chain() {
     assert!(
         validate_function(&function).is_ok(),
         "fixed-point DIE stays valid"
+    );
+}
+
+/// Constants used only by an already-neutralized instruction become dead too.
+#[test]
+fn dead_operand_of_existing_nop_is_removed() {
+    let mut function = Function::new(
+        "dead_operand_after_fold".to_string(),
+        IrType::Void,
+        PhpType::Void,
+    );
+    {
+        let mut builder = Builder::new(&mut function);
+        let slot = builder.add_local(
+            Some("argc".to_string()),
+            IrType::I64,
+            PhpType::Int,
+            LocalKind::PhpLocal,
+        );
+        let entry = builder.create_named_block("entry", vec![]);
+        builder.set_entry(entry);
+        builder.position_at_end(entry);
+        let live = builder.emit_load_local(slot, IrType::I64, PhpType::Int);
+        let dead_zero = builder.emit_const_i64(0);
+        let folded = builder.emit_iadd(live, dead_zero);
+        let echo_result = builder.emit(
+            Op::EchoValue,
+            vec![live],
+            None,
+            IrType::Void,
+            PhpType::Void,
+            Ownership::NonHeap,
+        );
+        assert!(echo_result.is_none(), "echo_value has no result");
+        builder.terminate(Terminator::Return { value: None });
+
+        let folded_inst = match function.value(folded).expect("folded value exists").def {
+            ValueDef::Instruction { inst, .. } => inst,
+            _ => panic!("folded value should be instruction-defined"),
+        };
+        let inst = function
+            .instruction_mut(folded_inst)
+            .expect("folded add still exists");
+        inst.op = Op::Nop;
+        inst.operands.clear();
+        inst.immediate = None;
+        inst.effects = Op::Nop.default_effects();
+    }
+
+    assert!(
+        run_once(&mut function),
+        "the zero operand should die after its only user was neutralized"
+    );
+    assert_eq!(
+        function.instructions[0].op,
+        Op::LoadLocal,
+        "live echo operand remains"
+    );
+    assert_eq!(
+        function.instructions[1].op,
+        Op::Nop,
+        "dead identity operand is removed"
+    );
+    assert_eq!(
+        function.instructions[2].op,
+        Op::Nop,
+        "pre-neutralized instruction stays nop"
+    );
+    assert!(
+        validate_function(&function).is_ok(),
+        "DIE keeps folded IR valid"
     );
 }
 
