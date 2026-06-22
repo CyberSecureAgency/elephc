@@ -405,6 +405,7 @@ fn dce_stmt_with_guards(stmt: Stmt, guards: &GuardState) -> Vec<Stmt> {
             attributes: Vec::new(),
         }],
         StmtKind::FunctionDecl {
+            by_ref_return,
             name,
             params,
             variadic,
@@ -413,6 +414,7 @@ fn dce_stmt_with_guards(stmt: Stmt, guards: &GuardState) -> Vec<Stmt> {
             body,
         } => vec![Stmt {
             kind: StmtKind::FunctionDecl {
+                by_ref_return,
                 name,
                 params,
                 variadic,

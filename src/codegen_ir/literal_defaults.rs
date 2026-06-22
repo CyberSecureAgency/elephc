@@ -23,6 +23,7 @@ use super::context::FunctionContext;
 use super::{CodegenIrError, Result};
 
 /// Literal default value that the EIR backend can write directly.
+#[derive(Clone)]
 pub(crate) enum LiteralDefaultValue {
     Int(i64),
     Bool(bool),
@@ -50,6 +51,7 @@ pub(crate) enum LiteralDefaultValue {
 }
 
 /// Literal indexed-array element that can be materialized without evaluating code.
+#[derive(Clone)]
 pub(crate) enum LiteralArrayElement {
     Int(i64),
     Bool(bool),

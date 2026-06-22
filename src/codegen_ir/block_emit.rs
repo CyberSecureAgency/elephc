@@ -264,6 +264,7 @@ fn generator_signature(function: &Function, visible_param_count: usize) -> Funct
             .collect(),
         return_type: function.return_php_type.clone(),
         declared_return: !matches!(function.return_php_type, PhpType::Mixed),
+        by_ref_return: false,
         ref_params: function
             .params
             .iter()

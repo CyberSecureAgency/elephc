@@ -301,6 +301,7 @@ pub(crate) fn insert_enum_metadata(
             defaults: Vec::new(),
             return_type: PhpType::Array(Box::new(PhpType::Object(name.to_string()))),
             declared_return: true,
+            by_ref_return: false,
             ref_params: Vec::new(),
             declared_params: Vec::new(),
             variadic: None,
@@ -326,6 +327,7 @@ pub(crate) fn insert_enum_metadata(
                         ])
                     },
                     declared_return: true,
+                    by_ref_return: false,
                     ref_params: vec![false],
                     declared_params: vec![true],
                     variadic: None,
@@ -407,6 +409,7 @@ pub(crate) fn insert_enum_metadata(
             final_properties,
             readonly_properties,
             reference_properties,
+            owned_reference_properties: HashSet::new(),
             abstract_properties: HashSet::new(),
             abstract_property_hooks: HashMap::new(),
             static_properties: Vec::new(),
