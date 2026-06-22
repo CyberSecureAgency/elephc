@@ -6,6 +6,18 @@ surface, kept alongside the `elephc-image` crate it serves:
 - `gen_image_api_stubs.py` — the stub/coverage generator (run manually; not part
   of the build).
 - `api_spec.json` — its pinned input spec.
+- `check_extern_exports.py` — verifies every `extern "elephc_image"` declaration
+  in the prelude has a matching `#[no_mangle]` export in the crate.
+
+The CI job `image-api-sync` (`.github/workflows/ci.yml`) re-runs the generator and
+fails if the committed stubs/tests drift, then runs `check_extern_exports.py`.
+Run both locally before committing changes to the prelude or `api_spec.json`:
+
+```sh
+python3 crates/elephc-image/tools/gen_image_api_stubs.py
+git diff --exit-code -- src/image_prelude.rs tests/codegen/image/
+python3 crates/elephc-image/tools/check_extern_exports.py
+```
 
 `api_spec.json` is the pinned input for `gen_image_api_stubs.py`. It
 lists, per class (Imagick / ImagickDraw / ImagickPixel / ImagickPixelIterator /
