@@ -55,6 +55,7 @@ pub(crate) fn compile(config: CliConfig) {
         extra_link_paths,
         extra_frameworks,
         defines,
+        web: _,
     } = config;
     let filename = filename.as_str();
     codegen::set_null_repr(null_repr);
