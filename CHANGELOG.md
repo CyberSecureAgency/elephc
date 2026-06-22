@@ -6,6 +6,10 @@ Releases are listed newest first.
 ## [Unreleased]
 - EIR dead store elimination over PHP local slots: a CFG-liveness pass that drops `store_local` writes to scalar locals that are never read before being overwritten or the function exits, gated by `--ir-opt`. Refcounted and by-reference-aliased slots are left untouched to preserve ownership and aliasing semantics.
 - EIR branch simplification: folds constant-condition `cond_br`/`switch` terminators to unconditional branches (e.g. `while (true)` loops), threads predecessors through empty forwarding blocks, and neutralizes unreachable blocks, gated by `--ir-opt`.
+- EIR per-block constant folding: folds pure operations whose operands are all compile-time constants (integer/float arithmetic and bitwise ops, in-range shifts, comparisons, `is_null`/`is_truthy`) into a single constant, gated by `--ir-opt`. Composed with the peephole's scalar load/store forwarding, it propagates constants through EIR value ids and local slots.
+- EIR dominator-tree and natural-loop analyses: read-only sidecar analyses (Cooper–Harvey–Kennedy dominators; a back-edge/natural-loop forest with nesting and preheader detection) that underpin the cross-block optimizations below.
+- EIR common-subexpression elimination: a dominator-tree value-numbering pass that removes a pure computation when an identical one already dominates it (per-block and cross-block), gated by `--ir-opt`.
+- EIR loop-invariant code motion: hoists pure loop-invariant computations out of loop bodies into loop preheaders, gated by `--ir-opt`.
 
 ## [0.25.0] - 2026-06-19
 - EIR dead instruction elimination over CFG liveness, registered after identity and peephole passes and gated by `--ir-opt`.
