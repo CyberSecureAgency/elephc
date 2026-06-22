@@ -149,9 +149,31 @@ Combined with the peephole's load forwarding, `($n + 1) * ($n + 1)` loads `$n`
 once and computes `$n + 1` once. The redundant instructions it neutralizes leave
 dead operands that dead-instruction elimination then removes.
 
+### Loop-invariant code motion
+
+The fifth registered pass moves a pure computation whose operands do not change
+across a loop out of the loop body and into the loop's preheader, so it runs once
+instead of every iteration. It builds the loop forest on the dominator tree, then
+for each loop grows an invariant set to a fixed point: an instruction is invariant
+when each operand is either defined outside the loop (its definition dominates the
+preheader) or is itself being hoisted.
+
+Only pure instructions with at least one operand and a `NonHeap`/`Persistent`
+result are hoisted — purity means the result depends only on the operands and the
+op neither reads mutable state nor faults, so evaluating it once in the preheader
+(unconditionally, even if its original block ran only on some iterations) is safe.
+Loops are processed innermost-first, so a value invariant in several nested loops
+moves all the way to the outermost preheader. Loops without a detected preheader,
+and functions using exception handling, are skipped.
+
+Because PHP loop variables live in local slots and are reloaded through impure
+`load_local` each iteration, an invariant *source* expression is not yet a
+pure-operand computation this pass can hoist; its reach grows as more values flow
+as SSA across loops.
+
 ### Dead instruction elimination
 
-The fifth registered pass computes CFG liveness and neutralizes unused
+The sixth registered pass computes CFG liveness and neutralizes unused
 result-producing instructions whose effect metadata says they are pure. This
 cleans up dead values exposed by earlier EIR rewrites. For example, identity
 folding can turn `$argc + 0` into `$argc`; dead-instruction elimination then
@@ -172,7 +194,7 @@ elephc --emit-ir --no-ir-opt app.php
 
 ### Dead store elimination
 
-The sixth registered pass removes `store_local` writes whose value is never read
+The seventh registered pass removes `store_local` writes whose value is never read
 before the slot is overwritten or the function exits. It computes backward,
 CFG-aware liveness over local slots (a `load_local` makes a slot live, a
 `store_local` kills it) so a dead store is dropped even when the overwrite is in a
@@ -188,7 +210,7 @@ left untouched to keep reference counting and aliasing semantics intact.
 
 ### Branch simplification
 
-The seventh registered pass prunes the control-flow graph three ways:
+The eighth registered pass prunes the control-flow graph three ways:
 
 - **Constant-condition folding** — a `cond_br` whose condition is a constant
   (`const_bool`, non-zero `const_i64`, or `const_null`) becomes an unconditional

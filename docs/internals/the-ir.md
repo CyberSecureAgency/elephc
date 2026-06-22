@@ -1007,9 +1007,35 @@ redirect unsound — the same restriction branch simplification uses. CSE uses t
 [Dominance Analysis](#dominance-analysis) and shares
 `cfg::has_exception_handlers` with branch simplification.
 
+### Loop-Invariant Code Motion
+
+The fifth registered transform (`src/ir_passes/licm.rs`) moves a pure computation
+whose operands do not change across a loop out of the loop body into the loop
+preheader, so it runs once instead of per iteration. It builds the
+[loop forest](#loop-analysis) on the [dominator tree](#dominance-analysis), then
+for each loop grows the invariant set to a fixed point: an instruction is
+invariant when each operand is defined by another instruction being hoisted from
+the same loop or has a definition that dominates the preheader.
+
+Only **pure** (`Effects::PURE`) instructions with at least one operand and a
+`NonHeap`/`Persistent` result are eligible — purity means the value depends only
+on the operands and the op neither reads mutable state nor faults, so evaluating
+it once in the preheader, unconditionally even when its original block ran only on
+some iterations, is safe (no speculation hazard); the ownership bound keeps the
+move refcount-neutral. Nullary constant/address materializations are not hoisted
+(rematerializing them is cheaper than keeping them live across the loop). Loops
+are processed innermost-first with moves applied immediately, so a value invariant
+in several nested loops reaches the outermost preheader in one run. Instructions
+are relocated between blocks' instruction lists and their result `ValueDef`s
+(block + index) are recomputed once at the end so the value table matches the new
+layout. Loops without a detected preheader, and functions with exception
+handlers, are skipped. (PHP loop variables live in local slots reloaded through
+impure `load_local`, so an invariant source expression is not yet hoistable; the
+pass's reach grows as more values flow as SSA across loops.)
+
 ### Dead Instruction Elimination
 
-The fifth registered transform (`src/ir_passes/dead_inst.rs`) removes
+The sixth registered transform (`src/ir_passes/dead_inst.rs`) removes
 result-producing instructions whose values are not live over the CFG and whose
 effect metadata says they are pure. It computes liveness with successor live-in
 sets, initializes each block's backward walk with those live-out values plus
@@ -1025,7 +1051,7 @@ through the fixed-point pass driver after liveness is recomputed.
 
 ### Dead Store Elimination
 
-The sixth registered transform (`src/ir_passes/dead_store.rs`) removes
+The seventh registered transform (`src/ir_passes/dead_store.rs`) removes
 `store_local` instructions whose stored value is never read on any path before
 the slot is overwritten or the function exits. Unlike dead instruction
 elimination, which works at SSA-value granularity, this pass reasons about local
@@ -1070,7 +1096,7 @@ instruction elimination on a later driver sweep.
 
 ### Branch Simplification
 
-The seventh registered transform (`src/ir_passes/branch_simplify.rs`) prunes the
+The eighth registered transform (`src/ir_passes/branch_simplify.rs`) prunes the
 CFG in three ways:
 
 - **Constant-condition folding** — a `cond_br` whose condition resolves to a

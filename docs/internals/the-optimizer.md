@@ -437,8 +437,9 @@ operations whose operands are all compile-time constants (`5 * 5` → `25`,
 scalar load/store forwarding, propagates constants through EIR value ids and
 local slots — then dominance-aware common-subexpression elimination that reuses a
 pure computation already available on every path (per-block and cross-block via a
-dominator-tree value numbering), followed by CFG-aware dead instruction
-elimination for unused pure result-producing EIR instructions, CFG-aware dead
+dominator-tree value numbering), then loop-invariant code motion that hoists pure
+loop-invariant computations into loop preheaders, followed by CFG-aware dead
+instruction elimination for unused pure result-producing EIR instructions, CFG-aware dead
 store elimination
 for `store_local` writes to scalar PHP local slots that are never read before
 being overwritten, and branch simplification (constant-condition `cond_br`/`switch`

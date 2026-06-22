@@ -24,6 +24,7 @@ mod dominance;
 mod driver;
 mod identity_arith;
 mod intervals;
+mod licm;
 mod liveness;
 mod loops;
 mod peephole;

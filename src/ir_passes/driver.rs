@@ -25,6 +25,7 @@ use super::cse::Cse;
 use super::dead_inst::DeadInst;
 use super::dead_store::DeadStore;
 use super::identity_arith::IdentityArith;
+use super::licm::Licm;
 use super::peephole::Peephole;
 
 /// Maximum fixed-point sweeps before the driver gives up on a function. Real
@@ -49,17 +50,18 @@ pub trait IrPass {
 
 /// Builds the ordered set of transformation passes run on every function:
 /// identity arithmetic folding, peephole rewrites, constant folding,
-/// common-subexpression elimination, dead instruction elimination, dead store
-/// elimination, and branch simplification. Later v0.25.x passes (LICM, inlining,
-/// …) register here.
+/// common-subexpression elimination, loop-invariant code motion, dead
+/// instruction elimination, dead store elimination, and branch simplification.
+/// Later v0.25.x passes (inlining, …) register here.
 ///
 /// Constant folding runs after peephole so the scalar load/store forwarding has
 /// already moved constants stored to local slots onto their `load_local` uses,
 /// exposing constant-operand operations for it to fold. CSE then runs after
 /// folding so it deduplicates pure computations over the already-canonicalized
 /// constants (the constants themselves are left for the backend to
-/// rematerialize); the redundant instructions it neutralizes leave dead operands
-/// that dead instruction elimination removes, and any folded branch condition is
+/// rematerialize). LICM then hoists loop-invariant pure computations into loop
+/// preheaders. The redundant or relocated instructions these leave behind are
+/// cleaned up by dead instruction elimination, and any folded branch condition is
 /// collapsed by branch simplification — all converging through the fixed-point
 /// loop.
 fn default_passes() -> Vec<Box<dyn IrPass>> {
@@ -68,6 +70,7 @@ fn default_passes() -> Vec<Box<dyn IrPass>> {
         Box::new(Peephole),
         Box::new(ConstFold),
         Box::new(Cse),
+        Box::new(Licm),
         Box::new(DeadInst),
         Box::new(DeadStore),
         Box::new(BranchSimplify),
