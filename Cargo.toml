@@ -18,8 +18,8 @@ categories = ["compilers", "command-line-utilities"]
 # listAbbreviations) into target/<profile>/, where linker.rs locates them for
 # programs that use those features.
 [workspace]
-members = [".", "crates/elephc-tls", "crates/elephc-pdo", "crates/elephc-crypto", "crates/elephc-phar", "crates/elephc-tz"]
-default-members = [".", "crates/elephc-tls", "crates/elephc-pdo", "crates/elephc-crypto", "crates/elephc-phar", "crates/elephc-tz"]
+members = [".", "crates/elephc-tls", "crates/elephc-pdo", "crates/elephc-crypto", "crates/elephc-phar", "crates/elephc-tz", "crates/elephc-web"]
+default-members = [".", "crates/elephc-tls", "crates/elephc-pdo", "crates/elephc-crypto", "crates/elephc-phar", "crates/elephc-tz", "crates/elephc-web"]
 resolver = "2"
 
 [[bin]]
@@ -50,6 +50,7 @@ elephc-pdo = { path = "crates/elephc-pdo" }
 elephc-crypto = { path = "crates/elephc-crypto" }
 elephc-phar = { path = "crates/elephc-phar" }
 elephc-tz = { path = "crates/elephc-tz" }
+elephc-web = { path = "crates/elephc-web" }
 # flate2 lets the phar:// codegen tests build gzip (raw-DEFLATE) fixture entries
 # with the same encoder the compiler decodes, guaranteeing a version-stable
 # round-trip without shelling out to php.
