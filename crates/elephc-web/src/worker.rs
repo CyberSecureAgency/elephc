@@ -13,7 +13,7 @@
 use std::convert::Infallible;
 use std::net::SocketAddr;
 
-use http_body_util::Full;
+use http_body_util::{BodyExt, Full};
 use hyper::body::Bytes;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
@@ -57,9 +57,25 @@ pub fn serve(listen: &str, handler: extern "C" fn()) {
             // Serve this connection on the current thread; the blocking handler
             // call below holds the thread, serializing requests in this worker.
             if let Err(_e) = http1::Builder::new()
-                .serve_connection(io, service_fn(move |_req: Request<hyper::body::Incoming>| async move {
-                    let body = run_handler(handler);
-                    Ok::<_, Infallible>(Response::new(Full::new(Bytes::from(body))))
+                .serve_connection(io, service_fn(move |req: Request<hyper::body::Incoming>| async move {
+                    let method = req.method().as_str().to_string();
+                    let uri = req.uri().to_string();
+                    let path = req.uri().path().to_string();
+                    let query = req.uri().query().unwrap_or("").to_string();
+                    let headers: Vec<(String, String)> = req
+                        .headers()
+                        .iter()
+                        .map(|(n, v)| (n.as_str().to_string(), String::from_utf8_lossy(v.as_bytes()).into_owned()))
+                        .collect();
+                    // The body must be fully collected (async) BEFORE the blocking handler runs,
+                    // since handler() cannot yield on the current-thread runtime.
+                    let body = match req.into_body().collect().await {
+                        Ok(c) => c.to_bytes().to_vec(),
+                        Err(_) => Vec::new(),
+                    };
+                    request_state::set_request(method, uri, path, query, headers, body);
+                    let resp_body = run_handler(handler);
+                    Ok::<_, Infallible>(Response::new(Full::new(Bytes::from(resp_body))))
                 }))
                 .await
             {

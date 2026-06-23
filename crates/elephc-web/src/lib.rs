@@ -22,6 +22,14 @@ mod worker;
 // `request_state`), which replaced the Phase-1 no-op stub.
 pub use request_state::elephc_web_write;
 
+// Re-exported so the compiled `--web` web prelude can link against all
+// request-inspection getters exposed as C-ABI symbols by the bridge.
+pub use request_state::{
+    elephc_web_body_len, elephc_web_body_ptr, elephc_web_header_count, elephc_web_header_name,
+    elephc_web_header_value, elephc_web_method, elephc_web_path, elephc_web_query_string,
+    elephc_web_uri,
+};
+
 /// Returns the elephc-web C ABI version. Bumped when the exported symbol set or
 /// any symbol's signature changes shape.
 #[no_mangle]
