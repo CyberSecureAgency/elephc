@@ -30,6 +30,10 @@ pub use request_state::{
     elephc_web_uri,
 };
 
+// Re-exported so the compiled `--web` runtime routines (`__rt_header`,
+// `__rt_http_response_code`) can link against the response-control setters.
+pub use request_state::{elephc_web_header, elephc_web_set_status};
+
 /// Returns the elephc-web C ABI version. Bumped when the exported symbol set or
 /// any symbol's signature changes shape.
 #[no_mangle]

@@ -87,6 +87,122 @@ pub fn take_body() -> Vec<u8> {
     unsafe { core::mem::take(&mut *core::ptr::addr_of_mut!(RESPONSE_BODY)) }
 }
 
+/// HTTP response status for the current request. Reset to 200 each request.
+static mut RESPONSE_STATUS: u16 = 200;
+/// Response headers for the current request, as (name, value) pairs in send order.
+static mut RESPONSE_HEADERS: Vec<(String, String)> = Vec::new();
+
+/// Sets the response status. `code <= 0` reads the current status without
+/// changing it (backs `http_response_code()` with no argument); a positive code
+/// sets the status and returns the PREVIOUS one.
+///
+/// # Safety
+/// Single-threaded per worker; the status is reached only through raw pointers.
+#[no_mangle]
+pub unsafe extern "C" fn elephc_web_set_status(code: i64) -> i64 {
+    let prev = *core::ptr::addr_of!(RESPONSE_STATUS) as i64;
+    if code > 0 {
+        core::ptr::write(core::ptr::addr_of_mut!(RESPONSE_STATUS), code as u16);
+    }
+    prev
+}
+
+/// Parses the status code from an `"HTTP/x.y NNN reason"` line (the 2nd token).
+fn status_from_http_line(line: &str) -> Option<i64> {
+    line.split_whitespace().nth(1).and_then(|t| t.parse::<i64>().ok())
+}
+
+/// Implements PHP `header($line, $replace, $response_code)` entirely in Rust:
+/// `HTTP/` and `Status:` status lines, `Location:`→302, replace-vs-append, and
+/// the 3rd-argument status override. All PHP `header()` semantics live here.
+///
+/// # Safety
+/// `ptr` must point to `len` valid bytes for the call. Single-threaded per worker.
+#[no_mangle]
+pub unsafe extern "C" fn elephc_web_header(
+    ptr: *const u8,
+    len: usize,
+    replace: i64,
+    response_code: i64,
+) {
+    if ptr.is_null() {
+        return;
+    }
+    let line = String::from_utf8_lossy(core::slice::from_raw_parts(ptr, len)).into_owned();
+
+    // 3rd arg: an explicit positive code forces the status.
+    if response_code > 0 {
+        elephc_web_set_status(response_code);
+    }
+
+    // "HTTP/x.y NNN ..." sets the status and adds no header.
+    if line.trim_start().starts_with("HTTP/") {
+        if let Some(code) = status_from_http_line(line.trim_start()) {
+            elephc_web_set_status(code);
+        }
+        return;
+    }
+
+    // Split "Name: Value" on the first ':'. A line without ':' is ignored.
+    let Some(idx) = line.find(':') else {
+        return;
+    };
+    let name = line[..idx].trim().to_string();
+    let value = line[idx + 1..].trim().to_string();
+    if name.is_empty() {
+        return;
+    }
+
+    // "Status: NNN ..." sets the status and adds no header.
+    if name.eq_ignore_ascii_case("Status") {
+        if let Some(code) = value
+            .split_whitespace()
+            .next()
+            .and_then(|t| t.parse::<i64>().ok())
+        {
+            elephc_web_set_status(code);
+        }
+        return;
+    }
+
+    // "Location: ..." implies 302 unless an explicit code was given or the
+    // current status is already 201 or a 3xx.
+    if name.eq_ignore_ascii_case("Location") && response_code == 0 {
+        let cur = *core::ptr::addr_of!(RESPONSE_STATUS);
+        if !(cur == 201 || (300..=399).contains(&cur)) {
+            elephc_web_set_status(302);
+        }
+    }
+
+    let headers = &mut *core::ptr::addr_of_mut!(RESPONSE_HEADERS);
+    if replace != 0 {
+        headers.retain(|(n, _)| !n.eq_ignore_ascii_case(&name));
+    }
+    headers.push((name, value));
+}
+
+/// Resets the response status (200) and clears the response headers. Called by
+/// the worker before each request's handler runs.
+pub fn reset_response() {
+    // SAFETY: single-threaded per worker; reached only through raw pointers.
+    unsafe {
+        core::ptr::write(core::ptr::addr_of_mut!(RESPONSE_STATUS), 200);
+        (*core::ptr::addr_of_mut!(RESPONSE_HEADERS)).clear();
+    }
+}
+
+/// Returns the current response status code.
+pub fn take_status() -> u16 {
+    // SAFETY: single-threaded per worker; read through a raw pointer.
+    unsafe { *core::ptr::addr_of!(RESPONSE_STATUS) }
+}
+
+/// Drains and returns the response headers for the current request.
+pub fn take_headers() -> Vec<(String, String)> {
+    // SAFETY: single-threaded per worker; replaced through a raw pointer.
+    unsafe { core::mem::take(&mut *core::ptr::addr_of_mut!(RESPONSE_HEADERS)) }
+}
+
 // Per-worker current-request state. One request runs to completion on the
 // worker's single thread before the next begins, so plain process statics are
 // race-free (same invariant as RESPONSE_BODY).
@@ -230,6 +346,76 @@ mod tests {
             assert_eq!(elephc_web_body_len(), 5);
             let body = std::slice::from_raw_parts(elephc_web_body_ptr(), 5);
             assert_eq!(body, b"hello");
+        }
+    }
+
+    /// Verifies the bridge response logic matches PHP header()/http_response_code().
+    #[test]
+    fn response_control_matches_php() {
+        unsafe {
+            reset_response();
+            assert_eq!(take_status(), 200); // default
+
+            // http_response_code: set returns previous; 0 reads.
+            reset_response();
+            assert_eq!(elephc_web_set_status(404), 200);
+            assert_eq!(elephc_web_set_status(0), 404);
+
+            // Regular header, default replace=true → same-name (case-insensitive) replaced.
+            reset_response();
+            let a = b"X-Foo: a";
+            elephc_web_header(a.as_ptr(), a.len(), 1, 0);
+            let b = b"x-foo: b";
+            elephc_web_header(b.as_ptr(), b.len(), 1, 0);
+            assert_eq!(take_headers(), vec![("x-foo".to_string(), "b".to_string())]);
+
+            // replace=false → append duplicates.
+            reset_response();
+            let c = b"X: 1";
+            elephc_web_header(c.as_ptr(), c.len(), 0, 0);
+            let d = b"X: 2";
+            elephc_web_header(d.as_ptr(), d.len(), 0, 0);
+            assert_eq!(
+                take_headers(),
+                vec![("X".into(), "1".into()), ("X".into(), "2".into())]
+            );
+
+            // Value keeps later colons; Location implies 302.
+            reset_response();
+            let l = b"Location: http://h/p:8080/x";
+            elephc_web_header(l.as_ptr(), l.len(), 1, 0);
+            assert_eq!(take_status(), 302);
+            assert_eq!(
+                take_headers(),
+                vec![("Location".into(), "http://h/p:8080/x".into())]
+            );
+
+            // HTTP status line sets status, adds no header.
+            reset_response();
+            let h = b"HTTP/1.1 404 Not Found";
+            elephc_web_header(h.as_ptr(), h.len(), 1, 0);
+            assert_eq!(take_status(), 404);
+            assert!(take_headers().is_empty());
+
+            // "Status:" sets status, adds no header.
+            reset_response();
+            let s = b"Status: 503 Unavailable";
+            elephc_web_header(s.as_ptr(), s.len(), 1, 0);
+            assert_eq!(take_status(), 503);
+            assert!(take_headers().is_empty());
+
+            // 3rd arg forces status (Location does not override an explicit code).
+            reset_response();
+            let r = b"Location: /perm";
+            elephc_web_header(r.as_ptr(), r.len(), 1, 301);
+            assert_eq!(take_status(), 301);
+
+            // Location does NOT downgrade an already-3xx status to 302.
+            reset_response();
+            elephc_web_set_status(303);
+            let r2 = b"Location: /x";
+            elephc_web_header(r2.as_ptr(), r2.len(), 1, 0);
+            assert_eq!(take_status(), 303);
         }
     }
 }

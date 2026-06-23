@@ -75,7 +75,15 @@ pub fn serve(listen: &str, handler: extern "C" fn()) {
                     };
                     request_state::set_request(method, uri, path, query, headers, body);
                     let resp_body = run_handler(handler);
-                    Ok::<_, Infallible>(Response::new(Full::new(Bytes::from(resp_body))))
+                    let status = request_state::take_status();
+                    let mut builder = Response::builder().status(status);
+                    for (name, value) in request_state::take_headers() {
+                        builder = builder.header(name, value);
+                    }
+                    let response = builder
+                        .body(Full::new(Bytes::from(resp_body)))
+                        .unwrap_or_else(|_| Response::new(Full::new(Bytes::from_static(b""))));
+                    Ok::<_, Infallible>(response)
                 }))
                 .await
             {
@@ -89,6 +97,7 @@ pub fn serve(listen: &str, handler: extern "C" fn()) {
 fn run_handler(handler: extern "C" fn()) -> Vec<u8> {
     request_state::set_capture(true);
     request_state::clear_body();
+    request_state::reset_response();
     handler();
     request_state::take_body()
 }
