@@ -8194,8 +8194,9 @@ fn box_stat_string_or_false_result(ctx: &mut FunctionContext<'_>) {
     }
 }
 
-/// Loads a string SSA value into the target string result registers.
-fn load_string_to_result(
+/// Loads a string SSA value into the target string result registers, coercing
+/// any scalar to its PHP string form. Shared with `system::lower_header`.
+pub(super) fn load_string_to_result(
     ctx: &mut FunctionContext<'_>,
     value: ValueId,
     context: &str,

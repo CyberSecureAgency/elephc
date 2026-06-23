@@ -185,6 +185,7 @@ const SUPPORTED_BUILTIN_FUNCTIONS: &[&str] = &[
     "html_entity_decode",
     "htmlentities",
     "htmlspecialchars",
+    "http_response_code",
     "hypot",
     "implode",
     "in_array",

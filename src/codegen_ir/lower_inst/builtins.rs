@@ -303,6 +303,8 @@ pub(super) fn lower_builtin_call(ctx: &mut FunctionContext<'_>, inst: &Instructi
         "getdate" => system::lower_getdate(ctx, inst),
         "localtime" => system::lower_localtime(ctx, inst),
         "hrtime" => system::lower_hrtime(ctx, inst),
+        "http_response_code" => system::lower_http_response_code(ctx, inst),
+        "header" => system::lower_header(ctx, inst),
         "sleep" => system::lower_sleep(ctx, inst),
         "strtotime" => system::lower_strtotime(ctx, inst),
         "__elephc_strtotime_raw" => system::lower_elephc_strtotime_raw(ctx, inst),

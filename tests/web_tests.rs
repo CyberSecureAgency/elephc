@@ -344,3 +344,73 @@ fn web_php_input_returns_body() {
     let _ = child.wait();
     assert!(resp.ends_with("{\"k\":42}"), "body: {:?}", resp);
 }
+
+/// Verifies http_response_code() sets the HTTP response status.
+#[test]
+fn web_http_response_code_sets_status() {
+    let dir = make_test_dir("web_status");
+    let bin = compile_web(&dir, "<?php http_response_code(404); echo \"nope\";", "app");
+    let port = free_port();
+    let addr = format!("127.0.0.1:{}", port);
+    let mut child = spawn_server(&bin, &addr, "1");
+    let resp = http_request(&addr, "GET", "/", &[], "");
+    let _ = child.kill();
+    let _ = child.wait();
+    assert!(resp.starts_with("HTTP/1.1 404"), "status line: {:?}", resp);
+    assert!(resp.ends_with("nope"), "body: {:?}", resp);
+}
+
+/// Verifies header() adds a response header (hyper lowercases header names on the wire).
+#[test]
+fn web_header_sets_response_header() {
+    let dir = make_test_dir("web_header");
+    let bin = compile_web(&dir, "<?php header(\"X-Greeting: hello\"); echo \"ok\";", "app");
+    let port = free_port();
+    let addr = format!("127.0.0.1:{}", port);
+    let mut child = spawn_server(&bin, &addr, "1");
+    let resp = http_request(&addr, "GET", "/", &[], "");
+    let _ = child.kill();
+    let _ = child.wait();
+    assert!(resp.to_lowercase().contains("x-greeting: hello"), "headers: {:?}", resp);
+    assert!(resp.ends_with("ok"), "body: {:?}", resp);
+}
+
+/// Verifies header("Location: ...") implies a 302 redirect, matching PHP.
+#[test]
+fn web_header_location_implies_302() {
+    let dir = make_test_dir("web_redirect");
+    let bin = compile_web(&dir, "<?php header(\"Location: /elsewhere\");", "app");
+    let port = free_port();
+    let addr = format!("127.0.0.1:{}", port);
+    let mut child = spawn_server(&bin, &addr, "1");
+    let resp = http_request(&addr, "GET", "/", &[], "");
+    let _ = child.kill();
+    let _ = child.wait();
+    assert!(resp.starts_with("HTTP/1.1 302"), "status: {:?}", resp);
+    assert!(resp.to_lowercase().contains("location: /elsewhere"), "headers: {:?}", resp);
+}
+
+/// Verifies http_response_code() + header() compose, function_exists sees them,
+/// and the default $replace=true keeps only the last same-name header.
+#[test]
+fn web_response_control_combined() {
+    let dir = make_test_dir("web_resp_combo");
+    let src = "<?php \
+        if (!function_exists('header') || !function_exists('http_response_code')) { echo 'MISSING'; return; } \
+        http_response_code(201); \
+        header('Content-Type: application/json'); \
+        header('X-A: 1'); header('X-A: 2'); \
+        echo '{\"ok\":true}';";
+    let bin = compile_web(&dir, src, "app");
+    let port = free_port();
+    let addr = format!("127.0.0.1:{}", port);
+    let mut child = spawn_server(&bin, &addr, "1");
+    let resp = http_request(&addr, "GET", "/", &[], "");
+    let _ = child.kill();
+    let _ = child.wait();
+    let lower = resp.to_lowercase();
+    assert!(resp.starts_with("HTTP/1.1 201"), "status: {:?}", resp);
+    assert!(lower.contains("content-type: application/json"), "headers: {:?}", resp);
+    assert!(lower.contains("x-a: 2") && !lower.contains("x-a: 1"), "replace failed: {:?}", resp);
+    assert!(resp.ends_with("{\"ok\":true}"), "body: {:?}", resp);
+}

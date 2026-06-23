@@ -328,6 +328,10 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter, features: RuntimeFeatures) {
     // Backs file_get_contents('php://input'); reads the request body under --web,
     // returns false (null) otherwise. Always emitted so the EIR call resolves.
     io::emit_php_input(emitter, features.web);
+    // Back http_response_code()/header(); call the bridge setters under --web,
+    // no-ops otherwise. Always emitted so the EIR calls resolve.
+    io::emit_http_response_code(emitter, features.web);
+    io::emit_header(emitter, features.web);
     io::emit_cstr(emitter);
     io::emit_disk_space(emitter);
     io::emit_fopen(emitter);
