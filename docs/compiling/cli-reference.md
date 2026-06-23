@@ -51,6 +51,9 @@ elephc --web app.php
 ./app --listen 0.0.0.0:8080 --workers 4
 ```
 
+The served program receives the HTTP request through the standard superglobals
+`$_SERVER`, `$_GET`, `$_POST`, and `php://input`. See [Web Server](../beyond-php/web.md#request-input).
+
 ## Targets
 
 | Flag | Values | Default | Description |

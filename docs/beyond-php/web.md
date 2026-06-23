@@ -52,6 +52,32 @@ every request.
 
 See `examples/web-hello/` for a minimal runnable demo.
 
+## Request input
+
+The HTTP request is exposed through standard PHP superglobals, rebuilt fresh on
+every request and readable inside any function scope (no `global` needed):
+
+- **`$_SERVER`** — `REQUEST_METHOD`, `REQUEST_URI`, `QUERY_STRING`, the request
+  headers as `HTTP_*` keys (e.g. `HTTP_USER_AGENT`), and `CONTENT_TYPE` /
+  `CONTENT_LENGTH` when present.
+- **`$_GET`** — the query string parsed into a string-keyed array, percent-decoded.
+- **`$_POST`** — an `application/x-www-form-urlencoded` request body parsed the
+  same way. Other content types leave `$_POST` empty — read the raw body via
+  `php://input` instead.
+- **`php://input`** — `file_get_contents('php://input')` returns the raw request
+  body (e.g. a JSON payload). An empty body returns `false`.
+
+```php
+<?php
+echo "Hello, " . ($_GET['name'] ?? 'world') . "!\n";
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    echo "Raw body: " . file_get_contents('php://input') . "\n";
+}
+```
+
+See `examples/web-request/` for a runnable demo covering `$_SERVER`, `$_GET`,
+`$_POST`, and `php://input`.
+
 ## Per-request fresh state
 
 Between requests, the runtime resets all process-persistent state so request
@@ -77,28 +103,22 @@ single worker, requests are served **one at a time** — the PHP body runs to
 completion before the next request is accepted. Parallelism equals the worker
 count; a slow request occupies exactly one worker for its duration.
 
-## Phase 1 limitations
+## Limitations
 
-Phase 1 delivers the core serve loop (echo → body, fresh per-request state,
-prefork/SO_REUSEPORT). Several features are not yet available and will arrive in
-later phases:
+The serve loop, per-request fresh state, and request input (`$_SERVER` / `$_GET`
+/ `$_POST` / `php://input`) are available. The following are not yet available:
 
-- **No request input** — `$_SERVER`, `$_GET`, `$_POST`, `php://input`, and all
-  other request superglobals are not populated in Phase 1. Phase 2 will add
-  request input.
-- **No response control** — `header()` and `http_response_code()` are not
-  available. Every Phase 1 response is `200 OK`; custom status codes and headers
-  arrive in Phase 3.
-- **`$argc` / `$argv` not populated** — the binary's own argv is consumed by
-  the server and is not forwarded to the script body.
+- **No response control** — `header()` and `http_response_code()` are not yet
+  available. Every response is `200 OK` with no `Content-Type` or other headers
+  set; custom status codes and headers arrive in Phase 3.
+- **`$argc` / `$argv` not populated** — the binary's own argv is consumed by the
+  server and is not forwarded to the script body.
+- **`$_POST` only for urlencoded bodies** — `multipart/form-data` and file
+  uploads are not parsed; read the raw body via `php://input` if you need it.
 - **No intra-worker concurrency** — one slow request occupies its worker until
   it completes. Use `--workers` to increase throughput.
-- **Only scalar/string `echo`/`print` output is captured** — `var_dump`,
-  `print_r`, and any output produced by the Mixed/Resource/Iterable runtime
-  writers writes to the worker's stdout instead of the HTTP response body and
-  will not appear in Phase 1 responses.
-- **Not supported in this release (all phases):** multipart/form-data, file
-  uploads, cookies, sessions, static file serving, in-process TLS, HTTP/2–3.
+- **Not supported in this release (all phases):** cookies, sessions, static file
+  serving, in-process TLS, HTTP/2–3.
 
 ## Mutual exclusions
 

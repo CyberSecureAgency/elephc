@@ -791,8 +791,13 @@ statics, and static class properties all reset between requests). Run it with
   `elephc-web` bridge staticlib with prefork/`SO_REUSEPORT` supervisor and
   per-worker hyper HTTP server. Every Phase 1 response is `200 OK` with the
   echoed body.
-- [ ] **Phase 2** — request input superglobals: `$_SERVER`, `$_GET`, `$_POST`,
-  `$_REQUEST`, `php://input`, and request headers available to the script body.
+- [x] **Phase 2** — request input superglobals: `$_SERVER` (method/URI/query +
+  `HTTP_*` headers + `CONTENT_TYPE`/`CONTENT_LENGTH`), `$_GET` (query string),
+  `$_POST` (urlencoded body), and `php://input` (raw body), built per request by a
+  `--web` web prelude and readable inside any function scope (true superglobals via
+  `_eir_global_*` storage); output-capture completeness so echoed Mixed/array/
+  resource values reach the response body; superglobals released per request. Not
+  included: `$_REQUEST`, multipart/form-data.
 - [ ] **Phase 3** — response control: `header()`, `http_response_code()`, custom
   status codes and response headers.
 - [ ] **Phase 4** — hardening: worker respawn on crash, graceful shutdown, and
