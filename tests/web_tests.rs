@@ -293,3 +293,20 @@ fn web_post_superglobal_parsed() {
     let _ = child.wait();
     assert!(resp.ends_with("alice:s@fe"), "body: {:?}", resp);
 }
+
+/// Verifies echoing a superglobal value directly (a boxed Mixed string) reaches
+/// the HTTP response body, not the worker's stdout. This is the output-capture
+/// completeness fix: `__rt_mixed_write_stdout` routes through `__rt_stdout_write`.
+#[test]
+fn web_echo_superglobal_value_captured() {
+    let dir = make_test_dir("web_mixed_cap");
+    let src = "<?php echo $_GET['name'];";
+    let bin = compile_web(&dir, src, "app");
+    let port = free_port();
+    let addr = format!("127.0.0.1:{}", port);
+    let mut child = spawn_server(&bin, &addr, "1");
+    let resp = http_request(&addr, "GET", "/?name=bob", &[], "");
+    let _ = child.kill();
+    let _ = child.wait();
+    assert!(resp.ends_with("bob"), "Mixed echo must be captured: {:?}", resp);
+}
