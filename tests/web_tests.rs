@@ -229,8 +229,8 @@ fn web_extern_method_getter() {
 }
 
 /// Verifies a superglobal is READABLE inside a function without `global` (full
-/// visibility + global-storage routing). $_SERVER is not populated until Task 5,
-/// so the read is ??-guarded and we assert a clean 200 (no type error / no crash).
+/// visibility + global-storage routing). Now that $_SERVER is populated by the
+/// prelude, asserts the body is the actual REQUEST_METHOD ("DELETE").
 #[test]
 fn web_superglobal_visible_in_function() {
     let dir = make_test_dir("web_sg_fn");
@@ -242,5 +242,18 @@ fn web_superglobal_visible_in_function() {
     let resp = http_request(&addr, "DELETE", "/", &[], "");
     let _ = child.kill();
     let _ = child.wait();
-    assert!(resp.starts_with("HTTP/1.1 200"), "status: {:?}", resp);
+    assert!(resp.ends_with("DELETE"), "body: {:?}", resp);
+}
+
+/// Verifies $_SERVER is populated from the request line and headers.
+#[test]
+fn web_server_superglobal_populated() {
+    let dir = make_test_dir("web_server_sg");
+    let src = "<?php echo $_SERVER['REQUEST_METHOD'] . ' ' . $_SERVER['REQUEST_URI'];";
+    let bin = compile_web(&dir, src, "app");
+    let port = free_port(); let addr = format!("127.0.0.1:{}", port);
+    let mut child = spawn_server(&bin, &addr, "1");
+    let resp = http_request(&addr, "GET", "/foo?a=1", &[], "");
+    let _ = child.kill(); let _ = child.wait();
+    assert!(resp.ends_with("GET /foo?a=1"), "body: {:?}", resp);
 }

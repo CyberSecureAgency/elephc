@@ -15,8 +15,8 @@
 
 use crate::parser::ast::Program;
 
-/// The PHP source prepended under `--web`. Phase 2 Task 2: extern declarations
-/// only. Tasks 5–8 append the executable superglobal-building statements.
+/// The PHP source prepended under `--web`. Phase 2 Task 2: extern declarations;
+/// Task 5: executable statements that build $_SERVER on every request.
 const WEB_PRELUDE_SRC: &str = r#"<?php
 extern "elephc_web" {
     function elephc_web_method(): string;
@@ -28,6 +28,19 @@ extern "elephc_web" {
     function elephc_web_header_value(int $i): string;
     function elephc_web_body_ptr(): ptr;
     function elephc_web_body_len(): int;
+}
+$_SERVER = [];
+$_SERVER['REQUEST_METHOD'] = elephc_web_method();
+$_SERVER['REQUEST_URI']    = elephc_web_uri();
+$_SERVER['QUERY_STRING']   = elephc_web_query_string();
+$__elephc_hc = elephc_web_header_count();
+for ($__elephc_i = 0; $__elephc_i < $__elephc_hc; $__elephc_i++) {
+    $__elephc_hn = elephc_web_header_name($__elephc_i);
+    $__elephc_hv = elephc_web_header_value($__elephc_i);
+    $_SERVER['HTTP_' . strtoupper(str_replace('-', '_', $__elephc_hn))] = $__elephc_hv;
+    $__elephc_up = strtoupper($__elephc_hn);
+    if ($__elephc_up === 'CONTENT-TYPE') { $_SERVER['CONTENT_TYPE'] = $__elephc_hv; }
+    if ($__elephc_up === 'CONTENT-LENGTH') { $_SERVER['CONTENT_LENGTH'] = $__elephc_hv; }
 }
 "#;
 
