@@ -310,3 +310,22 @@ fn web_echo_superglobal_value_captured() {
     let _ = child.wait();
     assert!(resp.ends_with("bob"), "Mixed echo must be captured: {:?}", resp);
 }
+
+/// Verifies request superglobals do not leak/stale across requests: a second
+/// request with a different query sees only its own $_GET (__rt_web_reset
+/// releases the prior request's hash so there is no per-request leak).
+#[test]
+fn web_get_does_not_leak_across_requests() {
+    let dir = make_test_dir("web_get_leak");
+    let src = "<?php echo isset($_GET['a']) ? $_GET['a'] : 'none';";
+    let bin = compile_web(&dir, src, "app");
+    let port = free_port();
+    let addr = format!("127.0.0.1:{}", port);
+    let mut child = spawn_server(&bin, &addr, "1");
+    let r1 = http_request(&addr, "GET", "/?a=first", &[], "");
+    let r2 = http_request(&addr, "GET", "/", &[], "");
+    let _ = child.kill();
+    let _ = child.wait();
+    assert!(r1.ends_with("first"), "r1: {:?}", r1);
+    assert!(r2.ends_with("none"), "r2 leaked stale $_GET: {:?}", r2);
+}

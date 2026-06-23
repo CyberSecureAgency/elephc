@@ -5,7 +5,9 @@
 //! releases and zeroes function static locals (and their init markers, so their
 //! initializers re-run), releases the previous value of refcounted static class
 //! properties (their initializers re-run in the handler body and restore the
-//! defaults), and resets the concat-buffer write offset.
+//! defaults), releases and zeroes the request superglobals ($_SERVER/$_GET/
+//! $_POST) that the web prelude reassigns each request, and resets the
+//! concat-buffer write offset.
 //!
 //! Called from:
 //! - `crate::codegen_ir::block_emit::emit_module()`, after every function and the
@@ -28,7 +30,8 @@ use crate::codegen::emit::Emitter;
 use crate::codegen::platform::Arch;
 use crate::codegen::UNINITIALIZED_TYPED_PROPERTY_SENTINEL;
 use crate::ir::Module;
-use crate::names::static_property_symbol;
+use crate::names::{ir_global_symbol, static_property_symbol};
+use crate::superglobals;
 use crate::types::PhpType;
 
 /// Minimal frame: just the x29/x30 footer (AArch64) or `push rbp` (x86_64),
@@ -76,6 +79,13 @@ pub(super) fn emit_web_reset(emitter: &mut Emitter, module: &Module, data: &Data
     }
     for (symbol, php_type) in refcounted_static_properties(module) {
         emit_static_property_release(emitter, &symbol, &php_type, &mut labels);
+    }
+    // Request superglobals ($_SERVER/$_GET/$_POST) live in `_eir_global_*` symbol
+    // storage and are reassigned (`$_SERVER = []`) by the web prelude every
+    // request. `StoreGlobal` does not release the previous value, so without this
+    // each request would leak the prior request's assoc-array hash.
+    for name in superglobals::SUPERGLOBALS {
+        emit_superglobal_reset(emitter, &ir_global_symbol(name), &mut labels);
     }
 
     emit_concat_offset_reset(emitter);
@@ -126,6 +136,22 @@ fn emit_static_property_release(
     abi::emit_load_symbol_to_reg(emitter, abi::int_result_reg(emitter), symbol, 8);
     emit_branch_if_equals_sentinel(emitter, &skip_label);
     emit_release_symbol_value(emitter, symbol, &ty);
+    emitter.label(&skip_label);
+}
+
+/// Releases and zeroes one request superglobal ($_SERVER/$_GET/$_POST), whose
+/// assoc-array hash lives in `_eir_global_*` storage. Guarded against a null
+/// symbol (the very first request, before the prelude's first assignment) so a
+/// null is never released. Zeroing is safe because the prelude reassigns the
+/// symbol right after the reset, and `StoreGlobal` does not read the old value.
+fn emit_superglobal_reset(emitter: &mut Emitter, symbol: &str, labels: &mut LabelGen) {
+    let ty = superglobals::superglobal_type().codegen_repr();
+    let skip_label = labels.next("skip_superglobal");
+    emitter.comment(&format!("reset request superglobal {}", symbol));
+    abi::emit_load_symbol_to_reg(emitter, abi::int_result_reg(emitter), symbol, 0);
+    abi::emit_branch_if_int_result_zero(emitter, &skip_label);
+    emit_release_symbol_value(emitter, symbol, &ty);
+    abi::emit_store_zero_to_symbol(emitter, symbol, 0);
     emitter.label(&skip_label);
 }
 
