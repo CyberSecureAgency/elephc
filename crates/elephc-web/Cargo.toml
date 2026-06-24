@@ -24,3 +24,6 @@ socket2 = { version = "0.5", features = ["all"] }
 # libc: fork/waitpid/signals for the prefork master, kept default-features for
 # musl-compatibility on the Docker Linux images.
 libc = "0.2"
+# flate2: optional gzip response compression (--gzip). Already in the workspace
+# dependency tree, so this adds no new external crate.
+flate2 = "1"

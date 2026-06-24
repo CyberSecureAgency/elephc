@@ -799,3 +799,39 @@ fn web_max_execution_time_kills_runaway_handler() {
     let _ = child.wait();
     assert!(recovered, "worker did not recover after a runaway handler was killed");
 }
+
+/// Verifies --gzip compresses the response when the client sends Accept-Encoding:
+/// gzip (and only then) (C3).
+#[test]
+fn web_gzip_compresses_when_accepted() {
+    let dir = make_test_dir("web_gzip");
+    let bin = compile_web(&dir, "<?php echo str_repeat('ABCD', 500);", "app");
+    let port = free_port();
+    let addr = format!("127.0.0.1:{}", port);
+    let mut child = Command::new(&bin)
+        .args(["--listen", &addr, "--workers", "1", "--gzip"])
+        .spawn()
+        .expect("spawn");
+    wait_until_ready(&addr);
+    // The gzipped body is binary, so read raw bytes and inspect the (ASCII) header
+    // block rather than http_request's read_to_string.
+    let gz_head = {
+        use std::io::{Read, Write};
+        let mut sock = TcpStream::connect(&addr).unwrap();
+        let req = format!(
+            "GET / HTTP/1.1\r\nHost: {}\r\nAccept-Encoding: gzip\r\nConnection: close\r\n\r\n",
+            addr
+        );
+        sock.write_all(req.as_bytes()).unwrap();
+        let mut buf = Vec::new();
+        sock.read_to_end(&mut buf).unwrap();
+        String::from_utf8_lossy(&buf[..buf.len().min(512)]).to_string()
+    };
+    let plain = http_request(&addr, "GET", "/", &[], "");
+    let _ = child.kill();
+    let _ = child.wait();
+    assert!(gz_head.to_lowercase().contains("content-encoding: gzip"), "gzip not applied: {:?}", gz_head);
+    assert!(!plain.to_lowercase().contains("content-encoding"), "must not compress without Accept-Encoding");
+    // The uncompressed response carries the full 2000-byte body.
+    assert!(plain.ends_with(&"ABCD".repeat(500)), "plain body mismatch");
+}

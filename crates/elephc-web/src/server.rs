@@ -14,7 +14,7 @@ use std::ffi::CStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use crate::worker;
+use crate::worker::{self, WorkerConfig};
 
 /// `--help` text for the produced `--web` binary.
 const HELP: &str = "\
@@ -29,6 +29,7 @@ Options:
   --max-requests N       Recycle a worker after N requests; 0 = never (default: 0)
   --access-log           Log one line per request to stderr
   --max-execution-time N Kill (and respawn) a worker whose handler runs > N seconds; 0 = no limit
+  --gzip                 Compress responses when the client sends Accept-Encoding: gzip
   --help                 Show this help and exit
   --version              Show the server version and exit";
 
@@ -92,6 +93,21 @@ struct ServerArgs {
     access_log: bool,
     /// Per-request handler time limit in seconds; `0` means no limit.
     max_exec_secs: u32,
+    /// gzip the response when the client accepts it.
+    gzip: bool,
+}
+
+impl ServerArgs {
+    /// Builds the per-worker config handed to `worker::serve`.
+    fn worker_config(&self) -> WorkerConfig {
+        WorkerConfig {
+            max_body: self.max_body,
+            max_requests: self.max_requests,
+            access_log: self.access_log,
+            max_exec_secs: self.max_exec_secs,
+            gzip: self.gzip,
+        }
+    }
 }
 
 /// Outcome of argument parsing: a runnable config, an early exit (`--help`/
@@ -132,6 +148,7 @@ fn parse_args(argc: i32, argv: *const *const u8) -> ParsedArgs {
     let mut max_requests: usize = 0;
     let mut access_log = false;
     let mut max_exec_secs: u32 = 0;
+    let mut gzip = false;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -141,6 +158,7 @@ fn parse_args(argc: i32, argv: *const *const u8) -> ParsedArgs {
             "--max-requests" => { i += 1; max_requests = args.get(i).and_then(|v| v.parse().ok()).unwrap_or(max_requests); }
             "--max-execution-time" => { i += 1; max_exec_secs = args.get(i).and_then(|v| v.parse().ok()).unwrap_or(max_exec_secs); }
             "--access-log" => { access_log = true; }
+            "--gzip" => { gzip = true; }
             _ => {}
         }
         i += 1;
@@ -153,6 +171,7 @@ fn parse_args(argc: i32, argv: *const *const u8) -> ParsedArgs {
             max_requests,
             access_log,
             max_exec_secs,
+            gzip,
         }),
         None => {
             eprintln!("error: --web binary requires --listen host:port (try --help)");
@@ -169,14 +188,7 @@ fn default_workers() -> usize {
 /// Forks one worker child that serves forever, returning the child pid in the
 /// master. The child restores default signal disposition and never returns. A
 /// fork failure aborts the whole process. Used for both initial spawn and respawn.
-fn spawn_worker(
-    listen: &str,
-    handler: extern "C" fn(),
-    max_body: usize,
-    max_requests: usize,
-    access_log: bool,
-    max_exec_secs: u32,
-) -> libc::pid_t {
+fn spawn_worker(listen: &str, handler: extern "C" fn(), cfg: WorkerConfig) -> libc::pid_t {
     match unsafe { libc::fork() } {
         -1 => {
             eprintln!("error: fork failed");
@@ -184,7 +196,7 @@ fn spawn_worker(
         }
         0 => {
             reset_signal_handlers_to_default();
-            worker::serve(listen, handler, max_body, max_requests, access_log, max_exec_secs);
+            worker::serve(listen, handler, cfg);
             std::process::exit(0);
         }
         pid => pid,
@@ -211,7 +223,7 @@ pub extern "C" fn elephc_web_run(
     // time so a crash-on-startup loop (e.g. a failed bind) can be detected.
     let mut children: Vec<(libc::pid_t, Instant)> = Vec::new();
     for _ in 0..args.workers {
-        let pid = spawn_worker(&args.listen, handler, args.max_body, args.max_requests, args.access_log, args.max_exec_secs);
+        let pid = spawn_worker(&args.listen, handler, args.worker_config());
         children.push((pid, Instant::now()));
     }
     eprintln!(
@@ -259,7 +271,7 @@ pub extern "C" fn elephc_web_run(
                 fast_deaths = 0;
             }
             // A worker died unexpectedly: replace it to keep the pool at N.
-            let new_pid = spawn_worker(&args.listen, handler, args.max_body, args.max_requests, args.access_log, args.max_exec_secs);
+            let new_pid = spawn_worker(&args.listen, handler, args.worker_config());
             children.push((new_pid, Instant::now()));
         } else if pid == -1 {
             // ECHILD: nothing left to wait for. EINTR: a signal arrived → re-loop

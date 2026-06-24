@@ -71,19 +71,37 @@ fn install_exec_timeout_handler() {
     }
 }
 
+/// Per-worker serving configuration (all `Copy`, so it survives `fork` and moves
+/// into the connection tasks freely).
+#[derive(Clone, Copy)]
+pub struct WorkerConfig {
+    /// Max request body in bytes; `0` = unlimited (over-limit → HTTP 413).
+    pub max_body: usize,
+    /// Recycle the worker after this many requests; `0` = never.
+    pub max_requests: usize,
+    /// Log one line per request to stderr.
+    pub access_log: bool,
+    /// Per-request handler time limit in seconds; `0` = no limit.
+    pub max_exec_secs: u32,
+    /// gzip the response body when the client sent `Accept-Encoding: gzip`.
+    pub gzip: bool,
+}
+
+/// Minimum response size (bytes) worth gzip-compressing; below this the framing
+/// overhead outweighs the savings.
+const GZIP_MIN_LEN: usize = 256;
+
 /// Serves HTTP on `listen` (host:port) in this worker process. Builds a
 /// current-thread tokio runtime and loops accepting connections, serving each
-/// with the PHP handler. `max_body` caps the request body in bytes (`0` =
-/// unlimited; over-limit → HTTP 413). `max_requests` recycles the worker after
-/// that many requests (`0` = never); the master respawns it.
-pub fn serve(
-    listen: &str,
-    handler: extern "C" fn(),
-    max_body: usize,
-    max_requests: usize,
-    access_log: bool,
-    max_exec_secs: u32,
-) {
+/// with the PHP handler per `WorkerConfig`.
+pub fn serve(listen: &str, handler: extern "C" fn(), cfg: WorkerConfig) {
+    let WorkerConfig {
+        max_body,
+        max_requests,
+        access_log,
+        max_exec_secs,
+        gzip,
+    } = cfg;
     if max_exec_secs > 0 {
         MAX_EXEC_SECS.store(max_exec_secs, Ordering::Relaxed);
         install_exec_timeout_handler();
@@ -143,6 +161,10 @@ pub fn serve(
                     let protocol = format!("{:?}", req.version());
                     // Captured for the optional access log (method/path are moved into set_request).
                     let log_method_path = if access_log { Some((method.clone(), path.clone())) } else { None };
+                    let accepts_gzip = gzip
+                        && req.headers().get(hyper::header::ACCEPT_ENCODING).is_some_and(|v| {
+                            v.to_str().map(|s| s.to_ascii_lowercase().contains("gzip")).unwrap_or(false)
+                        });
                     let headers: Vec<(String, String)> = req
                         .headers()
                         .iter()
@@ -181,9 +203,26 @@ pub fn serve(
                     request_state::set_request(method, uri, path, query, headers, body, meta);
                     let resp_body = run_handler(handler);
                     let status = request_state::take_status();
+                    let resp_headers = request_state::take_headers();
+                    // gzip the body when the client accepts it, the body is large
+                    // enough to be worth it, and the handler did not already set a
+                    // Content-Encoding.
+                    let already_encoded = resp_headers
+                        .iter()
+                        .any(|(n, _)| n.eq_ignore_ascii_case("content-encoding"));
+                    let gzipped = if accepts_gzip && !already_encoded && resp_body.len() >= GZIP_MIN_LEN {
+                        gzip_bytes(&resp_body)
+                    } else {
+                        None
+                    };
+                    let do_gzip = gzipped.is_some();
+                    let resp_body = gzipped.unwrap_or(resp_body);
                     let mut builder = Response::builder().status(status);
-                    for (name, value) in request_state::take_headers() {
+                    for (name, value) in resp_headers {
                         builder = builder.header(name, value);
+                    }
+                    if do_gzip {
+                        builder = builder.header("content-encoding", "gzip");
                     }
                     let response = builder
                         .body(Full::new(Bytes::from(resp_body)))
@@ -202,6 +241,16 @@ pub fn serve(
                 })));
         }
     });
+}
+
+/// gzip-compresses `data`, returning the compressed bytes, or `None` if encoding
+/// failed (so the caller leaves the body uncompressed and sets no Content-Encoding).
+fn gzip_bytes(data: &[u8]) -> Option<Vec<u8>> {
+    use std::io::Write;
+    let mut encoder =
+        flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    encoder.write_all(data).ok()?;
+    encoder.finish().ok()
 }
 
 /// Runs the PHP handler for one request and returns the captured response body.
