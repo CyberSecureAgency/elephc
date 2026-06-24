@@ -27,6 +27,7 @@ Options:
   --workers N            Number of prefork worker processes (default: CPU count)
   --max-body-size BYTES  Max request body in bytes; 0 = unlimited (default: 8388608)
   --max-requests N       Recycle a worker after N requests; 0 = never (default: 0)
+  --access-log           Log one line per request to stderr
   --help                 Show this help and exit
   --version              Show the server version and exit";
 
@@ -86,6 +87,8 @@ struct ServerArgs {
     max_body: usize,
     /// Recycle a worker after this many requests; `0` means never.
     max_requests: usize,
+    /// When true, log one line per request to stderr.
+    access_log: bool,
 }
 
 /// Outcome of argument parsing: a runnable config, an early exit (`--help`/
@@ -124,6 +127,7 @@ fn parse_args(argc: i32, argv: *const *const u8) -> ParsedArgs {
     let mut workers: usize = default_workers();
     let mut max_body: usize = DEFAULT_MAX_BODY;
     let mut max_requests: usize = 0;
+    let mut access_log = false;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -131,6 +135,7 @@ fn parse_args(argc: i32, argv: *const *const u8) -> ParsedArgs {
             "--workers" => { i += 1; workers = args.get(i).and_then(|w| w.parse().ok()).unwrap_or(workers); }
             "--max-body-size" => { i += 1; max_body = args.get(i).and_then(|v| v.parse().ok()).unwrap_or(max_body); }
             "--max-requests" => { i += 1; max_requests = args.get(i).and_then(|v| v.parse().ok()).unwrap_or(max_requests); }
+            "--access-log" => { access_log = true; }
             _ => {}
         }
         i += 1;
@@ -141,6 +146,7 @@ fn parse_args(argc: i32, argv: *const *const u8) -> ParsedArgs {
             workers: workers.max(1),
             max_body,
             max_requests,
+            access_log,
         }),
         None => {
             eprintln!("error: --web binary requires --listen host:port (try --help)");
@@ -162,6 +168,7 @@ fn spawn_worker(
     handler: extern "C" fn(),
     max_body: usize,
     max_requests: usize,
+    access_log: bool,
 ) -> libc::pid_t {
     match unsafe { libc::fork() } {
         -1 => {
@@ -170,7 +177,7 @@ fn spawn_worker(
         }
         0 => {
             reset_signal_handlers_to_default();
-            worker::serve(listen, handler, max_body, max_requests);
+            worker::serve(listen, handler, max_body, max_requests, access_log);
             std::process::exit(0);
         }
         pid => pid,
@@ -197,7 +204,7 @@ pub extern "C" fn elephc_web_run(
     // time so a crash-on-startup loop (e.g. a failed bind) can be detected.
     let mut children: Vec<(libc::pid_t, Instant)> = Vec::new();
     for _ in 0..args.workers {
-        let pid = spawn_worker(&args.listen, handler, args.max_body, args.max_requests);
+        let pid = spawn_worker(&args.listen, handler, args.max_body, args.max_requests, args.access_log);
         children.push((pid, Instant::now()));
     }
     eprintln!(
@@ -245,7 +252,7 @@ pub extern "C" fn elephc_web_run(
                 fast_deaths = 0;
             }
             // A worker died unexpectedly: replace it to keep the pool at N.
-            let new_pid = spawn_worker(&args.listen, handler, args.max_body, args.max_requests);
+            let new_pid = spawn_worker(&args.listen, handler, args.max_body, args.max_requests, args.access_log);
             children.push((new_pid, Instant::now()));
         } else if pid == -1 {
             // ECHILD: nothing left to wait for. EINTR: a signal arrived → re-loop

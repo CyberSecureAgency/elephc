@@ -13,7 +13,7 @@
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use http_body_util::{BodyExt, Full, Limited};
 use hyper::body::Bytes;
@@ -26,6 +26,9 @@ use tokio::net::TcpListener;
 
 use crate::request_state;
 
+/// Pending-connection backlog for each worker's listening socket.
+const LISTEN_BACKLOG: i32 = 1024;
+
 /// Builds a listening std::net::TcpListener with SO_REUSEPORT set, bound to `addr`.
 fn reuseport_listener(addr: SocketAddr) -> std::io::Result<std::net::TcpListener> {
     let domain = if addr.is_ipv6() { Domain::IPV6 } else { Domain::IPV4 };
@@ -34,7 +37,7 @@ fn reuseport_listener(addr: SocketAddr) -> std::io::Result<std::net::TcpListener
     sock.set_reuse_port(true)?;
     sock.set_nonblocking(true)?;
     sock.bind(&addr.into())?;
-    sock.listen(1024)?;
+    sock.listen(LISTEN_BACKLOG)?;
     Ok(sock.into())
 }
 
@@ -47,7 +50,13 @@ static SERVED: AtomicUsize = AtomicUsize::new(0);
 /// with the PHP handler. `max_body` caps the request body in bytes (`0` =
 /// unlimited; over-limit → HTTP 413). `max_requests` recycles the worker after
 /// that many requests (`0` = never); the master respawns it.
-pub fn serve(listen: &str, handler: extern "C" fn(), max_body: usize, max_requests: usize) {
+pub fn serve(
+    listen: &str,
+    handler: extern "C" fn(),
+    max_body: usize,
+    max_requests: usize,
+    access_log: bool,
+) {
     let addr: SocketAddr = match listen.parse() {
         Ok(a) => a,
         Err(_) => {
@@ -86,11 +95,14 @@ pub fn serve(listen: &str, handler: extern "C" fn(), max_body: usize, max_reques
                 .timer(TokioTimer::new())
                 .header_read_timeout(Duration::from_secs(30))
                 .serve_connection(io, service_fn(move |req: Request<hyper::body::Incoming>| async move {
+                    let started = Instant::now();
                     let method = req.method().as_str().to_string();
                     let uri = req.uri().to_string();
                     let path = req.uri().path().to_string();
                     let query = req.uri().query().unwrap_or("").to_string();
                     let protocol = format!("{:?}", req.version());
+                    // Captured for the optional access log (method/path are moved into set_request).
+                    let log_method_path = if access_log { Some((method.clone(), path.clone())) } else { None };
                     let headers: Vec<(String, String)> = req
                         .headers()
                         .iter()
@@ -136,6 +148,16 @@ pub fn serve(listen: &str, handler: extern "C" fn(), max_body: usize, max_reques
                     let response = builder
                         .body(Full::new(Bytes::from(resp_body)))
                         .unwrap_or_else(|_| Response::new(Full::new(Bytes::from_static(b""))));
+                    if let Some((m, p)) = log_method_path {
+                        eprintln!(
+                            "{} \"{} {}\" {} {}ms",
+                            peer.ip(),
+                            m,
+                            p,
+                            status,
+                            started.elapsed().as_millis()
+                        );
+                    }
                     Ok::<_, Infallible>(response)
                 }))
                 .await
