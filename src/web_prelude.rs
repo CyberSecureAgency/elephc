@@ -200,6 +200,20 @@ pub fn inject_if_web(program: Program, web: bool) -> Program {
     let mut combined = crate::parser::parse(&tokens).expect("web prelude must parse");
     combined.extend(program);
 
+    // The catch-all try wrap below reorders the top level (declarations hoisted
+    // out, executables wrapped). That reordering is unsafe across namespace
+    // boundaries: a `namespace X;` / `namespace X { … }` would be separated from
+    // the declarations it scopes, leaving them in the wrong namespace. For
+    // namespaced programs (e.g. a framework with `App\…` classes) skip the wrap
+    // entirely — such programs do their own error handling — and keep B1's
+    // uncaught-exception → 500 net only for flat, non-namespaced programs.
+    if combined
+        .iter()
+        .any(|s| matches!(s.kind, StmtKind::NamespaceDecl { .. } | StmtKind::NamespaceBlock { .. }))
+    {
+        return combined;
+    }
+
     // Partition the top level: hoistable declarations (functions, classes, externs)
     // stay outside the try so they resolve normally — externs in particular are NOT
     // resolved when nested in a try. Everything executable goes inside a catch-all

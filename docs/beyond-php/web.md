@@ -137,6 +137,14 @@ defaults to `text/html`; elephc-web sets nothing unless you call `header()`).
 
 See `examples/web-response/` for a runnable demo.
 
+## A fuller example
+
+`examples/web-framework/` builds a tiny Laravel-style framework on top of `--web`
+— namespaced `Request`/`Response`/`Router` classes, single-action controllers
+behind a `Handler` interface, a middleware onion (`Middleware` interface, e.g. an
+API-key guard), `:param` route matching, and JSON responses — to show how the
+pieces fit together in a real-ish application.
+
 ## Per-request fresh state
 
 Between requests, the runtime resets all process-persistent state so request

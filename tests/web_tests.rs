@@ -886,3 +886,23 @@ fn web_multipart_file_contents_readable() {
     let _ = child.wait();
     assert!(resp.ends_with("UPLOAD-CONTENT-OK"), "upload content not read back: {:?}", resp);
 }
+
+/// Verifies a namespaced --web program (classes under a namespace) compiles and
+/// serves. The B1 uncaught-exception wrap must not reorder top-level namespace
+/// declarations away from the classes they scope (it skips the wrap entirely when
+/// namespaces are present). Regression for the web-framework example.
+#[test]
+fn web_namespaced_program_serves() {
+    let dir = make_test_dir("web_namespaced");
+    let src = "<?php namespace App; \
+        class Greeter { public function hi(string $n): string { return 'hi ' . $n; } } \
+        $g = new Greeter(); echo $g->hi($_GET['n'] ?? 'world');";
+    let bin = compile_web(&dir, src, "app");
+    let port = free_port();
+    let addr = format!("127.0.0.1:{}", port);
+    let mut child = spawn_server(&bin, &addr, "1");
+    let resp = http_request(&addr, "GET", "/?n=ada", &[], "");
+    let _ = child.kill();
+    let _ = child.wait();
+    assert!(resp.ends_with("hi ada"), "namespaced --web program: {:?}", resp);
+}
