@@ -17,6 +17,15 @@ fn test_utf8_bom_prefixed_source_compiles_and_runs() {
     assert_eq!(out, "hi");
 }
 
+/// Verifies a top-level `return <expr>;` halts the script and discards the value
+/// (PHP only uses a script's return value for includes). Previously this errored
+/// as "return values on the EIR backend entry function".
+#[test]
+fn test_top_level_return_value_halts_and_is_discarded() {
+    let out = compile_and_run("<?php echo \"a\"; return 5; echo \"b\";");
+    assert_eq!(out, "a");
+}
+
 // --- IIFE (Immediately Invoked Function Expression) ---
 
 /// Compiles an IIFE that returns a string literal and verifies the value is echoed correctly.
