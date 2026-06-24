@@ -13,7 +13,7 @@
 //!   the prelude statements are prepended and the whole top-level body re-runs
 //!   per request.
 
-use crate::parser::ast::Program;
+use crate::parser::ast::{Program, StmtKind};
 
 /// The PHP source prepended under `--web`. Phase 2 Task 2: extern declarations;
 /// Task 5: $_SERVER; Task 6: $_GET parsed from the query string; Task 7: $_POST
@@ -152,8 +152,16 @@ function setrawcookie($name, $value = '', $expires = 0, $path = '', $domain = ''
 }
 "#;
 
-/// Prepends the web prelude when compiling with `--web`. Returns the program
-/// unchanged otherwise.
+/// The catch-all wrapper: the whole handler body is placed inside its `try` so an
+/// uncaught exception sets a 500 status instead of crashing the worker (the
+/// process would otherwise die and the master would respawn it, dropping the
+/// connection). The `0;` placeholder body is replaced with the real statements.
+const WEB_WRAP_SRC: &str =
+    "<?php try { $__elephc_wrap = 0; } catch (\\Throwable $__elephc_exc) { http_response_code(500); }";
+
+/// Prepends the web prelude when compiling with `--web` and wraps the whole
+/// handler body in a catch-all `try`/`catch` so uncaught exceptions become a 500.
+/// Returns the program unchanged otherwise.
 pub fn inject_if_web(program: Program, web: bool) -> Program {
     if !web {
         return program;
@@ -161,5 +169,49 @@ pub fn inject_if_web(program: Program, web: bool) -> Program {
     let tokens = crate::lexer::tokenize(WEB_PRELUDE_SRC).expect("web prelude must tokenize");
     let mut combined = crate::parser::parse(&tokens).expect("web prelude must parse");
     combined.extend(program);
-    combined
+
+    // Partition the top level: hoistable declarations (functions, classes, externs)
+    // stay outside the try so they resolve normally — externs in particular are NOT
+    // resolved when nested in a try. Everything executable goes inside a catch-all
+    // try so an uncaught exception becomes a 500 instead of crashing the worker.
+    let mut decls: Program = Vec::new();
+    let mut exec: Program = Vec::new();
+    for stmt in combined {
+        if is_hoistable_decl(&stmt.kind) {
+            decls.push(stmt);
+        } else {
+            exec.push(stmt);
+        }
+    }
+
+    let wrap_tokens = crate::lexer::tokenize(WEB_WRAP_SRC).expect("web wrapper must tokenize");
+    let mut wrapper = crate::parser::parse(&wrap_tokens).expect("web wrapper must parse");
+    if let Some(stmt) = wrapper.first_mut() {
+        if let StmtKind::Try { try_body, .. } = &mut stmt.kind {
+            *try_body = exec;
+            decls.extend(wrapper);
+            return decls;
+        }
+    }
+    // Parser invariant changed unexpectedly; fall back to the unwrapped body.
+    decls.extend(exec);
+    decls
+}
+
+/// Returns true for top-level statement kinds that are position-independent
+/// declarations (hoisted by the resolver), so they can be kept outside the
+/// catch-all `try` that wraps the executable handler body.
+fn is_hoistable_decl(kind: &StmtKind) -> bool {
+    matches!(
+        kind,
+        StmtKind::FunctionDecl { .. }
+            | StmtKind::ClassDecl { .. }
+            | StmtKind::EnumDecl { .. }
+            | StmtKind::PackedClassDecl { .. }
+            | StmtKind::InterfaceDecl { .. }
+            | StmtKind::TraitDecl { .. }
+            | StmtKind::ExternFunctionDecl { .. }
+            | StmtKind::ExternClassDecl { .. }
+            | StmtKind::ExternGlobalDecl { .. }
+    )
 }

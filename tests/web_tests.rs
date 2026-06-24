@@ -747,3 +747,24 @@ fn web_max_requests_recycles_and_keeps_serving() {
     let _ = child.kill();
     let _ = child.wait();
 }
+
+/// Verifies an uncaught exception in the handler returns HTTP 500 instead of
+/// crashing the worker / dropping the connection (B1), and the server keeps
+/// serving other requests afterward.
+#[test]
+fn web_uncaught_exception_returns_500() {
+    let dir = make_test_dir("web_500");
+    let src = "<?php if (($_SERVER['REQUEST_URI'] ?? '') === '/boom') { throw new Exception('kaboom'); } echo 'ok';";
+    let bin = compile_web(&dir, src, "app");
+    let port = free_port();
+    let addr = format!("127.0.0.1:{}", port);
+    let mut child = spawn_server(&bin, &addr, "1");
+    let ok = http_request(&addr, "GET", "/", &[], "");
+    let boom = http_request(&addr, "GET", "/boom", &[], "");
+    let after = http_request(&addr, "GET", "/", &[], "");
+    let _ = child.kill();
+    let _ = child.wait();
+    assert!(ok.ends_with("ok"), "normal request: {:?}", ok);
+    assert!(boom.starts_with("HTTP/1.1 500"), "uncaught exception must be 500: {:?}", boom);
+    assert!(after.ends_with("ok"), "server must keep serving after a 500: {:?}", after);
+}
