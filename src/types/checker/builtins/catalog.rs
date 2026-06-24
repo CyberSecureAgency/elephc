@@ -180,6 +180,7 @@ const SUPPORTED_BUILTIN_FUNCTIONS: &[&str] = &[
     "hash_hmac",
     "hash_init",
     "hash_update",
+    "header",
     "hex2bin",
     "hrtime",
     "html_entity_decode",
