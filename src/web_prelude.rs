@@ -101,6 +101,28 @@ if (strpos(strtoupper($__elephc_ct), 'APPLICATION/X-WWW-FORM-URLENCODED') !== fa
         }
     }
 }
+$_COOKIE = [];
+$__elephc_ck = isset($_SERVER['HTTP_COOKIE']) ? $_SERVER['HTTP_COOKIE'] : '';
+if ($__elephc_ck !== '') {
+    $__elephc_cpairs = explode(';', $__elephc_ck);
+    foreach ($__elephc_cpairs as $__elephc_cpair) {
+        $__elephc_ceq = strpos($__elephc_cpair, '=');
+        if ($__elephc_ceq !== false) {
+            $__elephc_cknm = trim(substr($__elephc_cpair, 0, $__elephc_ceq));
+            $__elephc_cv = rawurldecode(trim(substr($__elephc_cpair, $__elephc_ceq + 1)));
+            if ($__elephc_cknm !== '') {
+                $_COOKIE[$__elephc_cknm] = $__elephc_cv;
+            }
+        }
+    }
+}
+$_REQUEST = [];
+foreach ($_GET as $__elephc_rqk => $__elephc_rqv) {
+    $_REQUEST[$__elephc_rqk] = $__elephc_rqv;
+}
+foreach ($_POST as $__elephc_rqk => $__elephc_rqv) {
+    $_REQUEST[$__elephc_rqk] = $__elephc_rqv;
+}
 "#;
 
 /// Prepends the web prelude when compiling with `--web`. Returns the program

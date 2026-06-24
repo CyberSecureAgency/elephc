@@ -617,3 +617,40 @@ fn web_server_vars_populated() {
     let expected = format!("127.0.0.1|{}|HTTP/1.1|http|elephc|t", port);
     assert!(resp.ends_with(&expected), "expected {:?} at end of {:?}", expected, resp);
 }
+
+/// Verifies $_COOKIE (A2): the Cookie header is parsed into the superglobal,
+/// values are percent-decoded.
+#[test]
+fn web_cookie_parsed() {
+    let dir = make_test_dir("web_cookie");
+    let src = "<?php echo ($_COOKIE['a'] ?? '?').'|'.($_COOKIE['b'] ?? '?').'|'.count($_COOKIE);";
+    let bin = compile_web(&dir, src, "app");
+    let port = free_port();
+    let addr = format!("127.0.0.1:{}", port);
+    let mut child = spawn_server(&bin, &addr, "1");
+    let resp = http_request(&addr, "GET", "/", &[("Cookie", "a=1; b=hello%20world")], "");
+    let _ = child.kill();
+    let _ = child.wait();
+    assert!(resp.ends_with("1|hello world|2"), "cookie parse: {:?}", resp);
+}
+
+/// Verifies $_REQUEST (A4): merges $_GET then $_POST (POST overrides on collision).
+#[test]
+fn web_request_superglobal_merges_get_post() {
+    let dir = make_test_dir("web_request_merge");
+    let src = "<?php echo ($_REQUEST['x'] ?? '?').'|'.($_REQUEST['q'] ?? '?').'|'.count($_REQUEST);";
+    let bin = compile_web(&dir, src, "app");
+    let port = free_port();
+    let addr = format!("127.0.0.1:{}", port);
+    let mut child = spawn_server(&bin, &addr, "1");
+    let resp = http_request(
+        &addr,
+        "POST",
+        "/?x=g&q=1",
+        &[("Content-Type", "application/x-www-form-urlencoded")],
+        "x=p",
+    );
+    let _ = child.kill();
+    let _ = child.wait();
+    assert!(resp.ends_with("p|1|2"), "$_REQUEST merge (POST overrides GET): {:?}", resp);
+}
