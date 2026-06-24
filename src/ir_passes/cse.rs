@@ -45,7 +45,7 @@ use crate::ir::{
 use super::cfg::has_exception_handlers;
 use super::dominance::compute_dominance;
 use super::driver::IrPass;
-use super::rewrite::{neutralize_to_nop, replace_all_uses, resolve_chains};
+use super::rewrite::{defining_instruction, neutralize_to_nop, replace_all_uses, resolve_chains};
 
 /// Common-subexpression elimination pass. See the module docs for the model.
 pub struct Cse;
@@ -59,6 +59,27 @@ pub struct Cse;
 enum ImmKey {
     None,
     Repr(String),
+}
+
+/// Canonical encoding of one operand in the value key.
+///
+/// A non-constant operand is keyed by its SSA representative `ValueId` (equal
+/// values share one id after redirection). A *constant* operand — one defined by a
+/// nullary pure materialization (`const_i64 1`, `data_addr X`, …) — is keyed by its
+/// value instead, so two distinct `const_i64 1` instructions compare equal. Without
+/// this, `($n + 1) * ($n + 1)` keeps two separate `const_i64 1` operands, the two
+/// `iadd`s get different keys, and CSE cannot collapse the repeated `$n + 1`.
+/// Nullary constants are still never CSE'd as instructions (each use rematerializes
+/// its own); this only unifies them when they appear as *operands* of a real
+/// computation.
+#[derive(Clone, PartialEq, Eq, Hash)]
+enum OperandKey {
+    Value(ValueId),
+    Const {
+        op: Op,
+        ir_type: IrType,
+        immediate: ImmKey,
+    },
 }
 
 /// Value-numbering key: two pure instructions with equal keys compute the same
@@ -77,7 +98,7 @@ struct Key {
     php_type: String,
     ownership: Ownership,
     immediate: ImmKey,
-    operands: Vec<ValueId>,
+    operands: Vec<OperandKey>,
 }
 
 impl IrPass for Cse {
@@ -185,7 +206,7 @@ fn visit_block(
         if !matches!(inst.result_ownership, Ownership::NonHeap | Ownership::Persistent) {
             continue;
         }
-        let key = make_key(inst, rauw);
+        let key = make_key(function, inst, rauw);
         match table.get(&key) {
             Some(&existing) => {
                 // An identical value already computed in a dominating position.
@@ -202,9 +223,18 @@ fn visit_block(
 }
 
 /// Builds the value-numbering key for a pure instruction, canonicalizing each
-/// operand through the redirection map so equal values share one representative.
-fn make_key(inst: &crate::ir::Instruction, rauw: &HashMap<ValueId, ValueId>) -> Key {
-    let operands = inst.operands.iter().map(|&value| canon(rauw, value)).collect();
+/// operand through the redirection map (and unifying constant operands by value) so
+/// equal operand values share one representative.
+fn make_key(
+    function: &Function,
+    inst: &crate::ir::Instruction,
+    rauw: &HashMap<ValueId, ValueId>,
+) -> Key {
+    let operands = inst
+        .operands
+        .iter()
+        .map(|&value| canon_operand(function, rauw, value))
+        .collect();
     Key {
         op: inst.op,
         result_type: inst.result_type,
@@ -213,6 +243,29 @@ fn make_key(inst: &crate::ir::Instruction, rauw: &HashMap<ValueId, ValueId>) -> 
         immediate: immediate_key(inst.immediate.as_ref()),
         operands,
     }
+}
+
+/// Canonicalizes an operand for the value key: a constant operand (defined by a
+/// nullary pure materialization) is keyed by its `(op, type, immediate)` value, so
+/// two distinct constants of the same value unify; any other operand is keyed by its
+/// SSA representative. Purity is required so impure nullary defs (e.g. `load_local`,
+/// whose value depends on slot state) are never treated as value-equal.
+fn canon_operand(
+    function: &Function,
+    rauw: &HashMap<ValueId, ValueId>,
+    value: ValueId,
+) -> OperandKey {
+    let repr = canon(rauw, value);
+    if let Some(def) = defining_instruction(function, repr) {
+        if def.operands.is_empty() && def.effects.is_pure() {
+            return OperandKey::Const {
+                op: def.op,
+                ir_type: def.result_type,
+                immediate: immediate_key(def.immediate.as_ref()),
+            };
+        }
+    }
+    OperandKey::Value(repr)
 }
 
 /// Follows the redirection chain to a value's current representative. Chains are

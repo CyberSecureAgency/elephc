@@ -31,3 +31,5 @@ mod eir_licm;
 mod identity_arithmetic;
 #[path = "optimizer/peephole.rs"]
 mod peephole;
+#[path = "optimizer/inline.rs"]
+mod inline;

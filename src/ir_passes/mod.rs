@@ -23,6 +23,7 @@ mod dead_store;
 mod dominance;
 mod driver;
 mod identity_arith;
+mod inline;
 mod intervals;
 mod licm;
 mod liveness;

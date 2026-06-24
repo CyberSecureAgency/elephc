@@ -16,6 +16,7 @@ mod dead_store_test;
 mod dominance_test;
 mod driver_test;
 mod identity_arith_test;
+mod inline_test;
 mod intervals_test;
 mod licm_test;
 mod liveness_test;
