@@ -47,3 +47,44 @@ fn test_cse_distinct_subexpressions_preserved() {
     let out = compile_and_run("<?php $n = $argc; echo ($n + 1) * ($n + 2);");
     assert_eq!(out, "6");
 }
+
+/// Structural proof that CSE actually deduplicates `($n + 1) * ($n + 1)` (the
+/// previous output-only tests passed even when it did not fire): the constant `1`
+/// operands are unified by value, so `main` contains exactly one `iadd` with ir-opt
+/// on (two without). Guards the constant-operand canonicalization against regression.
+#[test]
+fn test_cse_collapses_constant_operand_subexpression() {
+    use std::fs;
+    use std::path::PathBuf;
+    use std::process::Command;
+
+    let dir = std::env::temp_dir().join(format!(
+        "elephc_cse_struct_{}_{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    fs::create_dir_all(&dir).unwrap();
+    let php_path: PathBuf = dir.join("t.php");
+    fs::write(&php_path, "<?php $n = $argc; echo ($n + 1) * ($n + 1);\n").unwrap();
+    let elephc = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.join("elephc")))
+        .filter(|p| p.exists())
+        .unwrap_or_else(|| PathBuf::from("target/debug/elephc"));
+
+    let count_iadds = |extra: &[&str]| -> usize {
+        let mut cmd = Command::new(&elephc);
+        cmd.arg("--emit-ir");
+        cmd.args(extra);
+        cmd.arg(&php_path);
+        let out = cmd.output().expect("emit-ir");
+        assert!(out.status.success(), "emit-ir failed");
+        let text = String::from_utf8_lossy(&out.stdout);
+        let main_body = text.split("function main(").nth(1).expect("main present");
+        let main_body = main_body.split("\n  function ").next().unwrap_or(main_body);
+        main_body.matches("= iadd ").count()
+    };
+
+    assert_eq!(count_iadds(&["--no-ir-opt"]), 2, "unoptimized keeps both adds");
+    assert_eq!(count_iadds(&[]), 1, "CSE collapses the repeated $n + 1 to one add");
+}
