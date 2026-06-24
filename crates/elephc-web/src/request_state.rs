@@ -267,6 +267,8 @@ pub(crate) fn set_request(
         core::ptr::write(core::ptr::addr_of_mut!(REQ_SERVER_PORT), meta.server_port as i64);
         core::ptr::write(core::ptr::addr_of_mut!(REQ_PROTOCOL), Some(cstr(&meta.protocol)));
         core::ptr::write(core::ptr::addr_of_mut!(REQ_TIME), now);
+        // Invalidate the lazily-parsed multipart cache: it belongs to the prior request.
+        core::ptr::write(core::ptr::addr_of_mut!(MULTIPART_CACHE), None);
     }
 }
 
@@ -430,6 +432,95 @@ pub unsafe extern "C" fn elephc_web_env_value(i: i64) -> *const c_char {
     match usize::try_from(i).ok().and_then(|i| env_cache().get(i)) {
         Some((_, v)) => v.as_ptr(),
         None => EMPTY.as_ptr(),
+    }
+}
+
+/// Lazily-parsed `multipart/form-data` parts for the current request, as
+/// (name, filename, content_type, content). Invalidated each request in `set_request`.
+#[allow(clippy::type_complexity)]
+static mut MULTIPART_CACHE: Option<Vec<(CString, CString, CString, Vec<u8>)>> = None;
+
+/// Returns the parsed multipart parts, parsing the request body on first use.
+/// Empty unless the request is `multipart/form-data`. Single-threaded per worker.
+unsafe fn multipart_parts() -> &'static [(CString, CString, CString, Vec<u8>)] {
+    let slot = core::ptr::addr_of_mut!(MULTIPART_CACHE);
+    if (*slot).is_none() {
+        let content_type = (*core::ptr::addr_of!(REQ_HEADERS))
+            .iter()
+            .find(|(n, _)| n.to_bytes().eq_ignore_ascii_case(b"content-type"))
+            .map(|(_, v)| v.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let body = (*core::ptr::addr_of!(REQ_BODY)).clone();
+        let cstr = |s: &str| CString::new(s.replace('\0', "")).unwrap_or_default();
+        let cached: Vec<(CString, CString, CString, Vec<u8>)> =
+            crate::multipart::parse(&body, &content_type)
+                .into_iter()
+                .map(|p| {
+                    (
+                        cstr(&p.name),
+                        cstr(p.filename.as_deref().unwrap_or("")),
+                        cstr(&p.content_type),
+                        p.content,
+                    )
+                })
+                .collect();
+        core::ptr::write(slot, Some(cached));
+    }
+    (*slot).as_deref().unwrap_or(&[])
+}
+
+/// Returns the number of `multipart/form-data` parts in the current request.
+#[no_mangle]
+pub unsafe extern "C" fn elephc_web_multipart_count() -> i64 {
+    multipart_parts().len() as i64
+}
+
+/// Returns the `name` of multipart part `i`, or empty when out of range.
+#[no_mangle]
+pub unsafe extern "C" fn elephc_web_multipart_name(i: i64) -> *const c_char {
+    static EMPTY: [c_char; 1] = [0];
+    match usize::try_from(i).ok().and_then(|i| multipart_parts().get(i)) {
+        Some((n, _, _, _)) => n.as_ptr(),
+        None => EMPTY.as_ptr(),
+    }
+}
+
+/// Returns the `filename` of multipart part `i` (empty for non-file fields / out of range).
+#[no_mangle]
+pub unsafe extern "C" fn elephc_web_multipart_filename(i: i64) -> *const c_char {
+    static EMPTY: [c_char; 1] = [0];
+    match usize::try_from(i).ok().and_then(|i| multipart_parts().get(i)) {
+        Some((_, f, _, _)) => f.as_ptr(),
+        None => EMPTY.as_ptr(),
+    }
+}
+
+/// Returns the `Content-Type` of multipart part `i`, or empty when out of range.
+#[no_mangle]
+pub unsafe extern "C" fn elephc_web_multipart_type(i: i64) -> *const c_char {
+    static EMPTY: [c_char; 1] = [0];
+    match usize::try_from(i).ok().and_then(|i| multipart_parts().get(i)) {
+        Some((_, _, t, _)) => t.as_ptr(),
+        None => EMPTY.as_ptr(),
+    }
+}
+
+/// Returns a pointer to the raw content bytes of multipart part `i` (binary-safe).
+#[no_mangle]
+pub unsafe extern "C" fn elephc_web_multipart_value_ptr(i: i64) -> *const u8 {
+    static EMPTY: [u8; 1] = [0];
+    match usize::try_from(i).ok().and_then(|i| multipart_parts().get(i)) {
+        Some((_, _, _, c)) => c.as_ptr(),
+        None => EMPTY.as_ptr(),
+    }
+}
+
+/// Returns the content length in bytes of multipart part `i`, or 0 when out of range.
+#[no_mangle]
+pub unsafe extern "C" fn elephc_web_multipart_value_len(i: i64) -> i64 {
+    match usize::try_from(i).ok().and_then(|i| multipart_parts().get(i)) {
+        Some((_, _, _, c)) => c.len() as i64,
+        None => 0,
     }
 }
 

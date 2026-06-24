@@ -835,3 +835,29 @@ fn web_gzip_compresses_when_accepted() {
     // The uncompressed response carries the full 2000-byte body.
     assert!(plain.ends_with(&"ABCD".repeat(500)), "plain body mismatch");
 }
+
+/// Verifies multipart/form-data parsing (A5): text fields land in $_POST and file
+/// uploads populate $_FILES (name, type, size). The request is built by hand to
+/// avoid depending on a multipart client.
+#[test]
+fn web_multipart_post_and_files() {
+    let dir = make_test_dir("web_multipart");
+    let src = "<?php echo ($_POST['greeting'] ?? '?').'|'.($_FILES['upload']['name'] ?? '?')\
+        .'|'.($_FILES['upload']['type'] ?? '?').'|'.($_FILES['upload']['size'] ?? '?');";
+    let bin = compile_web(&dir, src, "app");
+    let port = free_port();
+    let addr = format!("127.0.0.1:{}", port);
+    let mut child = spawn_server(&bin, &addr, "1");
+    let boundary = "Xbnd";
+    let body = format!(
+        "--{b}\r\nContent-Disposition: form-data; name=\"greeting\"\r\n\r\nhello\r\n\
+         --{b}\r\nContent-Disposition: form-data; name=\"upload\"; filename=\"up.txt\"\r\n\
+         Content-Type: text/plain\r\n\r\nFILEDATA-123\r\n--{b}--\r\n",
+        b = boundary
+    );
+    let ct = format!("multipart/form-data; boundary={}", boundary);
+    let resp = http_request(&addr, "POST", "/", &[("Content-Type", &ct)], &body);
+    let _ = child.kill();
+    let _ = child.wait();
+    assert!(resp.ends_with("hello|up.txt|text/plain|12"), "multipart parse: {:?}", resp);
+}

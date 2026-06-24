@@ -13,6 +13,7 @@
 //! - One process per prefork worker means no shared-thread state: per-worker
 //!   request/response data lives in plain process statics, not behind a mutex.
 
+mod multipart;
 mod request_state;
 mod server;
 mod worker;
@@ -27,7 +28,9 @@ pub use request_state::elephc_web_write;
 pub use request_state::{
     elephc_web_body_len, elephc_web_body_ptr, elephc_web_env_count, elephc_web_env_name,
     elephc_web_env_value, elephc_web_header_count, elephc_web_header_name, elephc_web_header_value,
-    elephc_web_method, elephc_web_path, elephc_web_protocol, elephc_web_query_string,
+    elephc_web_method, elephc_web_multipart_count, elephc_web_multipart_filename,
+    elephc_web_multipart_name, elephc_web_multipart_type, elephc_web_multipart_value_len,
+    elephc_web_multipart_value_ptr, elephc_web_path, elephc_web_protocol, elephc_web_query_string,
     elephc_web_remote_addr, elephc_web_remote_port, elephc_web_request_time, elephc_web_server_addr,
     elephc_web_server_port, elephc_web_uri,
 };

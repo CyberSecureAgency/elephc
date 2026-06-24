@@ -43,6 +43,12 @@ extern "elephc_web" {
     function elephc_web_env_count(): int;
     function elephc_web_env_name(int $i): string;
     function elephc_web_env_value(int $i): string;
+    function elephc_web_multipart_count(): int;
+    function elephc_web_multipart_name(int $i): string;
+    function elephc_web_multipart_filename(int $i): string;
+    function elephc_web_multipart_type(int $i): string;
+    function elephc_web_multipart_value_ptr(int $i): ptr;
+    function elephc_web_multipart_value_len(int $i): int;
 }
 $_SERVER = [];
 $_SERVER['REQUEST_METHOD'] = elephc_web_method();
@@ -100,6 +106,30 @@ if (strpos(strtoupper($__elephc_ct), 'APPLICATION/X-WWW-FORM-URLENCODED') !== fa
                 $__elephc_pk = rawurldecode(substr($__elephc_ppair, 0, $__elephc_peq));
                 $__elephc_pv = rawurldecode(substr($__elephc_ppair, $__elephc_peq + 1));
                 $_POST[$__elephc_pk] = $__elephc_pv;
+            }
+        }
+    }
+}
+$_FILES = [];
+if (strpos(strtoupper($__elephc_ct), 'MULTIPART/FORM-DATA') !== false) {
+    $__elephc_mpc = elephc_web_multipart_count();
+    for ($__elephc_mpi = 0; $__elephc_mpi < $__elephc_mpc; $__elephc_mpi++) {
+        $__elephc_mpn = elephc_web_multipart_name($__elephc_mpi);
+        $__elephc_mpf = elephc_web_multipart_filename($__elephc_mpi);
+        $__elephc_mpv = ptr_read_string(elephc_web_multipart_value_ptr($__elephc_mpi), elephc_web_multipart_value_len($__elephc_mpi));
+        if ($__elephc_mpf === '') {
+            $_POST[$__elephc_mpn] = $__elephc_mpv;
+        } else {
+            $__elephc_mptmp = tempnam(sys_get_temp_dir(), 'elephc_up');
+            if ($__elephc_mptmp !== false) {
+                file_put_contents($__elephc_mptmp, $__elephc_mpv);
+                $_FILES[$__elephc_mpn] = [
+                    'name' => $__elephc_mpf,
+                    'type' => elephc_web_multipart_type($__elephc_mpi),
+                    'tmp_name' => $__elephc_mptmp,
+                    'error' => 0,
+                    'size' => strlen($__elephc_mpv),
+                ];
             }
         }
     }
