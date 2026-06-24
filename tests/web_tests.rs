@@ -654,3 +654,23 @@ fn web_request_superglobal_merges_get_post() {
     let _ = child.wait();
     assert!(resp.ends_with("p|1|2"), "$_REQUEST merge (POST overrides GET): {:?}", resp);
 }
+
+/// Verifies setcookie() (A3): emits a Set-Cookie response header (value
+/// percent-encoded, attributes appended), and multiple calls produce multiple
+/// headers (replace=false).
+#[test]
+fn web_setcookie_emits_header() {
+    let dir = make_test_dir("web_setcookie");
+    let src = "<?php setcookie('sid', 'ab c', 0, '/'); setcookie('x', 'y'); echo 'ok';";
+    let bin = compile_web(&dir, src, "app");
+    let port = free_port();
+    let addr = format!("127.0.0.1:{}", port);
+    let mut child = spawn_server(&bin, &addr, "1");
+    let resp = http_request(&addr, "GET", "/", &[], "");
+    let _ = child.kill();
+    let _ = child.wait();
+    let lower = resp.to_lowercase();
+    assert!(lower.contains("set-cookie: sid=ab%20c; path=/"), "first cookie: {:?}", resp);
+    assert!(lower.contains("set-cookie: x=y"), "second cookie: {:?}", resp);
+    assert!(resp.ends_with("ok"), "body: {:?}", resp);
+}

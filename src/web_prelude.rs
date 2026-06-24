@@ -123,6 +123,25 @@ foreach ($_GET as $__elephc_rqk => $__elephc_rqv) {
 foreach ($_POST as $__elephc_rqk => $__elephc_rqv) {
     $_REQUEST[$__elephc_rqk] = $__elephc_rqv;
 }
+function __elephc_emit_cookie($name, $value, $expires, $path, $domain, $secure, $httponly) {
+    $c = $name . '=' . $value;
+    if ($expires != 0) {
+        $c = $c . '; expires=' . gmdate('D, d-M-Y H:i:s', $expires) . ' GMT';
+        $c = $c . '; Max-Age=' . ($expires - time());
+    }
+    if ($path !== '') { $c = $c . '; path=' . $path; }
+    if ($domain !== '') { $c = $c . '; domain=' . $domain; }
+    if ($secure) { $c = $c . '; secure'; }
+    if ($httponly) { $c = $c . '; HttpOnly'; }
+    header('Set-Cookie: ' . $c, false);
+    return true;
+}
+function setcookie($name, $value = '', $expires = 0, $path = '', $domain = '', $secure = false, $httponly = false) {
+    return __elephc_emit_cookie($name, rawurlencode($value), $expires, $path, $domain, $secure, $httponly);
+}
+function setrawcookie($name, $value = '', $expires = 0, $path = '', $domain = '', $secure = false, $httponly = false) {
+    return __elephc_emit_cookie($name, $value, $expires, $path, $domain, $secure, $httponly);
+}
 "#;
 
 /// Prepends the web prelude when compiling with `--web`. Returns the program
