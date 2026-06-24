@@ -481,3 +481,28 @@ fn web_body_size_limit_returns_413() {
     assert!(small.ends_with("10"), "under-limit body should serve: {:?}", small);
     assert!(big.starts_with("HTTP/1.1 413"), "over-limit body should be 413: {:?}", big);
 }
+
+/// Verifies the server shuts down cleanly (exit code 0) on SIGTERM, promptly.
+#[test]
+fn web_sigterm_shuts_down_cleanly() {
+    let dir = make_test_dir("web_sigterm");
+    let bin = compile_web(&dir, "<?php echo \"ok\";", "app");
+    let port = free_port();
+    let addr = format!("127.0.0.1:{}", port);
+    let mut child = spawn_server(&bin, &addr, "2");
+    assert!(http_request(&addr, "GET", "/", &[], "").ends_with("ok"));
+    let pid = child.id();
+    let _ = Command::new("kill").args(["-TERM", &pid.to_string()]).status();
+    let start = Instant::now();
+    let status = loop {
+        if let Some(s) = child.try_wait().expect("try_wait") {
+            break s;
+        }
+        if start.elapsed() > Duration::from_secs(8) {
+            let _ = child.kill();
+            panic!("master did not exit within 8s of SIGTERM");
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    assert_eq!(status.code(), Some(0), "master should exit 0 on SIGTERM");
+}
