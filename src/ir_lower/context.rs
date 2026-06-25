@@ -876,6 +876,9 @@ impl<'m, 'f> LoweringContext<'m, 'f> {
         if self.value_is_owning_mixed_string_cast(value.value) {
             return true;
         }
+        if self.value_is_owning_mixed_container_read(value.value) {
+            return true;
+        }
         if matches!(
             self.builder.value_defining_op(value.value),
             Some(Op::PropGet | Op::DynamicPropGet | Op::NullsafePropGet)
@@ -973,15 +976,15 @@ impl<'m, 'f> LoweringContext<'m, 'f> {
 
     /// Returns whether a retained local/global store should release its source value.
     pub(crate) fn value_needs_release_after_retaining_store(&self, value: LoweredValue) -> bool {
-        self.value_is_owning_temporary(value) || self.value_is_maybe_owned_mixed_container_read(value)
+        self.value_is_owning_temporary(value)
     }
 
-    /// Returns whether a container read may have materialized a fresh Mixed box.
-    fn value_is_maybe_owned_mixed_container_read(&self, value: LoweredValue) -> bool {
-        let php_type = self.builder.value_php_type(value.value);
+    /// Returns whether a Mixed container read now owns a caller reference.
+    fn value_is_owning_mixed_container_read(&self, value: ValueId) -> bool {
+        let php_type = self.builder.value_php_type(value);
         matches!(php_type.codegen_repr(), PhpType::Mixed | PhpType::Union(_))
             && matches!(
-                self.builder.value_defining_op(value.value),
+                self.builder.value_defining_op(value),
                 Some(Op::ArrayGet | Op::HashGet)
             )
     }

@@ -516,6 +516,11 @@ fn emit_array_get_in_bounds_aarch64(
             abi::emit_load_from_address(ctx.emitter, index_reg, array_reg, 0);
             abi::emit_load_from_address(ctx.emitter, tag_reg, array_reg, 8);
         }
+        PhpType::Mixed => {
+            ctx.emitter.instruction(&format!("add {}, {}, #24", array_reg, array_reg)); // skip the indexed-array header to reach Mixed cell payloads
+            ctx.emitter.instruction(&format!("ldr {}, [{}, {}, lsl #3]", index_reg, array_reg, index_reg)); // load the selected boxed Mixed cell
+            abi::emit_incref_if_refcounted(ctx.emitter, elem_ty);
+        }
         other if other.is_refcounted() => {
             ctx.emitter.instruction(&format!("add {}, {}, #24", array_reg, array_reg)); // skip the indexed-array header to reach pointer payloads
             ctx.emitter.instruction(&format!("ldr {}, [{}, {}, lsl #3]", index_reg, array_reg, index_reg)); // load the selected refcounted indexed-array element
@@ -568,6 +573,11 @@ fn emit_array_get_in_bounds_x86_64(
             ctx.emitter.instruction(&format!("add {}, 24", array_reg));         // skip the indexed-array header before loading the tagged-scalar slot
             abi::emit_load_from_address(ctx.emitter, index_reg, array_reg, 0);
             abi::emit_load_from_address(ctx.emitter, tag_reg, array_reg, 8);
+        }
+        PhpType::Mixed => {
+            ctx.emitter.instruction(&format!("lea {}, [{} + 24]", array_reg, array_reg)); // skip the indexed-array header to reach Mixed cell payloads
+            ctx.emitter.instruction(&format!("mov {}, QWORD PTR [{} + {} * 8]", index_reg, array_reg, index_reg)); // load the selected boxed Mixed cell
+            abi::emit_incref_if_refcounted(ctx.emitter, elem_ty);
         }
         other if other.is_refcounted() => {
             ctx.emitter.instruction(&format!("lea {}, [{} + 24]", array_reg, array_reg)); // skip the indexed-array header to reach pointer payloads

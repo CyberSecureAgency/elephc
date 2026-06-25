@@ -580,6 +580,50 @@ echo count($x->a);
     );
 }
 
+/// Verifies that assigning a Mixed indexed-array cell to a local retains an
+/// independent owner and does not leave the array with a dangling cell.
+#[test]
+fn test_mixed_indexed_array_read_survives_local_unset() {
+    let out = compile_and_run_with_heap_debug(
+        r#"<?php
+$values = [5, "x"];
+$first = $values[0];
+unset($first);
+echo $values[0];
+unset($values);
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    assert_eq!(out.stdout, "5");
+    assert!(
+        out.stderr.contains("HEAP DEBUG: leak summary: clean"),
+        "expected a clean heap, got: {}",
+        out.stderr
+    );
+}
+
+/// Verifies that assigning a Mixed associative-array cell to a local retains an
+/// independent owner and does not leave the hash with a dangling cell.
+#[test]
+fn test_mixed_assoc_array_read_survives_local_unset() {
+    let out = compile_and_run_with_heap_debug(
+        r#"<?php
+$values = ["a" => 5, "b" => "x"];
+$first = $values["a"];
+unset($first);
+echo $values["a"];
+unset($values);
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    assert_eq!(out.stdout, "5");
+    assert!(
+        out.stderr.contains("HEAP DEBUG: leak summary: clean"),
+        "expected a clean heap, got: {}",
+        out.stderr
+    );
+}
+
 /// Regression test: pushing an owned array literal into a Mixed-element property
 /// array adds a second ownership layer. The inner array is retained by the Mixed
 /// box and the Mixed box is retained by `__rt_array_push_refcounted`. The property
