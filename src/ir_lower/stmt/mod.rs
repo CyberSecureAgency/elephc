@@ -570,6 +570,24 @@ fn lower_for(
     ctx.clear_static_callable_locals();
 }
 
+/// Releases the value operand of an array/hash element write when it is an owned
+/// string. These writes PERSIST (copy) a string value into the container instead
+/// of moving it (`__rt_str_persist`), so an owned string operand — e.g. a function
+/// or extern call result like `$_ENV[$k] = getenv_value()` — would otherwise never
+/// be freed (a per-write heap leak that exhausts the heap under `--web`). Non-string
+/// refcounted values (objects, arrays) are moved, or retained only when borrowed,
+/// by the write itself, so they must not be released here.
+fn release_persisted_string_operand(ctx: &mut LoweringContext<'_, '_>, value: LoweredValue, span: Span) {
+    let ty = ctx.builder.value_php_type(value.value);
+    // Only release a FRESH owning string temporary (a call/concat result, etc.).
+    // A borrowed load of a variable that still owns the string (e.g. the prelude's
+    // `$_GET[$k] = $v`) must NOT be released here, or the container's stored copy
+    // would be freed out from under it.
+    if matches!(ty.codegen_repr(), PhpType::Str) && ctx.value_is_owning_temporary(value) {
+        crate::ir_lower::ownership::release_if_owned(ctx, value, Some(span));
+    }
+}
+
 /// Lowers an indexed array assignment.
 fn lower_array_assign(
     ctx: &mut LoweringContext<'_, '_>,
@@ -602,9 +620,12 @@ fn lower_array_assign(
             Some(span),
         );
         finish_indexed_array_local_write(ctx, array, array_value, updated_ty, needs_storeback, span);
+        release_persisted_string_operand(ctx, value_value, span);
         return;
     }
     ctx.emit_void(op, vec![array_value.value, index_value.value, value_value.value], None, op.default_effects(), Some(span));
+    release_persisted_string_operand(ctx, index_value, span);
+    release_persisted_string_operand(ctx, value_value, span);
 }
 
 /// Promotes an indexed local array to a Mixed-valued associative array for string-key writes.
@@ -634,6 +655,8 @@ fn lower_string_key_array_promotion(
         Op::HashSet.default_effects(),
         Some(span),
     );
+    release_persisted_string_operand(ctx, index, span);
+    release_persisted_string_operand(ctx, value, span);
     ctx.store_mutated_local(array, hash, assoc_ty, Some(span));
 }
 
@@ -692,9 +715,11 @@ fn lower_array_push(ctx: &mut LoweringContext<'_, '_>, array: &str, value: &Expr
         };
         ctx.emit_void(op, vec![array_value.value, value.value], None, op.default_effects(), Some(span));
         finish_indexed_array_local_write(ctx, array, array_value, updated_ty, needs_storeback, span);
+        release_persisted_string_operand(ctx, value, span);
         return;
     }
     ctx.emit_void(op, vec![array_value.value, value.value], None, op.default_effects(), Some(span));
+    release_persisted_string_operand(ctx, value, span);
 }
 
 /// Prepares an indexed-array local for an offset assignment.
