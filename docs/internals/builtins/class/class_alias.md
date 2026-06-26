@@ -5,7 +5,7 @@ sidebar:
   order: 49
 ---
 
-# `class_alias()` — internals
+## `class_alias()` — internals
 
 ## Where it lives
 

@@ -29,9 +29,40 @@ binary is written next to it, named after the source without its extension.
 | `--emit-ir` | — | off | Print the EIR textual form and stop. |
 | `--check` | — | off | Run front-end checks only; write nothing. |
 | `--source-map` | — | off | Emit a `.map` sidecar next to the assembly. |
+| `--web` | — | off | Compile a prefork HTTP server binary instead of a CLI executable. See [Web Server](../beyond-php/web.md). |
 
-`--emit-ir`, `--emit-asm`, and `--check` are mutually exclusive. See
+`--emit-ir`, `--emit-asm`, and `--check` are mutually exclusive. `--web` cannot
+be combined with `--check`, `--emit cdylib`, `--emit-asm`, or `--emit-ir`. See
 [Output formats and diagnostics](output-and-diagnostics.md).
+
+## Web server binary runtime arguments
+
+When a program is compiled with `--web`, the produced binary accepts these
+runtime arguments (not elephc compiler flags):
+
+| Argument | Required | Default | Description |
+|---|---|---|---|
+| `--listen host:port` | Yes | — | Address and port to bind. Missing `--listen` prints an error to stderr and exits non-zero. |
+| `--workers N` | No | CPU count | Number of prefork worker processes. Minimum 1. |
+| `--max-body-size N` | No | `8388608` (8 MiB) | Max request body in bytes (`0` = unlimited); oversized bodies get `413`. |
+| `--max-requests N` | No | `0` (never) | Recycle each worker after N requests (bounds memory growth). |
+| `--access-log` | No | off | Log one line per request to stderr. |
+| `--help`, `--version` | No | — | Print usage / version and exit. |
+
+```bash
+elephc --web app.php
+./app --listen 127.0.0.1:8080
+./app --listen 0.0.0.0:8080 --workers 4 --max-body-size 1048576 --access-log
+```
+
+The served program also receives `$_COOKIE`, `$_REQUEST`, and `$_ENV`, and can
+emit cookies with `setcookie()`. The server shuts down cleanly on
+`SIGINT`/`SIGTERM` and respawns workers that die.
+
+The served program receives the HTTP request through the standard superglobals
+`$_SERVER`, `$_GET`, `$_POST`, and `php://input`, and controls the response
+status and headers with `http_response_code()` and `header()`. See
+[Web Server](../beyond-php/web.md#request-input).
 
 ## Targets
 

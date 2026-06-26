@@ -5,7 +5,7 @@ sidebar:
   order: 193
 ---
 
-# stream_select()
+## stream_select()
 
 ```php
 function stream_select(array $read, array $write, array $except, int $seconds, int $microseconds): int

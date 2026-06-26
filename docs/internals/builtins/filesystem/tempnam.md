@@ -5,12 +5,12 @@ sidebar:
   order: 131
 ---
 
-# `tempnam()` — internals
+## `tempnam()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3802](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3802) (`lower_tempnam`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3810](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3810) (`lower_tempnam`)
 - **Function symbol**: `lower_tempnam()`
 
 

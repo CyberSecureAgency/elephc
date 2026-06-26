@@ -5,7 +5,7 @@ sidebar:
   order: 211
 ---
 
-# stream_wrapper_unregister()
+## stream_wrapper_unregister()
 
 ```php
 function stream_wrapper_unregister(string $protocol): bool

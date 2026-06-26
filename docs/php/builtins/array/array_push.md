@@ -5,7 +5,7 @@ sidebar:
   order: 19
 ---
 
-# array_push()
+## array_push()
 
 ```php
 function array_push(array $array, ...$values): void

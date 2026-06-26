@@ -5,7 +5,7 @@ sidebar:
   order: 78
 ---
 
-# mktime()
+## mktime()
 
 ```php
 function mktime(int $hour, int $minute, int $second, int $month, int $day, int $year): int

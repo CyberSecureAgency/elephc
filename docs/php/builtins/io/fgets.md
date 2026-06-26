@@ -5,7 +5,7 @@ sidebar:
   order: 143
 ---
 
-# fgets()
+## fgets()
 
 ```php
 function fgets(resource $stream, int $length): mixed

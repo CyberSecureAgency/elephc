@@ -5,7 +5,7 @@ sidebar:
   order: 213
 ---
 
-# json_decode()
+## json_decode()
 
 ```php
 function json_decode(string $json, bool $associative, int $depth, int $flags): mixed

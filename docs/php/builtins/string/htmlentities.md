@@ -2,10 +2,10 @@
 title: "htmlentities()"
 description: "Lowers a one-argument string builtin that directly delegates to a runtime helper."
 sidebar:
-  order: 338
+  order: 340
 ---
 
-# htmlentities()
+## htmlentities()
 
 ```php
 function htmlentities(string $string, int $flags, string $encoding, bool $double_encode): string

@@ -2,10 +2,10 @@
 title: "ptr_is_null() — internals"
 description: "Compiler internals for ptr_is_null(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 271
+  order: 273
 ---
 
-# `ptr_is_null()` — internals
+## `ptr_is_null()` — internals
 
 ## Where it lives
 

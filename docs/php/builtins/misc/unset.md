@@ -2,10 +2,10 @@
 title: "unset()"
 description: "Unsets the given variables."
 sidebar:
-  order: 264
+  order: 266
 ---
 
-# unset()
+## unset()
 
 ```php
 function unset(mixed $var, ...$vars): void

@@ -5,7 +5,7 @@ sidebar:
   order: 179
 ---
 
-# stream_context_set_option()
+## stream_context_set_option()
 
 ```php
 function stream_context_set_option(resource $context, string $wrapper_or_options, string $option_name, mixed $value): bool

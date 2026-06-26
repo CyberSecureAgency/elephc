@@ -2,10 +2,10 @@
 title: "ptr_set()"
 description: "Lowers `ptr_set(pointer, value)` by writing one machine word through a checked pointer."
 sidebar:
-  order: 275
+  order: 277
 ---
 
-# ptr_set()
+## ptr_set()
 
 ```php
 function ptr_set(pointer $pointer, mixed $value): void

@@ -5,7 +5,7 @@ sidebar:
   order: 65
 ---
 
-# is_a()
+## is_a()
 
 ```php
 function is_a(object $object_or_class, string $class, bool $allow_string): bool

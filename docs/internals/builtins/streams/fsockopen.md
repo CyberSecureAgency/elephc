@@ -2,10 +2,10 @@
 title: "fsockopen() — internals"
 description: "Compiler internals for fsockopen(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 312
+  order: 314
 ---
 
-# `fsockopen()` — internals
+## `fsockopen()` — internals
 
 ## Where it lives
 

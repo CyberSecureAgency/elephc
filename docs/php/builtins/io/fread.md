@@ -5,7 +5,7 @@ sidebar:
   order: 152
 ---
 
-# fread()
+## fread()
 
 ```php
 function fread(resource $stream, int $length): string

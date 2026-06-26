@@ -2,10 +2,10 @@
 title: "is_resource()"
 description: "Lowers `is_resource(value)` for static resources and boxed Mixed resource cells."
 sidebar:
-  order: 405
+  order: 407
 ---
 
-# is_resource()
+## is_resource()
 
 ```php
 function is_resource(mixed $value): bool

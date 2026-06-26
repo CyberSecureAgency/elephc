@@ -5,12 +5,12 @@ sidebar:
   order: 91
 ---
 
-# `file_exists()` — internals
+## `file_exists()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3748](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3748) (`lower_file_exists`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3756](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3756) (`lower_file_exists`)
 - **Function symbol**: `lower_file_exists()`
 
 

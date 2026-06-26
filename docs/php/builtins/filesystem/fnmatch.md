@@ -5,7 +5,7 @@ sidebar:
   order: 101
 ---
 
-# fnmatch()
+## fnmatch()
 
 ```php
 function fnmatch(string $pattern, string $filename, int $flags): bool

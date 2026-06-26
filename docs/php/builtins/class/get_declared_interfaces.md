@@ -5,7 +5,7 @@ sidebar:
   order: 61
 ---
 
-# get_declared_interfaces()
+## get_declared_interfaces()
 
 ```php
 function get_declared_interfaces(): array

@@ -5,7 +5,7 @@ sidebar:
   order: 84
 ---
 
-# chmod()
+## chmod()
 
 ```php
 function chmod(string $filename, int $permissions): bool

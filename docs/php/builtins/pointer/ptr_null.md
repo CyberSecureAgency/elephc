@@ -2,10 +2,10 @@
 title: "ptr_null()"
 description: "Lowers `ptr_null()` by materializing the raw null pointer sentinel."
 sidebar:
-  order: 269
+  order: 271
 ---
 
-# ptr_null()
+## ptr_null()
 
 ```php
 function ptr_null(): mixed

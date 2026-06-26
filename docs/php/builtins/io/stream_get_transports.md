@@ -5,7 +5,7 @@ sidebar:
   order: 188
 ---
 
-# stream_get_transports()
+## stream_get_transports()
 
 ```php
 function stream_get_transports(): array

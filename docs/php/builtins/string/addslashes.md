@@ -2,10 +2,10 @@
 title: "addslashes()"
 description: "Lowers a one-argument string builtin that directly delegates to a runtime helper."
 sidebar:
-  order: 315
+  order: 317
 ---
 
-# addslashes()
+## addslashes()
 
 ```php
 function addslashes(string $string): string

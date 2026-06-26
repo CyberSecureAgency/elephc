@@ -5,7 +5,7 @@ sidebar:
   order: 28
 ---
 
-# `array_unique()` — internals
+## `array_unique()` — internals
 
 ## Where it lives
 

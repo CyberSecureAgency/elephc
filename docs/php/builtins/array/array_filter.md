@@ -5,7 +5,7 @@ sidebar:
   order: 8
 ---
 
-# array_filter()
+## array_filter()
 
 ```php
 function array_filter(array $array, callable $callback, int $mode): array

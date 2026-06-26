@@ -5,7 +5,7 @@ sidebar:
   order: 41
 ---
 
-# `rsort()` — internals
+## `rsort()` — internals
 
 ## Where it lives
 

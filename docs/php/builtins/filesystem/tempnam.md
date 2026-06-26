@@ -5,7 +5,7 @@ sidebar:
   order: 131
 ---
 
-# tempnam()
+## tempnam()
 
 ```php
 function tempnam(string $directory, string $prefix): string

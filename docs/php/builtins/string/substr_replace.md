@@ -2,10 +2,10 @@
 title: "substr_replace()"
 description: "Lowers `substr_replace(string, replacement, start, length?)`."
 sidebar:
-  order: 377
+  order: 379
 ---
 
-# substr_replace()
+## substr_replace()
 
 ```php
 function substr_replace(string $string, string $replace, int $offset, int $length): string

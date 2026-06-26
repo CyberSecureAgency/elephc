@@ -2,10 +2,10 @@
 title: "hash_final() — internals"
 description: "Compiler internals for hash_final(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 335
+  order: 337
 ---
 
-# `hash_final()` — internals
+## `hash_final()` — internals
 
 ## Where it lives
 

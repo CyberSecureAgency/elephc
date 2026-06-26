@@ -5,7 +5,7 @@ sidebar:
   order: 56
 ---
 
-# `class_uses()` — internals
+## `class_uses()` — internals
 
 ## Where it lives
 

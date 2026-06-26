@@ -5,12 +5,12 @@ sidebar:
   order: 137
 ---
 
-# `fclose()` — internals
+## `fclose()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:2480](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L2480) (`lower_fclose`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:2488](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L2488) (`lower_fclose`)
 - **Function symbol**: `lower_fclose()`
 
 

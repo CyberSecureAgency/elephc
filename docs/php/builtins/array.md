@@ -5,7 +5,7 @@ sidebar:
   order: 102
 ---
 
-# Array builtins
+## Array builtins
 
 | Function | Signature | Returns |
 |---|---|---|

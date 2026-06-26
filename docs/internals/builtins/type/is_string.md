@@ -2,10 +2,10 @@
 title: "is_string() — internals"
 description: "Compiler internals for is_string(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 410
+  order: 412
 ---
 
-# `is_string()` — internals
+## `is_string()` — internals
 
 ## Where it lives
 

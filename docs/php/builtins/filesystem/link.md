@@ -5,7 +5,7 @@ sidebar:
   order: 114
 ---
 
-# link()
+## link()
 
 ```php
 function link(string $target, string $link): bool

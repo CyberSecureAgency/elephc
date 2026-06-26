@@ -5,7 +5,7 @@ sidebar:
   order: 176
 ---
 
-# stream_context_get_options()
+## stream_context_get_options()
 
 ```php
 function stream_context_get_options(resource $stream_or_context): array

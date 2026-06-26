@@ -5,7 +5,7 @@ sidebar:
   order: 244
 ---
 
-# `pow()` — internals
+## `pow()` — internals
 
 ## Where it lives
 

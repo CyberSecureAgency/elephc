@@ -2,10 +2,10 @@
 title: "isset() — internals"
 description: "Compiler internals for isset(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 263
+  order: 265
 ---
 
-# `isset()` — internals
+## `isset()` — internals
 
 ## Where it lives
 

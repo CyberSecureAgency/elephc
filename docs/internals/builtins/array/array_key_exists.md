@@ -5,7 +5,7 @@ sidebar:
   order: 12
 ---
 
-# `array_key_exists()` — internals
+## `array_key_exists()` — internals
 
 ## Where it lives
 

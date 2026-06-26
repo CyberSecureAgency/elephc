@@ -5,7 +5,7 @@ sidebar:
   order: 62
 ---
 
-# `get_declared_traits()` — internals
+## `get_declared_traits()` — internals
 
 ## Where it lives
 

@@ -2,10 +2,10 @@
 title: "ptr_write16()"
 description: "Lowers `ptr_write16(pointer, value)` by writing one 16-bit word through a checked pointer."
 sidebar:
-  order: 277
+  order: 279
 ---
 
-# ptr_write16()
+## ptr_write16()
 
 ```php
 function ptr_write16(pointer $pointer, int $value): void

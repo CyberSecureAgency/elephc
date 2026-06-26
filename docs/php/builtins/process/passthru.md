@@ -2,10 +2,10 @@
 title: "passthru()"
 description: "Lowers `passthru(command)` through libc `system()` for direct stdout passthrough."
 sidebar:
-  order: 284
+  order: 286
 ---
 
-# passthru()
+## passthru()
 
 ```php
 function passthru(string $command, int $result_code): void

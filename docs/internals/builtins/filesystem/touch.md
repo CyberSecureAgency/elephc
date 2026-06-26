@@ -5,12 +5,12 @@ sidebar:
   order: 133
 ---
 
-# `touch()` — internals
+## `touch()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3872](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3872) (`lower_touch`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3880](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3880) (`lower_touch`)
 - **Function symbol**: `lower_touch()`
 
 

@@ -2,10 +2,10 @@
 title: "str_starts_with() — internals"
 description: "Compiler internals for str_starts_with(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 368
+  order: 370
 ---
 
-# `str_starts_with()` — internals
+## `str_starts_with()` — internals
 
 ## Where it lives
 

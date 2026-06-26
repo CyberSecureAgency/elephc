@@ -5,7 +5,7 @@ sidebar:
   order: 201
 ---
 
-# stream_socket_enable_crypto()
+## stream_socket_enable_crypto()
 
 ```php
 function stream_socket_enable_crypto(resource $stream, bool $enable, int $crypto_method, resource $session_stream): bool

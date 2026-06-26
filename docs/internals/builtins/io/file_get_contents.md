@@ -5,7 +5,7 @@ sidebar:
   order: 145
 ---
 
-# `file_get_contents()` — internals
+## `file_get_contents()` — internals
 
 ## Where it lives
 
@@ -22,6 +22,7 @@ sidebar:
 
 The following runtime helpers are referenced:
 - `__rt_file_get_contents_maybe_url`
+- `__rt_php_input`
 
 ## Signature summary
 

@@ -5,12 +5,12 @@ sidebar:
   order: 146
 ---
 
-# `file_put_contents()` — internals
+## `file_put_contents()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3494](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3494) (`lower_file_put_contents`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3502](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3502) (`lower_file_put_contents`)
 - **Function symbol**: `lower_file_put_contents()`
 
 

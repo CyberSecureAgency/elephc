@@ -2,15 +2,15 @@
 title: "readline() — internals"
 description: "Compiler internals for readline(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 290
+  order: 292
 ---
 
-# `readline()` — internals
+## `readline()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:195](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L195) (`lower_readline`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:203](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L203) (`lower_readline`)
 - **Function symbol**: `lower_readline()`
 
 

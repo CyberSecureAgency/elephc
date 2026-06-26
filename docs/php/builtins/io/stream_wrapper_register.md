@@ -5,7 +5,7 @@ sidebar:
   order: 209
 ---
 
-# stream_wrapper_register()
+## stream_wrapper_register()
 
 ```php
 function stream_wrapper_register(string $protocol, string $class, int $flags): bool

@@ -2,10 +2,10 @@
 title: "pclose()"
 description: "Lowers `pclose(handle)` and returns the child process status."
 sidebar:
-  order: 285
+  order: 287
 ---
 
-# pclose()
+## pclose()
 
 ```php
 function pclose(resource $handle): int

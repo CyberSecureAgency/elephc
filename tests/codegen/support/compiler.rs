@@ -183,6 +183,7 @@ pub(crate) fn compile_source_to_asm_with_defines_repr(
                 elephc::codegen::Emit::Executable,
                 &exported_functions,
                 regalloc_linear,
+                false,
             )
             .expect("EIR backend codegen failed for codegen fixture");
             let runtime_features = ir_module.required_runtime_features;

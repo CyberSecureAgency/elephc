@@ -2,10 +2,10 @@
 title: "rawurlencode()"
 description: "Lowers a one-argument string builtin that directly delegates to a runtime helper."
 sidebar:
-  order: 353
+  order: 355
 ---
 
-# rawurlencode()
+## rawurlencode()
 
 ```php
 function rawurlencode(string $string): string

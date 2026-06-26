@@ -5,7 +5,7 @@ sidebar:
   order: 186
 ---
 
-# stream_get_line()
+## stream_get_line()
 
 ```php
 function stream_get_line(resource $stream, int $length, string $ending): string

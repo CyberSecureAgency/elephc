@@ -2,10 +2,10 @@
 title: "urlencode()"
 description: "Lowers a one-argument string builtin that directly delegates to a runtime helper."
 sidebar:
-  order: 382
+  order: 384
 ---
 
-# urlencode()
+## urlencode()
 
 ```php
 function urlencode(string $string): string

@@ -5,7 +5,7 @@ sidebar:
   order: 140
 ---
 
-# fflush()
+## fflush()
 
 ```php
 function fflush(resource $stream): bool

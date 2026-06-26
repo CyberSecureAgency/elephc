@@ -5,7 +5,7 @@ sidebar:
   order: 27
 ---
 
-# array_sum()
+## array_sum()
 
 ```php
 function array_sum(array $array): float

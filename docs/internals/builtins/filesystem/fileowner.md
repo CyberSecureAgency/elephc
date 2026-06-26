@@ -5,12 +5,12 @@ sidebar:
   order: 97
 ---
 
-# `fileowner()` — internals
+## `fileowner()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:4841](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L4841) (`lower_fileowner`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:4849](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L4849) (`lower_fileowner`)
 - **Function symbol**: `lower_fileowner()`
 
 

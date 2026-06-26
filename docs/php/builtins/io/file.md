@@ -5,7 +5,7 @@ sidebar:
   order: 144
 ---
 
-# file()
+## file()
 
 ```php
 function file(string $filename, int $flags, mixed $context): array

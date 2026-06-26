@@ -2,10 +2,10 @@
 title: "is_float()"
 description: "is_float() — type builtin supported by Elephc."
 sidebar:
-  order: 399
+  order: 401
 ---
 
-# is_float()
+## is_float()
 
 ```php
 function is_float(mixed $value): bool

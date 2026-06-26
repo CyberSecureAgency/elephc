@@ -5,7 +5,7 @@ sidebar:
   order: 234
 ---
 
-# `is_finite()` — internals
+## `is_finite()` — internals
 
 ## Where it lives
 

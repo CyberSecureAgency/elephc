@@ -5,7 +5,7 @@ sidebar:
   order: 2
 ---
 
-# array_column()
+## array_column()
 
 ```php
 function array_column(array $array, string $column_key, string $index_key): array

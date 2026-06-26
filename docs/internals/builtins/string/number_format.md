@@ -2,10 +2,10 @@
 title: "number_format() — internals"
 description: "Compiler internals for number_format(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 352
+  order: 354
 ---
 
-# `number_format()` — internals
+## `number_format()` — internals
 
 ## Where it lives
 

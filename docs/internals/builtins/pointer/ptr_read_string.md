@@ -2,10 +2,10 @@
 title: "ptr_read_string() — internals"
 description: "Compiler internals for ptr_read_string(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 277
+  order: 279
 ---
 
-# `ptr_read_string()` — internals
+## `ptr_read_string()` — internals
 
 ## Where it lives
 

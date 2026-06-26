@@ -5,12 +5,12 @@ sidebar:
   order: 82
 ---
 
-# `chdir()` — internals
+## `chdir()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3787](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3787) (`lower_chdir`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3795](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3795) (`lower_chdir`)
 - **Function symbol**: `lower_chdir()`
 
 

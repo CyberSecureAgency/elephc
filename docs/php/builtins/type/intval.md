@@ -2,10 +2,10 @@
 title: "intval()"
 description: "Lowers `intval()` for concrete scalar operands."
 sidebar:
-  order: 395
+  order: 397
 ---
 
-# intval()
+## intval()
 
 ```php
 function intval(mixed $value, int $base): int

@@ -2,10 +2,10 @@
 title: "print_r()"
 description: "Prints human-readable information about a variable."
 sidebar:
-  order: 263
+  order: 265
 ---
 
-# print_r()
+## print_r()
 
 ```php
 function print_r(...$values): void

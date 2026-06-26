@@ -5,12 +5,12 @@ sidebar:
   order: 79
 ---
 
-# `strtotime()` — internals
+## `strtotime()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/system.rs`:416](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/system.rs#L416) (`lower_strtotime`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/system.rs`:487](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/system.rs#L487) (`lower_strtotime`)
 - **Function symbol**: `lower_strtotime()`
 
 

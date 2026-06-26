@@ -5,12 +5,12 @@ sidebar:
   order: 151
 ---
 
-# `fputcsv()` — internals
+## `fputcsv()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:2776](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L2776) (`lower_fputcsv`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:2784](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L2784) (`lower_fputcsv`)
 - **Function symbol**: `lower_fputcsv()`
 
 

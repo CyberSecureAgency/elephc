@@ -2,10 +2,10 @@
 title: "boolval()"
 description: "Lowers `boolval()` using the same concrete scalar PHP truthiness rules as `IsTruthy`."
 sidebar:
-  order: 386
+  order: 388
 ---
 
-# boolval()
+## boolval()
 
 ```php
 function boolval(mixed $value): bool

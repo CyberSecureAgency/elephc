@@ -2,10 +2,10 @@
 title: "print_r() — internals"
 description: "Compiler internals for print_r(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 266
+  order: 268
 ---
 
-# `print_r()` — internals
+## `print_r()` — internals
 
 ## Where it lives
 

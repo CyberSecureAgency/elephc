@@ -5,7 +5,7 @@ sidebar:
   order: 95
 ---
 
-# fileinode()
+## fileinode()
 
 ```php
 function fileinode(string $filename): mixed

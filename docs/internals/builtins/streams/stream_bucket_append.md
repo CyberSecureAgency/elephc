@@ -2,10 +2,10 @@
 title: "stream_bucket_append() — internals"
 description: "Compiler internals for stream_bucket_append(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 314
+  order: 316
 ---
 
-# `stream_bucket_append()` — internals
+## `stream_bucket_append()` — internals
 
 ## Where it lives
 

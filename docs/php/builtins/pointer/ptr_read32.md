@@ -2,10 +2,10 @@
 title: "ptr_read32()"
 description: "Lowers `ptr_read32(pointer)` by reading one unsigned 32-bit word through a checked pointer."
 sidebar:
-  order: 272
+  order: 274
 ---
 
-# ptr_read32()
+## ptr_read32()
 
 ```php
 function ptr_read32(pointer $pointer): int

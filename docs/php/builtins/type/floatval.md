@@ -2,10 +2,10 @@
 title: "floatval()"
 description: "Lowers `floatval()` for concrete scalar operands."
 sidebar:
-  order: 391
+  order: 393
 ---
 
-# floatval()
+## floatval()
 
 ```php
 function floatval(mixed $value): float

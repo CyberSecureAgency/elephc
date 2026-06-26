@@ -5,12 +5,12 @@ sidebar:
   order: 149
 ---
 
-# `fpassthru()` — internals
+## `fpassthru()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:2798](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L2798) (`lower_fpassthru`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:2806](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L2806) (`lower_fpassthru`)
 - **Function symbol**: `lower_fpassthru()`
 
 

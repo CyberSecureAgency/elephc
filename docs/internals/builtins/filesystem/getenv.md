@@ -5,12 +5,12 @@ sidebar:
   order: 103
 ---
 
-# `getenv()` — internals
+## `getenv()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/system.rs`:574](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/system.rs#L574) (`lower_getenv`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/system.rs`:645](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/system.rs#L645) (`lower_getenv`)
 - **Function symbol**: `lower_getenv()`
 
 

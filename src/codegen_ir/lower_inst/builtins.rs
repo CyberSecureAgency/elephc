@@ -303,6 +303,8 @@ pub(super) fn lower_builtin_call(ctx: &mut FunctionContext<'_>, inst: &Instructi
         "getdate" => system::lower_getdate(ctx, inst),
         "localtime" => system::lower_localtime(ctx, inst),
         "hrtime" => system::lower_hrtime(ctx, inst),
+        "http_response_code" => system::lower_http_response_code(ctx, inst),
+        "header" => system::lower_header(ctx, inst),
         "sleep" => system::lower_sleep(ctx, inst),
         "strtotime" => system::lower_strtotime(ctx, inst),
         "__elephc_strtotime_raw" => system::lower_elephc_strtotime_raw(ctx, inst),
@@ -530,6 +532,16 @@ pub(super) fn lower_builtin_call(ctx: &mut FunctionContext<'_>, inst: &Instructi
         "iterator_to_array" => spl::lower_iterator_to_array(ctx, inst),
         _ => Err(CodegenIrError::unsupported(format!("builtin call {}", name))),
     }
+}
+
+/// Lowers an EIR native indexed-array `isset($array[$offset])` probe.
+pub(super) fn lower_array_isset(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    isset::lower_array_isset(ctx, inst)
+}
+
+/// Lowers an EIR native associative-array `isset($hash[$key])` probe.
+pub(super) fn lower_hash_isset(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    isset::lower_hash_isset(ctx, inst)
 }
 
 /// Lowers `define("NAME", value)` with the legacy duplicate-name runtime guard.

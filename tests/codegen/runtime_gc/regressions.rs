@@ -580,6 +580,50 @@ echo count($x->a);
     );
 }
 
+/// Verifies that assigning a Mixed indexed-array cell to a local retains an
+/// independent owner and does not leave the array with a dangling cell.
+#[test]
+fn test_mixed_indexed_array_read_survives_local_unset() {
+    let out = compile_and_run_with_heap_debug(
+        r#"<?php
+$values = [5, "x"];
+$first = $values[0];
+unset($first);
+echo $values[0];
+unset($values);
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    assert_eq!(out.stdout, "5");
+    assert!(
+        out.stderr.contains("HEAP DEBUG: leak summary: clean"),
+        "expected a clean heap, got: {}",
+        out.stderr
+    );
+}
+
+/// Verifies that assigning a Mixed associative-array cell to a local retains an
+/// independent owner and does not leave the hash with a dangling cell.
+#[test]
+fn test_mixed_assoc_array_read_survives_local_unset() {
+    let out = compile_and_run_with_heap_debug(
+        r#"<?php
+$values = ["a" => 5, "b" => "x"];
+$first = $values["a"];
+unset($first);
+echo $values["a"];
+unset($values);
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    assert_eq!(out.stdout, "5");
+    assert!(
+        out.stderr.contains("HEAP DEBUG: leak summary: clean"),
+        "expected a clean heap, got: {}",
+        out.stderr
+    );
+}
+
 /// Regression test: pushing an owned array literal into a Mixed-element property
 /// array adds a second ownership layer. The inner array is retained by the Mixed
 /// box and the Mixed box is retained by `__rt_array_push_refcounted`. The property
@@ -845,6 +889,73 @@ run();
     );
     assert!(out.success, "program failed: {}", out.stderr);
     assert_eq!(out.stdout, "110|999|999");
+    assert!(
+        out.stderr.contains("HEAP DEBUG: leak summary: clean"),
+        "expected a clean heap, got: {}",
+        out.stderr
+    );
+}
+
+/// Regression test: assigning a by-value foreach element into another local should
+/// release the target slot using its widened Mixed storage representation.
+#[test]
+fn test_regression_foreach_mixed_value_assignment_releases_old_slot_storage() {
+    let out = compile_and_run_with_heap_debug(
+        r#"<?php
+for ($n = 0; $n < 50; $n++) {
+    foreach (["x", "y", "z"] as $p) {
+        $k = $p;
+    }
+}
+echo "x";
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    assert_eq!(out.stdout, "x");
+    assert!(
+        out.stderr.contains("HEAP DEBUG: leak summary: clean"),
+        "expected a clean heap, got: {}",
+        out.stderr
+    );
+}
+
+/// Regression test: refcounted hidden ternary merge temps must be released when
+/// reassigned across loop iterations and during function/main epilogue cleanup.
+#[test]
+fn test_regression_refcounted_hidden_ternary_temp_released() {
+    let out = compile_and_run_with_heap_debug(
+        r#"<?php
+for ($i = 0; $i < 50; $i++) {
+    $a = ["a" => "b"];
+    $x = isset($a["missing"]) ? $a["missing"] : "";
+}
+echo "x";
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    assert_eq!(out.stdout, "x");
+    assert!(
+        out.stderr.contains("HEAP DEBUG: leak summary: clean"),
+        "expected a clean heap, got: {}",
+        out.stderr
+    );
+}
+
+/// Regression test: `isset($hash[$missing])` on a Mixed-valued hash should probe
+/// presence/null without allocating a throwaway Mixed miss value every iteration.
+#[test]
+fn test_regression_mixed_hash_isset_miss_does_not_materialize_leaking_value() {
+    let out = compile_and_run_with_heap_debug(
+        r#"<?php
+for ($i = 0; $i < 50; $i++) {
+    $a = ["a" => 1, "b" => "s"];
+    $x = isset($a["missing"]) ? $a["missing"] : "";
+}
+echo "x";
+"#,
+    );
+    assert!(out.success, "program failed: {}", out.stderr);
+    assert_eq!(out.stdout, "x");
     assert!(
         out.stderr.contains("HEAP DEBUG: leak summary: clean"),
         "expected a clean heap, got: {}",

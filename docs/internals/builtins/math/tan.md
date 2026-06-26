@@ -5,7 +5,7 @@ sidebar:
   order: 252
 ---
 
-# `tan()` — internals
+## `tan()` — internals
 
 ## Where it lives
 

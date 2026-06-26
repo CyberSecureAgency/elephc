@@ -5,7 +5,7 @@ sidebar:
   order: 49
 ---
 
-# class_alias()
+## class_alias()
 
 ```php
 function class_alias(string $class, string $alias, bool $autoload): bool

@@ -5,7 +5,7 @@ sidebar:
   order: 67
 ---
 
-# trait_exists()
+## trait_exists()
 
 ```php
 function trait_exists(string $trait, bool $autoload): bool

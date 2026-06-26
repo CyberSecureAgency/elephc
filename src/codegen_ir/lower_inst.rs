@@ -21,7 +21,7 @@ use crate::codegen::context::{
 use crate::codegen::platform::Arch;
 use crate::intrinsics::{IntrinsicCall, IntrinsicCallKind};
 use crate::ir::{
-    BlockId, CmpPredicate, Function, Immediate, InstId, Instruction, LocalSlotId, Op, Ownership,
+    BlockId, CmpPredicate, Function, Immediate, InstId, Instruction, LocalKind, LocalSlotId, Op, Ownership,
     Terminator, ValueDef, ValueId,
 };
 use crate::names::{
@@ -134,6 +134,7 @@ pub(super) fn lower_instruction(ctx: &mut FunctionContext<'_>, inst_id: InstId) 
         Op::ArrayNew => arrays::lower_array_new(ctx, &inst),
         Op::ArrayLen => arrays::lower_array_len(ctx, &inst),
         Op::ArrayGet => arrays::lower_array_get(ctx, &inst),
+        Op::ArrayIsset => builtins::lower_array_isset(ctx, &inst),
         Op::ArraySet => arrays::lower_array_set(ctx, &inst),
         Op::ArrayPush => arrays::lower_array_push(ctx, &inst),
         Op::MixedArrayAppend => arrays::lower_mixed_array_append(ctx, &inst),
@@ -143,6 +144,7 @@ pub(super) fn lower_instruction(ctx: &mut FunctionContext<'_>, inst_id: InstId) 
         Op::HashNew => hashes::lower_hash_new(ctx, &inst),
         Op::HashLen => hashes::lower_hash_len(ctx, &inst),
         Op::HashGet => hashes::lower_hash_get(ctx, &inst),
+        Op::HashIsset => builtins::lower_hash_isset(ctx, &inst),
         Op::HashSet => hashes::lower_hash_set(ctx, &inst),
         Op::HashUnion => hashes::lower_hash_union(ctx, &inst),
         Op::HashArrayUnion => hashes::lower_hash_array_union(ctx, &inst),
@@ -187,6 +189,7 @@ pub(super) fn lower_instruction(ctx: &mut FunctionContext<'_>, inst_id: InstId) 
         Op::FirstClassCallableNew => lower_first_class_callable_new(ctx, &inst),
         Op::Acquire => ownership::lower_acquire(ctx, &inst),
         Op::Release => ownership::lower_release(ctx, &inst),
+        Op::GcCollect => lower_gc_collect(ctx),
         Op::Move | Op::Borrow => ownership::lower_forward(ctx, &inst),
         Op::EchoValue => lower_echo_value(ctx, &inst),
         Op::PrintValue => lower_print_value(ctx, &inst),
@@ -1035,6 +1038,12 @@ fn descriptor_entry_stack_offsets(assignments: &[abi::OutgoingArgAssignment]) ->
         next_offset += descriptor_entry_arg_slot_size(&assignment.ty);
     }
     (offsets, next_offset)
+}
+
+/// Lowers an explicit cycle-collection safe point.
+fn lower_gc_collect(ctx: &mut FunctionContext<'_>) -> Result<()> {
+    abi::emit_call_label(ctx.emitter, "__rt_gc_collect_cycles");
+    Ok(())
 }
 
 /// Converts a descriptor overflow offset into a caller-stack frame offset.
@@ -5335,6 +5344,41 @@ pub(super) fn load_value_to_first_int_arg(
     Ok(ty)
 }
 
+/// Casts a Mixed source in the first integer arg into one owned string copy.
+pub(super) fn emit_mixed_string_for_persistent_store(ctx: &mut FunctionContext<'_>) {
+    let non_string = ctx.next_label("mixed_string_persist_non_string");
+    let done = ctx.next_label("mixed_string_persist_done");
+    let mixed_arg = abi::int_arg_reg_name(ctx.emitter.target, 0);
+    abi::emit_push_reg(ctx.emitter, mixed_arg);
+    abi::emit_call_label(ctx.emitter, "__rt_mixed_unbox");
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction("cmp x0, #1");                              // check whether the Mixed payload already holds a string
+            ctx.emitter.instruction(&format!("b.ne {}", non_string));           // non-string casts need scratch conversion before persistence
+            abi::emit_release_temporary_stack(ctx.emitter, 16);
+            abi::emit_call_label(ctx.emitter, "__rt_str_persist");
+            ctx.emitter.instruction(&format!("b {}", done));                    // skip the generic cast path after the direct string persist
+            ctx.emitter.label(&non_string);
+            abi::emit_pop_reg(ctx.emitter, mixed_arg);
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_string");
+            abi::emit_call_label(ctx.emitter, "__rt_str_persist");
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("cmp rax, 1");                              // check whether the Mixed payload already holds a string
+            ctx.emitter.instruction(&format!("jne {}", non_string));            // non-string casts need scratch conversion before persistence
+            abi::emit_release_temporary_stack(ctx.emitter, 16);
+            ctx.emitter.instruction("mov rax, rdi");                            // move the unboxed string pointer into str_persist's input register
+            abi::emit_call_label(ctx.emitter, "__rt_str_persist");
+            ctx.emitter.instruction(&format!("jmp {}", done));                  // skip the generic cast path after the direct string persist
+            ctx.emitter.label(&non_string);
+            abi::emit_pop_reg(ctx.emitter, mixed_arg);
+            abi::emit_call_label(ctx.emitter, "__rt_mixed_cast_string");
+            abi::emit_call_label(ctx.emitter, "__rt_str_persist");
+        }
+    }
+    ctx.emitter.label(&done);
+}
+
 /// Resolves `value` into the canonical integer result register, unboxing a boxed `Mixed`/`Union`
 /// payload through `__rt_mixed_cast_int`.
 ///
@@ -5692,6 +5736,10 @@ fn lower_unset_local(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Resul
     let slot = expect_local_slot(inst)?;
     let offset = ctx.local_offset(slot)?;
     ctx.unmark_promoted_ref_cell(slot);
+    if ctx.local_kind(slot)? == LocalKind::OwnedTemp {
+        clear_local_slot_storage(ctx, slot, offset)?;
+        return Ok(());
+    }
     abi::emit_load_int_immediate(
         ctx.emitter,
         abi::int_result_reg(ctx.emitter),
@@ -5701,6 +5749,24 @@ fn lower_unset_local(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Resul
     if matches!(ctx.local_php_type(slot)?.codegen_repr(), PhpType::Str) {
         abi::emit_load_int_immediate(ctx.emitter, abi::int_result_reg(ctx.emitter), 0);
         abi::store_at_offset(ctx.emitter, abi::int_result_reg(ctx.emitter), offset - 8);
+    }
+    Ok(())
+}
+
+/// Zeroes a local slot after an owned hidden temp has been moved into SSA.
+fn clear_local_slot_storage(
+    ctx: &mut FunctionContext<'_>,
+    slot: LocalSlotId,
+    offset: usize,
+) -> Result<()> {
+    match ctx.local_php_type(slot)?.codegen_repr() {
+        PhpType::Str | PhpType::TaggedScalar => {
+            abi::emit_store_zero_to_local_slot(ctx.emitter, offset);
+            abi::emit_store_zero_to_local_slot(ctx.emitter, offset - 8);
+        }
+        _ => {
+            abi::emit_store_zero_to_local_slot(ctx.emitter, offset);
+        }
     }
     Ok(())
 }

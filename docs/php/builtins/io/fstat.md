@@ -5,7 +5,7 @@ sidebar:
   order: 155
 ---
 
-# fstat()
+## fstat()
 
 ```php
 function fstat(resource $stream): mixed

@@ -2,10 +2,10 @@
 title: "ptr_set() — internals"
 description: "Compiler internals for ptr_set(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 278
+  order: 280
 ---
 
-# `ptr_set()` — internals
+## `ptr_set()` — internals
 
 ## Where it lives
 

@@ -2,10 +2,10 @@
 title: "spl_object_hash()"
 description: "Lowers `spl_object_hash(object)` by formatting the loaded object pointer as a string."
 sidebar:
-  order: 307
+  order: 309
 ---
 
-# spl_object_hash()
+## spl_object_hash()
 
 ```php
 function spl_object_hash(object $object): string

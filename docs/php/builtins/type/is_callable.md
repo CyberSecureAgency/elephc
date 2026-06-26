@@ -2,10 +2,10 @@
 title: "is_callable()"
 description: "Lowers `is_callable(value)` through static lookup or runtime callable-shape helpers."
 sidebar:
-  order: 398
+  order: 400
 ---
 
-# is_callable()
+## is_callable()
 
 ```php
 function is_callable(mixed $value, bool $syntax_only = false, string $callable_name = null): bool

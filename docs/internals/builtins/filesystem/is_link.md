@@ -5,12 +5,12 @@ sidebar:
   order: 108
 ---
 
-# `is_link()` — internals
+## `is_link()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:4989](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L4989) (`lower_is_link`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:4997](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L4997) (`lower_is_link`)
 - **Function symbol**: `lower_is_link()`
 
 

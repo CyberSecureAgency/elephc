@@ -2,10 +2,10 @@
 title: "str_repeat()"
 description: "Lowers `str_repeat(string, times)` through the shared runtime helper."
 sidebar:
-  order: 362
+  order: 364
 ---
 
-# str_repeat()
+## str_repeat()
 
 ```php
 function str_repeat(string $string, int $times): string

@@ -2,10 +2,10 @@
 title: "readline()"
 description: "Lowers `readline(prompt?)` by optionally writing a prompt and reading stdin."
 sidebar:
-  order: 287
+  order: 289
 ---
 
-# readline()
+## readline()
 
 ```php
 function readline(string $prompt): mixed

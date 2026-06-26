@@ -2,10 +2,10 @@
 title: "ctype_alnum()"
 description: "Lowers `ctype_alnum(string)` by checking every byte against ASCII alpha or digit ranges."
 sidebar:
-  order: 387
+  order: 389
 ---
 
-# ctype_alnum()
+## ctype_alnum()
 
 ```php
 function ctype_alnum(string $text): bool

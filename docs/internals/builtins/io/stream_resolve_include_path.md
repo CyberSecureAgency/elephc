@@ -5,12 +5,12 @@ sidebar:
   order: 192
 ---
 
-# `stream_resolve_include_path()` — internals
+## `stream_resolve_include_path()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:2134](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L2134) (`lower_stream_resolve_include_path`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:2142](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L2142) (`lower_stream_resolve_include_path`)
 - **Function symbol**: `lower_stream_resolve_include_path()`
 
 

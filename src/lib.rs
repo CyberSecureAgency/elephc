@@ -50,6 +50,8 @@ pub mod resolver;
 /// Source span tracking.
 pub mod span;
 mod string_bytes;
+/// Canonical HTTP-request superglobal set and shared type helper.
+pub mod superglobals;
 /// Termination and exit handling.
 pub mod termination;
 /// Type system and checking.
@@ -58,3 +60,5 @@ pub mod types;
 pub mod tz_prelude;
 /// Conditionally-injected `var_export` prelude (elephc-PHP rendering function).
 pub mod var_export_prelude;
+/// Conditionally-injected `--web` request prelude (extern declarations for bridge getters).
+pub mod web_prelude;

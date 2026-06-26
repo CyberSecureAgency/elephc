@@ -2,10 +2,10 @@
 title: "strtoupper() — internals"
 description: "Compiler internals for strtoupper(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 378
+  order: 380
 ---
 
-# `strtoupper()` — internals
+## `strtoupper()` — internals
 
 ## Where it lives
 

@@ -2,10 +2,10 @@
 title: "strrev()"
 description: "Lowers a one-argument string builtin that directly delegates to a runtime helper."
 sidebar:
-  order: 371
+  order: 373
 ---
 
-# strrev()
+## strrev()
 
 ```php
 function strrev(string $string): string

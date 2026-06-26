@@ -5,7 +5,7 @@ sidebar:
   order: 54
 ---
 
-# class_implements()
+## class_implements()
 
 ```php
 function class_implements(mixed $object_or_class, bool $autoload): mixed

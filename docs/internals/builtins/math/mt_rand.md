@@ -5,7 +5,7 @@ sidebar:
   order: 242
 ---
 
-# `mt_rand()` — internals
+## `mt_rand()` — internals
 
 ## Where it lives
 

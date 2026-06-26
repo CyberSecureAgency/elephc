@@ -5,12 +5,12 @@ sidebar:
   order: 170
 ---
 
-# `rewind()` — internals
+## `rewind()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:2967](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L2967) (`lower_rewind`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:2975](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L2975) (`lower_rewind`)
 - **Function symbol**: `lower_rewind()`
 
 

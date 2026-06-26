@@ -5,7 +5,7 @@ sidebar:
   order: 219
 ---
 
-# acos()
+## acos()
 
 ```php
 function acos(float $num): float

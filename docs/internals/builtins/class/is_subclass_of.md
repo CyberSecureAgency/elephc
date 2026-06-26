@@ -5,7 +5,7 @@ sidebar:
   order: 66
 ---
 
-# `is_subclass_of()` — internals
+## `is_subclass_of()` — internals
 
 ## Where it lives
 

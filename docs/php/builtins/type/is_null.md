@@ -2,10 +2,10 @@
 title: "is_null()"
 description: "is_null() — type builtin supported by Elephc."
 sidebar:
-  order: 402
+  order: 404
 ---
 
-# is_null()
+## is_null()
 
 ```php
 function is_null(mixed $value): bool

@@ -5,7 +5,7 @@ sidebar:
   order: 171
 ---
 
-# rewinddir()
+## rewinddir()
 
 ```php
 function rewinddir(resource $dir_handle): void

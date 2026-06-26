@@ -5,7 +5,7 @@ sidebar:
   order: 7
 ---
 
-# array_fill_keys()
+## array_fill_keys()
 
 ```php
 function array_fill_keys(array $keys, mixed $value): array

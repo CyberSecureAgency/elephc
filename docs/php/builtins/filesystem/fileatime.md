@@ -5,7 +5,7 @@ sidebar:
   order: 92
 ---
 
-# fileatime()
+## fileatime()
 
 ```php
 function fileatime(string $filename): mixed

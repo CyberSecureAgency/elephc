@@ -5,7 +5,7 @@ sidebar:
   order: 247
 ---
 
-# random_int()
+## random_int()
 
 ```php
 function random_int(int $min, int $max): int

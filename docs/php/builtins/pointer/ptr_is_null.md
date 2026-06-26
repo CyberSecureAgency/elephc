@@ -2,10 +2,10 @@
 title: "ptr_is_null()"
 description: "Lowers `ptr_is_null(pointer)` by comparing the raw pointer address to zero."
 sidebar:
-  order: 268
+  order: 270
 ---
 
-# ptr_is_null()
+## ptr_is_null()
 
 ```php
 function ptr_is_null(pointer $pointer): bool

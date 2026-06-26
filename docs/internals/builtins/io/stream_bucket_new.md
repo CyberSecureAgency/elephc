@@ -5,12 +5,12 @@ sidebar:
   order: 173
 ---
 
-# `stream_bucket_new()` — internals
+## `stream_bucket_new()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:1743](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L1743) (`lower_stream_bucket_new`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:1751](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L1751) (`lower_stream_bucket_new`)
 - **Function symbol**: `lower_stream_bucket_new()`
 
 

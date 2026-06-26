@@ -2,10 +2,10 @@
 title: "preg_replace_callback() — internals"
 description: "Compiler internals for preg_replace_callback(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 298
+  order: 300
 ---
 
-# `preg_replace_callback()` — internals
+## `preg_replace_callback()` — internals
 
 ## Where it lives
 

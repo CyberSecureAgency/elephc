@@ -5,12 +5,12 @@ sidebar:
   order: 81
 ---
 
-# `basename()` — internals
+## `basename()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3885](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3885) (`lower_basename`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3893](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3893) (`lower_basename`)
 - **Function symbol**: `lower_basename()`
 
 

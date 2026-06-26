@@ -5,12 +5,12 @@ sidebar:
   order: 142
 ---
 
-# `fgetcsv()` — internals
+## `fgetcsv()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:2764](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L2764) (`lower_fgetcsv`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:2772](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L2772) (`lower_fgetcsv`)
 - **Function symbol**: `lower_fgetcsv()`
 
 

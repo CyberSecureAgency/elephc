@@ -5,12 +5,12 @@ sidebar:
   order: 120
 ---
 
-# `readfile()` — internals
+## `readfile()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:185](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L185) (`lower_readfile`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:193](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L193) (`lower_readfile`)
 - **Function symbol**: `lower_readfile()`
 
 

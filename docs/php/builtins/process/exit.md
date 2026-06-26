@@ -2,10 +2,10 @@
 title: "exit()"
 description: "exit() — process builtin supported by Elephc."
 sidebar:
-  order: 283
+  order: 285
 ---
 
-# exit()
+## exit()
 
 ```php
 function exit(int $status): void

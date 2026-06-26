@@ -5,7 +5,7 @@ sidebar:
   order: 50
 ---
 
-# `class_attribute_args()` — internals
+## `class_attribute_args()` — internals
 
 ## Where it lives
 

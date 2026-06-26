@@ -2,10 +2,10 @@
 title: "ptr_write8()"
 description: "Lowers `ptr_write8(pointer, value)` by writing one byte through a checked pointer."
 sidebar:
-  order: 279
+  order: 281
 ---
 
-# ptr_write8()
+## ptr_write8()
 
 ```php
 function ptr_write8(pointer $pointer, int $value): void

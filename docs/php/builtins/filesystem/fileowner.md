@@ -5,7 +5,7 @@ sidebar:
   order: 97
 ---
 
-# fileowner()
+## fileowner()
 
 ```php
 function fileowner(string $filename): mixed

@@ -5,7 +5,7 @@ sidebar:
   order: 136
 ---
 
-# closedir()
+## closedir()
 
 ```php
 function closedir(resource $dir_handle): void

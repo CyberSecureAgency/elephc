@@ -5,12 +5,12 @@ sidebar:
   order: 154
 ---
 
-# `fseek()` — internals
+## `fseek()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:2943](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L2943) (`lower_fseek`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:2951](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L2951) (`lower_fseek`)
 - **Function symbol**: `lower_fseek()`
 
 

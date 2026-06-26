@@ -5,7 +5,7 @@ sidebar:
   order: 221
 ---
 
-# atan()
+## atan()
 
 ```php
 function atan(float $num): float

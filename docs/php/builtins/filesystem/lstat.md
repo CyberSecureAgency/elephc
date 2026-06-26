@@ -5,7 +5,7 @@ sidebar:
   order: 116
 ---
 
-# lstat()
+## lstat()
 
 ```php
 function lstat(string $filename): mixed

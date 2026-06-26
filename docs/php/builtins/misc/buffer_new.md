@@ -5,7 +5,7 @@ sidebar:
   order: 254
 ---
 
-# buffer_new()
+## buffer_new()
 
 ```php
 function buffer_new(int $length): mixed

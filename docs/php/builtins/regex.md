@@ -5,7 +5,7 @@ sidebar:
   order: 106
 ---
 
-# Regex builtins
+## Regex builtins
 
 | Function | Signature | Returns |
 |---|---|---|

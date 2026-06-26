@@ -2,10 +2,10 @@
 title: "spl_object_id() — internals"
 description: "Compiler internals for spl_object_id(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 311
+  order: 313
 ---
 
-# `spl_object_id()` — internals
+## `spl_object_id()` — internals
 
 ## Where it lives
 

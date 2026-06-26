@@ -5,7 +5,7 @@ sidebar:
   order: 15
 ---
 
-# `array_merge()` — internals
+## `array_merge()` — internals
 
 ## Where it lives
 

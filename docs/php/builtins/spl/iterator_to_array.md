@@ -2,10 +2,10 @@
 title: "iterator_to_array()"
 description: "Lowers `iterator_to_array()` over arrays, `iterable`, and Traversable objects."
 sidebar:
-  order: 299
+  order: 301
 ---
 
-# iterator_to_array()
+## iterator_to_array()
 
 ```php
 function iterator_to_array(traversable $iterator, bool $preserve_keys): array

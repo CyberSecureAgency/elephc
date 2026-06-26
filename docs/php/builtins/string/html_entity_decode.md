@@ -2,10 +2,10 @@
 title: "html_entity_decode()"
 description: "Lowers a one-argument string builtin that directly delegates to a runtime helper."
 sidebar:
-  order: 337
+  order: 339
 ---
 
-# html_entity_decode()
+## html_entity_decode()
 
 ```php
 function html_entity_decode(string $string, int $flags, string $encoding): string

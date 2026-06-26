@@ -5,12 +5,12 @@ sidebar:
   order: 207
 ---
 
-# `stream_socket_shutdown()` — internals
+## `stream_socket_shutdown()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:2295](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L2295) (`lower_stream_socket_shutdown`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:2303](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L2303) (`lower_stream_socket_shutdown`)
 - **Function symbol**: `lower_stream_socket_shutdown()`
 
 

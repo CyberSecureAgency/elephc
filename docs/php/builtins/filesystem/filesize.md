@@ -5,7 +5,7 @@ sidebar:
   order: 99
 ---
 
-# filesize()
+## filesize()
 
 ```php
 function filesize(string $filename): int

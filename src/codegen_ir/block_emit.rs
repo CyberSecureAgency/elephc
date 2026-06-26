@@ -46,6 +46,11 @@ use super::{CodegenIrError, Result};
 const X86_64_HEAP_MAGIC_HI32: u64 = 0x454C5048;
 
 /// Emits all supported EIR functions and then the process-entry main function.
+///
+/// `web` restructures the entry point: the top-level body is emitted as the
+/// C-callable `_elephc_web_handler` and the real entry becomes a stub that calls
+/// `elephc_web_run`. When false the normal exit-based main is emitted unchanged.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn emit_module(
     module: &Module,
     emitter: &mut Emitter,
@@ -55,6 +60,7 @@ pub(super) fn emit_module(
     requires_elephc_tls: bool,
     emit: Emit,
     regalloc_linear: bool,
+    web: bool,
 ) -> Result<()> {
     function_variants::emit_dispatchers(module, emitter, data);
     for function in module.functions.iter().filter(|function| !is_main(function)) {
@@ -84,7 +90,16 @@ pub(super) fn emit_module(
         heap_debug,
         requires_elephc_tls,
         regalloc_linear,
-    )
+        web,
+    )?;
+    // Generate the per-request reset routine only for `--web`, and only after the
+    // handler body is emitted so every function static local (including any in the
+    // main body) has been recorded into `data`. The handler prologue's
+    // `bl __rt_web_reset` forward-references the label emitted here.
+    if web {
+        super::web::emit_web_reset(emitter, module, data);
+    }
+    Ok(())
 }
 
 /// Emits the static EIR Fiber wrappers needed for closure callbacks.
@@ -316,6 +331,13 @@ fn class_method_entry_symbol(function: &Function) -> Result<String> {
 }
 
 /// Emits the EIR main function as the process entry point.
+///
+/// When `web` is false this is the normal exit-based process entry. When `web`
+/// is true the top-level body is emitted as the C-callable `_elephc_web_handler`
+/// (a `ret`-based function that runs the body and returns without exiting), and
+/// a separate process-entry stub is emitted that calls `elephc_web_run` with
+/// argc/argv and the handler address, then exits with the bridge return value.
+#[allow(clippy::too_many_arguments)]
 fn emit_main_function(
     module: &Module,
     function: &Function,
@@ -325,6 +347,7 @@ fn emit_main_function(
     heap_debug: bool,
     requires_elephc_tls: bool,
     regalloc_linear: bool,
+    web: bool,
 ) -> Result<()> {
     let layout = frame::layout_for_function(function, emitter.target, regalloc_linear);
     let mut ctx = FunctionContext::new(
@@ -338,7 +361,12 @@ fn emit_main_function(
         heap_debug,
         None,
     );
-    frame::emit_main_prologue(&mut ctx);
+    if web {
+        ctx.web = true;
+        frame::emit_web_handler_prologue(&mut ctx);
+    } else {
+        frame::emit_main_prologue(&mut ctx);
+    }
     if requires_elephc_tls {
         crate::codegen::builtins::publish_tls_function_pointers(ctx.emitter);
     }
@@ -346,7 +374,14 @@ fn emit_main_function(
     emit_static_property_initializers(&mut ctx)?;
     emit_blocks(&mut ctx)?;
     if !ctx.epilogue_emitted {
-        frame::emit_main_epilogue(&mut ctx);
+        if web {
+            frame::emit_web_handler_epilogue(&mut ctx);
+        } else {
+            frame::emit_main_epilogue(&mut ctx);
+        }
+    }
+    if web {
+        frame::emit_web_entry_stub(&mut ctx);
     }
     Ok(())
 }

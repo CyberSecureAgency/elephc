@@ -2,10 +2,10 @@
 title: "spl_classes()"
 description: "Lowers `spl_classes()` to the static compiler-shipped SPL/core type snapshot."
 sidebar:
-  order: 306
+  order: 308
 ---
 
-# spl_classes()
+## spl_classes()
 
 ```php
 function spl_classes(): array

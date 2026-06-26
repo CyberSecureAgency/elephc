@@ -5,12 +5,12 @@ sidebar:
   order: 129
 ---
 
-# `symlink()` — internals
+## `symlink()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:4797](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L4797) (`lower_symlink`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:4805](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L4805) (`lower_symlink`)
 - **Function symbol**: `lower_symlink()`
 
 

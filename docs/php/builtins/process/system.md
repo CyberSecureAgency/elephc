@@ -2,10 +2,10 @@
 title: "system()"
 description: "Lowers `system(command)` through libc `system()` and returns the legacy empty string result."
 sidebar:
-  order: 290
+  order: 292
 ---
 
-# system()
+## system()
 
 ```php
 function system(string $command, int $result_code): string

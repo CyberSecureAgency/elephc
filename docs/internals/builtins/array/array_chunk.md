@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-# `array_chunk()` — internals
+## `array_chunk()` — internals
 
 ## Where it lives
 

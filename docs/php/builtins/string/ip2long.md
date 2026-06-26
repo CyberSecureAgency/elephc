@@ -2,10 +2,10 @@
 title: "ip2long()"
 description: "Lowers `ip2long(string)` and boxes invalid-address results as PHP false."
 sidebar:
-  order: 343
+  order: 345
 ---
 
-# ip2long()
+## ip2long()
 
 ```php
 function ip2long(string $ip): mixed

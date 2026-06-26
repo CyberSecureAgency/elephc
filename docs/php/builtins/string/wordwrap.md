@@ -2,10 +2,10 @@
 title: "wordwrap()"
 description: "Lowers `wordwrap(string, width?, break?, cut?)` through the shared runtime helper."
 sidebar:
-  order: 385
+  order: 387
 ---
 
-# wordwrap()
+## wordwrap()
 
 ```php
 function wordwrap(string $string, int $width, string $break, bool $cut_long_words): string

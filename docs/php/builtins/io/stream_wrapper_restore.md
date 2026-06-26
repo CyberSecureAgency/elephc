@@ -5,7 +5,7 @@ sidebar:
   order: 210
 ---
 
-# stream_wrapper_restore()
+## stream_wrapper_restore()
 
 ```php
 function stream_wrapper_restore(string $protocol): bool

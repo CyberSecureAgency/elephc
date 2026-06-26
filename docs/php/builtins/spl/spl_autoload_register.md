@@ -2,10 +2,10 @@
 title: "spl_autoload_register()"
 description: "Lowers autoload registration stubs by preserving arg effects and returning true."
 sidebar:
-  order: 304
+  order: 306
 ---
 
-# spl_autoload_register()
+## spl_autoload_register()
 
 ```php
 function spl_autoload_register(callable $callback, bool $throw, bool $prepend): bool

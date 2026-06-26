@@ -5,12 +5,12 @@ sidebar:
   order: 98
 ---
 
-# `fileperms()` — internals
+## `fileperms()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:4833](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L4833) (`lower_fileperms`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:4841](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L4841) (`lower_fileperms`)
 - **Function symbol**: `lower_fileperms()`
 
 

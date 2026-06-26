@@ -2,10 +2,10 @@
 title: "is_float() — internals"
 description: "Compiler internals for is_float(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 402
+  order: 404
 ---
 
-# `is_float()` — internals
+## `is_float()` — internals
 
 ## Where it lives
 

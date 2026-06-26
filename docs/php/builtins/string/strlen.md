@@ -2,10 +2,10 @@
 title: "strlen()"
 description: "Lowers `strlen()` by coercing string-like values and returning the byte length."
 sidebar:
-  order: 369
+  order: 371
 ---
 
-# strlen()
+## strlen()
 
 ```php
 function strlen(string $string): int

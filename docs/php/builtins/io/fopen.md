@@ -5,7 +5,7 @@ sidebar:
   order: 148
 ---
 
-# fopen()
+## fopen()
 
 ```php
 function fopen(string $filename, string $mode, bool $use_include_path, mixed $context): mixed

@@ -5,12 +5,12 @@ sidebar:
   order: 118
 ---
 
-# `pathinfo()` — internals
+## `pathinfo()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3993](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3993) (`lower_pathinfo`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:4001](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L4001) (`lower_pathinfo`)
 - **Function symbol**: `lower_pathinfo()`
 
 

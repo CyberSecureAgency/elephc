@@ -5,7 +5,7 @@ sidebar:
   order: 24
 ---
 
-# array_shift()
+## array_shift()
 
 ```php
 function array_shift(array $array): mixed

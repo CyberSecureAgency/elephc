@@ -2,10 +2,10 @@
 title: "stream_bucket_append()"
 description: "stream_bucket_append() — streams builtin supported by Elephc."
 sidebar:
-  order: 311
+  order: 313
 ---
 
-# stream_bucket_append()
+## stream_bucket_append()
 
 ```php
 function stream_bucket_append(mixed $brigade, mixed $bucket): void

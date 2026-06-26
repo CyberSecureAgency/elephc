@@ -5,7 +5,7 @@ sidebar:
   order: 118
 ---
 
-# Misc builtins
+## Misc builtins
 
 | Function | Signature | Returns |
 |---|---|---|
@@ -15,6 +15,8 @@ sidebar:
 | [`define()`](./misc/define.md) | `(string $constant_name, mixed $value, bool $case_insensitive): bool` | `bool` |
 | [`defined()`](./misc/defined.md) | `(string $constant_name): bool` | `bool` |
 | [`empty()`](./misc/empty.md) | `(mixed $value): bool` | `bool` |
+| [`header()`](./misc/header.md) | `(mixed $header, mixed $replace, mixed $response_code): void` | `void` |
+| [`http_response_code()`](./misc/http_response_code.md) | `(mixed $response_code): int` | `int` |
 | [`isset()`](./misc/isset.md) | `(mixed $var, ...$vars): int` | `int` |
 | [`php_uname()`](./misc/php_uname.md) | `(string $mode): string` | `string` |
 | [`phpversion()`](./misc/phpversion.md) | `(string $extension = null): string` | `string` |

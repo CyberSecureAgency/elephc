@@ -5,7 +5,7 @@ sidebar:
   order: 14
 ---
 
-# array_map()
+## array_map()
 
 ```php
 function array_map(callable $callback, array $array, ...$arrays): array

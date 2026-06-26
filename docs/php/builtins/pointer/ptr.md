@@ -2,10 +2,10 @@
 title: "ptr()"
 description: "Lowers `ptr(value)` by materializing the address of addressable local/global storage."
 sidebar:
-  order: 266
+  order: 268
 ---
 
-# ptr()
+## ptr()
 
 ```php
 function ptr(mixed $value): mixed

@@ -5,7 +5,7 @@ sidebar:
   order: 69
 ---
 
-# `date()` — internals
+## `date()` — internals
 
 ## Where it lives
 

@@ -5,12 +5,12 @@ sidebar:
   order: 86
 ---
 
-# `clearstatcache()` — internals
+## `clearstatcache()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:4927](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L4927) (`lower_clearstatcache`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:4935](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L4935) (`lower_clearstatcache`)
 - **Function symbol**: `lower_clearstatcache()`
 
 

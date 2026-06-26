@@ -2,10 +2,10 @@
 title: "number_format()"
 description: "Lowers `number_format()` by arranging its runtime helper arguments."
 sidebar:
-  order: 349
+  order: 351
 ---
 
-# number_format()
+## number_format()
 
 ```php
 function number_format(float $num, int $decimals, string $decimal_separator, string $thousands_separator): string

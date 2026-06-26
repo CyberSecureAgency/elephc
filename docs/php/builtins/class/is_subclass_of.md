@@ -5,7 +5,7 @@ sidebar:
   order: 66
 ---
 
-# is_subclass_of()
+## is_subclass_of()
 
 ```php
 function is_subclass_of(mixed $object_or_class, string $class, bool $allow_string): bool

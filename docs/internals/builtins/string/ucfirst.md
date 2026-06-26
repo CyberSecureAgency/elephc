@@ -2,10 +2,10 @@
 title: "ucfirst() — internals"
 description: "Compiler internals for ucfirst(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 382
+  order: 384
 ---
 
-# `ucfirst()` — internals
+## `ucfirst()` — internals
 
 ## Where it lives
 

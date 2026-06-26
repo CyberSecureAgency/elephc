@@ -2,10 +2,10 @@
 title: "str_replace() — internals"
 description: "Compiler internals for str_replace(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 366
+  order: 368
 ---
 
-# `str_replace()` — internals
+## `str_replace()` — internals
 
 ## Where it lives
 

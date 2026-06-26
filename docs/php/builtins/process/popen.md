@@ -2,10 +2,10 @@
 title: "popen()"
 description: "Lowers `popen(command, mode)` and boxes the process pipe as `resource|false`."
 sidebar:
-  order: 286
+  order: 288
 ---
 
-# popen()
+## popen()
 
 ```php
 function popen(string $command, string $mode): mixed

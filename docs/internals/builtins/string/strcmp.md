@@ -2,10 +2,10 @@
 title: "strcmp() — internals"
 description: "Compiler internals for strcmp(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 370
+  order: 372
 ---
 
-# `strcmp()` — internals
+## `strcmp()` — internals
 
 ## Where it lives
 

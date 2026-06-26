@@ -2,10 +2,10 @@
 title: "hash_init()"
 description: "Lowers `hash_init(algo)` and returns a boxed HashContext resource."
 sidebar:
-  order: 334
+  order: 336
 ---
 
-# hash_init()
+## hash_init()
 
 ```php
 function hash_init(string $algo, int $flags = 0, string $key = '', array $options = []): mixed

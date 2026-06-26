@@ -5,7 +5,7 @@ sidebar:
   order: 151
 ---
 
-# fputcsv()
+## fputcsv()
 
 ```php
 function fputcsv(resource $stream, array $fields, string $separator = ',', string $enclosure = '"', string $escape = '\\', string $eol = '\n'): int

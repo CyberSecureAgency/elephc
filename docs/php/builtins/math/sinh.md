@@ -5,7 +5,7 @@ sidebar:
   order: 250
 ---
 
-# sinh()
+## sinh()
 
 ```php
 function sinh(float $num): float

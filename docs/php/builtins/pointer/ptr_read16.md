@@ -2,10 +2,10 @@
 title: "ptr_read16()"
 description: "Lowers `ptr_read16(pointer)` by reading one unsigned 16-bit word through a checked pointer."
 sidebar:
-  order: 271
+  order: 273
 ---
 
-# ptr_read16()
+## ptr_read16()
 
 ```php
 function ptr_read16(pointer $pointer): int

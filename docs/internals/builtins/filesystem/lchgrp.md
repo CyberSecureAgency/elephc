@@ -5,12 +5,12 @@ sidebar:
   order: 112
 ---
 
-# `lchgrp()` — internals
+## `lchgrp()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3837](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3837) (`lower_lchgrp`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3845](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3845) (`lower_lchgrp`)
 - **Function symbol**: `lower_lchgrp()`
 
 

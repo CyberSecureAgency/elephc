@@ -5,7 +5,7 @@ sidebar:
   order: 20
 ---
 
-# `array_rand()` — internals
+## `array_rand()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 111
 ---
 
-# Streams builtins
+## Streams builtins
 
 | Function | Signature | Returns |
 |---|---|---|

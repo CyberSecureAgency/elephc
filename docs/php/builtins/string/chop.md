@@ -2,10 +2,10 @@
 title: "chop()"
 description: "chop() — string builtin supported by Elephc."
 sidebar:
-  order: 319
+  order: 321
 ---
 
-# chop()
+## chop()
 
 ```php
 function chop(string $string, string $characters): string

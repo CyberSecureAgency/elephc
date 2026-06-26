@@ -5,7 +5,7 @@ sidebar:
   order: 215
 ---
 
-# `json_last_error()` — internals
+## `json_last_error()` — internals
 
 ## Where it lives
 

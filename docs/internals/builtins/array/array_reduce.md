@@ -5,7 +5,7 @@ sidebar:
   order: 21
 ---
 
-# `array_reduce()` — internals
+## `array_reduce()` — internals
 
 ## Where it lives
 

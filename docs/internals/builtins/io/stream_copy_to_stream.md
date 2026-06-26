@@ -5,12 +5,12 @@ sidebar:
   order: 181
 ---
 
-# `stream_copy_to_stream()` — internals
+## `stream_copy_to_stream()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:1239](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L1239) (`lower_stream_copy_to_stream`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:1247](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L1247) (`lower_stream_copy_to_stream`)
 - **Function symbol**: `lower_stream_copy_to_stream()`
 
 

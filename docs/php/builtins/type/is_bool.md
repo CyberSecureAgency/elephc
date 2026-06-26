@@ -2,10 +2,10 @@
 title: "is_bool()"
 description: "is_bool() — type builtin supported by Elephc."
 sidebar:
-  order: 397
+  order: 399
 ---
 
-# is_bool()
+## is_bool()
 
 ```php
 function is_bool(mixed $value): bool

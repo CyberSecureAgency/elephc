@@ -5,7 +5,7 @@ sidebar:
   order: 111
 ---
 
-# is_writeable()
+## is_writeable()
 
 ```php
 function is_writeable(string $filename): bool

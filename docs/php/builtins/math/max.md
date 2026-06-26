@@ -5,7 +5,7 @@ sidebar:
   order: 240
 ---
 
-# max()
+## max()
 
 ```php
 function max(mixed $value, ...$values): float

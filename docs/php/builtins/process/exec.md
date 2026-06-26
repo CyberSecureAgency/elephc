@@ -2,10 +2,10 @@
 title: "exec()"
 description: "Lowers `exec(command)` by capturing shell stdout through the shared runtime helper."
 sidebar:
-  order: 282
+  order: 284
 ---
 
-# exec()
+## exec()
 
 ```php
 function exec(string $command, array $output, int $result_code): string

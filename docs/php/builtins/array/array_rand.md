@@ -5,7 +5,7 @@ sidebar:
   order: 20
 ---
 
-# array_rand()
+## array_rand()
 
 ```php
 function array_rand(array $array, int $num): int

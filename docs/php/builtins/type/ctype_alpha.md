@@ -2,10 +2,10 @@
 title: "ctype_alpha()"
 description: "Lowers `ctype_alpha(string)` by checking every byte against ASCII alpha ranges."
 sidebar:
-  order: 388
+  order: 390
 ---
 
-# ctype_alpha()
+## ctype_alpha()
 
 ```php
 function ctype_alpha(string $text): bool

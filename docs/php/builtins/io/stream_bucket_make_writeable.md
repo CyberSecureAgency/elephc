@@ -5,7 +5,7 @@ sidebar:
   order: 172
 ---
 
-# stream_bucket_make_writeable()
+## stream_bucket_make_writeable()
 
 ```php
 function stream_bucket_make_writeable(mixed $brigade): mixed

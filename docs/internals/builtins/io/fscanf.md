@@ -5,12 +5,12 @@ sidebar:
   order: 153
 ---
 
-# `fscanf()` — internals
+## `fscanf()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:2709](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L2709) (`lower_fscanf`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:2717](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L2717) (`lower_fscanf`)
 - **Function symbol**: `lower_fscanf()`
 
 

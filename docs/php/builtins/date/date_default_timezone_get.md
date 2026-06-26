@@ -5,7 +5,7 @@ sidebar:
   order: 70
 ---
 
-# date_default_timezone_get()
+## date_default_timezone_get()
 
 ```php
 function date_default_timezone_get(): string

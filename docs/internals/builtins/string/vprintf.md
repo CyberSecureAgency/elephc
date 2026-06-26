@@ -2,10 +2,10 @@
 title: "vprintf() — internals"
 description: "Compiler internals for vprintf(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 386
+  order: 388
 ---
 
-# `vprintf()` — internals
+## `vprintf()` — internals
 
 ## Where it lives
 

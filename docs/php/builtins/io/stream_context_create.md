@@ -5,7 +5,7 @@ sidebar:
   order: 174
 ---
 
-# stream_context_create()
+## stream_context_create()
 
 ```php
 function stream_context_create(array $options, array $params): mixed

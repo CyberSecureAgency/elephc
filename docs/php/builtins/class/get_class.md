@@ -5,7 +5,7 @@ sidebar:
   order: 59
 ---
 
-# get_class()
+## get_class()
 
 ```php
 function get_class(object $object): string

@@ -5,7 +5,7 @@ sidebar:
   order: 98
 ---
 
-# fileperms()
+## fileperms()
 
 ```php
 function fileperms(string $filename): mixed

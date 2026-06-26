@@ -5,7 +5,7 @@ sidebar:
   order: 115
 ---
 
-# Class builtins
+## Class builtins
 
 | Function | Signature | Returns |
 |---|---|---|

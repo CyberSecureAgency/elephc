@@ -2,10 +2,10 @@
 title: "grapheme_strrev() — internals"
 description: "Compiler internals for grapheme_strrev(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 326
+  order: 328
 ---
 
-# `grapheme_strrev()` — internals
+## `grapheme_strrev()` — internals
 
 ## Where it lives
 

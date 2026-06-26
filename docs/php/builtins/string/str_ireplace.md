@@ -2,10 +2,10 @@
 title: "str_ireplace()"
 description: "str_ireplace() — string builtin supported by Elephc."
 sidebar:
-  order: 360
+  order: 362
 ---
 
-# str_ireplace()
+## str_ireplace()
 
 ```php
 function str_ireplace(mixed $search, mixed $replace, mixed $subject, int $count): mixed

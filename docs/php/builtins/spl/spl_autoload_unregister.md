@@ -2,10 +2,10 @@
 title: "spl_autoload_unregister()"
 description: "Lowers autoload registration stubs by preserving arg effects and returning true."
 sidebar:
-  order: 305
+  order: 307
 ---
 
-# spl_autoload_unregister()
+## spl_autoload_unregister()
 
 ```php
 function spl_autoload_unregister(callable $callback): bool

@@ -2,10 +2,10 @@
 title: "gzdeflate()"
 description: "Lowers `gzdeflate(data, level?)` through inline raw-DEFLATE zlib calls."
 sidebar:
-  order: 325
+  order: 327
 ---
 
-# gzdeflate()
+## gzdeflate()
 
 ```php
 function gzdeflate(string $data, int $level, int $encoding): string

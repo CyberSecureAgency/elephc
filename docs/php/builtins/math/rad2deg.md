@@ -5,7 +5,7 @@ sidebar:
   order: 245
 ---
 
-# rad2deg()
+## rad2deg()
 
 ```php
 function rad2deg(float $num): float

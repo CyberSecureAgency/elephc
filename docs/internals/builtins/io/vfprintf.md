@@ -5,12 +5,12 @@ sidebar:
   order: 212
 ---
 
-# `vfprintf()` — internals
+## `vfprintf()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:2669](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L2669) (`lower_vfprintf`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:2677](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L2677) (`lower_vfprintf`)
 - **Function symbol**: `lower_vfprintf()`
 
 

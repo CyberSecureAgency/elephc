@@ -5,7 +5,7 @@ sidebar:
   order: 36
 ---
 
-# krsort()
+## krsort()
 
 ```php
 function krsort(array $array, int $flags): bool

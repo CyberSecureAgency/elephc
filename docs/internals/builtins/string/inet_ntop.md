@@ -2,10 +2,10 @@
 title: "inet_ntop() — internals"
 description: "Compiler internals for inet_ntop(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 344
+  order: 346
 ---
 
-# `inet_ntop()` — internals
+## `inet_ntop()` — internals
 
 ## Where it lives
 

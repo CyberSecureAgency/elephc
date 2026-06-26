@@ -5,12 +5,12 @@ sidebar:
   order: 116
 ---
 
-# `lstat()` — internals
+## `lstat()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:4883](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L4883) (`lower_lstat`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:4891](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L4891) (`lower_lstat`)
 - **Function symbol**: `lower_lstat()`
 
 

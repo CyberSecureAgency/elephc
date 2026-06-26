@@ -5,7 +5,7 @@ sidebar:
   order: 150
 ---
 
-# fprintf()
+## fprintf()
 
 ```php
 function fprintf(resource $stream, string $format, ...$values): int

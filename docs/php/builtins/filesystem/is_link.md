@@ -5,7 +5,7 @@ sidebar:
   order: 108
 ---
 
-# is_link()
+## is_link()
 
 ```php
 function is_link(string $filename): bool

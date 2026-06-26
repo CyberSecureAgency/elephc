@@ -5,12 +5,12 @@ sidebar:
   order: 139
 ---
 
-# `feof()` — internals
+## `feof()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:2892](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L2892) (`lower_feof`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:2900](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L2900) (`lower_feof`)
 - **Function symbol**: `lower_feof()`
 
 

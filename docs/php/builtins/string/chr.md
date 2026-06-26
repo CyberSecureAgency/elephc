@@ -2,10 +2,10 @@
 title: "chr()"
 description: "Lowers `chr()` by converting an integer code point into a one-byte string."
 sidebar:
-  order: 320
+  order: 322
 ---
 
-# chr()
+## chr()
 
 ```php
 function chr(int $codepoint): string

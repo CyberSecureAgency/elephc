@@ -5,7 +5,7 @@ sidebar:
   order: 69
 ---
 
-# date()
+## date()
 
 ```php
 function date(string $format, int $timestamp): string

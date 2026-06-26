@@ -2,10 +2,10 @@
 title: "grapheme_strrev()"
 description: "Lowers `grapheme_strrev()` and boxes its `string|false` result as `Mixed`."
 sidebar:
-  order: 323
+  order: 325
 ---
 
-# grapheme_strrev()
+## grapheme_strrev()
 
 ```php
 function grapheme_strrev(string $string): mixed

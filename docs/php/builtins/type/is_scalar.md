@@ -2,10 +2,10 @@
 title: "is_scalar()"
 description: "Lowers `is_scalar()`: true for int/float/string/bool, a non-null tagged scalar, or a boxed"
 sidebar:
-  order: 406
+  order: 408
 ---
 
-# is_scalar()
+## is_scalar()
 
 ```php
 function is_scalar(mixed $value): bool

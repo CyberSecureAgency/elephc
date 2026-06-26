@@ -5,7 +5,7 @@ sidebar:
   order: 184
 ---
 
-# stream_get_contents()
+## stream_get_contents()
 
 ```php
 function stream_get_contents(resource $stream, int $length, int $offset): mixed

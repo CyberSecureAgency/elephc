@@ -5,12 +5,12 @@ sidebar:
   order: 206
 ---
 
-# `stream_socket_server()` — internals
+## `stream_socket_server()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:2147](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L2147) (`lower_stream_socket_server`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:2155](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L2155) (`lower_stream_socket_server`)
 - **Function symbol**: `lower_stream_socket_server()`
 
 

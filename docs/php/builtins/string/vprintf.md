@@ -2,10 +2,10 @@
 title: "vprintf()"
 description: "Lowers `vprintf(format, values)` as `vsprintf()` followed by stdout emission."
 sidebar:
-  order: 383
+  order: 385
 ---
 
-# vprintf()
+## vprintf()
 
 ```php
 function vprintf(string $format, array $values): int

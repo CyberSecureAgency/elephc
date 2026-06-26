@@ -2,10 +2,10 @@
 title: "crc32()"
 description: "Lowers `crc32(string)` through the shared checksum runtime helper."
 sidebar:
-  order: 321
+  order: 323
 ---
 
-# crc32()
+## crc32()
 
 ```php
 function crc32(string $string): int

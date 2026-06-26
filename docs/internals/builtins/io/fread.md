@@ -5,12 +5,12 @@ sidebar:
   order: 152
 ---
 
-# `fread()` — internals
+## `fread()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:2587](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L2587) (`lower_fread`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:2595](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L2595) (`lower_fread`)
 - **Function symbol**: `lower_fread()`
 
 

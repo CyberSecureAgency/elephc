@@ -2,10 +2,10 @@
 title: "str_pad()"
 description: "Lowers `str_pad(string, length, pad_string?, pad_type?)` through the shared runtime helper."
 sidebar:
-  order: 361
+  order: 363
 ---
 
-# str_pad()
+## str_pad()
 
 ```php
 function str_pad(string $string, int $length, string $pad_string, int $pad_type): string

@@ -5,7 +5,7 @@ sidebar:
   order: 257
 ---
 
-# define()
+## define()
 
 ```php
 function define(string $constant_name, mixed $value, bool $case_insensitive): bool

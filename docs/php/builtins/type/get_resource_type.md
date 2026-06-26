@@ -2,10 +2,10 @@
 title: "get_resource_type()"
 description: "Lowers `get_resource_type(resource)` to elephc's current resource type label."
 sidebar:
-  order: 393
+  order: 395
 ---
 
-# get_resource_type()
+## get_resource_type()
 
 ```php
 function get_resource_type(resource $resource): string

@@ -2,10 +2,10 @@
 title: "iterator_apply()"
 description: "Lowers `iterator_apply()` over supported Traversable sources and callback forms."
 sidebar:
-  order: 297
+  order: 299
 ---
 
-# iterator_apply()
+## iterator_apply()
 
 ```php
 function iterator_apply(traversable $iterator, callable $callback, array $args): int

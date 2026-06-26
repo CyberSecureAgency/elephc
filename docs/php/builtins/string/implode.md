@@ -2,10 +2,10 @@
 title: "implode()"
 description: "Lowers `implode(glue, array)` by selecting the string or integer array helper."
 sidebar:
-  order: 340
+  order: 342
 ---
 
-# implode()
+## implode()
 
 ```php
 function implode(string $separator, array $array): string

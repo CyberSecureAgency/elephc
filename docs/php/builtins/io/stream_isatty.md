@@ -5,7 +5,7 @@ sidebar:
   order: 191
 ---
 
-# stream_isatty()
+## stream_isatty()
 
 ```php
 function stream_isatty(resource $stream): bool

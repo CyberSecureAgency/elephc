@@ -5,7 +5,7 @@ sidebar:
   order: 62
 ---
 
-# get_declared_traits()
+## get_declared_traits()
 
 ```php
 function get_declared_traits(): array

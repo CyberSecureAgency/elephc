@@ -2,10 +2,10 @@
 title: "stream_filter_prepend()"
 description: "stream_filter_prepend() — streams builtin supported by Elephc."
 sidebar:
-  order: 314
+  order: 316
 ---
 
-# stream_filter_prepend()
+## stream_filter_prepend()
 
 ```php
 function stream_filter_prepend(resource $stream, string $filter_name, int $mode, mixed $params): mixed

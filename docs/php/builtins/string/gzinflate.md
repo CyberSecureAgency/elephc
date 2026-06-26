@@ -2,10 +2,10 @@
 title: "gzinflate()"
 description: "Lowers `gzinflate(data, max_length?)` and boxes zlib failures as PHP false."
 sidebar:
-  order: 326
+  order: 328
 ---
 
-# gzinflate()
+## gzinflate()
 
 ```php
 function gzinflate(string $data, int $max_length): string

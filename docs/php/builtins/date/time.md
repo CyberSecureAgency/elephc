@@ -5,7 +5,7 @@ sidebar:
   order: 80
 ---
 
-# time()
+## time()
 
 ```php
 function time(): int

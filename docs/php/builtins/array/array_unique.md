@@ -5,7 +5,7 @@ sidebar:
   order: 28
 ---
 
-# array_unique()
+## array_unique()
 
 ```php
 function array_unique(array $array, int $flags): array

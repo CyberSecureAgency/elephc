@@ -5,12 +5,12 @@ sidebar:
   order: 208
 ---
 
-# `stream_supports_lock()` — internals
+## `stream_supports_lock()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:1888](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L1888) (`lower_stream_supports_lock`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:1896](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L1896) (`lower_stream_supports_lock`)
 - **Function symbol**: `lower_stream_supports_lock()`
 
 

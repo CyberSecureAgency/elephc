@@ -2,10 +2,10 @@
 title: "str_starts_with()"
 description: "Lowers a two-argument string builtin that directly delegates to a runtime helper."
 sidebar:
-  order: 365
+  order: 367
 ---
 
-# str_starts_with()
+## str_starts_with()
 
 ```php
 function str_starts_with(string $haystack, string $needle): bool

@@ -5,7 +5,7 @@ sidebar:
   order: 161
 ---
 
-# gethostbyname()
+## gethostbyname()
 
 ```php
 function gethostbyname(string $hostname): string

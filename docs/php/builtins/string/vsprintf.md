@@ -2,10 +2,10 @@
 title: "vsprintf()"
 description: "Lowers `vsprintf(format, values)` through the array-to-sprintf runtime bridge."
 sidebar:
-  order: 384
+  order: 386
 ---
 
-# vsprintf()
+## vsprintf()
 
 ```php
 function vsprintf(string $format, array $values): string

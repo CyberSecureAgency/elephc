@@ -2,10 +2,10 @@
 title: "str_replace()"
 description: "Lowers `str_replace()`/`str_ireplace()` with three string operands."
 sidebar:
-  order: 363
+  order: 365
 ---
 
-# str_replace()
+## str_replace()
 
 ```php
 function str_replace(string $search, string $replace, string $subject, int $count): mixed

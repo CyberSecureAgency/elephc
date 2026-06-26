@@ -2,10 +2,10 @@
 title: "spl_object_id()"
 description: "Lowers `spl_object_id(object)` by returning the loaded object pointer as an integer."
 sidebar:
-  order: 308
+  order: 310
 ---
 
-# spl_object_id()
+## spl_object_id()
 
 ```php
 function spl_object_id(object $object): int

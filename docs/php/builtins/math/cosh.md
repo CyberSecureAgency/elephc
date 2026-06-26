@@ -5,7 +5,7 @@ sidebar:
   order: 226
 ---
 
-# cosh()
+## cosh()
 
 ```php
 function cosh(float $num): float

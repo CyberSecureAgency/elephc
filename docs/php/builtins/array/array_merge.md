@@ -5,7 +5,7 @@ sidebar:
   order: 15
 ---
 
-# array_merge()
+## array_merge()
 
 ```php
 function array_merge(...$arrays): array

@@ -5,7 +5,7 @@ sidebar:
   order: 231
 ---
 
-# `fmod()` — internals
+## `fmod()` — internals
 
 ## Where it lives
 

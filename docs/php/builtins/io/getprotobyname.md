@@ -5,7 +5,7 @@ sidebar:
   order: 163
 ---
 
-# getprotobyname()
+## getprotobyname()
 
 ```php
 function getprotobyname(string $protocol): mixed

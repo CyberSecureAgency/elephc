@@ -5,12 +5,12 @@ sidebar:
   order: 165
 ---
 
-# `getservbyname()` — internals
+## `getservbyname()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3257](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3257) (`lower_getservbyname`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3265](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3265) (`lower_getservbyname`)
 - **Function symbol**: `lower_getservbyname()`
 
 

@@ -2,10 +2,10 @@
 title: "preg_split()"
 description: "Lowers `preg_split(pattern, subject, limit?, flags?)` through the regex split helper."
 sidebar:
-  order: 296
+  order: 298
 ---
 
-# preg_split()
+## preg_split()
 
 ```php
 function preg_split(string $pattern, string $subject, int $limit, int $flags): array

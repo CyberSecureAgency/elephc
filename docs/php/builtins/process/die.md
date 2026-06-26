@@ -2,10 +2,10 @@
 title: "die()"
 description: "die() — process builtin supported by Elephc."
 sidebar:
-  order: 281
+  order: 283
 ---
 
-# die()
+## die()
 
 ```php
 function die(int $status): void

@@ -5,7 +5,7 @@ sidebar:
   order: 2
 ---
 
-# `array_column()` — internals
+## `array_column()` — internals
 
 ## Where it lives
 

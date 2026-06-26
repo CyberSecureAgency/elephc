@@ -5,7 +5,7 @@ sidebar:
   order: 142
 ---
 
-# fgetcsv()
+## fgetcsv()
 
 ```php
 function fgetcsv(resource $stream, int $length, string $separator, string $enclosure, string $escape): array

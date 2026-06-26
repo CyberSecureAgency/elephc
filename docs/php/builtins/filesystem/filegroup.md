@@ -5,7 +5,7 @@ sidebar:
   order: 94
 ---
 
-# filegroup()
+## filegroup()
 
 ```php
 function filegroup(string $filename): mixed

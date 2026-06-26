@@ -5,7 +5,7 @@ sidebar:
   order: 195
 ---
 
-# stream_set_chunk_size()
+## stream_set_chunk_size()
 
 ```php
 function stream_set_chunk_size(resource $stream, int $size): int

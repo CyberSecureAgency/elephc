@@ -5,7 +5,7 @@ sidebar:
   order: 23
 ---
 
-# `array_search()` — internals
+## `array_search()` — internals
 
 ## Where it lives
 

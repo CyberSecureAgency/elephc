@@ -5,7 +5,7 @@ sidebar:
   order: 40
 ---
 
-# range()
+## range()
 
 ```php
 function range(mixed $start, mixed $end, int $step): array

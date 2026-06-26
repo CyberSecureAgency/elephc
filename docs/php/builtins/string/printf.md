@@ -2,10 +2,10 @@
 title: "printf()"
 description: "Lowers `printf(format, values...)` as `sprintf()` followed by stdout emission."
 sidebar:
-  order: 351
+  order: 353
 ---
 
-# printf()
+## printf()
 
 ```php
 function printf(string $format, ...$values): int

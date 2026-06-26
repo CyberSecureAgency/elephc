@@ -2,10 +2,10 @@
 title: "str_ireplace() — internals"
 description: "Compiler internals for str_ireplace(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 363
+  order: 365
 ---
 
-# `str_ireplace()` — internals
+## `str_ireplace()` — internals
 
 ## Where it lives
 

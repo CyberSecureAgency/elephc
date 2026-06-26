@@ -2,10 +2,10 @@
 title: "explode()"
 description: "Lowers `explode(delimiter, string)` into the shared string-array splitter helper."
 sidebar:
-  order: 322
+  order: 324
 ---
 
-# explode()
+## explode()
 
 ```php
 function explode(string $separator, string $string, int $limit): array

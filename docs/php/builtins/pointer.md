@@ -5,7 +5,7 @@ sidebar:
   order: 116
 ---
 
-# Pointer builtins
+## Pointer builtins
 
 | Function | Signature | Returns |
 |---|---|---|

@@ -5,12 +5,12 @@ sidebar:
   order: 175
 ---
 
-# `stream_context_get_default()` — internals
+## `stream_context_get_default()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:957](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L957) (`lower_stream_context_get_default`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:965](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L965) (`lower_stream_context_get_default`)
 - **Function symbol**: `lower_stream_context_get_default()`
 
 

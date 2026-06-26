@@ -2,10 +2,10 @@
 title: "ucfirst()"
 description: "Lowers `ucfirst()` by copying the string and uppercasing the first ASCII byte."
 sidebar:
-  order: 379
+  order: 381
 ---
 
-# ucfirst()
+## ucfirst()
 
 ```php
 function ucfirst(string $string): string

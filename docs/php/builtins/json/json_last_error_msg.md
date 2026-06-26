@@ -5,7 +5,7 @@ sidebar:
   order: 216
 ---
 
-# json_last_error_msg()
+## json_last_error_msg()
 
 ```php
 function json_last_error_msg(): string

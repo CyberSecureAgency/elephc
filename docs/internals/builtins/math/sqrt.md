@@ -5,7 +5,7 @@ sidebar:
   order: 251
 ---
 
-# `sqrt()` — internals
+## `sqrt()` — internals
 
 ## Where it lives
 

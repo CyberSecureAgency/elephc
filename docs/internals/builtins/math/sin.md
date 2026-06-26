@@ -5,7 +5,7 @@ sidebar:
   order: 249
 ---
 
-# `sin()` — internals
+## `sin()` — internals
 
 ## Where it lives
 

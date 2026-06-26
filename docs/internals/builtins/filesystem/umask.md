@@ -5,12 +5,12 @@ sidebar:
   order: 134
 ---
 
-# `umask()` — internals
+## `umask()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3842](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3842) (`lower_umask`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3850](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3850) (`lower_umask`)
 - **Function symbol**: `lower_umask()`
 
 

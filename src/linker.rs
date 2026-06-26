@@ -10,6 +10,7 @@
 //! - Non-system bridge staticlibs (TLS, PDO, PHAR, ...) are described once in `BRIDGES`;
 //!   discovery, source-tree auto-build, and link flags are all driven from that table.
 
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::{self, Command};
 
@@ -108,6 +109,17 @@ const BRIDGES: &[BridgeStaticlib] = &[
         whole_archive: false,
         // No native transitive deps (the `image` stack is pure Rust).
         macos_frameworks: &[],
+        needs_libdl: true,
+    },
+    BridgeStaticlib {
+        lib_name: "elephc_web",
+        env_var: "ELEPHC_WEB_LIB_DIR",
+        crate_name: "elephc-web",
+        // The bridge owns the program entry (elephc_web_run) and tokio/hyper
+        // link-time machinery, so the whole archive is force-loaded.
+        whole_archive: true,
+        macos_frameworks: &[],
+        // Rust runtime/unwinder symbols, like the other bridges.
         needs_libdl: true,
     },
 ];
@@ -321,6 +333,64 @@ pub(crate) fn link(
     for path in extra_link_paths {
         ld_cmd.arg(format!("-L{}", path));
     }
+    // Two or more force-loaded (whole-archive) bridges each bundle their own
+    // identical copy of the Rust std/core/allocator objects, which collide at
+    // link time. Resolve it generally (any number of such bridges), per platform:
+    //  - Linux: have the linker keep the first definition of each duplicate.
+    //  - macOS (its ld has no equivalent flag): keep the first whole-archive
+    //    bridge as the symbol provider and strip the already-provided members
+    //    from the rest before force-loading them.
+    let whole_archive_order: Vec<(&BridgeStaticlib, &str)> = extra_link_libs
+        .iter()
+        .filter_map(|lib| {
+            needed_bridges
+                .iter()
+                .find(|(b, d)| b.lib_name == lib.as_str() && b.whole_archive && d.is_some())
+                .map(|(b, _)| (*b, lib.as_str()))
+        })
+        .collect();
+    let mut deduped_archive: HashMap<&str, PathBuf> = HashMap::new();
+    let mut dedup_scratch: Option<PathBuf> = None;
+    if whole_archive_order.len() >= 2 {
+        match target.platform {
+            Platform::Linux => {
+                ld_cmd.arg("-Wl,--allow-multiple-definition");
+            }
+            Platform::MacOS => {
+                let scratch =
+                    std::env::temp_dir().join(format!("elephc-link-dedup-{}", process::id()));
+                let mut provider_names: HashSet<String> = HashSet::new();
+                let mut provider_syms: HashSet<String> = HashSet::new();
+                for (i, (bridge, lib)) in whole_archive_order.iter().enumerate() {
+                    let dir = needed_bridges
+                        .iter()
+                        .find(|(b, _)| b.lib_name == *lib)
+                        .and_then(|(_, d)| d.as_deref());
+                    let Some(dir) = dir else { continue };
+                    let archive = Path::new(dir).join(bridge.archive_filename());
+                    if i == 0 {
+                        // Provider: seed the member-name and symbol sets; its
+                        // archive links unchanged. `ar t` gives every member name
+                        // (robust); `nm` adds the symbols it can read.
+                        if let Some(names) = ar_members(&archive) {
+                            provider_names.extend(names);
+                        }
+                        for (_, syms) in nm_member_globals(&archive) {
+                            provider_syms.extend(syms);
+                        }
+                    } else if let Some(stripped) = dedup_macos_archive(
+                        &archive,
+                        &mut provider_names,
+                        &mut provider_syms,
+                        &scratch,
+                    ) {
+                        deduped_archive.insert(*lib, stripped);
+                    }
+                }
+                dedup_scratch = Some(scratch);
+            }
+        }
+    }
     for lib in extra_link_libs {
         if lib == "System" {
             continue;
@@ -336,7 +406,11 @@ pub(crate) fn link(
                 let dir = dir.as_deref().expect("whole-archive bridge has a located dir");
                 match target.platform {
                     Platform::MacOS => {
-                        let path = Path::new(dir).join(bridge.archive_filename());
+                        // Use the deduped copy when this bridge was stripped above.
+                        let path = deduped_archive
+                            .get(lib.as_str())
+                            .cloned()
+                            .unwrap_or_else(|| Path::new(dir).join(bridge.archive_filename()));
                         ld_cmd.arg("-force_load").arg(path);
                     }
                     Platform::Linux => {
@@ -366,6 +440,132 @@ pub(crate) fn link(
         }
     }
     run_tool("Linker", &mut ld_cmd);
+    // The deduped archive copies were only needed for the link command above.
+    if let Some(scratch) = dedup_scratch {
+        let _ = std::fs::remove_dir_all(scratch);
+    }
+}
+
+/// Lists the member (object file) names in `archive` via `ar t`. Member-name
+/// based deduplication does not parse object contents, so it is robust even when
+/// `nm` cannot read newer-toolchain objects.
+fn ar_members(archive: &Path) -> Option<Vec<String>> {
+    let out = Command::new("ar").arg("t").arg(archive).output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    Some(
+        String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .map(|l| l.trim().to_string())
+            .filter(|l| !l.is_empty() && l != "__.SYMDEF" && l != "__.SYMDEF SORTED")
+            .collect(),
+    )
+}
+
+/// Parses `nm -gU <archive>` (macOS) into `(member name, defined global symbols)`
+/// pairs. TOLERANT of a non-zero exit: an older Xcode `nm` errors on objects from
+/// a newer rustc LLVM ("Unknown attribute kind") yet still prints usable output
+/// for the members it can read, so we parse stdout regardless. Member headers look
+/// like `member.o:` (or `libfoo.a(member.o):`); symbol lines are `<value> <type>
+/// <name>` (the name is the last whitespace token).
+fn nm_member_globals(archive: &Path) -> Vec<(String, Vec<String>)> {
+    let Ok(out) = Command::new("nm").args(["-gU"]).arg(archive).output() else {
+        return Vec::new();
+    };
+    let text = String::from_utf8_lossy(&out.stdout);
+    let mut members: Vec<(String, Vec<String>)> = Vec::new();
+    for line in text.lines() {
+        let line = line.trim_end();
+        if line.is_empty() {
+            continue;
+        }
+        // A member header is a single token ending in ':' — either `member.o:`
+        // or, on some nm builds, `libfoo.a(member.o):`. A symbol line always has
+        // whitespace (`<value> <type> <name>`), so the no-space test separates them.
+        if line.ends_with(':') && !line.contains(char::is_whitespace) {
+            let inner = &line[..line.len() - 1];
+            let name = match inner.rfind('(') {
+                Some(open) => inner[open + 1..].strip_suffix(')').unwrap_or(&inner[open + 1..]),
+                None => inner,
+            };
+            members.push((name.to_string(), Vec::new()));
+            continue;
+        }
+        if let Some(sym) = line.split_whitespace().last() {
+            if let Some(last) = members.last_mut() {
+                last.1.push(sym.to_string());
+            }
+        }
+    }
+    members
+}
+
+/// Copies `archive` into `scratch` and removes every member already supplied by an
+/// earlier whole-archive bridge, then re-indexes the copy and returns its path. A
+/// member is redundant when its name matches one in `provider_names` (catches the
+/// identical std/core/etc. CGUs without parsing objects) OR all of its defined
+/// global symbols are in `provider_syms` (catches differently-named generated
+/// members like the allocator shim). Updates `provider_names`/`provider_syms` with
+/// the members it keeps so a third bridge dedups against the union. Best-effort:
+/// returns `None` (caller falls back to the original archive) on tool failure or
+/// when there is nothing to strip.
+fn dedup_macos_archive(
+    archive: &Path,
+    provider_names: &mut HashSet<String>,
+    provider_syms: &mut HashSet<String>,
+    scratch: &Path,
+) -> Option<PathBuf> {
+    let names = ar_members(archive)?;
+    let per_member = nm_member_globals(archive);
+    let readable: HashMap<&str, &Vec<String>> =
+        per_member.iter().map(|(n, s)| (n.as_str(), s)).collect();
+    let mut strip: HashSet<String> = HashSet::new();
+    for name in &names {
+        let name_dup = provider_names.contains(name);
+        let sym_dup = readable
+            .get(name.as_str())
+            .map(|syms| !syms.is_empty() && syms.iter().all(|s| provider_syms.contains(s)))
+            .unwrap_or(false);
+        if name_dup || sym_dup {
+            strip.insert(name.clone());
+        }
+    }
+    if strip.is_empty() {
+        return None;
+    }
+    // Members we keep extend the provider sets for any later bridge.
+    for name in &names {
+        if !strip.contains(name) {
+            provider_names.insert(name.clone());
+            if let Some(syms) = readable.get(name.as_str()) {
+                for s in *syms {
+                    provider_syms.insert(s.clone());
+                }
+            }
+        }
+    }
+    let copy = scratch.join(archive.file_name()?);
+    std::fs::create_dir_all(scratch).ok()?;
+    std::fs::copy(archive, &copy).ok()?;
+    // `ar d` in batches to stay clear of argument-length limits, then re-index.
+    let strip: Vec<&String> = strip.iter().collect();
+    for chunk in strip.chunks(256) {
+        let ok = Command::new("ar")
+            .arg("d")
+            .arg(&copy)
+            .args(chunk.iter().map(|s| s.as_str()))
+            .status()
+            .ok()?
+            .success();
+        if !ok {
+            return None;
+        }
+    }
+    if !Command::new("ranlib").arg(&copy).status().ok()?.success() {
+        return None;
+    }
+    Some(copy)
 }
 
 /// Executes a tool command and exits the process if the command fails.

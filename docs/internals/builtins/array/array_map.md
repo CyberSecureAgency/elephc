@@ -5,7 +5,7 @@ sidebar:
   order: 14
 ---
 
-# `array_map()` — internals
+## `array_map()` — internals
 
 ## Where it lives
 

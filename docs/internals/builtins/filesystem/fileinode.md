@@ -5,12 +5,12 @@ sidebar:
   order: 95
 ---
 
-# `fileinode()` — internals
+## `fileinode()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:4857](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L4857) (`lower_fileinode`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:4865](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L4865) (`lower_fileinode`)
 - **Function symbol**: `lower_fileinode()`
 
 

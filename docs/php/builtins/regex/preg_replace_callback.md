@@ -2,10 +2,10 @@
 title: "preg_replace_callback()"
 description: "Lowers `preg_replace_callback(pattern, callback, subject)` through supported direct callbacks."
 sidebar:
-  order: 295
+  order: 297
 ---
 
-# preg_replace_callback()
+## preg_replace_callback()
 
 ```php
 function preg_replace_callback(string $pattern, callable $callback, string $subject, int $limit = -1, int $count = null, int $flags = 0): array

@@ -5,7 +5,7 @@ sidebar:
   order: 135
 ---
 
-# unlink()
+## unlink()
 
 ```php
 function unlink(string $filename): bool

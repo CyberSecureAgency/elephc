@@ -3,7 +3,8 @@
 All notable changes to elephc, a PHP-to-native compiler written in Rust.
 Releases are listed newest first.
 
-## [Unreleased]
+## [0.25.2] - 2026-06-26
+- `--web`: compile a PHP program into a standalone prefork HTTP server binary with per-request top-level execution, `echo`/`print` response bodies, `$_SERVER`/`$_GET`/`$_POST` and `php://input` request input, PHP-compatible `http_response_code()`/`header()` handling, configurable listen address/workers/body limit, clean signal shutdown, worker respawn, bounded keep-alive handling, fixed-heap request cleanup, and full sharded CI coverage across macOS ARM64, Linux x86_64, and Linux ARM64.
 - Fixed a heap leak when releasing string-keyed associative arrays (issue #408): promoting an indexed array to hash storage (`array_to_hash`) built the result hash from a copy of the source array but never freed that source array, leaking one allocation per conversion. Reassigning an assoc array in a loop — or, under `--web`, rebuilding the request superglobals each request — slowly exhausted the heap. The conversion now releases the temporary source array, so the heap stays flat.
 - EIR small-function inliner: splices small (≤24-instruction), non-recursive user functions into their callers — covering scalar, string, and array/value helpers — with copy-on-write and reference-counting semantics preserved, gated by `--ir-opt`. Recursive (direct or mutual), generator/fiber, exception-handling, object/closure/resource/by-reference, and argument-coercing call sites are left as ordinary calls.
 - EIR optimization pipeline now runs to a module-level fixed point: the small-function inliner and the per-function passes are interleaved and repeated until neither changes anything, so optimization and inlining feed each other (e.g. a function inlined once its callees fold below the size threshold). Behavior is unchanged with `--ir-opt` on vs off; only the generated code gets tighter.
@@ -19,6 +20,7 @@ Releases are listed newest first.
 - EIR dominator-tree and natural-loop analyses: read-only sidecar analyses (Cooper–Harvey–Kennedy dominators; a back-edge/natural-loop forest with nesting and preheader detection) that underpin the cross-block optimizations below.
 - EIR common-subexpression elimination: a dominator-tree value-numbering pass that removes a pure computation when an identical one already dominates it (per-block and cross-block), gated by `--ir-opt`.
 - EIR loop-invariant code motion: hoists pure loop-invariant computations out of loop bodies into loop preheaders, gated by `--ir-opt`.
+- `--web` flag: compile a PHP program into a standalone prefork HTTP server binary. Each request re-runs the top-level code from fresh state; `echo`/`print` output becomes the response body. Request input is exposed through `$_SERVER`/`$_GET`/`$_POST` and `php://input`; response status and headers are controlled with `http_response_code()` and `header()` (PHP-compatible, including status lines and `Location:`→302). Runtime args: `--listen host:port`, `--workers N`, `--max-body-size N` (413 on overflow). The prefork master shuts down cleanly on `SIGINT`/`SIGTERM`, respawns workers that die, and bounds slow/idle keep-alive connections with a header-read timeout.
 
 ## [0.25.0] - 2026-06-19
 - EIR dead instruction elimination over CFG liveness, registered after identity and peephole passes and gated by `--ir-opt`.
@@ -400,7 +402,7 @@ Releases are listed newest first.
 ## [0.1.0] - 2026-03-22
 - Initial compiler: echo, variables, integers, arithmetic and string concatenation, comparison operators, control flow (`if`/`while`/`for`/`break`/`continue`), functions, logical/assignment/increment operators.
 
-[Unreleased]: https://github.com/illegalstudio/elephc/compare/v0.25.1...HEAD
+[0.25.2]: https://github.com/illegalstudio/elephc/compare/v0.25.1...v0.25.2
 [0.25.1]: https://github.com/illegalstudio/elephc/compare/v0.25.0...v0.25.1
 [0.25.0]: https://github.com/illegalstudio/elephc/compare/v0.24.3...v0.25.0
 [0.24.3]: https://github.com/illegalstudio/elephc/compare/v0.24.2...v0.24.3

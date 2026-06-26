@@ -5,7 +5,7 @@ sidebar:
   order: 225
 ---
 
-# `cos()` — internals
+## `cos()` — internals
 
 ## Where it lives
 

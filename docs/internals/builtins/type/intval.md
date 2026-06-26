@@ -2,15 +2,15 @@
 title: "intval() — internals"
 description: "Compiler internals for intval(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 398
+  order: 400
 ---
 
-# `intval()` — internals
+## `intval()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins.rs`:967](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins.rs#L967) (`lower_intval`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins.rs`:979](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins.rs#L979) (`lower_intval`)
 - **Function symbol**: `lower_intval()`
 
 

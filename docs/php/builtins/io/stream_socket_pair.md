@@ -5,7 +5,7 @@ sidebar:
   order: 203
 ---
 
-# stream_socket_pair()
+## stream_socket_pair()
 
 ```php
 function stream_socket_pair(int $domain, int $type, int $protocol): mixed

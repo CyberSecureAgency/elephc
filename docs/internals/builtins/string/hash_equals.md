@@ -2,10 +2,10 @@
 title: "hash_equals() — internals"
 description: "Compiler internals for hash_equals(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 334
+  order: 336
 ---
 
-# `hash_equals()` — internals
+## `hash_equals()` — internals
 
 ## Where it lives
 

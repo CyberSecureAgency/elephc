@@ -5,7 +5,7 @@ sidebar:
   order: 18
 ---
 
-# `array_product()` — internals
+## `array_product()` — internals
 
 ## Where it lives
 

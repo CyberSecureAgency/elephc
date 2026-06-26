@@ -5,7 +5,7 @@ sidebar:
   order: 208
 ---
 
-# stream_supports_lock()
+## stream_supports_lock()
 
 ```php
 function stream_supports_lock(resource $stream): bool

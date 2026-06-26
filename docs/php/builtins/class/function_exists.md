@@ -5,7 +5,7 @@ sidebar:
   order: 58
 ---
 
-# function_exists()
+## function_exists()
 
 ```php
 function function_exists(string $function): bool

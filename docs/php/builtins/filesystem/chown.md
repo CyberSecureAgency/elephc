@@ -5,7 +5,7 @@ sidebar:
   order: 85
 ---
 
-# chown()
+## chown()
 
 ```php
 function chown(string $filename, int $user): bool

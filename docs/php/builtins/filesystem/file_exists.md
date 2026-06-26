@@ -5,7 +5,7 @@ sidebar:
   order: 91
 ---
 
-# file_exists()
+## file_exists()
 
 ```php
 function file_exists(string $filename): bool

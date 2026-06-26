@@ -5,7 +5,7 @@ sidebar:
   order: 22
 ---
 
-# `array_reverse()` — internals
+## `array_reverse()` — internals
 
 ## Where it lives
 

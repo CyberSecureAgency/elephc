@@ -5,7 +5,7 @@ sidebar:
   order: 68
 ---
 
-# checkdate()
+## checkdate()
 
 ```php
 function checkdate(int $month, int $day, int $year): bool

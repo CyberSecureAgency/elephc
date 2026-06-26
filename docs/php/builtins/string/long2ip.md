@@ -2,10 +2,10 @@
 title: "long2ip()"
 description: "Lowers `long2ip(value)` through the IPv4 formatting runtime helper."
 sidebar:
-  order: 345
+  order: 347
 ---
 
-# long2ip()
+## long2ip()
 
 ```php
 function long2ip(int $ip): string

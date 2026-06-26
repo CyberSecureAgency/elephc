@@ -5,7 +5,7 @@ sidebar:
   order: 5
 ---
 
-# `array_diff_key()` — internals
+## `array_diff_key()` — internals
 
 ## Where it lives
 

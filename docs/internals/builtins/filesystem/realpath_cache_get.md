@@ -5,12 +5,12 @@ sidebar:
   order: 123
 ---
 
-# `realpath_cache_get()` — internals
+## `realpath_cache_get()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3467](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3467) (`lower_realpath_cache_get`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3475](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3475) (`lower_realpath_cache_get`)
 - **Function symbol**: `lower_realpath_cache_get()`
 
 

@@ -2,10 +2,10 @@
 title: "preg_replace() — internals"
 description: "Compiler internals for preg_replace(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 297
+  order: 299
 ---
 
-# `preg_replace()` — internals
+## `preg_replace()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 100
 ---
 
-# filetype()
+## filetype()
 
 ```php
 function filetype(string $filename): mixed

@@ -5,7 +5,7 @@ sidebar:
   order: 145
 ---
 
-# file_get_contents()
+## file_get_contents()
 
 ```php
 function file_get_contents(string $filename, bool $use_include_path, mixed $context, int $offset, int $length): mixed

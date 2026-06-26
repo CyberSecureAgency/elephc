@@ -5,7 +5,7 @@ sidebar:
   order: 159
 ---
 
-# fwrite()
+## fwrite()
 
 ```php
 function fwrite(resource $stream, string $data, int $length): int

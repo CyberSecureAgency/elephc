@@ -2,10 +2,10 @@
 title: "hash_final()"
 description: "Lowers `hash_final(context, binary?)` through the incremental hash finalizer."
 sidebar:
-  order: 332
+  order: 334
 ---
 
-# hash_final()
+## hash_final()
 
 ```php
 function hash_final(resource $context, bool $binary): string

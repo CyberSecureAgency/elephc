@@ -5,7 +5,7 @@ sidebar:
   order: 73
 ---
 
-# `gmdate()` — internals
+## `gmdate()` — internals
 
 ## Where it lives
 

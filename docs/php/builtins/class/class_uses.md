@@ -5,7 +5,7 @@ sidebar:
   order: 56
 ---
 
-# class_uses()
+## class_uses()
 
 ```php
 function class_uses(mixed $object_or_class, bool $autoload): mixed

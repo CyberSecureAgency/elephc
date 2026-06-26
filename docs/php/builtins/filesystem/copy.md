@@ -5,7 +5,7 @@ sidebar:
   order: 87
 ---
 
-# copy()
+## copy()
 
 ```php
 function copy(string $from, string $to, mixed $context): bool

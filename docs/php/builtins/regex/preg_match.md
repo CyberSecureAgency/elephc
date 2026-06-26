@@ -2,10 +2,10 @@
 title: "preg_match()"
 description: "Lowers `preg_match(pattern, subject)` through the shared regex runtime helper."
 sidebar:
-  order: 292
+  order: 294
 ---
 
-# preg_match()
+## preg_match()
 
 ```php
 function preg_match(string $pattern, string $subject, array $matches): int

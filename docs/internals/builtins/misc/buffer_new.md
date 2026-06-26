@@ -5,7 +5,7 @@ sidebar:
   order: 257
 ---
 
-# `buffer_new()` — internals
+## `buffer_new()` — internals
 
 ## Where it lives
 

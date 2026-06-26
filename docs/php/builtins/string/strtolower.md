@@ -2,10 +2,10 @@
 title: "strtolower()"
 description: "Lowers a one-argument string builtin that directly delegates to a runtime helper."
 sidebar:
-  order: 374
+  order: 376
 ---
 
-# strtolower()
+## strtolower()
 
 ```php
 function strtolower(string $string): string

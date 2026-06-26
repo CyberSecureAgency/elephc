@@ -5,12 +5,12 @@ sidebar:
   order: 100
 ---
 
-# `filetype()` — internals
+## `filetype()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:4865](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L4865) (`lower_filetype`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:4873](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L4873) (`lower_filetype`)
 - **Function symbol**: `lower_filetype()`
 
 

@@ -2,10 +2,10 @@
 title: "nl2br()"
 description: "Lowers a one-argument string builtin that directly delegates to a runtime helper."
 sidebar:
-  order: 348
+  order: 350
 ---
 
-# nl2br()
+## nl2br()
 
 ```php
 function nl2br(string $string, bool $use_xhtml): string

@@ -2,10 +2,10 @@
 title: "str_contains()"
 description: "Lowers `str_contains()` through `strpos()` and converts found positions to bool."
 sidebar:
-  order: 358
+  order: 360
 ---
 
-# str_contains()
+## str_contains()
 
 ```php
 function str_contains(string $haystack, string $needle): bool

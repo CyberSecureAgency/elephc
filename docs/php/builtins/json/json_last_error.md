@@ -5,7 +5,7 @@ sidebar:
   order: 215
 ---
 
-# json_last_error()
+## json_last_error()
 
 ```php
 function json_last_error(): int

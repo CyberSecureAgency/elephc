@@ -2,10 +2,10 @@
 title: "spl_autoload()"
 description: "Lowers no-op autoload calls by preserving arg effects and returning PHP null if used."
 sidebar:
-  order: 300
+  order: 302
 ---
 
-# spl_autoload()
+## spl_autoload()
 
 ```php
 function spl_autoload(string $class, string $file_extensions): void

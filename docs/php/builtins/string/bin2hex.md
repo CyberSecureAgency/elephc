@@ -2,10 +2,10 @@
 title: "bin2hex()"
 description: "Lowers a one-argument string builtin that directly delegates to a runtime helper."
 sidebar:
-  order: 318
+  order: 320
 ---
 
-# bin2hex()
+## bin2hex()
 
 ```php
 function bin2hex(string $string): string

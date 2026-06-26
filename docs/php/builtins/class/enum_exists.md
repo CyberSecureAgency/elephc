@@ -5,7 +5,7 @@ sidebar:
   order: 57
 ---
 
-# enum_exists()
+## enum_exists()
 
 ```php
 function enum_exists(string $enum, bool $autoload): bool

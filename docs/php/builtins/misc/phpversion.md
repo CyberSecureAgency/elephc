@@ -2,10 +2,10 @@
 title: "phpversion()"
 description: "Returns the current PHP version information."
 sidebar:
-  order: 262
+  order: 264
 ---
 
-# phpversion()
+## phpversion()
 
 ```php
 function phpversion(string $extension = null): string

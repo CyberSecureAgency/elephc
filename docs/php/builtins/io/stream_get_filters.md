@@ -5,7 +5,7 @@ sidebar:
   order: 185
 ---
 
-# stream_get_filters()
+## stream_get_filters()
 
 ```php
 function stream_get_filters(): array

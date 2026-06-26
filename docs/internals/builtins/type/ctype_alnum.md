@@ -2,10 +2,10 @@
 title: "ctype_alnum() — internals"
 description: "Compiler internals for ctype_alnum(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 390
+  order: 392
 ---
 
-# `ctype_alnum()` — internals
+## `ctype_alnum()` — internals
 
 ## Where it lives
 

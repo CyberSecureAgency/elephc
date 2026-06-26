@@ -5,7 +5,7 @@ sidebar:
   order: 38
 ---
 
-# natcasesort()
+## natcasesort()
 
 ```php
 function natcasesort(array $array): bool

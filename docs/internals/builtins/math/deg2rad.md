@@ -5,7 +5,7 @@ sidebar:
   order: 227
 ---
 
-# `deg2rad()` — internals
+## `deg2rad()` — internals
 
 ## Where it lives
 

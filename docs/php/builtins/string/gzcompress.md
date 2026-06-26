@@ -2,10 +2,10 @@
 title: "gzcompress()"
 description: "Lowers `gzcompress(data, level?)` through inline zlib `compress2` calls."
 sidebar:
-  order: 324
+  order: 326
 ---
 
-# gzcompress()
+## gzcompress()
 
 ```php
 function gzcompress(string $data, int $level, int $encoding): string

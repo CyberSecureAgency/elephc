@@ -5,7 +5,7 @@ sidebar:
   order: 118
 ---
 
-# pathinfo()
+## pathinfo()
 
 ```php
 function pathinfo(string $path, int $flags): mixed

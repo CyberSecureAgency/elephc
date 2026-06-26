@@ -5,7 +5,7 @@ sidebar:
   order: 220
 ---
 
-# `asin()` — internals
+## `asin()` — internals
 
 ## Where it lives
 

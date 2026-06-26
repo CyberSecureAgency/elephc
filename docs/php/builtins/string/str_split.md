@@ -2,10 +2,10 @@
 title: "str_split()"
 description: "Lowers `str_split(string, length?)` into the fixed-width string-array splitter."
 sidebar:
-  order: 364
+  order: 366
 ---
 
-# str_split()
+## str_split()
 
 ```php
 function str_split(string $string, int $length): array

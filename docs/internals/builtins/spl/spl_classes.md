@@ -2,10 +2,10 @@
 title: "spl_classes() — internals"
 description: "Compiler internals for spl_classes(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 309
+  order: 311
 ---
 
-# `spl_classes()` — internals
+## `spl_classes()` — internals
 
 ## Where it lives
 

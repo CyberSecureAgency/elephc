@@ -5,7 +5,7 @@ sidebar:
   order: 207
 ---
 
-# stream_socket_shutdown()
+## stream_socket_shutdown()
 
 ```php
 function stream_socket_shutdown(resource $stream, int $mode): bool

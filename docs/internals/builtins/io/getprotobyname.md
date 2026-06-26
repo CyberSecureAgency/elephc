@@ -5,12 +5,12 @@ sidebar:
   order: 163
 ---
 
-# `getprotobyname()` — internals
+## `getprotobyname()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3215](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3215) (`lower_getprotobyname`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3223](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3223) (`lower_getprotobyname`)
 - **Function symbol**: `lower_getprotobyname()`
 
 

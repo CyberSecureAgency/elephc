@@ -2,10 +2,10 @@
 title: "ptr_sizeof()"
 description: "Lowers `ptr_sizeof(\"type\")` by materializing the checked static byte size."
 sidebar:
-  order: 276
+  order: 278
 ---
 
-# ptr_sizeof()
+## ptr_sizeof()
 
 ```php
 function ptr_sizeof(string $type): mixed

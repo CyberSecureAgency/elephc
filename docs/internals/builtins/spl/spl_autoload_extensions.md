@@ -2,10 +2,10 @@
 title: "spl_autoload_extensions() — internals"
 description: "Compiler internals for spl_autoload_extensions(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 305
+  order: 307
 ---
 
-# `spl_autoload_extensions()` — internals
+## `spl_autoload_extensions()` — internals
 
 ## Where it lives
 

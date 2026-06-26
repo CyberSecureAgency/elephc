@@ -5,7 +5,7 @@ sidebar:
   order: 9
 ---
 
-# `array_flip()` — internals
+## `array_flip()` — internals
 
 ## Where it lives
 

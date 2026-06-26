@@ -2,10 +2,10 @@
 title: "ltrim()"
 description: "Lowers `trim()`/`ltrim()`/`rtrim()`/`chop()` for default and explicit masks."
 sidebar:
-  order: 346
+  order: 348
 ---
 
-# ltrim()
+## ltrim()
 
 ```php
 function ltrim(string $string, string $characters): string

@@ -5,7 +5,7 @@ sidebar:
   order: 39
 ---
 
-# `natsort()` — internals
+## `natsort()` — internals
 
 ## Where it lives
 

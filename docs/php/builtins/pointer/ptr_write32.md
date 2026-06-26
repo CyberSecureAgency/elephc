@@ -2,10 +2,10 @@
 title: "ptr_write32()"
 description: "Lowers `ptr_write32(pointer, value)` by writing one 32-bit word through a checked pointer."
 sidebar:
-  order: 278
+  order: 280
 ---
 
-# ptr_write32()
+## ptr_write32()
 
 ```php
 function ptr_write32(pointer $pointer, int $value): void

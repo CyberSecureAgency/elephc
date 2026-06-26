@@ -5,12 +5,12 @@ sidebar:
   order: 186
 ---
 
-# `stream_get_line()` — internals
+## `stream_get_line()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:1272](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L1272) (`lower_stream_get_line`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:1280](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L1280) (`lower_stream_get_line`)
 - **Function symbol**: `lower_stream_get_line()`
 
 

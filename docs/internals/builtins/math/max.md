@@ -5,7 +5,7 @@ sidebar:
   order: 240
 ---
 
-# `max()` — internals
+## `max()` — internals
 
 ## Where it lives
 

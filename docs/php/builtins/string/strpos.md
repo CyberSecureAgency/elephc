@@ -2,10 +2,10 @@
 title: "strpos()"
 description: "Lowers `strpos()`/`strrpos()` and boxes position-or-false results as Mixed."
 sidebar:
-  order: 370
+  order: 372
 ---
 
-# strpos()
+## strpos()
 
 ```php
 function strpos(string $haystack, string $needle, int $offset): mixed

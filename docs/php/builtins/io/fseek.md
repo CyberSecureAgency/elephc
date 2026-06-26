@@ -5,7 +5,7 @@ sidebar:
   order: 154
 ---
 
-# fseek()
+## fseek()
 
 ```php
 function fseek(resource $stream, int $offset, int $whence): int

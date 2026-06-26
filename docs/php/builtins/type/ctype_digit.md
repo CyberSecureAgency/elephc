@@ -2,10 +2,10 @@
 title: "ctype_digit()"
 description: "Lowers `ctype_digit(string)` by checking every byte against the ASCII digit range."
 sidebar:
-  order: 389
+  order: 391
 ---
 
-# ctype_digit()
+## ctype_digit()
 
 ```php
 function ctype_digit(string $text): bool

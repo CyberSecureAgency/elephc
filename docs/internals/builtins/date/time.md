@@ -5,12 +5,12 @@ sidebar:
   order: 80
 ---
 
-# `time()` — internals
+## `time()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/system.rs`:544](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/system.rs#L544) (`lower_time`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/system.rs`:615](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/system.rs#L615) (`lower_time`)
 - **Function symbol**: `lower_time()`
 
 

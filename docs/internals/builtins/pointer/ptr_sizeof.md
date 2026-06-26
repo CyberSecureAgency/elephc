@@ -2,10 +2,10 @@
 title: "ptr_sizeof() — internals"
 description: "Compiler internals for ptr_sizeof(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 279
+  order: 281
 ---
 
-# `ptr_sizeof()` — internals
+## `ptr_sizeof()` — internals
 
 ## Where it lives
 

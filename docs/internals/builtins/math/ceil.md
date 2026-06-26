@@ -5,7 +5,7 @@ sidebar:
   order: 223
 ---
 
-# `ceil()` — internals
+## `ceil()` — internals
 
 ## Where it lives
 

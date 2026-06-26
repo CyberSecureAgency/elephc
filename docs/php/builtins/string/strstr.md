@@ -2,10 +2,10 @@
 title: "strstr()"
 description: "Lowers `strstr(haystack, needle)` by searching and returning the matching suffix."
 sidebar:
-  order: 373
+  order: 375
 ---
 
-# strstr()
+## strstr()
 
 ```php
 function strstr(string $haystack, string $needle, bool $before_needle): string

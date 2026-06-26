@@ -5,12 +5,12 @@ sidebar:
   order: 148
 ---
 
-# `fopen()` — internals
+## `fopen()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:225](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L225) (`lower_fopen`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:233](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L233) (`lower_fopen`)
 - **Function symbol**: `lower_fopen()`
 
 

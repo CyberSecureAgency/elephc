@@ -5,7 +5,7 @@ sidebar:
   order: 232
 ---
 
-# hypot()
+## hypot()
 
 ```php
 function hypot(float $x, float $y): float

@@ -5,7 +5,7 @@ sidebar:
   order: 18
 ---
 
-# array_product()
+## array_product()
 
 ```php
 function array_product(array $array): float

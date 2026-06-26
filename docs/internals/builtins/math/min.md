@@ -5,7 +5,7 @@ sidebar:
   order: 241
 ---
 
-# `min()` — internals
+## `min()` — internals
 
 ## Where it lives
 

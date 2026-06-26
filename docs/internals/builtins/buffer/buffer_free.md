@@ -5,7 +5,7 @@ sidebar:
   order: 47
 ---
 
-# `buffer_free()` — internals
+## `buffer_free()` — internals
 
 ## Where it lives
 

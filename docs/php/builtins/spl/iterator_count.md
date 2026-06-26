@@ -2,10 +2,10 @@
 title: "iterator_count()"
 description: "Lowers `iterator_count()` over arrays, `iterable`, and Traversable objects."
 sidebar:
-  order: 298
+  order: 300
 ---
 
-# iterator_count()
+## iterator_count()
 
 ```php
 function iterator_count(traversable $iterator): int

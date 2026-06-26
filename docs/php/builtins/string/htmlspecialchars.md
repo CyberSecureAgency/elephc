@@ -2,10 +2,10 @@
 title: "htmlspecialchars()"
 description: "Lowers a one-argument string builtin that directly delegates to a runtime helper."
 sidebar:
-  order: 339
+  order: 341
 ---
 
-# htmlspecialchars()
+## htmlspecialchars()
 
 ```php
 function htmlspecialchars(string $string, int $flags, string $encoding, bool $double_encode): string

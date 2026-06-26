@@ -5,7 +5,7 @@ sidebar:
   order: 0
 ---
 
-# Builtins
+## Builtins
 
 | Function | Signature | Returns |
 |---|---|---|
@@ -268,6 +268,8 @@ sidebar:
 | [`define()`](./builtins/misc/define.md) | `(string $constant_name, mixed $value, bool $case_insensitive): bool` | `bool` |
 | [`defined()`](./builtins/misc/defined.md) | `(string $constant_name): bool` | `bool` |
 | [`empty()`](./builtins/misc/empty.md) | `(mixed $value): bool` | `bool` |
+| [`header()`](./builtins/misc/header.md) | `(mixed $header, mixed $replace, mixed $response_code): void` | `void` |
+| [`http_response_code()`](./builtins/misc/http_response_code.md) | `(mixed $response_code): int` | `int` |
 | [`isset()`](./builtins/misc/isset.md) | `(mixed $var, ...$vars): int` | `int` |
 | [`php_uname()`](./builtins/misc/php_uname.md) | `(string $mode): string` | `string` |
 | [`phpversion()`](./builtins/misc/phpversion.md) | `(string $extension = null): string` | `string` |

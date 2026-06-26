@@ -5,7 +5,7 @@ sidebar:
   order: 21
 ---
 
-# array_reduce()
+## array_reduce()
 
 ```php
 function array_reduce(array $array, callable $callback, mixed $initial): int

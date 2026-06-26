@@ -5,7 +5,7 @@ sidebar:
   order: 229
 ---
 
-# `fdiv()` — internals
+## `fdiv()` — internals
 
 ## Where it lives
 

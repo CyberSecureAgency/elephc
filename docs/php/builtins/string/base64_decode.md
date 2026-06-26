@@ -2,10 +2,10 @@
 title: "base64_decode()"
 description: "Lowers a one-argument string builtin that directly delegates to a runtime helper."
 sidebar:
-  order: 316
+  order: 318
 ---
 
-# base64_decode()
+## base64_decode()
 
 ```php
 function base64_decode(string $string, bool $strict): string

@@ -5,12 +5,12 @@ sidebar:
   order: 190
 ---
 
-# `stream_is_local()` — internals
+## `stream_is_local()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:1876](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L1876) (`lower_stream_is_local`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:1884](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L1884) (`lower_stream_is_local`)
 - **Function symbol**: `lower_stream_is_local()`
 
 

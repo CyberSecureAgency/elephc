@@ -5,7 +5,7 @@ sidebar:
   order: 23
 ---
 
-# array_search()
+## array_search()
 
 ```php
 function array_search(mixed $needle, array $haystack, bool $strict): mixed

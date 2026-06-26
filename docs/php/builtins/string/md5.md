@@ -2,10 +2,10 @@
 title: "md5()"
 description: "Lowers `md5(data, binary?)` through the shared crypto-backed runtime helper."
 sidebar:
-  order: 347
+  order: 349
 ---
 
-# md5()
+## md5()
 
 ```php
 function md5(string $string, bool $binary): string

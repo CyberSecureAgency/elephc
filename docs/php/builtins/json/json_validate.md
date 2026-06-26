@@ -5,7 +5,7 @@ sidebar:
   order: 217
 ---
 
-# json_validate()
+## json_validate()
 
 ```php
 function json_validate(string $json, int $depth, int $flags): bool

@@ -5,7 +5,7 @@ sidebar:
   order: 11
 ---
 
-# `array_intersect_key()` — internals
+## `array_intersect_key()` — internals
 
 ## Where it lives
 

@@ -2,10 +2,10 @@
 title: "ctype_space()"
 description: "Lowers `ctype_space(string)` by checking every byte against PHP's ASCII whitespace set."
 sidebar:
-  order: 390
+  order: 392
 ---
 
-# ctype_space()
+## ctype_space()
 
 ```php
 function ctype_space(string $text): bool

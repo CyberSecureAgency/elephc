@@ -5,7 +5,7 @@ sidebar:
   order: 50
 ---
 
-# class_attribute_args()
+## class_attribute_args()
 
 ```php
 function class_attribute_args(string $class_name, string $attribute_name): array

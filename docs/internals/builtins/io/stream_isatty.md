@@ -5,12 +5,12 @@ sidebar:
   order: 191
 ---
 
-# `stream_isatty()` — internals
+## `stream_isatty()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:1900](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L1900) (`lower_stream_isatty`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:1908](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L1908) (`lower_stream_isatty`)
 - **Function symbol**: `lower_stream_isatty()`
 
 

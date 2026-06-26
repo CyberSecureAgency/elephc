@@ -257,6 +257,77 @@ pub(super) fn lower_hrtime(
     store_if_result(ctx, inst)
 }
 
+/// Lowers `http_response_code([$code])` to `__rt_http_response_code`. The code (or
+/// 0 = "read current" when omitted) goes into the first integer argument register;
+/// the routine returns the resulting status as an int. PHP semantics (read vs set,
+/// return-previous) live in the bridge's `elephc_web_set_status`.
+pub(super) fn lower_http_response_code(
+    ctx: &mut FunctionContext<'_>,
+    inst: &Instruction,
+) -> Result<()> {
+    ensure_arg_count_between(inst, "http_response_code", 0, 1)?;
+    match inst.operands.first().copied() {
+        Some(code) => {
+            load_value_to_first_int_arg(ctx, code)?;
+        }
+        None => abi::emit_load_int_immediate(
+            ctx.emitter,
+            abi::int_arg_reg_name(ctx.emitter.target, 0),
+            0,
+        ),
+    }
+    abi::emit_call_label(ctx.emitter, "__rt_http_response_code");
+    store_if_result(ctx, inst)
+}
+
+/// Lowers `header($line[, $replace[, $code]])` to `__rt_header`, materializing the
+/// four C-ABI integer arguments: arg0=line ptr, arg1=line len, arg2=`$replace`
+/// (default true), arg3=`$response_code` (default 0). `$replace`/`$code` are staged
+/// to scratch first (their evaluation may call helpers that clobber the string
+/// registers), then the line string is loaded and the staged ints reloaded into
+/// arg2/arg3. All PHP `header()` behavior lives in the bridge (`elephc_web_header`).
+pub(super) fn lower_header(ctx: &mut FunctionContext<'_>, inst: &Instruction) -> Result<()> {
+    ensure_arg_count_between(inst, "header", 1, 3)?;
+    let line = expect_operand(inst, 0)?;
+    emit_scratch_reserve(ctx, 16);
+    // $replace (default true = 1) → scratch[0]
+    match inst.operands.get(1).copied() {
+        Some(value) => resolve_integer_arg_to_result(ctx, value, "header replace flag")?,
+        None => abi::emit_load_int_immediate(ctx.emitter, abi::int_result_reg(ctx.emitter), 1),
+    }
+    emit_store_result_to_scratch(ctx, 0);
+    // $response_code (default 0) → scratch[8]
+    match inst.operands.get(2).copied() {
+        Some(value) => resolve_integer_arg_to_result(ctx, value, "header response_code")?,
+        None => abi::emit_load_int_immediate(ctx.emitter, abi::int_result_reg(ctx.emitter), 0),
+    }
+    emit_store_result_to_scratch(ctx, 8);
+    // line string → string-result regs, then move ptr/len into arg0/arg1
+    super::io::load_string_to_result(ctx, line, "header line")?;
+    emit_move_string_result_to_first_two_args(ctx);
+    // staged ints → arg2 ($replace) / arg3 ($response_code)
+    emit_load_scratch_to_arg_reg(ctx, 2, 0);
+    emit_load_scratch_to_arg_reg(ctx, 3, 8);
+    emit_scratch_release(ctx, 16);
+    abi::emit_call_label(ctx.emitter, "__rt_header");
+    store_if_result(ctx, inst)
+}
+
+/// Moves the string-result registers (AArch64 `x1`=ptr/`x2`=len, x86_64 `rax`=ptr/
+/// `rdx`=len) into the first two C-ABI integer argument registers (ptr→arg0, len→arg1).
+fn emit_move_string_result_to_first_two_args(ctx: &mut FunctionContext<'_>) {
+    match ctx.emitter.target.arch {
+        Arch::AArch64 => {
+            ctx.emitter.instruction("mov x0, x1");                              // line pointer → first argument register
+            ctx.emitter.instruction("mov x1, x2");                              // line length → second argument register
+        }
+        Arch::X86_64 => {
+            ctx.emitter.instruction("mov rdi, rax");                            // line pointer → first argument register
+            ctx.emitter.instruction("mov rsi, rdx");                            // line length → second argument register
+        }
+    }
+}
+
 /// Shared lowering for `mktime`/`gmmktime`: marshals the six date/time integers into the ABI
 /// argument registers, then calls `runtime_symbol` (`__rt_mktime` for local time, `__rt_gmmktime`
 /// for UTC). `name` is used for the argument-count diagnostic only.

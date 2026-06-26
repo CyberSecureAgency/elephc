@@ -5,7 +5,7 @@ sidebar:
   order: 78
 ---
 
-# `mktime()` — internals
+## `mktime()` — internals
 
 ## Where it lives
 

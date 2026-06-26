@@ -71,6 +71,27 @@ pub(super) fn check_builtin(
             checker.infer_type(&args[0], env)?;
             Ok(Some(PhpType::Void))
         }
+        "http_response_code" => {
+            if args.len() > 1 {
+                return Err(CompileError::new(
+                    span,
+                    "http_response_code() takes 0 or 1 arguments",
+                ));
+            }
+            for arg in args {
+                checker.infer_type(arg, env)?;
+            }
+            Ok(Some(PhpType::Int))
+        }
+        "header" => {
+            if args.is_empty() || args.len() > 3 {
+                return Err(CompileError::new(span, "header() takes 1 to 3 arguments"));
+            }
+            for arg in args {
+                checker.infer_type(arg, env)?;
+            }
+            Ok(Some(PhpType::Void))
+        }
         "getenv" => {
             if args.len() != 1 {
                 return Err(CompileError::new(span, "getenv() takes exactly 1 argument"));

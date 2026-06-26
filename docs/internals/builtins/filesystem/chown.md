@@ -5,12 +5,12 @@ sidebar:
   order: 85
 ---
 
-# `chown()` — internals
+## `chown()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3822](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3822) (`lower_chown`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3830](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3830) (`lower_chown`)
 - **Function symbol**: `lower_chown()`
 
 

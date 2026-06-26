@@ -5,7 +5,7 @@ sidebar:
   order: 31
 ---
 
-# array_walk()
+## array_walk()
 
 ```php
 function array_walk(array $array, callable $callback, mixed $arg): void

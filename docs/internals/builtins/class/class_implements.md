@@ -5,7 +5,7 @@ sidebar:
   order: 54
 ---
 
-# `class_implements()` — internals
+## `class_implements()` — internals
 
 ## Where it lives
 

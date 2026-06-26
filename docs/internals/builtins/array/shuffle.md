@@ -5,7 +5,7 @@ sidebar:
   order: 42
 ---
 
-# `shuffle()` — internals
+## `shuffle()` — internals
 
 ## Where it lives
 

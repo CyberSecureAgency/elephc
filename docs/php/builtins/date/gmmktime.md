@@ -5,7 +5,7 @@ sidebar:
   order: 74
 ---
 
-# gmmktime()
+## gmmktime()
 
 ```php
 function gmmktime(int $hour, int $minute, int $second, int $month, int $day, int $year): int

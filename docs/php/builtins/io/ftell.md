@@ -5,7 +5,7 @@ sidebar:
   order: 157
 ---
 
-# ftell()
+## ftell()
 
 ```php
 function ftell(resource $stream): int

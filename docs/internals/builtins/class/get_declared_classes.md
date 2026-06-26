@@ -5,7 +5,7 @@ sidebar:
   order: 60
 ---
 
-# `get_declared_classes()` — internals
+## `get_declared_classes()` — internals
 
 ## Where it lives
 

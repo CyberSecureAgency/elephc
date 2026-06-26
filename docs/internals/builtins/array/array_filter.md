@@ -5,7 +5,7 @@ sidebar:
   order: 8
 ---
 
-# `array_filter()` — internals
+## `array_filter()` — internals
 
 ## Where it lives
 

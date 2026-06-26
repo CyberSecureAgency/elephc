@@ -5,7 +5,7 @@ sidebar:
   order: 3
 ---
 
-# `array_combine()` — internals
+## `array_combine()` — internals
 
 ## Where it lives
 

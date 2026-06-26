@@ -2,10 +2,10 @@
 title: "get_resource_id()"
 description: "Lowers `get_resource_id(resource)` by unboxing the native handle and making it one-based."
 sidebar:
-  order: 392
+  order: 394
 ---
 
-# get_resource_id()
+## get_resource_id()
 
 ```php
 function get_resource_id(resource $resource): int

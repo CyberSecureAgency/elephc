@@ -2,10 +2,10 @@
 title: "ptr_read8()"
 description: "Lowers `ptr_read8(pointer)` by reading one unsigned byte through a checked pointer."
 sidebar:
-  order: 273
+  order: 275
 ---
 
-# ptr_read8()
+## ptr_read8()
 
 ```php
 function ptr_read8(pointer $pointer): int

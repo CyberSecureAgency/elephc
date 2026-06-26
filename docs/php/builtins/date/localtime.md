@@ -5,7 +5,7 @@ sidebar:
   order: 76
 ---
 
-# localtime()
+## localtime()
 
 ```php
 function localtime(int $timestamp, bool $associative): array

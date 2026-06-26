@@ -14,6 +14,7 @@ use super::{
     PHP_UNAME_MODE_LEN_MSG, PHP_UNAME_MODE_VALUE_MSG, STR_REPEAT_TIMES_MSG,
 };
 use super::super::system;
+use crate::codegen::platform::Target;
 use crate::types::checker::builtins::supported_builtin_function_names;
 
 /// Emit the fixed runtime `.data` section as assembly text.
@@ -24,7 +25,13 @@ use crate::types::checker::builtins::supported_builtin_function_names;
 ///
 /// `heap_size` is the maximum heap bytes requested by the user program;
 /// it is baked into `_heap_max` to enforce the heap limit at runtime.
-pub(crate) fn emit_runtime_data_fixed(heap_size: usize) -> String {
+///
+/// `target` is needed only for the one symbol the `--web` bridge references
+/// (`elephc_web_capture`): it must carry the platform's C-ABI mangling so the
+/// runtime's `.comm`, the runtime's load, and the Rust bridge's `extern "C"`
+/// all name the same symbol (`_elephc_web_capture` on macOS, `elephc_web_capture`
+/// on Linux). The cache key already includes the target, so this stays cache-safe.
+pub(crate) fn emit_runtime_data_fixed(heap_size: usize, target: Target) -> String {
     let mut out = String::new();
     out.push_str(".data\n");
     out.push_str(".comm _concat_buf, 65536, 3\n");
@@ -71,6 +78,17 @@ pub(crate) fn emit_runtime_data_fixed(heap_size: usize) -> String {
     out.push_str(".comm _fiber_main_saved_exc, 8, 3\n");
     out.push_str(".comm _fiber_main_saved_call_frame, 8, 3\n");
     out.push_str(".comm _rt_diag_suppression, 8, 3\n");
+    // elephc_web_capture: per-request output-capture mode flag read by
+    // __rt_stdout_write. Zero (the default) routes echo output to the plain
+    // write(1, …) syscall; non-zero (set only by the --web bridge) routes it to
+    // elephc_web_write so the response body can be captured per request. Only the
+    // low byte is used, but the 8-byte/align-3 house style keeps it word-aligned.
+    // The symbol is mangled per-target so the bridge's `extern "C"` declaration
+    // resolves to it on every platform (see emit_runtime_data_fixed docs).
+    out.push_str(&format!(
+        ".comm {}, 8, 3\n",
+        target.extern_symbol("elephc_web_capture")
+    ));
     out.push_str(&format!(".comm _heap_buf, {}, 3\n", heap_size));
     out.push_str(".comm _heap_off, 8, 3\n");
     out.push_str(".comm _heap_free_list, 8, 3\n");
@@ -686,6 +704,10 @@ pub(crate) fn emit_runtime_data_fixed(heap_size: usize) -> String {
     out.push_str(".globl _etc_protocols_path\n_etc_protocols_path:\n    .asciz \"/etc/protocols\"\n");
     out.push_str(".comm _servent_buf, 1048576, 3\n");
     out.push_str(".globl _etc_services_path\n_etc_services_path:\n    .asciz \"/etc/services\"\n");
+    out.push_str(".comm _principal_lookup_buf, 4096, 3\n");
+    out.push_str(".globl _etc_passwd_path\n_etc_passwd_path:\n    .asciz \"/etc/passwd\"\n");
+    out.push_str(".globl _etc_group_path\n_etc_group_path:\n    .asciz \"/etc/group\"\n");
+    out.push_str(".globl _principal_lookup_read_mode\n_principal_lookup_read_mode:\n    .asciz \"r\"\n");
     out.push_str(&emit_spl_autoload_extensions_data());
     out.push_str(".globl _heap_dbg_stats_prefix\n_heap_dbg_stats_prefix:\n    .ascii \"HEAP DEBUG: allocs=\"\n");
     out.push_str(".globl _heap_dbg_frees_label\n_heap_dbg_frees_label:\n    .ascii \" frees=\"\n");

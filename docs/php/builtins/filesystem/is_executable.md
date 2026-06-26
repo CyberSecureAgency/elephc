@@ -5,7 +5,7 @@ sidebar:
   order: 106
 ---
 
-# is_executable()
+## is_executable()
 
 ```php
 function is_executable(string $filename): bool

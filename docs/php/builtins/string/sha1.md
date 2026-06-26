@@ -2,10 +2,10 @@
 title: "sha1()"
 description: "Lowers `sha1(data, binary?)` through the shared crypto-backed runtime helper."
 sidebar:
-  order: 355
+  order: 357
 ---
 
-# sha1()
+## sha1()
 
 ```php
 function sha1(string $string, bool $binary): string

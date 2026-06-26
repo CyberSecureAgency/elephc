@@ -2,15 +2,15 @@
 title: "is_object() — internals"
 description: "Compiler internals for is_object(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 407
+  order: 409
 ---
 
-# `is_object()` — internals
+## `is_object()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins.rs`:1461](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins.rs#L1461) (`lower_is_object`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins.rs`:1473](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins.rs#L1473) (`lower_is_object`)
 - **Function symbol**: `lower_is_object()`
 
 

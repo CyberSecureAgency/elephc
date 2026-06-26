@@ -5,12 +5,12 @@ sidebar:
   order: 136
 ---
 
-# `closedir()` — internals
+## `closedir()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3343](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3343) (`lower_closedir`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3351](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3351) (`lower_closedir`)
 - **Function symbol**: `lower_closedir()`
 
 

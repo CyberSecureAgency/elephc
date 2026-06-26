@@ -5,7 +5,7 @@ sidebar:
   order: 205
 ---
 
-# stream_socket_sendto()
+## stream_socket_sendto()
 
 ```php
 function stream_socket_sendto(resource $socket, string $data, int $flags, string $address): mixed

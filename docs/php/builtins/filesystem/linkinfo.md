@@ -5,7 +5,7 @@ sidebar:
   order: 115
 ---
 
-# linkinfo()
+## linkinfo()
 
 ```php
 function linkinfo(string $path): int

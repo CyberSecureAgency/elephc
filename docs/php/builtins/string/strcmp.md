@@ -2,10 +2,10 @@
 title: "strcmp()"
 description: "Lowers a two-argument string builtin that directly delegates to a runtime helper."
 sidebar:
-  order: 367
+  order: 369
 ---
 
-# strcmp()
+## strcmp()
 
 ```php
 function strcmp(string $string1, string $string2): int

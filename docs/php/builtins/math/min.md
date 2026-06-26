@@ -5,7 +5,7 @@ sidebar:
   order: 241
 ---
 
-# min()
+## min()
 
 ```php
 function min(mixed $value, ...$values): float

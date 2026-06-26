@@ -5,12 +5,12 @@ sidebar:
   order: 117
 ---
 
-# `mkdir()` — internals
+## `mkdir()` — internals
 
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3777](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3777) (`lower_mkdir`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins/io.rs`:3785](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins/io.rs#L3785) (`lower_mkdir`)
 - **Function symbol**: `lower_mkdir()`
 
 

@@ -5,7 +5,7 @@ sidebar:
   order: 113
 ---
 
-# lchown()
+## lchown()
 
 ```php
 function lchown(string $filename, int $user): bool

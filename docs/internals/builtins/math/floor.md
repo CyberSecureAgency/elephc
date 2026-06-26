@@ -5,7 +5,7 @@ sidebar:
   order: 230
 ---
 
-# `floor()` — internals
+## `floor()` — internals
 
 ## Where it lives
 

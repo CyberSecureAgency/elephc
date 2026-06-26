@@ -5,7 +5,7 @@ sidebar:
   order: 34
 ---
 
-# count()
+## count()
 
 ```php
 function count(array $value, int $mode): int

@@ -5,7 +5,7 @@ sidebar:
   order: 250
 ---
 
-# `sinh()` — internals
+## `sinh()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 256
 ---
 
-# call_user_func_array()
+## call_user_func_array()
 
 ```php
 function call_user_func_array(callable $callback, array $args): mixed

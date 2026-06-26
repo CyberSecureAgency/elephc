@@ -2,10 +2,10 @@
 title: "urldecode()"
 description: "Lowers a one-argument string builtin that directly delegates to a runtime helper."
 sidebar:
-  order: 381
+  order: 383
 ---
 
-# urldecode()
+## urldecode()
 
 ```php
 function urldecode(string $string): string

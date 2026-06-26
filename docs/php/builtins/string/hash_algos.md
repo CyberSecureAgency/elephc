@@ -2,10 +2,10 @@
 title: "hash_algos()"
 description: "Lowers `hash_algos()` through the runtime algorithm-list builder."
 sidebar:
-  order: 329
+  order: 331
 ---
 
-# hash_algos()
+## hash_algos()
 
 ```php
 function hash_algos(): array

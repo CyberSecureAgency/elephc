@@ -5,7 +5,7 @@ sidebar:
   order: 79
 ---
 
-# strtotime()
+## strtotime()
 
 ```php
 function strtotime(string $datetime, int $baseTimestamp): mixed
