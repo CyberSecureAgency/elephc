@@ -5,7 +5,7 @@ sidebar:
   order: 140
 ---
 
-# `fflush()` — internals
+## `fflush()` — internals
 
 ## Where it lives
 

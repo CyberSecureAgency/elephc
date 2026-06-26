@@ -5,7 +5,7 @@ sidebar:
   order: 96
 ---
 
-# filemtime()
+## filemtime()
 
 ```php
 function filemtime(string $filename): int

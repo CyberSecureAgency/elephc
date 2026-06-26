@@ -5,7 +5,7 @@ sidebar:
   order: 399
 ---
 
-# is_bool()
+## is_bool()
 
 ```php
 function is_bool(mixed $value): bool

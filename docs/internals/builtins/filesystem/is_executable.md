@@ -5,7 +5,7 @@ sidebar:
   order: 106
 ---
 
-# `is_executable()` — internals
+## `is_executable()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 166
 ---
 
-# getservbyport()
+## getservbyport()
 
 ```php
 function getservbyport(int $port, string $protocol): mixed

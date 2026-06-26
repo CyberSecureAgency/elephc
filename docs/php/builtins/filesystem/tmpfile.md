@@ -5,7 +5,7 @@ sidebar:
   order: 132
 ---
 
-# tmpfile()
+## tmpfile()
 
 ```php
 function tmpfile(): mixed

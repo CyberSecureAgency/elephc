@@ -5,7 +5,7 @@ sidebar:
   order: 124
 ---
 
-# realpath_cache_size()
+## realpath_cache_size()
 
 ```php
 function realpath_cache_size(): int

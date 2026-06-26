@@ -5,7 +5,7 @@ sidebar:
   order: 83
 ---
 
-# `chgrp()` — internals
+## `chgrp()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 302
 ---
 
-# `iterator_apply()` — internals
+## `iterator_apply()` — internals
 
 ## Where it lives
 

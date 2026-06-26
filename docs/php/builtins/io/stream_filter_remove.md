@@ -5,7 +5,7 @@ sidebar:
   order: 183
 ---
 
-# stream_filter_remove()
+## stream_filter_remove()
 
 ```php
 function stream_filter_remove(resource $stream_filter): bool

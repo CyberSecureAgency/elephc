@@ -5,7 +5,7 @@ sidebar:
   order: 264
 ---
 
-# `http_response_code()` — internals
+## `http_response_code()` — internals
 
 ## Where it lives
 

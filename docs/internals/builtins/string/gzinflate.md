@@ -5,7 +5,7 @@ sidebar:
   order: 331
 ---
 
-# `gzinflate()` — internals
+## `gzinflate()` — internals
 
 ## Where it lives
 

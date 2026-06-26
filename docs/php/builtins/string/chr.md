@@ -5,7 +5,7 @@ sidebar:
   order: 322
 ---
 
-# chr()
+## chr()
 
 ```php
 function chr(int $codepoint): string

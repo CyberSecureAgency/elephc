@@ -5,7 +5,7 @@ sidebar:
   order: 204
 ---
 
-# stream_socket_recvfrom()
+## stream_socket_recvfrom()
 
 ```php
 function stream_socket_recvfrom(resource $socket, int $length, int $flags, string $address): mixed

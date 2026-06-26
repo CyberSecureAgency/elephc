@@ -5,7 +5,7 @@ sidebar:
   order: 329
 ---
 
-# gzuncompress()
+## gzuncompress()
 
 ```php
 function gzuncompress(string $data, int $max_length): string

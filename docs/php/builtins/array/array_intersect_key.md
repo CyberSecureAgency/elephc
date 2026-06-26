@@ -5,7 +5,7 @@ sidebar:
   order: 11
 ---
 
-# array_intersect_key()
+## array_intersect_key()
 
 ```php
 function array_intersect_key(array $array, ...$arrays): array

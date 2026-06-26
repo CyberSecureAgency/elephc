@@ -5,7 +5,7 @@ sidebar:
   order: 63
 ---
 
-# `get_parent_class()` — internals
+## `get_parent_class()` — internals
 
 ## Where it lives
 

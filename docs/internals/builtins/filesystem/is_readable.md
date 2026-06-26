@@ -5,7 +5,7 @@ sidebar:
   order: 109
 ---
 
-# `is_readable()` — internals
+## `is_readable()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 356
 ---
 
-# `printf()` — internals
+## `printf()` — internals
 
 ## Where it lives
 

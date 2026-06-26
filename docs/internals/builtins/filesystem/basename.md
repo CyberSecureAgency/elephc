@@ -5,7 +5,7 @@ sidebar:
   order: 81
 ---
 
-# `basename()` — internals
+## `basename()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 30
 ---
 
-# array_values()
+## array_values()
 
 ```php
 function array_values(array $array): array

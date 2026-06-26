@@ -5,7 +5,7 @@ sidebar:
   order: 256
 ---
 
-# `__elephc_strtotime_raw()` — internals
+## `__elephc_strtotime_raw()` — internals
 
 ## Where it lives
 

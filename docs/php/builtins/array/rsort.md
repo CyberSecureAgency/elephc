@@ -5,7 +5,7 @@ sidebar:
   order: 41
 ---
 
-# rsort()
+## rsort()
 
 ```php
 function rsort(array $array, int $flags): bool

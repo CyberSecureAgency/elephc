@@ -5,7 +5,7 @@ sidebar:
   order: 288
 ---
 
-# popen()
+## popen()
 
 ```php
 function popen(string $command, string $mode): mixed

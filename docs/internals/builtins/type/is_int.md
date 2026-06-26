@@ -5,7 +5,7 @@ sidebar:
   order: 405
 ---
 
-# `is_int()` — internals
+## `is_int()` — internals
 
 ## Where it lives
 

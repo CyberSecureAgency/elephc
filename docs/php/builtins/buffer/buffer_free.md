@@ -5,7 +5,7 @@ sidebar:
   order: 47
 ---
 
-# buffer_free()
+## buffer_free()
 
 ```php
 function buffer_free(buffer $buffer): mixed

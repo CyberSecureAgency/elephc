@@ -5,7 +5,7 @@ sidebar:
   order: 258
 ---
 
-# defined()
+## defined()
 
 ```php
 function defined(string $constant_name): bool

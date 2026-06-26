@@ -5,7 +5,7 @@ sidebar:
   order: 55
 ---
 
-# class_parents()
+## class_parents()
 
 ```php
 function class_parents(mixed $object_or_class, bool $autoload): mixed

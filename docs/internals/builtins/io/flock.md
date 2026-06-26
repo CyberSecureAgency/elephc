@@ -5,7 +5,7 @@ sidebar:
   order: 147
 ---
 
-# `flock()` — internals
+## `flock()` — internals
 
 ## Where it lives
 

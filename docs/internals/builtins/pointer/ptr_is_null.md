@@ -5,7 +5,7 @@ sidebar:
   order: 273
 ---
 
-# `ptr_is_null()` — internals
+## `ptr_is_null()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 406
 ---
 
-# is_object()
+## is_object()
 
 ```php
 function is_object(mixed $value): bool

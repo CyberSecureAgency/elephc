@@ -5,7 +5,7 @@ sidebar:
   order: 165
 ---
 
-# getservbyname()
+## getservbyname()
 
 ```php
 function getservbyname(string $service, string $protocol): mixed

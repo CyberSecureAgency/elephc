@@ -5,7 +5,7 @@ sidebar:
   order: 266
 ---
 
-# unset()
+## unset()
 
 ```php
 function unset(mixed $var, ...$vars): void

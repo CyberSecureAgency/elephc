@@ -5,7 +5,7 @@ sidebar:
   order: 249
 ---
 
-# sin()
+## sin()
 
 ```php
 function sin(float $num): float

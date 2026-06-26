@@ -5,7 +5,7 @@ sidebar:
   order: 319
 ---
 
-# base64_encode()
+## base64_encode()
 
 ```php
 function base64_encode(string $string): string

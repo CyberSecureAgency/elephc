@@ -5,7 +5,7 @@ sidebar:
   order: 88
 ---
 
-# dirname()
+## dirname()
 
 ```php
 function dirname(string $path, int $levels): string

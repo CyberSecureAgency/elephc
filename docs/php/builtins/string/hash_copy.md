@@ -5,7 +5,7 @@ sidebar:
   order: 332
 ---
 
-# hash_copy()
+## hash_copy()
 
 ```php
 function hash_copy(resource $context): mixed

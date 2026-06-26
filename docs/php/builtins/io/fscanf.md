@@ -5,7 +5,7 @@ sidebar:
   order: 153
 ---
 
-# fscanf()
+## fscanf()
 
 ```php
 function fscanf(resource $stream, string $format, ...$vars): array

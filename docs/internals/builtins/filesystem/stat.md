@@ -5,7 +5,7 @@ sidebar:
   order: 128
 ---
 
-# `stat()` — internals
+## `stat()` — internals
 
 ## Where it lives
 

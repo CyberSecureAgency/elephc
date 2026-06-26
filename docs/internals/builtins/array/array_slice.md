@@ -5,7 +5,7 @@ sidebar:
   order: 25
 ---
 
-# `array_slice()` — internals
+## `array_slice()` — internals
 
 ## Where it lives
 

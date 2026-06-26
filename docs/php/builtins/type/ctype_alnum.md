@@ -5,7 +5,7 @@ sidebar:
   order: 389
 ---
 
-# ctype_alnum()
+## ctype_alnum()
 
 ```php
 function ctype_alnum(string $text): bool

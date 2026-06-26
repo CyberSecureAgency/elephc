@@ -5,7 +5,7 @@ sidebar:
   order: 321
 ---
 
-# `base64_decode()` — internals
+## `base64_decode()` — internals
 
 ## Where it lives
 

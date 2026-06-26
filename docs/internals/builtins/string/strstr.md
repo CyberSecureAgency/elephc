@@ -5,7 +5,7 @@ sidebar:
   order: 378
 ---
 
-# `strstr()` — internals
+## `strstr()` — internals
 
 ## Where it lives
 

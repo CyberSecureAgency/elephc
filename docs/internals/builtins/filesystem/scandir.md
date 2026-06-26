@@ -5,7 +5,7 @@ sidebar:
   order: 127
 ---
 
-# `scandir()` — internals
+## `scandir()` — internals
 
 ## Where it lives
 

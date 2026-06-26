@@ -5,7 +5,7 @@ sidebar:
   order: 170
 ---
 
-# `rewind()` — internals
+## `rewind()` — internals
 
 ## Where it lives
 

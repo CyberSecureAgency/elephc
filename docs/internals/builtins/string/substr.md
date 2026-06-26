@@ -5,7 +5,7 @@ sidebar:
   order: 381
 ---
 
-# `substr()` — internals
+## `substr()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 10
 ---
 
-# array_intersect()
+## array_intersect()
 
 ```php
 function array_intersect(array $array, ...$arrays): array

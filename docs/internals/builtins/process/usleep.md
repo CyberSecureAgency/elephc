@@ -5,7 +5,7 @@ sidebar:
   order: 296
 ---
 
-# `usleep()` — internals
+## `usleep()` — internals
 
 ## Where it lives
 

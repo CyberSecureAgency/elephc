@@ -5,7 +5,7 @@ sidebar:
   order: 100
 ---
 
-# `filetype()` — internals
+## `filetype()` — internals
 
 ## Where it lives
 

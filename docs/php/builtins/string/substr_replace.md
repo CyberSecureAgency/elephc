@@ -5,7 +5,7 @@ sidebar:
   order: 379
 ---
 
-# substr_replace()
+## substr_replace()
 
 ```php
 function substr_replace(string $string, string $replace, int $offset, int $length): string

@@ -5,7 +5,7 @@ sidebar:
   order: 395
 ---
 
-# get_resource_type()
+## get_resource_type()
 
 ```php
 function get_resource_type(resource $resource): string

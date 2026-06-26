@@ -5,7 +5,7 @@ sidebar:
   order: 75
 ---
 
-# `hrtime()` — internals
+## `hrtime()` — internals
 
 ## Where it lives
 

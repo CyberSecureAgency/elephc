@@ -5,7 +5,7 @@ sidebar:
   order: 377
 ---
 
-# strtoupper()
+## strtoupper()
 
 ```php
 function strtoupper(string $string): string

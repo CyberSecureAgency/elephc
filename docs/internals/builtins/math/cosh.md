@@ -5,7 +5,7 @@ sidebar:
   order: 226
 ---
 
-# `cosh()` — internals
+## `cosh()` — internals
 
 ## Where it lives
 

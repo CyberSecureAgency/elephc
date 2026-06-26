@@ -5,7 +5,7 @@ sidebar:
   order: 149
 ---
 
-# `fpassthru()` — internals
+## `fpassthru()` — internals
 
 ## Where it lives
 

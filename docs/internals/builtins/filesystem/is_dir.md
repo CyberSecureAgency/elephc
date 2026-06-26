@@ -5,7 +5,7 @@ sidebar:
   order: 105
 ---
 
-# `is_dir()` — internals
+## `is_dir()` — internals
 
 ## Where it lives
 

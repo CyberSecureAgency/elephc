@@ -5,7 +5,7 @@ sidebar:
   order: 207
 ---
 
-# `stream_socket_shutdown()` — internals
+## `stream_socket_shutdown()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 117
 ---
 
-# `mkdir()` — internals
+## `mkdir()` — internals
 
 ## Where it lives
 

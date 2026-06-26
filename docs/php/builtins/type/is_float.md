@@ -5,7 +5,7 @@ sidebar:
   order: 401
 ---
 
-# is_float()
+## is_float()
 
 ```php
 function is_float(mixed $value): bool

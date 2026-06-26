@@ -5,7 +5,7 @@ sidebar:
   order: 130
 ---
 
-# sys_get_temp_dir()
+## sys_get_temp_dir()
 
 ```php
 function sys_get_temp_dir(): string

@@ -5,7 +5,7 @@ sidebar:
   order: 353
 ---
 
-# printf()
+## printf()
 
 ```php
 function printf(string $format, ...$values): int

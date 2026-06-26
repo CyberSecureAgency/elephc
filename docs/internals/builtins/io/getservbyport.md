@@ -5,7 +5,7 @@ sidebar:
   order: 166
 ---
 
-# `getservbyport()` — internals
+## `getservbyport()` — internals
 
 ## Where it lives
 

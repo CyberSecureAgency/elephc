@@ -5,7 +5,7 @@ sidebar:
   order: 278
 ---
 
-# ptr_sizeof()
+## ptr_sizeof()
 
 ```php
 function ptr_sizeof(string $type): mixed

@@ -5,7 +5,7 @@ sidebar:
   order: 125
 ---
 
-# rename()
+## rename()
 
 ```php
 function rename(string $from, string $to, mixed $context): bool

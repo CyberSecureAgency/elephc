@@ -5,7 +5,7 @@ sidebar:
   order: 139
 ---
 
-# `feof()` — internals
+## `feof()` — internals
 
 ## Where it lives
 

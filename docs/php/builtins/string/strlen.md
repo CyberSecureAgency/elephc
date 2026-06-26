@@ -5,7 +5,7 @@ sidebar:
   order: 371
 ---
 
-# strlen()
+## strlen()
 
 ```php
 function strlen(string $string): int

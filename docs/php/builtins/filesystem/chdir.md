@@ -5,7 +5,7 @@ sidebar:
   order: 82
 ---
 
-# chdir()
+## chdir()
 
 ```php
 function chdir(string $directory): bool

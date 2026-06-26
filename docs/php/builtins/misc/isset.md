@@ -5,7 +5,7 @@ sidebar:
   order: 262
 ---
 
-# isset()
+## isset()
 
 ```php
 function isset(mixed $var, ...$vars): int

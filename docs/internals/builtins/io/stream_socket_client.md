@@ -5,7 +5,7 @@ sidebar:
   order: 200
 ---
 
-# `stream_socket_client()` — internals
+## `stream_socket_client()` — internals
 
 ## Where it lives
 

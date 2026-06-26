@@ -5,7 +5,7 @@ sidebar:
   order: 105
 ---
 
-# JSON builtins
+## JSON builtins
 
 | Function | Signature | Returns |
 |---|---|---|

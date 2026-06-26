@@ -5,7 +5,7 @@ sidebar:
   order: 64
 ---
 
-# `interface_exists()` — internals
+## `interface_exists()` — internals
 
 ## Where it lives
 

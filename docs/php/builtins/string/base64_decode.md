@@ -5,7 +5,7 @@ sidebar:
   order: 318
 ---
 
-# base64_decode()
+## base64_decode()
 
 ```php
 function base64_decode(string $string, bool $strict): string

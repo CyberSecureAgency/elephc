@@ -5,7 +5,7 @@ sidebar:
   order: 336
 ---
 
-# `hash_equals()` — internals
+## `hash_equals()` — internals
 
 ## Where it lives
 

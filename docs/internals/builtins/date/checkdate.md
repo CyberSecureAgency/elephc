@@ -5,7 +5,7 @@ sidebar:
   order: 68
 ---
 
-# `checkdate()` — internals
+## `checkdate()` — internals
 
 ## Where it lives
 

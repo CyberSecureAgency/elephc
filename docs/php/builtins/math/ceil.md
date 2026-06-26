@@ -5,7 +5,7 @@ sidebar:
   order: 223
 ---
 
-# ceil()
+## ceil()
 
 ```php
 function ceil(float $num): float

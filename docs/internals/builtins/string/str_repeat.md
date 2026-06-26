@@ -5,7 +5,7 @@ sidebar:
   order: 367
 ---
 
-# `str_repeat()` — internals
+## `str_repeat()` — internals
 
 ## Where it lives
 

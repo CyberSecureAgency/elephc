@@ -5,7 +5,7 @@ sidebar:
   order: 109
 ---
 
-# is_readable()
+## is_readable()
 
 ```php
 function is_readable(string $filename): bool

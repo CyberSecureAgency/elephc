@@ -5,7 +5,7 @@ sidebar:
   order: 263
 ---
 
-# php_uname()
+## php_uname()
 
 ```php
 function php_uname(string $mode): string

@@ -5,7 +5,7 @@ sidebar:
   order: 7
 ---
 
-# `array_fill_keys()` — internals
+## `array_fill_keys()` — internals
 
 ## Where it lives
 

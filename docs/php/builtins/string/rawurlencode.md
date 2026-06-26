@@ -5,7 +5,7 @@ sidebar:
   order: 355
 ---
 
-# rawurlencode()
+## rawurlencode()
 
 ```php
 function rawurlencode(string $string): string

@@ -5,7 +5,7 @@ sidebar:
   order: 335
 ---
 
-# `hash_copy()` — internals
+## `hash_copy()` — internals
 
 ## Where it lives
 

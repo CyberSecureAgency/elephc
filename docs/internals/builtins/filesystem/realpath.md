@@ -5,7 +5,7 @@ sidebar:
   order: 122
 ---
 
-# `realpath()` — internals
+## `realpath()` — internals
 
 ## Where it lives
 

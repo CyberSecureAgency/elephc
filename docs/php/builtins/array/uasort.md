@@ -5,7 +5,7 @@ sidebar:
   order: 44
 ---
 
-# uasort()
+## uasort()
 
 ```php
 function uasort(array $array, callable $callback): bool

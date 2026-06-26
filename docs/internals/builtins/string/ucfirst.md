@@ -5,7 +5,7 @@ sidebar:
   order: 384
 ---
 
-# `ucfirst()` — internals
+## `ucfirst()` — internals
 
 ## Where it lives
 

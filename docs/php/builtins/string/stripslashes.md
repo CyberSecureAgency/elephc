@@ -5,7 +5,7 @@ sidebar:
   order: 370
 ---
 
-# stripslashes()
+## stripslashes()
 
 ```php
 function stripslashes(string $string): string

@@ -5,7 +5,7 @@ sidebar:
   order: 160
 ---
 
-# gethostbyaddr()
+## gethostbyaddr()
 
 ```php
 function gethostbyaddr(string $ip): mixed

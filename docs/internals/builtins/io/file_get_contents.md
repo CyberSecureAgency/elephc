@@ -5,7 +5,7 @@ sidebar:
   order: 145
 ---
 
-# `file_get_contents()` — internals
+## `file_get_contents()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 96
 ---
 
-# `filemtime()` — internals
+## `filemtime()` — internals
 
 ## Where it lives
 

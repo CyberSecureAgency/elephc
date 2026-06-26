@@ -5,7 +5,7 @@ sidebar:
   order: 294
 ---
 
-# `sleep()` — internals
+## `sleep()` — internals
 
 ## Where it lives
 

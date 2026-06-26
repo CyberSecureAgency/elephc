@@ -5,7 +5,7 @@ sidebar:
   order: 29
 ---
 
-# array_unshift()
+## array_unshift()
 
 ```php
 function array_unshift(array $array, ...$values): int

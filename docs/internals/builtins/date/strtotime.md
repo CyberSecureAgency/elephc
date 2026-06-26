@@ -5,7 +5,7 @@ sidebar:
   order: 79
 ---
 
-# `strtotime()` — internals
+## `strtotime()` — internals
 
 ## Where it lives
 

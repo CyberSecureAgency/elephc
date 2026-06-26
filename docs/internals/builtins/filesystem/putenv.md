@@ -5,7 +5,7 @@ sidebar:
   order: 119
 ---
 
-# `putenv()` — internals
+## `putenv()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 73
 ---
 
-# gmdate()
+## gmdate()
 
 ```php
 function gmdate(string $format, int $timestamp): string

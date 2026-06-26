@@ -5,7 +5,7 @@ sidebar:
   order: 168
 ---
 
-# `opendir()` — internals
+## `opendir()` — internals
 
 ## Where it lives
 

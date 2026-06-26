@@ -5,7 +5,7 @@ sidebar:
   order: 58
 ---
 
-# `function_exists()` — internals
+## `function_exists()` — internals
 
 ## Where it lives
 

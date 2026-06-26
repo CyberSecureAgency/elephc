@@ -5,7 +5,7 @@ sidebar:
   order: 297
 ---
 
-# preg_replace_callback()
+## preg_replace_callback()
 
 ```php
 function preg_replace_callback(string $pattern, callable $callback, string $subject, int $limit = -1, int $count = null, int $flags = 0): array

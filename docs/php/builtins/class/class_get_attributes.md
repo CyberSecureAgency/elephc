@@ -5,7 +5,7 @@ sidebar:
   order: 53
 ---
 
-# class_get_attributes()
+## class_get_attributes()
 
 ```php
 function class_get_attributes(string $class_name): mixed

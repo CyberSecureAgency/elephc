@@ -5,7 +5,7 @@ sidebar:
   order: 330
 ---
 
-# hash()
+## hash()
 
 ```php
 function hash(string $algo, string $data, bool $binary = false, array $options = []): string

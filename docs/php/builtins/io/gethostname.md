@@ -5,7 +5,7 @@ sidebar:
   order: 162
 ---
 
-# gethostname()
+## gethostname()
 
 ```php
 function gethostname(): string

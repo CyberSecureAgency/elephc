@@ -5,7 +5,7 @@ sidebar:
   order: 75
 ---
 
-# hrtime()
+## hrtime()
 
 ```php
 function hrtime(bool $as_number): mixed

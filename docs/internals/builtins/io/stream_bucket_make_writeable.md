@@ -5,7 +5,7 @@ sidebar:
   order: 172
 ---
 
-# `stream_bucket_make_writeable()` — internals
+## `stream_bucket_make_writeable()` — internals
 
 ## Where it lives
 

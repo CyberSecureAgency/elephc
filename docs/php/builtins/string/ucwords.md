@@ -5,7 +5,7 @@ sidebar:
   order: 382
 ---
 
-# ucwords()
+## ucwords()
 
 ```php
 function ucwords(string $string, string $separators): string

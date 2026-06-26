@@ -5,7 +5,7 @@ sidebar:
   order: 306
 ---
 
-# spl_autoload_register()
+## spl_autoload_register()
 
 ```php
 function spl_autoload_register(callable $callback, bool $throw, bool $prepend): bool

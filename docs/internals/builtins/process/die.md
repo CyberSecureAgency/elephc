@@ -5,7 +5,7 @@ sidebar:
   order: 286
 ---
 
-# `die()` — internals
+## `die()` — internals
 
 ## Where it lives
 

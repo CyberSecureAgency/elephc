@@ -5,7 +5,7 @@ sidebar:
   order: 205
 ---
 
-# `stream_socket_sendto()` — internals
+## `stream_socket_sendto()` — internals
 
 ## Where it lives
 

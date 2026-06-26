@@ -5,7 +5,7 @@ sidebar:
   order: 334
 ---
 
-# hash_final()
+## hash_final()
 
 ```php
 function hash_final(resource $context, bool $binary): string

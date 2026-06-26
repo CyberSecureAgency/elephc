@@ -5,7 +5,7 @@ sidebar:
   order: 317
 ---
 
-# addslashes()
+## addslashes()
 
 ```php
 function addslashes(string $string): string

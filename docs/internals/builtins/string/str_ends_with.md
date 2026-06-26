@@ -5,7 +5,7 @@ sidebar:
   order: 364
 ---
 
-# `str_ends_with()` — internals
+## `str_ends_with()` — internals
 
 ## Where it lives
 

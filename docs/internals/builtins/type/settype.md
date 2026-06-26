@@ -5,7 +5,7 @@ sidebar:
   order: 413
 ---
 
-# `settype()` — internals
+## `settype()` — internals
 
 ## Where it lives
 

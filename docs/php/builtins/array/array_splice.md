@@ -5,7 +5,7 @@ sidebar:
   order: 26
 ---
 
-# array_splice()
+## array_splice()
 
 ```php
 function array_splice(array $array, int $offset, int $length, array $replacement): array

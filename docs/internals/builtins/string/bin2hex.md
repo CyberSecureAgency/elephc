@@ -5,7 +5,7 @@ sidebar:
   order: 323
 ---
 
-# `bin2hex()` — internals
+## `bin2hex()` — internals
 
 ## Where it lives
 

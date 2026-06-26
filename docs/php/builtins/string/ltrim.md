@@ -5,7 +5,7 @@ sidebar:
   order: 348
 ---
 
-# ltrim()
+## ltrim()
 
 ```php
 function ltrim(string $string, string $characters): string

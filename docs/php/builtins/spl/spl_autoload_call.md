@@ -5,7 +5,7 @@ sidebar:
   order: 303
 ---
 
-# spl_autoload_call()
+## spl_autoload_call()
 
 ```php
 function spl_autoload_call(string $class): void

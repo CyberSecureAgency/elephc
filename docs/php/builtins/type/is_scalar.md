@@ -5,7 +5,7 @@ sidebar:
   order: 408
 ---
 
-# is_scalar()
+## is_scalar()
 
 ```php
 function is_scalar(mixed $value): bool

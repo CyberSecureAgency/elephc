@@ -5,7 +5,7 @@ sidebar:
   order: 129
 ---
 
-# symlink()
+## symlink()
 
 ```php
 function symlink(string $target, string $link): bool

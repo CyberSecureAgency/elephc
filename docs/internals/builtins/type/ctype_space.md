@@ -5,7 +5,7 @@ sidebar:
   order: 395
 ---
 
-# `ctype_space()` — internals
+## `ctype_space()` — internals
 
 ## Where it lives
 

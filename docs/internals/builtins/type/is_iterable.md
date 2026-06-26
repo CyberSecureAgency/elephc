@@ -5,7 +5,7 @@ sidebar:
   order: 406
 ---
 
-# `is_iterable()` — internals
+## `is_iterable()` — internals
 
 ## Where it lives
 

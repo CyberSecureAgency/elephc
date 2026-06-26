@@ -5,7 +5,7 @@ sidebar:
   order: 294
 ---
 
-# preg_match()
+## preg_match()
 
 ```php
 function preg_match(string $pattern, string $subject, array $matches): int

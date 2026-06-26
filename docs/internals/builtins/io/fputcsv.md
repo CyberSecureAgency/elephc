@@ -5,7 +5,7 @@ sidebar:
   order: 151
 ---
 
-# `fputcsv()` — internals
+## `fputcsv()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 392
 ---
 
-# ctype_space()
+## ctype_space()
 
 ```php
 function ctype_space(string $text): bool

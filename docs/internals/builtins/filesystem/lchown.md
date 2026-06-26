@@ -5,7 +5,7 @@ sidebar:
   order: 113
 ---
 
-# `lchown()` — internals
+## `lchown()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 169
 ---
 
-# `readdir()` — internals
+## `readdir()` — internals
 
 ## Where it lives
 

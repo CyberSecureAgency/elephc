@@ -5,7 +5,7 @@ sidebar:
   order: 267
 ---
 
-# `phpversion()` — internals
+## `phpversion()` — internals
 
 ## Where it lives
 

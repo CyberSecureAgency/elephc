@@ -5,7 +5,7 @@ sidebar:
   order: 381
 ---
 
-# ucfirst()
+## ucfirst()
 
 ```php
 function ucfirst(string $string): string

@@ -5,7 +5,7 @@ sidebar:
   order: 233
 ---
 
-# intdiv()
+## intdiv()
 
 ```php
 function intdiv(int $num1, int $num2): int

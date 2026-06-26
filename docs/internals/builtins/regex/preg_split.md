@@ -5,7 +5,7 @@ sidebar:
   order: 301
 ---
 
-# `preg_split()` — internals
+## `preg_split()` — internals
 
 ## Where it lives
 

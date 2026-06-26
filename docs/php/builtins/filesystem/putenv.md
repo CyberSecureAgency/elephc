@@ -5,7 +5,7 @@ sidebar:
   order: 119
 ---
 
-# putenv()
+## putenv()
 
 ```php
 function putenv(string $assignment): bool

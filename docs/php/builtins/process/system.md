@@ -5,7 +5,7 @@ sidebar:
   order: 292
 ---
 
-# system()
+## system()
 
 ```php
 function system(string $command, int $result_code): string

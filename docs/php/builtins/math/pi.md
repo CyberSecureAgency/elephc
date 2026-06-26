@@ -5,7 +5,7 @@ sidebar:
   order: 243
 ---
 
-# pi()
+## pi()
 
 ```php
 function pi(): float

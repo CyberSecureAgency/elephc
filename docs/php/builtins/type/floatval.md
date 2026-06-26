@@ -5,7 +5,7 @@ sidebar:
   order: 393
 ---
 
-# floatval()
+## floatval()
 
 ```php
 function floatval(mixed $value): float

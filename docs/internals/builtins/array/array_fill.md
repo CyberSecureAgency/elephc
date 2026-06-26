@@ -5,7 +5,7 @@ sidebar:
   order: 6
 ---
 
-# `array_fill()` — internals
+## `array_fill()` — internals
 
 ## Where it lives
 

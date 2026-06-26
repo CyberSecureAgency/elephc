@@ -5,7 +5,7 @@ sidebar:
   order: 360
 ---
 
-# `sha1()` — internals
+## `sha1()` — internals
 
 ## Where it lives
 

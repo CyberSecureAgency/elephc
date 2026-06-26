@@ -5,7 +5,7 @@ sidebar:
   order: 17
 ---
 
-# array_pop()
+## array_pop()
 
 ```php
 function array_pop(array $array): mixed

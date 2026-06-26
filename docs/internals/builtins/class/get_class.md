@@ -5,7 +5,7 @@ sidebar:
   order: 59
 ---
 
-# `get_class()` — internals
+## `get_class()` — internals
 
 ## Where it lives
 

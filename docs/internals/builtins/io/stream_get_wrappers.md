@@ -5,7 +5,7 @@ sidebar:
   order: 189
 ---
 
-# `stream_get_wrappers()` — internals
+## `stream_get_wrappers()` — internals
 
 ## Where it lives
 

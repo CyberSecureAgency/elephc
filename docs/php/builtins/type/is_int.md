@@ -5,7 +5,7 @@ sidebar:
   order: 402
 ---
 
-# is_int()
+## is_int()
 
 ```php
 function is_int(mixed $value): bool

@@ -5,7 +5,7 @@ sidebar:
   order: 405
 ---
 
-# is_numeric()
+## is_numeric()
 
 ```php
 function is_numeric(mixed $value): bool

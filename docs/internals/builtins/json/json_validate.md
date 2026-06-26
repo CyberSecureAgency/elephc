@@ -5,7 +5,7 @@ sidebar:
   order: 217
 ---
 
-# `json_validate()` — internals
+## `json_validate()` — internals
 
 ## Where it lives
 

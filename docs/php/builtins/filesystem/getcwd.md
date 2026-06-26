@@ -5,7 +5,7 @@ sidebar:
   order: 102
 ---
 
-# getcwd()
+## getcwd()
 
 ```php
 function getcwd(): string

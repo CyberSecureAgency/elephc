@@ -5,7 +5,7 @@ sidebar:
   order: 141
 ---
 
-# `fgetc()` — internals
+## `fgetc()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 386
 ---
 
-# vsprintf()
+## vsprintf()
 
 ```php
 function vsprintf(string $format, array $values): string

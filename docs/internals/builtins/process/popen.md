@@ -5,7 +5,7 @@ sidebar:
   order: 291
 ---
 
-# `popen()` — internals
+## `popen()` — internals
 
 ## Where it lives
 

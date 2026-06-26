@@ -5,7 +5,7 @@ sidebar:
   order: 325
 ---
 
-# grapheme_strrev()
+## grapheme_strrev()
 
 ```php
 function grapheme_strrev(string $string): mixed

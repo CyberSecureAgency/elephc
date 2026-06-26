@@ -5,7 +5,7 @@ sidebar:
   order: 259
 ---
 
-# `call_user_func_array()` — internals
+## `call_user_func_array()` — internals
 
 ## Where it lives
 

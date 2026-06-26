@@ -5,7 +5,7 @@ sidebar:
   order: 324
 ---
 
-# explode()
+## explode()
 
 ```php
 function explode(string $separator, string $string, int $limit): array

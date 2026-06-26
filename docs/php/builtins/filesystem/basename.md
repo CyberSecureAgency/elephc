@@ -5,7 +5,7 @@ sidebar:
   order: 81
 ---
 
-# basename()
+## basename()
 
 ```php
 function basename(string $path, string $suffix): string

@@ -5,7 +5,7 @@ sidebar:
   order: 336
 ---
 
-# hash_init()
+## hash_init()
 
 ```php
 function hash_init(string $algo, int $flags = 0, string $key = '', array $options = []): mixed

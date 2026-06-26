@@ -5,7 +5,7 @@ sidebar:
   order: 390
 ---
 
-# `wordwrap()` — internals
+## `wordwrap()` — internals
 
 ## Where it lives
 

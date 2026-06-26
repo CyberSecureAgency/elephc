@@ -5,7 +5,7 @@ sidebar:
   order: 212
 ---
 
-# `vfprintf()` — internals
+## `vfprintf()` — internals
 
 ## Where it lives
 

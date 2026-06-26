@@ -5,7 +5,7 @@ sidebar:
   order: 44
 ---
 
-# `uasort()` — internals
+## `uasort()` — internals
 
 ## Where it lives
 

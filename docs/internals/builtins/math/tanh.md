@@ -5,7 +5,7 @@ sidebar:
   order: 253
 ---
 
-# `tanh()` — internals
+## `tanh()` — internals
 
 ## Where it lives
 

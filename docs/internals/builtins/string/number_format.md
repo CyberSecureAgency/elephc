@@ -5,7 +5,7 @@ sidebar:
   order: 354
 ---
 
-# `number_format()` — internals
+## `number_format()` — internals
 
 ## Where it lives
 

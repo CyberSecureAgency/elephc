@@ -5,7 +5,7 @@ sidebar:
   order: 326
 ---
 
-# gzcompress()
+## gzcompress()
 
 ```php
 function gzcompress(string $data, int $level, int $encoding): string

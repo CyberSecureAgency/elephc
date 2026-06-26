@@ -5,7 +5,7 @@ sidebar:
   order: 182
 ---
 
-# stream_filter_register()
+## stream_filter_register()
 
 ```php
 function stream_filter_register(string $filter_name, string $class): bool

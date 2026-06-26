@@ -5,7 +5,7 @@ sidebar:
   order: 104
 ---
 
-# glob()
+## glob()
 
 ```php
 function glob(string $pattern, int $flags): array

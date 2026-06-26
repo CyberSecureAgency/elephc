@@ -5,7 +5,7 @@ sidebar:
   order: 213
 ---
 
-# `json_decode()` — internals
+## `json_decode()` — internals
 
 ## Where it lives
 

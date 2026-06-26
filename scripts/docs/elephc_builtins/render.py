@@ -33,7 +33,7 @@ sidebar:
   order: {order}
 ---
 
-# {name}()
+## {name}()
 
 ```php
 {signature}
@@ -61,7 +61,7 @@ sidebar:
   order: {order}
 ---
 
-# `{name}()` — internals
+## `{name}()` — internals
 
 ## Where it lives
 
@@ -380,7 +380,7 @@ def render_area_index(area: str, builtins: list[dict], order: int = 0) -> str:
         f"  order: {order}",
         "---",
         "",
-        f"# {area} builtins",
+        f"## {area} builtins",
         "",
         "| Function | Signature | Returns |",
         "|---|---|---|",
@@ -401,7 +401,7 @@ def render_master_index(builtins: list[dict]) -> str:
         "  order: 0",
         "---",
         "",
-        "# Builtins",
+        "## Builtins",
         "",
         "| Function | Signature | Returns |",
         "|---|---|---|",

@@ -5,7 +5,7 @@ sidebar:
   order: 157
 ---
 
-# `ftell()` — internals
+## `ftell()` — internals
 
 ## Where it lives
 

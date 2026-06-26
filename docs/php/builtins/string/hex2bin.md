@@ -5,7 +5,7 @@ sidebar:
   order: 338
 ---
 
-# hex2bin()
+## hex2bin()
 
 ```php
 function hex2bin(string $string): string

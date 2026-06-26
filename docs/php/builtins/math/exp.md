@@ -5,7 +5,7 @@ sidebar:
   order: 228
 ---
 
-# exp()
+## exp()
 
 ```php
 function exp(float $num): float

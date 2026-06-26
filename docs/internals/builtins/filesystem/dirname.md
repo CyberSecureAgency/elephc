@@ -5,7 +5,7 @@ sidebar:
   order: 88
 ---
 
-# `dirname()` — internals
+## `dirname()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 403
 ---
 
-# `is_callable()` — internals
+## `is_callable()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 86
 ---
 
-# `clearstatcache()` — internals
+## `clearstatcache()` — internals
 
 ## Where it lives
 

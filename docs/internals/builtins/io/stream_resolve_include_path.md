@@ -5,7 +5,7 @@ sidebar:
   order: 192
 ---
 
-# `stream_resolve_include_path()` — internals
+## `stream_resolve_include_path()` — internals
 
 ## Where it lives
 

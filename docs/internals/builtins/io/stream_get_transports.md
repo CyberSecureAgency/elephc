@@ -5,7 +5,7 @@ sidebar:
   order: 188
 ---
 
-# `stream_get_transports()` — internals
+## `stream_get_transports()` — internals
 
 ## Where it lives
 

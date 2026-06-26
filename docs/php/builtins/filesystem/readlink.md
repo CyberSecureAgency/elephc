@@ -5,7 +5,7 @@ sidebar:
   order: 121
 ---
 
-# readlink()
+## readlink()
 
 ```php
 function readlink(string $path): mixed

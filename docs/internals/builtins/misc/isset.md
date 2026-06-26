@@ -5,7 +5,7 @@ sidebar:
   order: 265
 ---
 
-# `isset()` — internals
+## `isset()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 332
 ---
 
-# `gzuncompress()` — internals
+## `gzuncompress()` — internals
 
 ## Where it lives
 

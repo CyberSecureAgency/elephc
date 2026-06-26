@@ -5,7 +5,7 @@ sidebar:
   order: 393
 ---
 
-# `ctype_alpha()` — internals
+## `ctype_alpha()` — internals
 
 ## Where it lives
 

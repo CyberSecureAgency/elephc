@@ -5,7 +5,7 @@ sidebar:
   order: 65
 ---
 
-# `is_a()` — internals
+## `is_a()` — internals
 
 ## Where it lives
 

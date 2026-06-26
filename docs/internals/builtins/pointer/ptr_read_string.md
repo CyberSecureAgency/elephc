@@ -5,7 +5,7 @@ sidebar:
   order: 279
 ---
 
-# `ptr_read_string()` — internals
+## `ptr_read_string()` — internals
 
 ## Where it lives
 

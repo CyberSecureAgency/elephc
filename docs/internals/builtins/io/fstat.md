@@ -5,7 +5,7 @@ sidebar:
   order: 155
 ---
 
-# `fstat()` — internals
+## `fstat()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 287
 ---
 
-# pclose()
+## pclose()
 
 ```php
 function pclose(resource $handle): int

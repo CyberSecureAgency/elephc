@@ -5,7 +5,7 @@ sidebar:
   order: 266
 ---
 
-# `php_uname()` — internals
+## `php_uname()` — internals
 
 ## Where it lives
 

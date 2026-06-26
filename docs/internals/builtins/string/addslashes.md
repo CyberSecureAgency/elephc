@@ -5,7 +5,7 @@ sidebar:
   order: 320
 ---
 
-# `addslashes()` — internals
+## `addslashes()` — internals
 
 ## Where it lives
 

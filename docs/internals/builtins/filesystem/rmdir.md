@@ -5,7 +5,7 @@ sidebar:
   order: 126
 ---
 
-# `rmdir()` — internals
+## `rmdir()` — internals
 
 ## Where it lives
 

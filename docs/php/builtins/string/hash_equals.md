@@ -5,7 +5,7 @@ sidebar:
   order: 333
 ---
 
-# hash_equals()
+## hash_equals()
 
 ```php
 function hash_equals(string $known_string, string $user_string): bool

@@ -5,7 +5,7 @@ sidebar:
   order: 293
 ---
 
-# `shell_exec()` — internals
+## `shell_exec()` — internals
 
 ## Where it lives
 

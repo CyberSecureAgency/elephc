@@ -5,7 +5,7 @@ sidebar:
   order: 219
 ---
 
-# `acos()` — internals
+## `acos()` — internals
 
 ## Where it lives
 

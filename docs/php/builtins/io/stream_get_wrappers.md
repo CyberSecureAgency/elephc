@@ -5,7 +5,7 @@ sidebar:
   order: 189
 ---
 
-# stream_get_wrappers()
+## stream_get_wrappers()
 
 ```php
 function stream_get_wrappers(): array

@@ -5,7 +5,7 @@ sidebar:
   order: 285
 ---
 
-# exit()
+## exit()
 
 ```php
 function exit(int $status): void

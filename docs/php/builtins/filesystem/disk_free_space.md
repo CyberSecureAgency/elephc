@@ -5,7 +5,7 @@ sidebar:
   order: 89
 ---
 
-# disk_free_space()
+## disk_free_space()
 
 ```php
 function disk_free_space(string $directory): float

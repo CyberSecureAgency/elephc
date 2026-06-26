@@ -5,7 +5,7 @@ sidebar:
   order: 318
 ---
 
-# `stream_filter_append()` — internals
+## `stream_filter_append()` — internals
 
 ## Where it lives
 

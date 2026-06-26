@@ -5,7 +5,7 @@ sidebar:
   order: 314
 ---
 
-# stream_bucket_prepend()
+## stream_bucket_prepend()
 
 ```php
 function stream_bucket_prepend(mixed $brigade, mixed $bucket): void

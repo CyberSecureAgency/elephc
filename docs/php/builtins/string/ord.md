@@ -5,7 +5,7 @@ sidebar:
   order: 352
 ---
 
-# ord()
+## ord()
 
 ```php
 function ord(string $character): int

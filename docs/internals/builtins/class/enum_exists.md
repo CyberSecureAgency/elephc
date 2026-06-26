@@ -5,7 +5,7 @@ sidebar:
   order: 57
 ---
 
-# `enum_exists()` — internals
+## `enum_exists()` — internals
 
 ## Where it lives
 

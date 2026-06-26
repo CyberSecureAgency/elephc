@@ -5,7 +5,7 @@ sidebar:
   order: 313
 ---
 
-# `spl_object_id()` — internals
+## `spl_object_id()` — internals
 
 ## Where it lives
 

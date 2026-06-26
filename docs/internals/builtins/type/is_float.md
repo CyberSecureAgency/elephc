@@ -5,7 +5,7 @@ sidebar:
   order: 404
 ---
 
-# `is_float()` — internals
+## `is_float()` — internals
 
 ## Where it lives
 

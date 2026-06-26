@@ -5,7 +5,7 @@ sidebar:
   order: 122
 ---
 
-# realpath()
+## realpath()
 
 ```php
 function realpath(string $path): mixed

@@ -5,7 +5,7 @@ sidebar:
   order: 52
 ---
 
-# class_exists()
+## class_exists()
 
 ```php
 function class_exists(string $class, bool $autoload): bool

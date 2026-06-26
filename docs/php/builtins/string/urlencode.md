@@ -5,7 +5,7 @@ sidebar:
   order: 384
 ---
 
-# urlencode()
+## urlencode()
 
 ```php
 function urlencode(string $string): string

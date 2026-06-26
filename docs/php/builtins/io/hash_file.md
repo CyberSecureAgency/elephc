@@ -5,7 +5,7 @@ sidebar:
   order: 167
 ---
 
-# hash_file()
+## hash_file()
 
 ```php
 function hash_file(string $algo, string $filename, bool $binary = false, array $options = []): mixed

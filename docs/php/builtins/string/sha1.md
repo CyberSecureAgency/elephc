@@ -5,7 +5,7 @@ sidebar:
   order: 357
 ---
 
-# sha1()
+## sha1()
 
 ```php
 function sha1(string $string, bool $binary): string

@@ -5,7 +5,7 @@ sidebar:
   order: 289
 ---
 
-# readline()
+## readline()
 
 ```php
 function readline(string $prompt): mixed

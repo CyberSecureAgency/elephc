@@ -5,7 +5,7 @@ sidebar:
   order: 104
 ---
 
-# `glob()` — internals
+## `glob()` — internals
 
 ## Where it lives
 

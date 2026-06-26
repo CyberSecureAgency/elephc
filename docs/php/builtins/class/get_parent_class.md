@@ -5,7 +5,7 @@ sidebar:
   order: 63
 ---
 
-# get_parent_class()
+## get_parent_class()
 
 ```php
 function get_parent_class(mixed $object_or_class): string

@@ -5,7 +5,7 @@ sidebar:
   order: 304
 ---
 
-# `iterator_to_array()` — internals
+## `iterator_to_array()` — internals
 
 ## Where it lives
 

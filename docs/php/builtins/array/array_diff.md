@@ -5,7 +5,7 @@ sidebar:
   order: 4
 ---
 
-# array_diff()
+## array_diff()
 
 ```php
 function array_diff(array $array, ...$arrays): array

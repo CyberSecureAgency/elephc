@@ -5,7 +5,7 @@ sidebar:
   order: 202
 ---
 
-# stream_socket_get_name()
+## stream_socket_get_name()
 
 ```php
 function stream_socket_get_name(resource $socket, bool $remote): mixed

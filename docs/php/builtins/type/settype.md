@@ -5,7 +5,7 @@ sidebar:
   order: 410
 ---
 
-# settype()
+## settype()
 
 ```php
 function settype(mixed $var, string $type): bool

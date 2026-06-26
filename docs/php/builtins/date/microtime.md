@@ -5,7 +5,7 @@ sidebar:
   order: 77
 ---
 
-# microtime()
+## microtime()
 
 ```php
 function microtime(bool $as_float): int

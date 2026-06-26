@@ -5,7 +5,7 @@ sidebar:
   order: 13
 ---
 
-# array_keys()
+## array_keys()
 
 ```php
 function array_keys(array $array, string $filter_value, bool $strict): array

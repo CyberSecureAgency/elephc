@@ -5,7 +5,7 @@ sidebar:
   order: 366
 ---
 
-# `str_pad()` — internals
+## `str_pad()` — internals
 
 ## Where it lives
 

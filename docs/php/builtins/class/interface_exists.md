@@ -5,7 +5,7 @@ sidebar:
   order: 64
 ---
 
-# interface_exists()
+## interface_exists()
 
 ```php
 function interface_exists(string $interface, bool $autoload): bool

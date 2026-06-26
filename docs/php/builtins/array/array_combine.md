@@ -5,7 +5,7 @@ sidebar:
   order: 3
 ---
 
-# array_combine()
+## array_combine()
 
 ```php
 function array_combine(array $keys, array $values): array

@@ -5,7 +5,7 @@ sidebar:
   order: 190
 ---
 
-# `stream_is_local()` — internals
+## `stream_is_local()` — internals
 
 ## Where it lives
 

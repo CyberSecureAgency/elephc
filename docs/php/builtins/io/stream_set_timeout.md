@@ -5,7 +5,7 @@ sidebar:
   order: 197
 ---
 
-# stream_set_timeout()
+## stream_set_timeout()
 
 ```php
 function stream_set_timeout(resource $stream, int $seconds, int $microseconds): bool

@@ -5,7 +5,7 @@ sidebar:
   order: 383
 ---
 
-# urldecode()
+## urldecode()
 
 ```php
 function urldecode(string $string): string

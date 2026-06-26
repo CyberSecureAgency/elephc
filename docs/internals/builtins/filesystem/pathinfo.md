@@ -5,7 +5,7 @@ sidebar:
   order: 118
 ---
 
-# `pathinfo()` — internals
+## `pathinfo()` — internals
 
 ## Where it lives
 

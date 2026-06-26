@@ -5,7 +5,7 @@ sidebar:
   order: 263
 ---
 
-# `header()` — internals
+## `header()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 341
 ---
 
-# `hex2bin()` — internals
+## `hex2bin()` — internals
 
 ## Where it lives
 

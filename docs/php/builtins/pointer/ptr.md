@@ -5,7 +5,7 @@ sidebar:
   order: 268
 ---
 
-# ptr()
+## ptr()
 
 ```php
 function ptr(mixed $value): mixed

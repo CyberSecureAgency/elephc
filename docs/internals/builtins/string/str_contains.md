@@ -5,7 +5,7 @@ sidebar:
   order: 363
 ---
 
-# `str_contains()` — internals
+## `str_contains()` — internals
 
 ## Where it lives
 

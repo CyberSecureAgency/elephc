@@ -5,7 +5,7 @@ sidebar:
   order: 35
 ---
 
-# `in_array()` — internals
+## `in_array()` — internals
 
 ## Where it lives
 

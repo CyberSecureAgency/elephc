@@ -5,7 +5,7 @@ sidebar:
   order: 194
 ---
 
-# `stream_set_blocking()` — internals
+## `stream_set_blocking()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 320
 ---
 
-# bin2hex()
+## bin2hex()
 
 ```php
 function bin2hex(string $string): string

@@ -5,7 +5,7 @@ sidebar:
   order: 345
 ---
 
-# ip2long()
+## ip2long()
 
 ```php
 function ip2long(string $ip): mixed

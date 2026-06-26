@@ -5,7 +5,7 @@ sidebar:
   order: 190
 ---
 
-# stream_is_local()
+## stream_is_local()
 
 ```php
 function stream_is_local(resource $stream): bool

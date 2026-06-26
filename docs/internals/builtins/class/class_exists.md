@@ -5,7 +5,7 @@ sidebar:
   order: 52
 ---
 
-# `class_exists()` — internals
+## `class_exists()` — internals
 
 ## Where it lives
 

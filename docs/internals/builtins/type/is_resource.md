@@ -5,7 +5,7 @@ sidebar:
   order: 410
 ---
 
-# `is_resource()` — internals
+## `is_resource()` — internals
 
 ## Where it lives
 

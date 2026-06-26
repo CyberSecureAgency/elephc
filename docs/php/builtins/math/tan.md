@@ -5,7 +5,7 @@ sidebar:
   order: 252
 ---
 
-# tan()
+## tan()
 
 ```php
 function tan(float $num): float

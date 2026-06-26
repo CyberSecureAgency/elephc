@@ -5,7 +5,7 @@ sidebar:
   order: 233
 ---
 
-# `intdiv()` — internals
+## `intdiv()` — internals
 
 ## Where it lives
 

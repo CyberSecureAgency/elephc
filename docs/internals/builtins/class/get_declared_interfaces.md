@@ -5,7 +5,7 @@ sidebar:
   order: 61
 ---
 
-# `get_declared_interfaces()` — internals
+## `get_declared_interfaces()` — internals
 
 ## Where it lives
 

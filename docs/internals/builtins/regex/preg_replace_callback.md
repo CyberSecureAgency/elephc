@@ -5,7 +5,7 @@ sidebar:
   order: 300
 ---
 
-# `preg_replace_callback()` — internals
+## `preg_replace_callback()` — internals
 
 ## Where it lives
 

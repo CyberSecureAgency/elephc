@@ -5,7 +5,7 @@ sidebar:
   order: 314
 ---
 
-# `fsockopen()` — internals
+## `fsockopen()` — internals
 
 ## Where it lives
 

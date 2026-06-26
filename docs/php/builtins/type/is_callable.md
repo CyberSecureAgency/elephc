@@ -5,7 +5,7 @@ sidebar:
   order: 400
 ---
 
-# is_callable()
+## is_callable()
 
 ```php
 function is_callable(mixed $value, bool $syntax_only = false, string $callable_name = null): bool

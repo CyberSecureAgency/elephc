@@ -5,7 +5,7 @@ sidebar:
   order: 300
 ---
 
-# iterator_count()
+## iterator_count()
 
 ```php
 function iterator_count(traversable $iterator): int

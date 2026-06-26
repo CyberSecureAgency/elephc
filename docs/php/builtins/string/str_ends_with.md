@@ -5,7 +5,7 @@ sidebar:
   order: 361
 ---
 
-# str_ends_with()
+## str_ends_with()
 
 ```php
 function str_ends_with(string $haystack, string $needle): bool

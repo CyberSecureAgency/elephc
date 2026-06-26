@@ -5,7 +5,7 @@ sidebar:
   order: 105
 ---
 
-# is_dir()
+## is_dir()
 
 ```php
 function is_dir(string $filename): bool

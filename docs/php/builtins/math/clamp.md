@@ -5,7 +5,7 @@ sidebar:
   order: 224
 ---
 
-# clamp()
+## clamp()
 
 ```php
 function clamp(int $value, int $min, int $max): string

@@ -5,7 +5,7 @@ sidebar:
   order: 271
 ---
 
-# ptr_null()
+## ptr_null()
 
 ```php
 function ptr_null(): mixed

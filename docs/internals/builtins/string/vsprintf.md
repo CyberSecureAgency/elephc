@@ -5,7 +5,7 @@ sidebar:
   order: 389
 ---
 
-# `vsprintf()` — internals
+## `vsprintf()` — internals
 
 ## Where it lives
 

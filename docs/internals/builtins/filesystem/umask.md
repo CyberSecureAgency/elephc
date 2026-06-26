@@ -5,7 +5,7 @@ sidebar:
   order: 134
 ---
 
-# `umask()` — internals
+## `umask()` — internals
 
 ## Where it lives
 

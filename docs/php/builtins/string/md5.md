@@ -5,7 +5,7 @@ sidebar:
   order: 349
 ---
 
-# md5()
+## md5()
 
 ```php
 function md5(string $string, bool $binary): string

@@ -5,7 +5,7 @@ sidebar:
   order: 343
 ---
 
-# inet_ntop()
+## inet_ntop()
 
 ```php
 function inet_ntop(string $ip): mixed

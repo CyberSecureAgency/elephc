@@ -5,7 +5,7 @@ sidebar:
   order: 325
 ---
 
-# `chr()` — internals
+## `chr()` — internals
 
 ## Where it lives
 

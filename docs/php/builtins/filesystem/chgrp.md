@@ -5,7 +5,7 @@ sidebar:
   order: 83
 ---
 
-# chgrp()
+## chgrp()
 
 ```php
 function chgrp(string $filename, int $group): bool

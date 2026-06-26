@@ -5,7 +5,7 @@ sidebar:
   order: 48
 ---
 
-# `buffer_len()` — internals
+## `buffer_len()` — internals
 
 ## Where it lives
 

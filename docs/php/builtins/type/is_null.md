@@ -5,7 +5,7 @@ sidebar:
   order: 404
 ---
 
-# is_null()
+## is_null()
 
 ```php
 function is_null(mixed $value): bool

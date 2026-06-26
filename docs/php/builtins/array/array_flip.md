@@ -5,7 +5,7 @@ sidebar:
   order: 9
 ---
 
-# array_flip()
+## array_flip()
 
 ```php
 function array_flip(array $array): float

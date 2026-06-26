@@ -5,7 +5,7 @@ sidebar:
   order: 174
 ---
 
-# `stream_context_create()` — internals
+## `stream_context_create()` — internals
 
 ## Where it lives
 

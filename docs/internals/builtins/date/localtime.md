@@ -5,7 +5,7 @@ sidebar:
   order: 76
 ---
 
-# `localtime()` — internals
+## `localtime()` — internals
 
 ## Where it lives
 

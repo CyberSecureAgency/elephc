@@ -5,7 +5,7 @@ sidebar:
   order: 107
 ---
 
-# Date builtins
+## Date builtins
 
 | Function | Signature | Returns |
 |---|---|---|

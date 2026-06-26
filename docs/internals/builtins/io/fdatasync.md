@@ -5,7 +5,7 @@ sidebar:
   order: 138
 ---
 
-# `fdatasync()` — internals
+## `fdatasync()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 286
 ---
 
-# passthru()
+## passthru()
 
 ```php
 function passthru(string $command, int $result_code): void

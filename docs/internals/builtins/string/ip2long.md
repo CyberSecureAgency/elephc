@@ -5,7 +5,7 @@ sidebar:
   order: 348
 ---
 
-# `ip2long()` — internals
+## `ip2long()` — internals
 
 ## Where it lives
 

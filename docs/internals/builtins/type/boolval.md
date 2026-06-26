@@ -5,7 +5,7 @@ sidebar:
   order: 391
 ---
 
-# `boolval()` — internals
+## `boolval()` — internals
 
 ## Where it lives
 

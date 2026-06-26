@@ -5,7 +5,7 @@ sidebar:
   order: 394
 ---
 
-# `ctype_digit()` — internals
+## `ctype_digit()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 346
 ---
 
-# `inet_ntop()` — internals
+## `inet_ntop()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 181
 ---
 
-# stream_copy_to_stream()
+## stream_copy_to_stream()
 
 ```php
 function stream_copy_to_stream(resource $from, resource $to, int $length, int $offset): mixed

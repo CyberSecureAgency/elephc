@@ -5,7 +5,7 @@ sidebar:
   order: 308
 ---
 
-# spl_classes()
+## spl_classes()
 
 ```php
 function spl_classes(): array

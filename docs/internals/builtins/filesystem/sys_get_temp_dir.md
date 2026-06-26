@@ -5,7 +5,7 @@ sidebar:
   order: 130
 ---
 
-# `sys_get_temp_dir()` — internals
+## `sys_get_temp_dir()` — internals
 
 ## Where it lives
 

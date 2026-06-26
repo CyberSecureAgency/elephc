@@ -5,7 +5,7 @@ sidebar:
   order: 191
 ---
 
-# `stream_isatty()` — internals
+## `stream_isatty()` — internals
 
 ## Where it lives
 

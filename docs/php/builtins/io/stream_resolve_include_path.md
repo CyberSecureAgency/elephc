@@ -5,7 +5,7 @@ sidebar:
   order: 192
 ---
 
-# stream_resolve_include_path()
+## stream_resolve_include_path()
 
 ```php
 function stream_resolve_include_path(string $filename): mixed

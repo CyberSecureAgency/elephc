@@ -5,7 +5,7 @@ sidebar:
   order: 411
 ---
 
-# `is_scalar()` — internals
+## `is_scalar()` — internals
 
 ## Where it lives
 

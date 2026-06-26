@@ -5,7 +5,7 @@ sidebar:
   order: 93
 ---
 
-# filectime()
+## filectime()
 
 ```php
 function filectime(string $filename): mixed

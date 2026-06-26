@@ -5,7 +5,7 @@ sidebar:
   order: 99
 ---
 
-# `filesize()` — internals
+## `filesize()` — internals
 
 ## Where it lives
 

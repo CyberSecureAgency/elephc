@@ -5,7 +5,7 @@ sidebar:
   order: 327
 ---
 
-# `explode()` — internals
+## `explode()` — internals
 
 ## Where it lives
 

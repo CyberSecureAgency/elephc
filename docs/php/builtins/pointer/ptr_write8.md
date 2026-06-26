@@ -5,7 +5,7 @@ sidebar:
   order: 281
 ---
 
-# ptr_write8()
+## ptr_write8()
 
 ```php
 function ptr_write8(pointer $pointer, int $value): void

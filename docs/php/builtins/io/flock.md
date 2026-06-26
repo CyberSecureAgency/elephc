@@ -5,7 +5,7 @@ sidebar:
   order: 147
 ---
 
-# flock()
+## flock()
 
 ```php
 function flock(resource $stream, int $operation, bool $would_block): bool

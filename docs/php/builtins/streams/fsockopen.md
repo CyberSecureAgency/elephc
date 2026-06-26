@@ -5,7 +5,7 @@ sidebar:
   order: 311
 ---
 
-# fsockopen()
+## fsockopen()
 
 ```php
 function fsockopen(string $hostname, int $port, int $error_code, string $error_message, float $timeout): mixed

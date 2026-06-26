@@ -5,7 +5,7 @@ sidebar:
   order: 356
 ---
 
-# rtrim()
+## rtrim()
 
 ```php
 function rtrim(string $string, string $characters): string

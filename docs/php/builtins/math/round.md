@@ -5,7 +5,7 @@ sidebar:
   order: 248
 ---
 
-# round()
+## round()
 
 ```php
 function round(float $num, int $precision): float

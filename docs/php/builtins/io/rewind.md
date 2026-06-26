@@ -5,7 +5,7 @@ sidebar:
   order: 170
 ---
 
-# rewind()
+## rewind()
 
 ```php
 function rewind(resource $stream): bool

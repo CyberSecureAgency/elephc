@@ -5,7 +5,7 @@ sidebar:
   order: 396
 ---
 
-# `floatval()` — internals
+## `floatval()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 43
 ---
 
-# sort()
+## sort()
 
 ```php
 function sort(array $array, int $flags): bool

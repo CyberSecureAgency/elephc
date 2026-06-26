@@ -5,7 +5,7 @@ sidebar:
   order: 268
 ---
 
-# `print_r()` — internals
+## `print_r()` — internals
 
 ## Where it lives
 

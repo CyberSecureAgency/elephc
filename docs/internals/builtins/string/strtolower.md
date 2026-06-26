@@ -5,7 +5,7 @@ sidebar:
   order: 379
 ---
 
-# `strtolower()` — internals
+## `strtolower()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 16
 ---
 
-# `array_pad()` — internals
+## `array_pad()` — internals
 
 ## Where it lives
 

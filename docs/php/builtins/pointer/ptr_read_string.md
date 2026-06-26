@@ -5,7 +5,7 @@ sidebar:
   order: 276
 ---
 
-# ptr_read_string()
+## ptr_read_string()
 
 ```php
 function ptr_read_string(pointer $pointer, int $length): string

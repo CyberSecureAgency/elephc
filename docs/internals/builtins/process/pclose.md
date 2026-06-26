@@ -5,7 +5,7 @@ sidebar:
   order: 290
 ---
 
-# `pclose()` — internals
+## `pclose()` — internals
 
 ## Where it lives
 

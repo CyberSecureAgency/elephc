@@ -5,7 +5,7 @@ sidebar:
   order: 359
 ---
 
-# `rtrim()` — internals
+## `rtrim()` — internals
 
 ## Where it lives
 

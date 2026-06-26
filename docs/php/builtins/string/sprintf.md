@@ -5,7 +5,7 @@ sidebar:
   order: 358
 ---
 
-# sprintf()
+## sprintf()
 
 ```php
 function sprintf(string $format, ...$values): string

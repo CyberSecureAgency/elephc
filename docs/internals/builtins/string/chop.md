@@ -5,7 +5,7 @@ sidebar:
   order: 324
 ---
 
-# `chop()` — internals
+## `chop()` — internals
 
 ## Where it lives
 

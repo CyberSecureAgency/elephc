@@ -5,7 +5,7 @@ sidebar:
   order: 84
 ---
 
-# `chmod()` — internals
+## `chmod()` — internals
 
 ## Where it lives
 

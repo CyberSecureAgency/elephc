@@ -5,7 +5,7 @@ sidebar:
   order: 288
 ---
 
-# `exit()` — internals
+## `exit()` — internals
 
 ## Where it lives
 

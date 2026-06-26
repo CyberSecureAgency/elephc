@@ -5,7 +5,7 @@ sidebar:
   order: 26
 ---
 
-# `array_splice()` — internals
+## `array_splice()` — internals
 
 ## Where it lives
 

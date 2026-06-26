@@ -5,7 +5,7 @@ sidebar:
   order: 365
 ---
 
-# `str_ireplace()` — internals
+## `str_ireplace()` — internals
 
 ## Where it lives
 

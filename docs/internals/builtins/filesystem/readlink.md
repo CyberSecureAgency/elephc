@@ -5,7 +5,7 @@ sidebar:
   order: 121
 ---
 
-# `readlink()` — internals
+## `readlink()` — internals
 
 ## Where it lives
 

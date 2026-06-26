@@ -5,7 +5,7 @@ sidebar:
   order: 321
 ---
 
-# chop()
+## chop()
 
 ```php
 function chop(string $string, string $characters): string

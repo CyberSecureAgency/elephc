@@ -5,7 +5,7 @@ sidebar:
   order: 169
 ---
 
-# readdir()
+## readdir()
 
 ```php
 function readdir(resource $dir_handle): mixed

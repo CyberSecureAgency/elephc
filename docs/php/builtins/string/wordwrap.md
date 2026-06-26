@@ -5,7 +5,7 @@ sidebar:
   order: 387
 ---
 
-# wordwrap()
+## wordwrap()
 
 ```php
 function wordwrap(string $string, int $width, string $break, bool $cut_long_words): string

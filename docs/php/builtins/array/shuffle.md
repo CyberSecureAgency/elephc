@@ -5,7 +5,7 @@ sidebar:
   order: 42
 ---
 
-# shuffle()
+## shuffle()
 
 ```php
 function shuffle(array $array): bool

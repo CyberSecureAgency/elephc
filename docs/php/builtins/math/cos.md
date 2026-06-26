@@ -5,7 +5,7 @@ sidebar:
   order: 225
 ---
 
-# cos()
+## cos()
 
 ```php
 function cos(float $num): float

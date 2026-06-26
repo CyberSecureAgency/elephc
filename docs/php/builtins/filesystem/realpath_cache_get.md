@@ -5,7 +5,7 @@ sidebar:
   order: 123
 ---
 
-# realpath_cache_get()
+## realpath_cache_get()
 
 ```php
 function realpath_cache_get(): array

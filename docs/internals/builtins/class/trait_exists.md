@@ -5,7 +5,7 @@ sidebar:
   order: 67
 ---
 
-# `trait_exists()` — internals
+## `trait_exists()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 24
 ---
 
-# `array_shift()` — internals
+## `array_shift()` — internals
 
 ## Where it lives
 

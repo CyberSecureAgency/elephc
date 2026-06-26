@@ -5,7 +5,7 @@ sidebar:
   order: 103
 ---
 
-# Math builtins
+## Math builtins
 
 | Function | Signature | Returns |
 |---|---|---|

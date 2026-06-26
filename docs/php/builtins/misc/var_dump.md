@@ -5,7 +5,7 @@ sidebar:
   order: 267
 ---
 
-# var_dump()
+## var_dump()
 
 ```php
 function var_dump(...$values): void

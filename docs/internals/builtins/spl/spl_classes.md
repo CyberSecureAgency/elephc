@@ -5,7 +5,7 @@ sidebar:
   order: 311
 ---
 
-# `spl_classes()` — internals
+## `spl_classes()` — internals
 
 ## Where it lives
 

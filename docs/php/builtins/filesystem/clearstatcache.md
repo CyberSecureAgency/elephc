@@ -5,7 +5,7 @@ sidebar:
   order: 86
 ---
 
-# clearstatcache()
+## clearstatcache()
 
 ```php
 function clearstatcache(bool $clear_realpath_cache, string $filename): void

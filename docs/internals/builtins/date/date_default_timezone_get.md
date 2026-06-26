@@ -5,7 +5,7 @@ sidebar:
   order: 70
 ---
 
-# `date_default_timezone_get()` — internals
+## `date_default_timezone_get()` — internals
 
 ## Where it lives
 

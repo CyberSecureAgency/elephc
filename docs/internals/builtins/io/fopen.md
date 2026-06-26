@@ -5,7 +5,7 @@ sidebar:
   order: 148
 ---
 
-# `fopen()` — internals
+## `fopen()` — internals
 
 ## Where it lives
 

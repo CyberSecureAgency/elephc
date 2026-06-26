@@ -5,7 +5,7 @@ sidebar:
   order: 214
 ---
 
-# json_encode()
+## json_encode()
 
 ```php
 function json_encode(mixed $value, int $flags, int $depth): string

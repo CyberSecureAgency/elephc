@@ -5,7 +5,7 @@ sidebar:
   order: 372
 ---
 
-# strpos()
+## strpos()
 
 ```php
 function strpos(string $haystack, string $needle, int $offset): mixed

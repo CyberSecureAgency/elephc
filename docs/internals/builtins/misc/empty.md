@@ -5,7 +5,7 @@ sidebar:
   order: 262
 ---
 
-# `empty()` — internals
+## `empty()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 261
 ---
 
-# http_response_code()
+## http_response_code()
 
 ```php
 function http_response_code(mixed $response_code): int

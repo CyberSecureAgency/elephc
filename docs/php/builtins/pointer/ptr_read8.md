@@ -5,7 +5,7 @@ sidebar:
   order: 275
 ---
 
-# ptr_read8()
+## ptr_read8()
 
 ```php
 function ptr_read8(pointer $pointer): int

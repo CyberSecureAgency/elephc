@@ -5,7 +5,7 @@ sidebar:
   order: 71
 ---
 
-# date_default_timezone_set()
+## date_default_timezone_set()
 
 ```php
 function date_default_timezone_set(string $timezoneId): bool

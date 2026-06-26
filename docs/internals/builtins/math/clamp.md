@@ -5,7 +5,7 @@ sidebar:
   order: 224
 ---
 
-# `clamp()` — internals
+## `clamp()` — internals
 
 ## Where it lives
 

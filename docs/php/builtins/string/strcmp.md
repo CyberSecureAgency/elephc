@@ -5,7 +5,7 @@ sidebar:
   order: 369
 ---
 
-# strcmp()
+## strcmp()
 
 ```php
 function strcmp(string $string1, string $string2): int

@@ -5,7 +5,7 @@ sidebar:
   order: 198
 ---
 
-# stream_set_write_buffer()
+## stream_set_write_buffer()
 
 ```php
 function stream_set_write_buffer(resource $stream, int $size): int

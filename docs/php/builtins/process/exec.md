@@ -5,7 +5,7 @@ sidebar:
   order: 284
 ---
 
-# exec()
+## exec()
 
 ```php
 function exec(string $command, array $output, int $result_code): string

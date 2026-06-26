@@ -5,7 +5,7 @@ sidebar:
   order: 305
 ---
 
-# spl_autoload_functions()
+## spl_autoload_functions()
 
 ```php
 function spl_autoload_functions(): array

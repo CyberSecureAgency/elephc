@@ -5,7 +5,7 @@ sidebar:
   order: 409
 ---
 
-# is_string()
+## is_string()
 
 ```php
 function is_string(mixed $value): bool

@@ -5,7 +5,7 @@ sidebar:
   order: 102
 ---
 
-# `getcwd()` — internals
+## `getcwd()` — internals
 
 ## Where it lives
 

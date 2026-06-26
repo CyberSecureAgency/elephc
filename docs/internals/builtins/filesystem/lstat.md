@@ -5,7 +5,7 @@ sidebar:
   order: 116
 ---
 
-# `lstat()` — internals
+## `lstat()` — internals
 
 ## Where it lives
 

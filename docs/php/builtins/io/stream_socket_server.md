@@ -5,7 +5,7 @@ sidebar:
   order: 206
 ---
 
-# stream_socket_server()
+## stream_socket_server()
 
 ```php
 function stream_socket_server(string $address, int $error_code, int $error_message): mixed

@@ -5,7 +5,7 @@ sidebar:
   order: 101
 ---
 
-# String builtins
+## String builtins
 
 | Function | Signature | Returns |
 |---|---|---|

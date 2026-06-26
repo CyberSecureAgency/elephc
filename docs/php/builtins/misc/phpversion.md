@@ -5,7 +5,7 @@ sidebar:
   order: 264
 ---
 
-# phpversion()
+## phpversion()
 
 ```php
 function phpversion(string $extension = null): string

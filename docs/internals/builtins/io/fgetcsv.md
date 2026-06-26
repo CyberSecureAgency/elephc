@@ -5,7 +5,7 @@ sidebar:
   order: 142
 ---
 
-# `fgetcsv()` — internals
+## `fgetcsv()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 302
 ---
 
-# spl_autoload()
+## spl_autoload()
 
 ```php
 function spl_autoload(string $class, string $file_extensions): void

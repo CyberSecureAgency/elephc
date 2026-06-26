@@ -5,7 +5,7 @@ sidebar:
   order: 407
 ---
 
-# `is_null()` — internals
+## `is_null()` — internals
 
 ## Where it lives
 

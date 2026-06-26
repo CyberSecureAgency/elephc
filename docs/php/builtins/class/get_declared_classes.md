@@ -5,7 +5,7 @@ sidebar:
   order: 60
 ---
 
-# get_declared_classes()
+## get_declared_classes()
 
 ```php
 function get_declared_classes(): array

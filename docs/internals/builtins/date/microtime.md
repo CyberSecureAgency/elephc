@@ -5,7 +5,7 @@ sidebar:
   order: 77
 ---
 
-# `microtime()` — internals
+## `microtime()` — internals
 
 ## Where it lives
 

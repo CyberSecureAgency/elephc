@@ -5,7 +5,7 @@ sidebar:
   order: 230
 ---
 
-# floor()
+## floor()
 
 ```php
 function floor(float $num): float

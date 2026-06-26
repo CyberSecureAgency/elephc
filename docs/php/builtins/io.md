@@ -5,7 +5,7 @@ sidebar:
   order: 109
 ---
 
-# IO builtins
+## IO builtins
 
 | Function | Signature | Returns |
 |---|---|---|

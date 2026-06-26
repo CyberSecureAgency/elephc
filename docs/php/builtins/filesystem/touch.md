@@ -5,7 +5,7 @@ sidebar:
   order: 133
 ---
 
-# touch()
+## touch()
 
 ```php
 function touch(string $filename, int $mtime, int $atime): bool

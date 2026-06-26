@@ -5,7 +5,7 @@ sidebar:
   order: 271
 ---
 
-# `ptr()` — internals
+## `ptr()` — internals
 
 ## Where it lives
 

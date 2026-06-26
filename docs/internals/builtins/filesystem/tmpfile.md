@@ -5,7 +5,7 @@ sidebar:
   order: 132
 ---
 
-# `tmpfile()` — internals
+## `tmpfile()` — internals
 
 ## Where it lives
 

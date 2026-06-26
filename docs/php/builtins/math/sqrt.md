@@ -5,7 +5,7 @@ sidebar:
   order: 251
 ---
 
-# sqrt()
+## sqrt()
 
 ```php
 function sqrt(float $num): float

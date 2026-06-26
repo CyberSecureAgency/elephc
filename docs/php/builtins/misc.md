@@ -5,7 +5,7 @@ sidebar:
   order: 118
 ---
 
-# Misc builtins
+## Misc builtins
 
 | Function | Signature | Returns |
 |---|---|---|

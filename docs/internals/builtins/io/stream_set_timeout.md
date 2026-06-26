@@ -5,7 +5,7 @@ sidebar:
   order: 197
 ---
 
-# `stream_set_timeout()` — internals
+## `stream_set_timeout()` — internals
 
 ## Where it lives
 

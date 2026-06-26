@@ -5,7 +5,7 @@ sidebar:
   order: 347
 ---
 
-# long2ip()
+## long2ip()
 
 ```php
 function long2ip(int $ip): string

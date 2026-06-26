@@ -5,7 +5,7 @@ sidebar:
   order: 380
 ---
 
-# `strtoupper()` — internals
+## `strtoupper()` — internals
 
 ## Where it lives
 

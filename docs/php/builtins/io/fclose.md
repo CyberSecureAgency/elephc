@@ -5,7 +5,7 @@ sidebar:
   order: 137
 ---
 
-# fclose()
+## fclose()
 
 ```php
 function fclose(resource $stream): bool

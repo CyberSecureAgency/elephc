@@ -5,7 +5,7 @@ sidebar:
   order: 360
 ---
 
-# str_contains()
+## str_contains()
 
 ```php
 function str_contains(string $haystack, string $needle): bool

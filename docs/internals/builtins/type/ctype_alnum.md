@@ -5,7 +5,7 @@ sidebar:
   order: 392
 ---
 
-# `ctype_alnum()` — internals
+## `ctype_alnum()` — internals
 
 ## Where it lives
 

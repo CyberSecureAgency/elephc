@@ -5,7 +5,7 @@ sidebar:
   order: 114
 ---
 
-# SPL builtins
+## SPL builtins
 
 | Function | Signature | Returns |
 |---|---|---|

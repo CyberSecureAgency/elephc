@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-# array_chunk()
+## array_chunk()
 
 ```php
 function array_chunk(array $array, int $length, bool $preserve_keys): array

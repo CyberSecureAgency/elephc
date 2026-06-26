@@ -5,7 +5,7 @@ sidebar:
   order: 80
 ---
 
-# `time()` — internals
+## `time()` — internals
 
 ## Where it lives
 

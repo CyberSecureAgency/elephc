@@ -5,7 +5,7 @@ sidebar:
   order: 327
 ---
 
-# gzdeflate()
+## gzdeflate()
 
 ```php
 function gzdeflate(string $data, int $level, int $encoding): string

@@ -5,7 +5,7 @@ sidebar:
   order: 347
 ---
 
-# `inet_pton()` — internals
+## `inet_pton()` — internals
 
 ## Where it lives
 

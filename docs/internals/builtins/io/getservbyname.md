@@ -5,7 +5,7 @@ sidebar:
   order: 165
 ---
 
-# `getservbyname()` — internals
+## `getservbyname()` — internals
 
 ## Where it lives
 

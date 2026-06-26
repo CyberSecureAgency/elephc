@@ -5,7 +5,7 @@ sidebar:
   order: 269
 ---
 
-# `unset()` — internals
+## `unset()` — internals
 
 ## Where it lives
 

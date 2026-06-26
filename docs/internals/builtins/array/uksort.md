@@ -5,7 +5,7 @@ sidebar:
   order: 45
 ---
 
-# `uksort()` — internals
+## `uksort()` — internals
 
 ## Where it lives
 

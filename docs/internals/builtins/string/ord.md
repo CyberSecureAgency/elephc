@@ -5,7 +5,7 @@ sidebar:
   order: 355
 ---
 
-# `ord()` — internals
+## `ord()` — internals
 
 ## Where it lives
 

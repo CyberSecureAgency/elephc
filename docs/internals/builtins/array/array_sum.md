@@ -5,7 +5,7 @@ sidebar:
   order: 27
 ---
 
-# `array_sum()` — internals
+## `array_sum()` — internals
 
 ## Where it lives
 

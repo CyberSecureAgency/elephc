@@ -5,7 +5,7 @@ sidebar:
   order: 297
 ---
 
-# `preg_match()` — internals
+## `preg_match()` — internals
 
 ## Where it lives
 

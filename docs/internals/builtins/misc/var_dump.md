@@ -5,7 +5,7 @@ sidebar:
   order: 270
 ---
 
-# `var_dump()` — internals
+## `var_dump()` — internals
 
 ## Where it lives
 

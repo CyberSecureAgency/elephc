@@ -5,7 +5,7 @@ sidebar:
   order: 103
 ---
 
-# getenv()
+## getenv()
 
 ```php
 function getenv(string $name, bool $local_only): mixed

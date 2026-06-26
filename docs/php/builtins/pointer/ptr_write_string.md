@@ -5,7 +5,7 @@ sidebar:
   order: 282
 ---
 
-# ptr_write_string()
+## ptr_write_string()
 
 ```php
 function ptr_write_string(pointer $pointer, string $string): int

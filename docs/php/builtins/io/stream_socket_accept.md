@@ -5,7 +5,7 @@ sidebar:
   order: 199
 ---
 
-# stream_socket_accept()
+## stream_socket_accept()
 
 ```php
 function stream_socket_accept(resource $socket, float $timeout, string $peer_name): mixed

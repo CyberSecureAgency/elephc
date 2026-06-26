@@ -5,7 +5,7 @@ sidebar:
   order: 307
 ---
 
-# spl_autoload_unregister()
+## spl_autoload_unregister()
 
 ```php
 function spl_autoload_unregister(callable $callback): bool

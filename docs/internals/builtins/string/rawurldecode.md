@@ -5,7 +5,7 @@ sidebar:
   order: 357
 ---
 
-# `rawurldecode()` — internals
+## `rawurldecode()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 335
 ---
 
-# hash_hmac()
+## hash_hmac()
 
 ```php
 function hash_hmac(string $algo, string $data, string $key, bool $binary): string

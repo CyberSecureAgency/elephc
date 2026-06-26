@@ -5,7 +5,7 @@ sidebar:
   order: 37
 ---
 
-# `ksort()` — internals
+## `ksort()` — internals
 
 ## Where it lives
 

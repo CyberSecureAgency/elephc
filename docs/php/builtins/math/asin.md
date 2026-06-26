@@ -5,7 +5,7 @@ sidebar:
   order: 220
 ---
 
-# asin()
+## asin()
 
 ```php
 function asin(float $num): float

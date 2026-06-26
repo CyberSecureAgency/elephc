@@ -5,7 +5,7 @@ sidebar:
   order: 139
 ---
 
-# feof()
+## feof()
 
 ```php
 function feof(resource $stream): bool

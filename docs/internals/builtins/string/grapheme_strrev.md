@@ -5,7 +5,7 @@ sidebar:
   order: 328
 ---
 
-# `grapheme_strrev()` — internals
+## `grapheme_strrev()` — internals
 
 ## Where it lives
 

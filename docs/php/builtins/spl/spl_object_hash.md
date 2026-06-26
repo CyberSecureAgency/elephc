@@ -5,7 +5,7 @@ sidebar:
   order: 309
 ---
 
-# spl_object_hash()
+## spl_object_hash()
 
 ```php
 function spl_object_hash(object $object): string

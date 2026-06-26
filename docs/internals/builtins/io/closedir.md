@@ -5,7 +5,7 @@ sidebar:
   order: 136
 ---
 
-# `closedir()` — internals
+## `closedir()` — internals
 
 ## Where it lives
 

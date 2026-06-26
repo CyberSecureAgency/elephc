@@ -5,7 +5,7 @@ sidebar:
   order: 243
 ---
 
-# `pi()` — internals
+## `pi()` — internals
 
 ## Where it lives
 

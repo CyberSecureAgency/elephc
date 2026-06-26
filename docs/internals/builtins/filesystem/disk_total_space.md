@@ -5,7 +5,7 @@ sidebar:
   order: 90
 ---
 
-# `disk_total_space()` — internals
+## `disk_total_space()` — internals
 
 ## Where it lives
 

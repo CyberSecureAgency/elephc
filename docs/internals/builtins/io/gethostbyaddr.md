@@ -5,7 +5,7 @@ sidebar:
   order: 160
 ---
 
-# `gethostbyaddr()` — internals
+## `gethostbyaddr()` — internals
 
 ## Where it lives
 

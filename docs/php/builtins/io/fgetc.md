@@ -5,7 +5,7 @@ sidebar:
   order: 141
 ---
 
-# fgetc()
+## fgetc()
 
 ```php
 function fgetc(resource $stream): mixed

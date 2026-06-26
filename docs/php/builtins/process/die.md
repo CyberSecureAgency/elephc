@@ -5,7 +5,7 @@ sidebar:
   order: 283
 ---
 
-# die()
+## die()
 
 ```php
 function die(int $status): void

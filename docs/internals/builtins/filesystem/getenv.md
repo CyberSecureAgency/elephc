@@ -5,7 +5,7 @@ sidebar:
   order: 103
 ---
 
-# `getenv()` — internals
+## `getenv()` — internals
 
 ## Where it lives
 

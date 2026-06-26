@@ -5,7 +5,7 @@ sidebar:
   order: 239
 ---
 
-# log2()
+## log2()
 
 ```php
 function log2(float $num): float

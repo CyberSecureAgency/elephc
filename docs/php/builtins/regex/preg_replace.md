@@ -5,7 +5,7 @@ sidebar:
   order: 296
 ---
 
-# preg_replace()
+## preg_replace()
 
 ```php
 function preg_replace(string $pattern, string $replacement, string $subject, int $limit = -1, int $count = null): string

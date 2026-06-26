@@ -5,7 +5,7 @@ sidebar:
   order: 349
 ---
 
-# `lcfirst()` — internals
+## `lcfirst()` — internals
 
 ## Where it lives
 

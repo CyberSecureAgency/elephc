@@ -5,7 +5,7 @@ sidebar:
   order: 176
 ---
 
-# `stream_context_get_options()` — internals
+## `stream_context_get_options()` — internals
 
 ## Where it lives
 

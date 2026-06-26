@@ -5,7 +5,7 @@ sidebar:
   order: 259
 ---
 
-# empty()
+## empty()
 
 ```php
 function empty(mixed $value): bool

@@ -5,7 +5,7 @@ sidebar:
   order: 340
 ---
 
-# htmlentities()
+## htmlentities()
 
 ```php
 function htmlentities(string $string, int $flags, string $encoding, bool $double_encode): string

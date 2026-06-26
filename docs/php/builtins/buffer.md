@@ -5,7 +5,7 @@ sidebar:
   order: 117
 ---
 
-# Buffer builtins
+## Buffer builtins
 
 | Function | Signature | Returns |
 |---|---|---|

@@ -5,7 +5,7 @@ sidebar:
   order: 403
 ---
 
-# is_iterable()
+## is_iterable()
 
 ```php
 function is_iterable(mixed $value): bool

@@ -5,7 +5,7 @@ sidebar:
   order: 407
 ---
 
-# is_resource()
+## is_resource()
 
 ```php
 function is_resource(mixed $value): bool

@@ -5,7 +5,7 @@ sidebar:
   order: 159
 ---
 
-# `fwrite()` — internals
+## `fwrite()` — internals
 
 ## Where it lives
 

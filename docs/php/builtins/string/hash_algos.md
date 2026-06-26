@@ -5,7 +5,7 @@ sidebar:
   order: 331
 ---
 
-# hash_algos()
+## hash_algos()
 
 ```php
 function hash_algos(): array

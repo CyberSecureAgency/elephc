@@ -5,7 +5,7 @@ sidebar:
   order: 158
 ---
 
-# ftruncate()
+## ftruncate()
 
 ```php
 function ftruncate(resource $stream, int $size): bool

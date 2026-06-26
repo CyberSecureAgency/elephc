@@ -5,7 +5,7 @@ sidebar:
   order: 396
 ---
 
-# gettype()
+## gettype()
 
 ```php
 function gettype(mixed $value): string

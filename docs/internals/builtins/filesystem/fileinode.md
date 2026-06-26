@@ -5,7 +5,7 @@ sidebar:
   order: 95
 ---
 
-# `fileinode()` — internals
+## `fileinode()` — internals
 
 ## Where it lives
 

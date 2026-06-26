@@ -5,7 +5,7 @@ sidebar:
   order: 231
 ---
 
-# fmod()
+## fmod()
 
 ```php
 function fmod(float $num1, float $num2): float

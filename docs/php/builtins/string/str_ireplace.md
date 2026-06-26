@@ -5,7 +5,7 @@ sidebar:
   order: 362
 ---
 
-# str_ireplace()
+## str_ireplace()
 
 ```php
 function str_ireplace(mixed $search, mixed $replace, mixed $subject, int $count): mixed

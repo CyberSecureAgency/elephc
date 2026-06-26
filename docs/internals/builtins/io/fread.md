@@ -5,7 +5,7 @@ sidebar:
   order: 152
 ---
 
-# `fread()` — internals
+## `fread()` — internals
 
 ## Where it lives
 

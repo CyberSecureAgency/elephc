@@ -5,7 +5,7 @@ sidebar:
   order: 303
 ---
 
-# `iterator_count()` — internals
+## `iterator_count()` — internals
 
 ## Where it lives
 

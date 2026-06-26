@@ -5,7 +5,7 @@ sidebar:
   order: 398
 ---
 
-# is_array()
+## is_array()
 
 ```php
 function is_array(mixed $value): bool

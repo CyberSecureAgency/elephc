@@ -5,7 +5,7 @@ sidebar:
   order: 265
 ---
 
-# print_r()
+## print_r()
 
 ```php
 function print_r(...$values): void

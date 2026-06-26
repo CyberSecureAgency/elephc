@@ -5,7 +5,7 @@ sidebar:
   order: 74
 ---
 
-# `gmmktime()` — internals
+## `gmmktime()` — internals
 
 ## Where it lives
 

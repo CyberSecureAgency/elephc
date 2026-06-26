@@ -5,7 +5,7 @@ sidebar:
   order: 107
 ---
 
-# is_file()
+## is_file()
 
 ```php
 function is_file(string $filename): bool

@@ -5,7 +5,7 @@ sidebar:
   order: 312
 ---
 
-# `spl_object_hash()` — internals
+## `spl_object_hash()` — internals
 
 ## Where it lives
 

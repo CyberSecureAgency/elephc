@@ -5,7 +5,7 @@ sidebar:
   order: 400
 ---
 
-# `intval()` — internals
+## `intval()` — internals
 
 ## Where it lives
 

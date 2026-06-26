@@ -5,7 +5,7 @@ sidebar:
   order: 173
 ---
 
-# `stream_bucket_new()` — internals
+## `stream_bucket_new()` — internals
 
 ## Where it lives
 

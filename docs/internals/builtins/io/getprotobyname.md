@@ -5,7 +5,7 @@ sidebar:
   order: 163
 ---
 
-# `getprotobyname()` — internals
+## `getprotobyname()` — internals
 
 ## Where it lives
 

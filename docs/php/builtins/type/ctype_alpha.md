@@ -5,7 +5,7 @@ sidebar:
   order: 390
 ---
 
-# ctype_alpha()
+## ctype_alpha()
 
 ```php
 function ctype_alpha(string $text): bool

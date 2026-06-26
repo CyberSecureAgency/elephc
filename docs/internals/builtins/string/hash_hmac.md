@@ -5,7 +5,7 @@ sidebar:
   order: 338
 ---
 
-# `hash_hmac()` — internals
+## `hash_hmac()` — internals
 
 ## Where it lives
 

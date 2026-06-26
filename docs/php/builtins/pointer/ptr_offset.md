@@ -5,7 +5,7 @@ sidebar:
   order: 272
 ---
 
-# ptr_offset()
+## ptr_offset()
 
 ```php
 function ptr_offset(pointer $pointer, int $offset): mixed

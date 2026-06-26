@@ -5,7 +5,7 @@ sidebar:
   order: 181
 ---
 
-# `stream_copy_to_stream()` — internals
+## `stream_copy_to_stream()` — internals
 
 ## Where it lives
 

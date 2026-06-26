@@ -5,7 +5,7 @@ sidebar:
   order: 108
 ---
 
-# `is_link()` — internals
+## `is_link()` — internals
 
 ## Where it lives
 

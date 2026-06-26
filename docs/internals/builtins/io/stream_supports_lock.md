@@ -5,7 +5,7 @@ sidebar:
   order: 208
 ---
 
-# `stream_supports_lock()` — internals
+## `stream_supports_lock()` — internals
 
 ## Where it lives
 

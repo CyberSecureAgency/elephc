@@ -5,7 +5,7 @@ sidebar:
   order: 402
 ---
 
-# `is_bool()` — internals
+## `is_bool()` — internals
 
 ## Where it lives
 

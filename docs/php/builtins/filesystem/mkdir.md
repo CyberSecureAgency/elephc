@@ -5,7 +5,7 @@ sidebar:
   order: 117
 ---
 
-# mkdir()
+## mkdir()
 
 ```php
 function mkdir(string $directory, int $permissions, bool $recursive, bool $context): bool

@@ -5,7 +5,7 @@ sidebar:
   order: 274
 ---
 
-# ptr_read32()
+## ptr_read32()
 
 ```php
 function ptr_read32(pointer $pointer): int

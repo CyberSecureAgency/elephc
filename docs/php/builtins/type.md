@@ -5,7 +5,7 @@ sidebar:
   order: 104
 ---
 
-# Type builtins
+## Type builtins
 
 | Function | Signature | Returns |
 |---|---|---|

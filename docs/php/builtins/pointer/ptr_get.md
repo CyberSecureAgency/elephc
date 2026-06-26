@@ -5,7 +5,7 @@ sidebar:
   order: 269
 ---
 
-# ptr_get()
+## ptr_get()
 
 ```php
 function ptr_get(pointer $pointer): int

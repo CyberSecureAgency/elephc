@@ -5,7 +5,7 @@ sidebar:
   order: 158
 ---
 
-# `ftruncate()` — internals
+## `ftruncate()` — internals
 
 ## Where it lives
 

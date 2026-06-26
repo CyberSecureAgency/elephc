@@ -5,7 +5,7 @@ sidebar:
   order: 397
 ---
 
-# intval()
+## intval()
 
 ```php
 function intval(mixed $value, int $base): int

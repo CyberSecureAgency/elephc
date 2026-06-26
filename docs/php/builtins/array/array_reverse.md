@@ -5,7 +5,7 @@ sidebar:
   order: 22
 ---
 
-# array_reverse()
+## array_reverse()
 
 ```php
 function array_reverse(array $array, bool $preserve_keys): array

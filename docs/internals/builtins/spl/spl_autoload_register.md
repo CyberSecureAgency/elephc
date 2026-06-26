@@ -5,7 +5,7 @@ sidebar:
   order: 309
 ---
 
-# `spl_autoload_register()` — internals
+## `spl_autoload_register()` — internals
 
 ## Where it lives
 

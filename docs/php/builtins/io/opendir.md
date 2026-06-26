@@ -5,7 +5,7 @@ sidebar:
   order: 168
 ---
 
-# opendir()
+## opendir()
 
 ```php
 function opendir(string $directory): mixed

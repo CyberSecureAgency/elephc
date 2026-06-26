@@ -5,7 +5,7 @@ sidebar:
   order: 253
 ---
 
-# tanh()
+## tanh()
 
 ```php
 function tanh(float $num): float

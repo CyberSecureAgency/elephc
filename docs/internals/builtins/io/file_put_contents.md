@@ -5,7 +5,7 @@ sidebar:
   order: 146
 ---
 
-# `file_put_contents()` — internals
+## `file_put_contents()` — internals
 
 ## Where it lives
 

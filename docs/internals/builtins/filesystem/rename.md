@@ -5,7 +5,7 @@ sidebar:
   order: 125
 ---
 
-# `rename()` — internals
+## `rename()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 173
 ---
 
-# stream_bucket_new()
+## stream_bucket_new()
 
 ```php
 function stream_bucket_new(resource $stream, string $buffer): mixed

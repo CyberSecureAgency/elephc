@@ -5,7 +5,7 @@ sidebar:
   order: 45
 ---
 
-# uksort()
+## uksort()
 
 ```php
 function uksort(array $array, callable $callback): bool

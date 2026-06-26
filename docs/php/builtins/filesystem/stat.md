@@ -5,7 +5,7 @@ sidebar:
   order: 128
 ---
 
-# stat()
+## stat()
 
 ```php
 function stat(string $filename): mixed

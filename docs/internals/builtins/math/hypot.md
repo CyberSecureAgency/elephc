@@ -5,7 +5,7 @@ sidebar:
   order: 232
 ---
 
-# `hypot()` — internals
+## `hypot()` — internals
 
 ## Where it lives
 

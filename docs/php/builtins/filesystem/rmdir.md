@@ -5,7 +5,7 @@ sidebar:
   order: 126
 ---
 
-# rmdir()
+## rmdir()
 
 ```php
 function rmdir(string $directory, mixed $context = null): bool

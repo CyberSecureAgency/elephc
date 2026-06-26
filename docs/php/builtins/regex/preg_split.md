@@ -5,7 +5,7 @@ sidebar:
   order: 298
 ---
 
-# preg_split()
+## preg_split()
 
 ```php
 function preg_split(string $pattern, string $subject, int $limit, int $flags): array

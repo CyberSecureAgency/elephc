@@ -5,7 +5,7 @@ sidebar:
   order: 222
 ---
 
-# `atan2()` — internals
+## `atan2()` — internals
 
 ## Where it lives
 

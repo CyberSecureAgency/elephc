@@ -5,7 +5,7 @@ sidebar:
   order: 380
 ---
 
-# trim()
+## trim()
 
 ```php
 function trim(string $string, string $characters): string

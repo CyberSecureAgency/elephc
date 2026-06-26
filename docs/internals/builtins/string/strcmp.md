@@ -5,7 +5,7 @@ sidebar:
   order: 372
 ---
 
-# `strcmp()` — internals
+## `strcmp()` — internals
 
 ## Where it lives
 

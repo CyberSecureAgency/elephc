@@ -5,7 +5,7 @@ sidebar:
   order: 134
 ---
 
-# umask()
+## umask()
 
 ```php
 function umask(int $mask): int

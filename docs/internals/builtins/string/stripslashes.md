@@ -5,7 +5,7 @@ sidebar:
   order: 373
 ---
 
-# `stripslashes()` — internals
+## `stripslashes()` — internals
 
 ## Where it lives
 

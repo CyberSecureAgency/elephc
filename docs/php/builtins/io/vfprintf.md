@@ -5,7 +5,7 @@ sidebar:
   order: 212
 ---
 
-# vfprintf()
+## vfprintf()
 
 ```php
 function vfprintf(resource $stream, string $format, array $values): int

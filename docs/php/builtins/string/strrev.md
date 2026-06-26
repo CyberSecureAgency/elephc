@@ -5,7 +5,7 @@ sidebar:
   order: 373
 ---
 
-# strrev()
+## strrev()
 
 ```php
 function strrev(string $string): string

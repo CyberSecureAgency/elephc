@@ -5,7 +5,7 @@ sidebar:
   order: 291
 ---
 
-# sleep()
+## sleep()
 
 ```php
 function sleep(int $seconds): int

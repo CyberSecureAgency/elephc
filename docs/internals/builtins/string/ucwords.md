@@ -5,7 +5,7 @@ sidebar:
   order: 385
 ---
 
-# `ucwords()` — internals
+## `ucwords()` — internals
 
 ## Where it lives
 

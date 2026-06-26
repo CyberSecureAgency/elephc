@@ -5,7 +5,7 @@ sidebar:
   order: 277
 ---
 
-# ptr_set()
+## ptr_set()
 
 ```php
 function ptr_set(pointer $pointer, mixed $value): void

@@ -5,7 +5,7 @@ sidebar:
   order: 359
 ---
 
-# sscanf()
+## sscanf()
 
 ```php
 function sscanf(string $string, string $format, ...$vars): array

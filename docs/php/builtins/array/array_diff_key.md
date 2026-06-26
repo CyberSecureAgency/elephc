@@ -5,7 +5,7 @@ sidebar:
   order: 5
 ---
 
-# array_diff_key()
+## array_diff_key()
 
 ```php
 function array_diff_key(array $array, ...$arrays): array

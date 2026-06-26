@@ -5,7 +5,7 @@ sidebar:
   order: 278
 ---
 
-# `ptr_read8()` — internals
+## `ptr_read8()` — internals
 
 ## Where it lives
 

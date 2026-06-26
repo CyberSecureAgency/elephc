@@ -5,7 +5,7 @@ sidebar:
   order: 120
 ---
 
-# readfile()
+## readfile()
 
 ```php
 function readfile(string $filename, bool $use_include_path, mixed $context): mixed

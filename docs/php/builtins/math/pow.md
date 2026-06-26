@@ -5,7 +5,7 @@ sidebar:
   order: 244
 ---
 
-# pow()
+## pow()
 
 ```php
 function pow(float $num, float $exponent): float

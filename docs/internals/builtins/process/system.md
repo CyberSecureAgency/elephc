@@ -5,7 +5,7 @@ sidebar:
   order: 295
 ---
 
-# `system()` — internals
+## `system()` — internals
 
 ## Where it lives
 

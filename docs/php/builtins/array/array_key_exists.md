@@ -5,7 +5,7 @@ sidebar:
   order: 12
 ---
 
-# array_key_exists()
+## array_key_exists()
 
 ```php
 function array_key_exists(string $key, array $array): bool

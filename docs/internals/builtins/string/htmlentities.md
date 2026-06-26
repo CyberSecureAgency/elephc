@@ -5,7 +5,7 @@ sidebar:
   order: 343
 ---
 
-# `htmlentities()` — internals
+## `htmlentities()` — internals
 
 ## Where it lives
 

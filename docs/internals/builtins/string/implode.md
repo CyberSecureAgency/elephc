@@ -5,7 +5,7 @@ sidebar:
   order: 345
 ---
 
-# `implode()` — internals
+## `implode()` — internals
 
 ## Where it lives
 

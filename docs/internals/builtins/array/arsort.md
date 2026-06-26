@@ -5,7 +5,7 @@ sidebar:
   order: 32
 ---
 
-# `arsort()` — internals
+## `arsort()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 409
 ---
 
-# `is_object()` — internals
+## `is_object()` — internals
 
 ## Where it lives
 

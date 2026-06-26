@@ -5,7 +5,7 @@ sidebar:
   order: 301
 ---
 
-# iterator_to_array()
+## iterator_to_array()
 
 ```php
 function iterator_to_array(traversable $iterator, bool $preserve_keys): array

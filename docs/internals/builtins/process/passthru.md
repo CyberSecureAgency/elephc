@@ -5,7 +5,7 @@ sidebar:
   order: 289
 ---
 
-# `passthru()` — internals
+## `passthru()` — internals
 
 ## Where it lives
 

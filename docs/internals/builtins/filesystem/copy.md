@@ -5,7 +5,7 @@ sidebar:
   order: 87
 ---
 
-# `copy()` — internals
+## `copy()` — internals
 
 ## Where it lives
 

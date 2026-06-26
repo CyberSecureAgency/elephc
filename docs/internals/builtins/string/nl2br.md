@@ -5,7 +5,7 @@ sidebar:
   order: 353
 ---
 
-# `nl2br()` — internals
+## `nl2br()` — internals
 
 ## Where it lives
 

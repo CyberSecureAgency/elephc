@@ -5,7 +5,7 @@ sidebar:
   order: 323
 ---
 
-# crc32()
+## crc32()
 
 ```php
 function crc32(string $string): int

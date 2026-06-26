@@ -5,7 +5,7 @@ sidebar:
   order: 180
 ---
 
-# `stream_context_set_params()` — internals
+## `stream_context_set_params()` — internals
 
 ## Where it lives
 

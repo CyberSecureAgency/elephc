@@ -5,7 +5,7 @@ sidebar:
   order: 275
 ---
 
-# `ptr_offset()` — internals
+## `ptr_offset()` — internals
 
 ## Where it lives
 

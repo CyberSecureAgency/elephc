@@ -5,7 +5,7 @@ sidebar:
   order: 146
 ---
 
-# file_put_contents()
+## file_put_contents()
 
 ```php
 function file_put_contents(string $filename, mixed $data, int $flags = 0, mixed $context = null): int

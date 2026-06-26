@@ -5,7 +5,7 @@ sidebar:
   order: 131
 ---
 
-# `tempnam()` — internals
+## `tempnam()` — internals
 
 ## Where it lives
 

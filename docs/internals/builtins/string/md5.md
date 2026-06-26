@@ -5,7 +5,7 @@ sidebar:
   order: 352
 ---
 
-# `md5()` — internals
+## `md5()` — internals
 
 ## Where it lives
 

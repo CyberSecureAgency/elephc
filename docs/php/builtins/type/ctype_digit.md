@@ -5,7 +5,7 @@ sidebar:
   order: 391
 ---
 
-# ctype_digit()
+## ctype_digit()
 
 ```php
 function ctype_digit(string $text): bool

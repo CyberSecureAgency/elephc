@@ -5,7 +5,7 @@ sidebar:
   order: 310
 ---
 
-# spl_object_id()
+## spl_object_id()
 
 ```php
 function spl_object_id(object $object): int

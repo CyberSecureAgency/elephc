@@ -5,7 +5,7 @@ sidebar:
   order: 110
 ---
 
-# `is_writable()` — internals
+## `is_writable()` — internals
 
 ## Where it lives
 

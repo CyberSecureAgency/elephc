@@ -5,7 +5,7 @@ sidebar:
   order: 0
 ---
 
-# Builtins
+## Builtins
 
 | Function | Signature | Returns |
 |---|---|---|

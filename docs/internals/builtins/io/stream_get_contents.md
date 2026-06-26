@@ -5,7 +5,7 @@ sidebar:
   order: 184
 ---
 
-# `stream_get_contents()` — internals
+## `stream_get_contents()` — internals
 
 ## Where it lives
 

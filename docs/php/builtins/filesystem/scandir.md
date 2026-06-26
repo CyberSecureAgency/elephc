@@ -5,7 +5,7 @@ sidebar:
   order: 127
 ---
 
-# scandir()
+## scandir()
 
 ```php
 function scandir(string $directory, int $sorting_order, mixed $context): array

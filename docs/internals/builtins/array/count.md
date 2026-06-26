@@ -5,7 +5,7 @@ sidebar:
   order: 34
 ---
 
-# `count()` — internals
+## `count()` — internals
 
 ## Where it lives
 

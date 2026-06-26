@@ -5,7 +5,7 @@ sidebar:
   order: 342
 ---
 
-# implode()
+## implode()
 
 ```php
 function implode(string $separator, array $array): string

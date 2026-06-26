@@ -5,7 +5,7 @@ sidebar:
   order: 154
 ---
 
-# `fseek()` — internals
+## `fseek()` — internals
 
 ## Where it lives
 

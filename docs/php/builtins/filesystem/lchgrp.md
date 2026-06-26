@@ -5,7 +5,7 @@ sidebar:
   order: 112
 ---
 
-# lchgrp()
+## lchgrp()
 
 ```php
 function lchgrp(string $filename, int $group): bool

@@ -5,7 +5,7 @@ sidebar:
   order: 198
 ---
 
-# `stream_set_write_buffer()` — internals
+## `stream_set_write_buffer()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 346
 ---
 
-# lcfirst()
+## lcfirst()
 
 ```php
 function lcfirst(string $string): string

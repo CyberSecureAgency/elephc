@@ -5,7 +5,7 @@ sidebar:
   order: 394
 ---
 
-# get_resource_id()
+## get_resource_id()
 
 ```php
 function get_resource_id(resource $resource): int

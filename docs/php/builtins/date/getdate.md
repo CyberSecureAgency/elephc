@@ -5,7 +5,7 @@ sidebar:
   order: 72
 ---
 
-# getdate()
+## getdate()
 
 ```php
 function getdate(int $timestamp): array

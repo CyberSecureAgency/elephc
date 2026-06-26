@@ -5,7 +5,7 @@ sidebar:
   order: 39
 ---
 
-# natsort()
+## natsort()
 
 ```php
 function natsort(array $array): bool

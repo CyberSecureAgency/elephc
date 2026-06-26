@@ -5,7 +5,7 @@ sidebar:
   order: 337
 ---
 
-# `hash_final()` — internals
+## `hash_final()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 376
 ---
 
-# strtolower()
+## strtolower()
 
 ```php
 function strtolower(string $string): string

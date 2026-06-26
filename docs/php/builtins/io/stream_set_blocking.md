@@ -5,7 +5,7 @@ sidebar:
   order: 194
 ---
 
-# stream_set_blocking()
+## stream_set_blocking()
 
 ```php
 function stream_set_blocking(resource $stream, bool $enable): bool

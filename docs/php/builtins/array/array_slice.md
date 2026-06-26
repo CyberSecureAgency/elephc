@@ -5,7 +5,7 @@ sidebar:
   order: 25
 ---
 
-# array_slice()
+## array_slice()
 
 ```php
 function array_slice(array $array, int $offset, int $length, bool $preserve_keys): array

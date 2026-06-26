@@ -5,7 +5,7 @@ sidebar:
   order: 239
 ---
 
-# `log2()` — internals
+## `log2()` — internals
 
 ## Where it lives
 

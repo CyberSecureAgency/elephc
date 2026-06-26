@@ -5,7 +5,7 @@ sidebar:
   order: 363
 ---
 
-# str_pad()
+## str_pad()
 
 ```php
 function str_pad(string $string, int $length, string $pad_string, int $pad_type): string

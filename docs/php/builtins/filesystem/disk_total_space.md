@@ -5,7 +5,7 @@ sidebar:
   order: 90
 ---
 
-# disk_total_space()
+## disk_total_space()
 
 ```php
 function disk_total_space(string $directory): float

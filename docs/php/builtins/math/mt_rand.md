@@ -5,7 +5,7 @@ sidebar:
   order: 242
 ---
 
-# mt_rand()
+## mt_rand()
 
 ```php
 function mt_rand(int $min, int $max): int

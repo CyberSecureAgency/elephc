@@ -5,7 +5,7 @@ sidebar:
   order: 344
 ---
 
-# `htmlspecialchars()` — internals
+## `htmlspecialchars()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 149
 ---
 
-# fpassthru()
+## fpassthru()
 
 ```php
 function fpassthru(resource $stream): int

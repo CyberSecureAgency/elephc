@@ -5,7 +5,7 @@ sidebar:
   order: 401
 ---
 
-# `is_array()` — internals
+## `is_array()` — internals
 
 ## Where it lives
 

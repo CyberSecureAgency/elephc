@@ -5,7 +5,7 @@ sidebar:
   order: 316
 ---
 
-# stream_filter_prepend()
+## stream_filter_prepend()
 
 ```php
 function stream_filter_prepend(resource $stream, string $filter_name, int $mode, mixed $params): mixed

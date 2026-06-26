@@ -5,7 +5,7 @@ sidebar:
   order: 48
 ---
 
-# buffer_len()
+## buffer_len()
 
 ```php
 function buffer_len(buffer $buffer): int

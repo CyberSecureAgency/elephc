@@ -5,7 +5,7 @@ sidebar:
   order: 342
 ---
 
-# `html_entity_decode()` — internals
+## `html_entity_decode()` — internals
 
 ## Where it lives
 

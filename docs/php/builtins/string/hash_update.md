@@ -5,7 +5,7 @@ sidebar:
   order: 337
 ---
 
-# hash_update()
+## hash_update()
 
 ```php
 function hash_update(resource $context, string $data): bool

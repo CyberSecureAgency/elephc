@@ -5,7 +5,7 @@ sidebar:
   order: 124
 ---
 
-# `realpath_cache_size()` — internals
+## `realpath_cache_size()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 408
 ---
 
-# `is_numeric()` — internals
+## `is_numeric()` — internals
 
 ## Where it lives
 

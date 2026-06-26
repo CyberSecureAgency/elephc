@@ -5,7 +5,7 @@ sidebar:
   order: 91
 ---
 
-# `file_exists()` — internals
+## `file_exists()` — internals
 
 ## Where it lives
 

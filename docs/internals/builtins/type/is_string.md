@@ -5,7 +5,7 @@ sidebar:
   order: 412
 ---
 
-# `is_string()` — internals
+## `is_string()` — internals
 
 ## Where it lives
 

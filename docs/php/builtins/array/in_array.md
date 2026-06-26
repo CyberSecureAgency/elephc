@@ -5,7 +5,7 @@ sidebar:
   order: 35
 ---
 
-# in_array()
+## in_array()
 
 ```php
 function in_array(mixed $needle, array $haystack, bool $strict): mixed

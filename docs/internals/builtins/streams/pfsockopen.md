@@ -5,7 +5,7 @@ sidebar:
   order: 315
 ---
 
-# `pfsockopen()` — internals
+## `pfsockopen()` — internals
 
 ## Where it lives
 

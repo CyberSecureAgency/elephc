@@ -5,7 +5,7 @@ sidebar:
   order: 193
 ---
 
-# `stream_select()` — internals
+## `stream_select()` — internals
 
 ## Where it lives
 

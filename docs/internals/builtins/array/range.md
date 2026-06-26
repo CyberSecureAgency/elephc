@@ -5,7 +5,7 @@ sidebar:
   order: 40
 ---
 
-# `range()` — internals
+## `range()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 293
 ---
 
-# usleep()
+## usleep()
 
 ```php
 function usleep(int $microseconds): void

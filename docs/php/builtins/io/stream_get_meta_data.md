@@ -5,7 +5,7 @@ sidebar:
   order: 187
 ---
 
-# stream_get_meta_data()
+## stream_get_meta_data()
 
 ```php
 function stream_get_meta_data(resource $stream): array

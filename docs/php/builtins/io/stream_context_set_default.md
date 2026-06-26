@@ -5,7 +5,7 @@ sidebar:
   order: 178
 ---
 
-# stream_context_set_default()
+## stream_context_set_default()
 
 ```php
 function stream_context_set_default(array $options): mixed

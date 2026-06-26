@@ -5,7 +5,7 @@ sidebar:
   order: 299
 ---
 
-# iterator_apply()
+## iterator_apply()
 
 ```php
 function iterator_apply(traversable $iterator, callable $callback, array $args): int

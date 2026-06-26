@@ -5,7 +5,7 @@ sidebar:
   order: 101
 ---
 
-# `fnmatch()` — internals
+## `fnmatch()` — internals
 
 ## Where it lives
 

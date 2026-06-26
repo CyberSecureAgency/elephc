@@ -5,7 +5,7 @@ sidebar:
   order: 388
 ---
 
-# boolval()
+## boolval()
 
 ```php
 function boolval(mixed $value): bool

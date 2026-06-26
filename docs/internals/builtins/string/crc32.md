@@ -5,7 +5,7 @@ sidebar:
   order: 326
 ---
 
-# `crc32()` — internals
+## `crc32()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 261
 ---
 
-# `defined()` — internals
+## `defined()` — internals
 
 ## Where it lives
 

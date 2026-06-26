@@ -5,7 +5,7 @@ sidebar:
   order: 383
 ---
 
-# `trim()` — internals
+## `trim()` — internals
 
 ## Where it lives
 

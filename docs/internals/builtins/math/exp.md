@@ -5,7 +5,7 @@ sidebar:
   order: 228
 ---
 
-# `exp()` — internals
+## `exp()` — internals
 
 ## Where it lives
 

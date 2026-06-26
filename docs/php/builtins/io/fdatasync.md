@@ -5,7 +5,7 @@ sidebar:
   order: 138
 ---
 
-# fdatasync()
+## fdatasync()
 
 ```php
 function fdatasync(resource $stream): bool

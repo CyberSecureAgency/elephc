@@ -5,7 +5,7 @@ sidebar:
   order: 339
 ---
 
-# html_entity_decode()
+## html_entity_decode()
 
 ```php
 function html_entity_decode(string $string, int $flags, string $encoding): string

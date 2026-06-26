@@ -5,7 +5,7 @@ sidebar:
   order: 398
 ---
 
-# `get_resource_type()` — internals
+## `get_resource_type()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 328
 ---
 
-# gzinflate()
+## gzinflate()
 
 ```php
 function gzinflate(string $data, int $max_length): string

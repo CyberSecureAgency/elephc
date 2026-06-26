@@ -5,7 +5,7 @@ sidebar:
   order: 260
 ---
 
-# header()
+## header()
 
 ```php
 function header(mixed $header, mixed $replace, mixed $response_code): void

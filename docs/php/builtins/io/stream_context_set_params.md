@@ -5,7 +5,7 @@ sidebar:
   order: 180
 ---
 
-# stream_context_set_params()
+## stream_context_set_params()
 
 ```php
 function stream_context_set_params(resource $context, array $params): bool

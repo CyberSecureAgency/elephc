@@ -5,7 +5,7 @@ sidebar:
   order: 201
 ---
 
-# `stream_socket_enable_crypto()` — internals
+## `stream_socket_enable_crypto()` — internals
 
 ## Where it lives
 

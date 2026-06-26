@@ -5,7 +5,7 @@ sidebar:
   order: 344
 ---
 
-# inet_pton()
+## inet_pton()
 
 ```php
 function inet_pton(string $ip): mixed

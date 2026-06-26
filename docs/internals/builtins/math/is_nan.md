@@ -5,7 +5,7 @@ sidebar:
   order: 236
 ---
 
-# `is_nan()` — internals
+## `is_nan()` — internals
 
 ## Where it lives
 

@@ -5,7 +5,7 @@ sidebar:
   order: 218
 ---
 
-# abs()
+## abs()
 
 ```php
 function abs(int $num): mixed

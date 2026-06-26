@@ -5,7 +5,7 @@ sidebar:
   order: 290
 ---
 
-# shell_exec()
+## shell_exec()
 
 ```php
 function shell_exec(string $command): string

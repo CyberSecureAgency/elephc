@@ -5,7 +5,7 @@ sidebar:
   order: 234
 ---
 
-# is_finite()
+## is_finite()
 
 ```php
 function is_finite(float $num): bool

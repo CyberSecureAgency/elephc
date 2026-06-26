@@ -5,7 +5,7 @@ sidebar:
   order: 350
 ---
 
-# nl2br()
+## nl2br()
 
 ```php
 function nl2br(string $string, bool $use_xhtml): string

@@ -5,7 +5,7 @@ sidebar:
   order: 235
 ---
 
-# is_infinite()
+## is_infinite()
 
 ```php
 function is_infinite(float $num): bool

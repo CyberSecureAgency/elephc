@@ -5,7 +5,7 @@ sidebar:
   order: 195
 ---
 
-# `stream_set_chunk_size()` — internals
+## `stream_set_chunk_size()` — internals
 
 ## Where it lives
 
