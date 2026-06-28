@@ -403,12 +403,20 @@ fn emit_enum_singleton_initializers(ctx: &mut FunctionContext<'_>) {
         let Some(class_info) = ctx.module.class_infos.get(enum_name) else {
             continue;
         };
+        // The `name` property slot is authoritative in the class metadata; fall back to the last
+        // property slot (`8 + (count - 1) * 16`) only if it is somehow absent.
+        let name_offset = class_info
+            .property_offsets
+            .get("name")
+            .copied()
+            .unwrap_or_else(|| 8 + class_info.properties.len().saturating_sub(1) * 16);
         for case in &enum_info.cases {
             emit_enum_singleton_initializer(
                 ctx,
                 enum_name,
                 class_info.class_id,
                 class_info.properties.len(),
+                name_offset,
                 case,
             );
         }
@@ -421,6 +429,7 @@ fn emit_enum_singleton_initializer(
     enum_name: &str,
     class_id: u64,
     property_count: usize,
+    name_offset: usize,
     case: &EnumCaseInfo,
 ) {
     ctx.emitter.comment(&format!("initialize enum singleton {}::{}", enum_name, case.name));
@@ -428,8 +437,23 @@ fn emit_enum_singleton_initializer(
     if let Some(case_value) = &case.value {
         emit_enum_backing_value(ctx, case_value);
     }
+    emit_enum_name_property(ctx, &case.name, name_offset);
     let symbol = enum_case_symbol(enum_name, &case.name);
     abi::emit_store_reg_to_symbol(ctx.emitter, abi::int_result_reg(ctx.emitter), &symbol, 0);
+}
+
+/// Writes an enum case's `name` string (the case identifier) into its singleton name slot.
+///
+/// The name is interned as a static data-section string, so the pointer/length pair stored here
+/// mirrors a string-backed enum's `value` slot and needs no refcount management.
+fn emit_enum_name_property(ctx: &mut FunctionContext<'_>, case_name: &str, offset: usize) {
+    let object_reg = abi::int_result_reg(ctx.emitter);
+    let temp_reg = abi::temp_int_reg(ctx.emitter.target);
+    let (label, len) = ctx.data.add_string(case_name.as_bytes());
+    abi::emit_symbol_address(ctx.emitter, temp_reg, &label);
+    abi::emit_store_to_address(ctx.emitter, temp_reg, object_reg, offset);
+    abi::emit_load_int_immediate(ctx.emitter, temp_reg, len as i64);
+    abi::emit_store_to_address(ctx.emitter, temp_reg, object_reg, offset + 8);
 }
 
 /// Allocates an object-shaped enum singleton and zeroes its property storage.

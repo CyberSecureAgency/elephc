@@ -689,10 +689,11 @@ enum Color: int {
     case Red = 1;
     case Green = 2;
 }
+echo Color::Red->name;           // Red
 echo Color::Red->value;          // 1
 echo Color::from(2) === Color::Green; // 1
 ```
-Pure and backed enums. `->value`, `::from()`, `::tryFrom()`, `::cases()`. Only `int` and `string` backing types.
+Pure and backed enums. Every case exposes the read-only `->name` property (the case identifier); backed cases also expose `->value`. Plus `::from()`, `::tryFrom()`, `::cases()`. Only `int` and `string` backing types.
 
 ### Enum methods, constants, and interfaces
 
@@ -732,14 +733,14 @@ echo Suit::default()->code();         // H
 
 Rules:
 
-- Instance methods may use `$this` (the case), `match ($this)`, the backing `$this->value`, and `self::CONST`.
+- Instance methods may use `$this` (the case), `match ($this)`, the case `$this->name`, the backing `$this->value`, and `self::CONST`.
 - Static methods dispatch like class static methods and can act as factories.
 - An enum can `implements` one or more interfaces and be used through them.
 - `self`/`static` type hints in enum methods resolve to the enum.
 
 Enum constants are readable both inside the enum (`self::CONST`) and from outside it (`EnumName::CONST`). Enum method bodies are type-checked like class method bodies, so a mismatched return type or an undefined variable inside an enum method is reported.
 
-Current limitations: the `$this->name` property is not yet readable inside a method, and using a trait inside an enum is not supported.
+Current limitations: using a trait inside an enum is not supported.
 
 ### Built-in `SortDirection`
 
