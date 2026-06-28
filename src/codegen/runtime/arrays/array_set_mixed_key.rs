@@ -73,15 +73,28 @@ pub fn emit_array_set_mixed_key(emitter: &mut Emitter) {
     emitter.instruction("fcvtzs x1, d0");                                       // cast the float key to an integer index like PHP
     emitter.label("__rt_array_set_mixed_key_int_ready");
     emitter.instruction("ldr x0, [sp, #0]");                                    // reload the indexed-array pointer
+    emitter.instruction("cmp x1, #0");                                          // negative int keys cannot live in packed indexed storage
+    emitter.instruction("b.lt __rt_array_set_mixed_key_int_promote");           // promote to a hash so a negative key survives like PHP
+    emitter.instruction("ldr x9, [x0]");                                        // load the current logical length of the indexed array
+    emitter.instruction("cmp x1, x9");                                          // a key past the end would create a sparse gap
+    emitter.instruction("b.hi __rt_array_set_mixed_key_int_promote");           // promote to a hash so a sparse key survives like PHP
     emitter.instruction("ldr x2, [sp, #16]");                                   // reload the consumed boxed Mixed value
-    emitter.instruction("bl __rt_array_set_mixed");                             // store the value into indexed storage and return the array
+    emitter.instruction("bl __rt_array_set_mixed");                             // store the value into packed indexed storage and return the array
     emitter.instruction("b __rt_array_set_mixed_key_done");                     // finish after an indexed write
+
+    // -- indexed destination + out-of-range int key: promote to hash then set --
+    emitter.label("__rt_array_set_mixed_key_int_promote");
+    emitter.instruction("mov x2, #-1");                                         // key_hi sentinel marks a scalar integer hash key
+    emitter.instruction("str x1, [sp, #24]");                                   // save the integer key low word across helper calls
+    emitter.instruction("str x2, [sp, #32]");                                   // save the integer key high-word sentinel
+    emitter.instruction("b __rt_array_set_mixed_key_promote_alloc");            // share the indexed-to-hash promotion path
 
     // -- indexed destination + string key: promote to hash then set --
     emitter.label("__rt_array_set_mixed_key_string_promote");
     emitter.instruction("bl __rt_hash_normalize_key");                          // normalize the string key payload (x1/x2) into a hash key pair
     emitter.instruction("str x1, [sp, #24]");                                   // save the normalized key low word across helper calls
     emitter.instruction("str x2, [sp, #32]");                                   // save the normalized key high word across helper calls
+    emitter.label("__rt_array_set_mixed_key_promote_alloc");
     emitter.instruction("mov x0, #16");                                         // initial hash capacity for the promoted Mixed-typed hash
     emitter.instruction("mov x1, #7");                                          // runtime value_type 7 = boxed Mixed slots
     emitter.instruction("bl __rt_hash_new");                                    // allocate an empty temporary hash
@@ -172,11 +185,23 @@ fn emit_array_set_mixed_key_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("movq xmm0, rdi");                                      // load the float key payload into the FP register
     emitter.instruction("cvttsd2si rdi, xmm0");                                 // cast the float key to an integer index like PHP
     emitter.label("__rt_array_set_mixed_key_int_ready");
+    emitter.instruction("mov rax, QWORD PTR [rbp - 8]");                        // reload the indexed-array pointer
+    emitter.instruction("cmp rdi, 0");                                          // negative int keys cannot live in packed indexed storage
+    emitter.instruction("jl __rt_array_set_mixed_key_int_promote");             // promote to a hash so a negative key survives like PHP
+    emitter.instruction("mov rcx, QWORD PTR [rax]");                            // load the current logical length of the indexed array
+    emitter.instruction("cmp rdi, rcx");                                        // a key past the end would create a sparse gap
+    emitter.instruction("ja __rt_array_set_mixed_key_int_promote");             // promote to a hash so a sparse key survives like PHP
     emitter.instruction("mov rsi, rdi");                                        // publish the integer key as the indexed-set index argument
-    emitter.instruction("mov rdi, QWORD PTR [rbp - 8]");                        // reload the indexed-array pointer
+    emitter.instruction("mov rdi, rax");                                        // reload the indexed-array pointer into the set argument
     emitter.instruction("mov rdx, QWORD PTR [rbp - 24]");                       // reload the consumed boxed Mixed value
-    emitter.instruction("call __rt_array_set_mixed");                           // store the value into indexed storage and return the array
+    emitter.instruction("call __rt_array_set_mixed");                           // store the value into packed indexed storage and return the array
     emitter.instruction("jmp __rt_array_set_mixed_key_done");                   // finish after an indexed write
+
+    // -- indexed destination + out-of-range int key: promote to hash then set --
+    emitter.label("__rt_array_set_mixed_key_int_promote");
+    emitter.instruction("mov QWORD PTR [rbp - 32], rdi");                       // save the integer key low word across helper calls
+    emitter.instruction("mov QWORD PTR [rbp - 40], -1");                        // key_hi sentinel marks a scalar integer hash key
+    emitter.instruction("jmp __rt_array_set_mixed_key_promote_alloc");          // share the indexed-to-hash promotion path
 
     // -- indexed destination + string key: promote to hash then set --
     emitter.label("__rt_array_set_mixed_key_string_promote");
@@ -184,6 +209,7 @@ fn emit_array_set_mixed_key_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("call __rt_hash_normalize_key");                        // normalize the string key into a hash key pair in rax/rdx
     emitter.instruction("mov QWORD PTR [rbp - 32], rax");                       // save the normalized key low word across helper calls
     emitter.instruction("mov QWORD PTR [rbp - 40], rdx");                       // save the normalized key high word across helper calls
+    emitter.label("__rt_array_set_mixed_key_promote_alloc");
     emitter.instruction("mov rdi, 16");                                         // initial hash capacity for the promoted Mixed-typed hash
     emitter.instruction("mov rsi, 7");                                          // runtime value_type 7 = boxed Mixed slots
     emitter.instruction("call __rt_hash_new");                                  // allocate an empty temporary hash

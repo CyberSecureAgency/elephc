@@ -132,3 +132,109 @@ foreach ($r as $k => $v) {
     );
     assert_eq!(out, "2;0=9;x=7;");
 }
+
+/// Rebuilds a sparse integer-keyed source (non-contiguous keys) through a foreach
+/// key write. A key beyond the current logical end must promote the destination to
+/// a hash so the gap is preserved, instead of the indexed path zero-filling every
+/// slot between the end and the target index (regression: `[0,5,2]` keys used to
+/// read back as `0..5` with empty filler slots).
+#[test]
+fn test_foreach_mixed_sparse_int_keys() {
+    let out = compile_and_run(
+        r#"<?php
+function rebuild(array $src): array {
+    $dst = [];
+    foreach ($src as $k => $v) {
+        $dst[$k] = $v;
+    }
+    return $dst;
+}
+$r = rebuild([0 => "a", 5 => "b", 2 => "c"]);
+foreach ($r as $k => $v) {
+    echo $k, "=", $v, ";";
+}
+"#,
+    );
+    assert_eq!(out, "0=a;5=b;2=c;");
+}
+
+/// Rebuilds a negative integer-keyed source through a foreach key write. Negative
+/// keys cannot live in packed indexed storage, so the destination must promote to
+/// a hash (regression: the indexed path silently dropped negative-index writes,
+/// leaving only the last non-negative key).
+#[test]
+fn test_foreach_mixed_negative_int_keys() {
+    let out = compile_and_run(
+        r#"<?php
+function rebuild(array $src): array {
+    $dst = [];
+    foreach ($src as $k => $v) {
+        $dst[$k] = $v;
+    }
+    return $dst;
+}
+$r = rebuild([-3 => "a", -1 => "b", 0 => "c"]);
+foreach ($r as $k => $v) {
+    echo $k, "=", $v, ";";
+}
+"#,
+    );
+    assert_eq!(out, "-3=a;-1=b;0=c;");
+}
+
+/// A `foreach` key name used in one function must not leak its boxed-`Mixed`-key
+/// classification into another function that reuses the same variable name as a
+/// genuine string key. `build()` (checked first) registers `$k` as a foreach key;
+/// before the per-function reset of `foreach_key_locals`, `lookup()` routed
+/// `$m[$k]` onto the `Array(Mixed)` path and the direct `$m["name"]` read returned
+/// the wrong value.
+#[test]
+fn test_foreach_key_name_does_not_leak_across_functions() {
+    let out = compile_and_run(
+        r#"<?php
+function build(array $src): array {
+    $out = [];
+    foreach ($src as $k => $v) {
+        $out[$k] = $v;
+    }
+    return $out;
+}
+function lookup(): string {
+    $m = [];
+    $k = "name";
+    $m[$k] = "Alice";
+    return $m["name"];
+}
+$b = build([1, 2, 3]);
+echo implode(",", $b), ";";
+echo lookup();
+"#,
+    );
+    assert_eq!(out, "1,2,3;Alice");
+}
+
+/// Reassigning the `foreach` key variable to a string inside the loop makes it an
+/// ordinary string key, so the destination must promote to associative storage
+/// like PHP. Before the foreach-key marker was dropped on direct reassignment, the
+/// checker forced `Array(Mixed)` while the lowering took the string-promotion path,
+/// producing a spurious `AssocArray -> Array(Mixed)` backend error.
+#[test]
+fn test_foreach_key_reassigned_to_string() {
+    let out = compile_and_run(
+        r#"<?php
+function rebuild(array $src): array {
+    $dst = [];
+    foreach ($src as $k => $v) {
+        $k = "fixed";
+        $dst[$k] = $v;
+    }
+    return $dst;
+}
+$r = rebuild(["a" => 1, "b" => 2]);
+foreach ($r as $k => $v) {
+    echo $k, "=", $v, ";";
+}
+"#,
+    );
+    assert_eq!(out, "fixed=2;");
+}
