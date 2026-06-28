@@ -323,6 +323,12 @@ pub(crate) fn builtin_call_sig(name: &str) -> Option<FunctionSig> {
 
         "sleep" => Some(fixed(&["seconds"])),
         "usleep" => Some(fixed(&["microseconds"])),
+        "http_response_code" => Some(optional(&["response_code"], 0, vec![int_lit(0)])),
+        "header" => Some(optional(
+            &["header", "replace", "response_code"],
+            1,
+            vec![bool_lit(true), int_lit(0)],
+        )),
         "getenv" => Some(fixed(&["name"])),
         "putenv" => Some(fixed(&["assignment"])),
         "exec" | "shell_exec" | "system" | "passthru" => Some(fixed(&["command"])),

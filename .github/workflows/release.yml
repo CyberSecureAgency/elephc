@@ -113,7 +113,7 @@ jobs:
         run: cargo build --release
 
       - name: Build release bridge staticlibs
-        run: cargo build --release -p elephc-tls -p elephc-pdo -p elephc-crypto -p elephc-phar -p elephc-tz -p elephc-image
+        run: cargo build --release -p elephc-tls -p elephc-pdo -p elephc-crypto -p elephc-phar -p elephc-tz -p elephc-image -p elephc-web
 
       - name: Strip binary
         run: strip target/release/elephc
@@ -132,7 +132,8 @@ jobs:
             libelephc_crypto.a \
             libelephc_phar.a \
             libelephc_tz.a \
-            libelephc_image.a
+            libelephc_image.a \
+            libelephc_web.a
           shasum -a 256 elephc-${{ steps.version.outputs.version }}-aarch64-apple-darwin.tar.gz > elephc-${{ steps.version.outputs.version }}-aarch64-apple-darwin.tar.gz.sha256
 
       - name: Create GitHub Release
@@ -178,6 +179,7 @@ jobs:
               lib.install "libelephc_phar.a"
               lib.install "libelephc_tz.a"
               lib.install "libelephc_image.a"
+              lib.install "libelephc_web.a"
             end
 
             test do
@@ -218,6 +220,11 @@ jobs:
               (testpath/"img.php").write('<?php \$im = imagecreatetruecolor(3, 2); echo imagesx(\$im) . "x" . imagesy(\$im);')
               system bin/"elephc", "img.php"
               assert_equal "3x2", shell_output("#{testpath}/img")
+
+              # Exercise the web bridge link path from the Homebrew lib/ layout.
+              (testpath/"web.php").write('<?php echo "web-ok";')
+              system bin/"elephc", "--web", "web.php"
+              assert_predicate testpath/"web", :exist?
             end
           end
           EOF

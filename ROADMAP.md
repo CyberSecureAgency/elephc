@@ -873,6 +873,7 @@ tested, diagnostic-emitting gaps.
 Optimization work should now be driven by benchmarks, generated assembly size,
 and 0.x validation rather than by speculative pass work.
 
+- [x] Generators reimplemented on stackful coroutines (issue #329) — a generator body is compiled by the normal EIR backend and runs on its own coroutine stack (reusing the Fiber runtime), replacing the v1 state-machine lowering on the EIR path. `Generator::throw()` now raises the exception at the suspended `yield`, so a `try`/`catch` inside the generator body handles it and resumes instead of always terminating the generator and propagating to the caller; in-generator method calls, arbitrary control flow, and `try`/`finally` around `yield` work like ordinary functions. `yield from` over generators delegates through `__rt_gen_delegate` (forwarding sent values and returning the inner `getReturn()`) and over arrays desugars into an iterator loop; `send()`/`getReturn()`/closure captures preserved; Generator GC frees the coroutine stack and boxed key/value/return cells. The frozen legacy AST backend keeps its own `GeneratorFrame` state machine.
 - [ ] Source maps v2 — richer mappings for functions / expressions / labels and a more stable machine-readable schema for external tooling
 - [ ] Memory-model-aware propagation for heap-backed locals and targeted runtime invalidations beyond `unset($var)` and the currently modeled local writes
 - [ ] Resource scope-cleanup — auto-free tag-9 resource handles that leave scope without their explicit close (today an unclosed `fopen()` leaks its fd and an unfinalized `hash_init()` context leaks its heap state until process exit; `functions/cleanup.rs` skips `Resource`s by design). Prerequisites: a resource-kind subtype in the Mixed cell so the cleanup pass can pick the right destructor (fd → `close()`, HashContext → `elephc_crypto_free`, …), and aliasing safety (resources have no refcount; `$b = $a` would double-free under naive scope-free). Includes wiring the currently-uncalled `elephc_crypto_free` (`_elephc_crypto_free_fn` slot + publish entry + a `__rt_hash_ctx_free` helper) and nulling the Mixed payload in `hash_final` so finalized contexts are skipped — which also defuses the double-final UB documented in `src/codegen/runtime/strings/hash_context.rs`
@@ -900,6 +901,39 @@ and 0.x validation rather than by speculative pass work.
 
 These are valuable product directions that build on the stabilized 0.x compiler
 and runtime foundation.
+
+### Web server (`--web`) — product track
+
+`elephc --web app.php` compiles a standard PHP file into a standalone prefork
+HTTP server binary. The produced binary uses `SO_REUSEPORT` prefork workers; each
+request re-runs the top-level PHP body from a fresh state (globals, function
+statics, and static class properties all reset between requests). Run it with
+`--listen host:port` (required) and optionally `--workers N` (default: CPU count).
+
+- [x] **Phase 1** — core serve loop: `elephc --web` compile flag; `--listen`/`--workers`
+  runtime args; `_elephc_web_handler` entry restructure for per-request invocation;
+  `__rt_stdout_write` capture to the response body buffer; `__rt_web_reset`
+  per-request state reset (function statics, static properties, concat buffer);
+  `elephc-web` bridge staticlib with prefork/`SO_REUSEPORT` supervisor and
+  per-worker hyper HTTP server. Every Phase 1 response is `200 OK` with the
+  echoed body.
+- [x] **Phase 2** — request input superglobals: `$_SERVER` (method/URI/query +
+  `HTTP_*` headers + `CONTENT_TYPE`/`CONTENT_LENGTH`), `$_GET` (query string),
+  `$_POST` (urlencoded body), and `php://input` (raw body), built per request by a
+  `--web` web prelude and readable inside any function scope (true superglobals via
+  `_eir_global_*` storage); output-capture completeness so echoed Mixed/array/
+  resource values reach the response body; superglobals released per request. Not
+  included: `$_REQUEST`, multipart/form-data.
+- [x] **Phase 3** — response control: `http_response_code()` (set/read status,
+  returns previous on set) and `header()`, fully PHP-compatible — replace-vs-append,
+  `HTTP/`/`Status:` status lines, `Location:`→302, and the third `$response_code`
+  argument, all handled in the `elephc-web` bridge. Web-gated `__rt_http_response_code`
+  / `__rt_header` forward to the bridge under `--web` and are no-ops otherwise.
+  Not included: `Content-Type` is not set automatically (the program controls it).
+- [x] **Phase 4** — hardening: `--max-body-size` request body cap (413 on overflow),
+  graceful `SIGINT`/`SIGTERM` shutdown (forward to workers, reap, exit 0), worker
+  respawn on unexpected death, and a 30s header-read timeout bounding slow/idle
+  keep-alive connections. Out of v1 scope: cookies, sessions, TLS, HTTP/2–3, multipart.
 
 ## v0.27.x — Shared and static libraries (C ABI)
 

@@ -21,6 +21,7 @@ mod literal_defaults;
 mod lower_inst;
 mod lower_term;
 pub mod value_placement;
+mod web;
 
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
@@ -97,6 +98,7 @@ pub fn generate_user_asm_from_ir(
         Emit::Executable,
         &exported_functions,
         true,
+        false,
     )
 }
 
@@ -104,6 +106,12 @@ pub fn generate_user_asm_from_ir(
 ///
 /// `regalloc_linear` selects the linear-scan register allocator; when false the
 /// backend keeps every value on the stack (the `--regalloc=stack` fallback).
+///
+/// `web` restructures the process entry for `--web`: the top-level body becomes
+/// the C-callable `_elephc_web_handler` and the real entry point becomes a thin
+/// stub that calls `elephc_web_run`. When false the entry is byte-for-byte the
+/// normal exit-based main.
+#[allow(clippy::too_many_arguments)]
 pub fn generate_user_asm_from_ir_with_options(
     module: &Module,
     gc_stats: bool,
@@ -112,6 +120,7 @@ pub fn generate_user_asm_from_ir_with_options(
     emit: Emit,
     exported_functions: &HashMap<String, ExportedFunction>,
     regalloc_linear: bool,
+    web: bool,
 ) -> Result<String> {
     let mut emitter = match emit {
         Emit::Cdylib => Emitter::new_pic(module.target),
@@ -130,6 +139,7 @@ pub fn generate_user_asm_from_ir_with_options(
         requires_elephc_tls,
         emit,
         regalloc_linear,
+        web,
     )?;
     Ok(finalize_user_asm(module, emitter, data, emit, exported_functions))
 }

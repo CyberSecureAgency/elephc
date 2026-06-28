@@ -245,6 +245,8 @@ pub enum Op {
     HashLen,
     ArrayGet,
     HashGet,
+    ArrayIsset,
+    HashIsset,
     ArraySet,
     HashSet,
     HashUnset,
@@ -353,6 +355,7 @@ pub enum Op {
     FunctionVariantDispatch,
     Acquire,
     Release,
+    GcCollect,
     Move,
     Borrow,
     EnsureOwned,
@@ -396,7 +399,8 @@ impl Op {
                 E::ALLOC_HEAP
             }
             MixedUnbox | MixedCastBool | MixedCastInt | MixedCastFloat | ArrayGet | HashGet
-            | BufferGet | BufferLen | PackedFieldGet | PtrRead | PtrReadString => {
+            | ArrayIsset | HashIsset | BufferGet | BufferLen | PackedFieldGet | PtrRead
+            | PtrReadString => {
                 E::READS_HEAP | E::MAY_FATAL
             }
             StrPersist | ArrayEnsureUnique | HashEnsureUnique | ArrayCloneShallow
@@ -434,6 +438,7 @@ impl Op {
             ErrorSuppressBegin | ErrorSuppressEnd => E::READS_GLOBAL | E::WRITES_GLOBAL,
             ThrowException => E::MAY_THROW | E::WRITES_GLOBAL,
             Acquire | Release | EnsureOwned => E::REFCOUNT_OP | E::WRITES_HEAP,
+            GcCollect => E::READS_HEAP | E::WRITES_HEAP | E::REFCOUNT_OP,
             ClassConstant => E::MAY_DEOPT,
         }
     }
@@ -554,6 +559,8 @@ impl Op {
             HashLen => "hash_len",
             ArrayGet => "array_get",
             HashGet => "hash_get",
+            ArrayIsset => "array_isset",
+            HashIsset => "hash_isset",
             ArraySet => "array_set",
             HashSet => "hash_set",
             HashUnset => "hash_unset",
@@ -656,6 +663,7 @@ impl Op {
             FunctionVariantDispatch => "function_variant_dispatch",
             Acquire => "acquire",
             Release => "release",
+            GcCollect => "gc_collect",
             Move => "move",
             Borrow => "borrow",
             EnsureOwned => "ensure_owned",

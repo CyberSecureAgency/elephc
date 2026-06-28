@@ -66,6 +66,7 @@ Compiler-specific extensions that go beyond standard PHP. These features have no
 - [FFI & Extern](beyond-php/extern.md) — calling C libraries, extern functions/globals/classes, callbacks
 - [Conditional Compilation](beyond-php/ifdef.md) — ifdef blocks, compile-time feature flags, CLI flags
 - [Shared Libraries (cdylib)](beyond-php/cdylib.md) — --emit cdylib, #[Export] C-ABI functions, dlopen lifecycle
+- [Web Server (--web)](beyond-php/web.md) — compile a PHP file into a standalone prefork HTTP server binary
 
 ## Compiler Internals
 

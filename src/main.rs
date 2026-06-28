@@ -38,11 +38,13 @@ mod runtime_cache;
 mod source_map;
 mod span;
 mod string_bytes;
+mod superglobals;
 mod termination;
 mod timings;
 mod types;
 mod tz_prelude;
 mod var_export_prelude;
+mod web_prelude;
 
 /// Entry point for the `elephc` binary.
 ///

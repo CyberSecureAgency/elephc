@@ -20,7 +20,7 @@ use crate::timings::CompileTimings;
 use crate::{
     autoload, codegen, codegen_ir, conditional, errors, exports, ir, ir_lower, ir_passes, lexer,
     linker, list_id_prelude, magic_constants, name_resolver, optimize, parser, pdo_prelude,
-    resolver, runtime_cache, source_map, tz_prelude, types, var_export_prelude,
+    resolver, runtime_cache, source_map, tz_prelude, types, var_export_prelude, web_prelude,
 };
 
 /// Holds the paths for all compilation output files (assembly, object, binary, source map).
@@ -55,6 +55,7 @@ pub(crate) fn compile(config: CliConfig) {
         extra_link_paths,
         extra_frameworks,
         defines,
+        web,
     } = config;
     let filename = filename.as_str();
     codegen::set_null_repr(null_repr);
@@ -160,6 +161,10 @@ pub(crate) fn compile(config: CliConfig) {
     let phase_started = Instant::now();
     let ast = crate::image_prelude::inject_if_used(ast);
     timings.record_since("image-prelude", phase_started);
+
+    let phase_started = Instant::now();
+    let ast = web_prelude::inject_if_web(ast, web);
+    timings.record_since("web-prelude", phase_started);
 
     let phase_started = Instant::now();
     let ast = match name_resolver::resolve(ast) {
@@ -296,12 +301,21 @@ pub(crate) fn compile(config: CliConfig) {
         None
     };
 
-    let runtime_features = ir_module
+    let mut runtime_features = ir_module
         .as_ref()
         .map(|module| module.required_runtime_features)
         .unwrap_or_else(|| {
             codegen::runtime_features_for_program_and_classes(&ast, &check_result.classes)
         });
+    // `--web` selects the output-capture variant of `__rt_stdout_write`. This is the
+    // sole driver of the web runtime feature: it is CLI-driven, not derived from the
+    // program, so the runtime cache (keyed on the generated assembly hash) keeps the
+    // web and non-web runtime objects distinct automatically.
+    runtime_features.web = web;
+
+    if web && !extra_link_libs.iter().any(|lib| lib == "elephc_web") {
+        extra_link_libs.push("elephc_web".to_string());
+    }
 
     let requires_elephc_tls = extra_link_libs.iter().any(|lib| lib == "elephc_tls")
         || check_result
@@ -336,6 +350,7 @@ pub(crate) fn compile(config: CliConfig) {
             emit,
             &exported_functions,
             regalloc_linear,
+            web,
         ) {
             Ok(asm) => asm,
             Err(err) => {

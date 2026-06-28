@@ -188,10 +188,17 @@ pub(crate) fn lower_user_function(
         signature,
         &check_result.callable_param_sigs,
     );
+    // A generator's compiled body is a coroutine that returns the value passed
+    // to `return` (Mixed, read back via `Generator::getReturn()`), not the
+    // `Generator` object itself. The public signature stays `Generator` for
+    // callers; only the EIR body return type becomes Mixed so `return $x`
+    // lowers to a plain boxed Mixed return instead of a Generator coercion.
+    let body_return_type =
+        generator_body_return_type(body, &eir_signature.return_type);
     let mut function = Function::new(
         name.to_string(),
-        return_ir_type(&eir_signature.return_type),
-        eir_signature.return_type.clone(),
+        return_ir_type(&body_return_type),
+        body_return_type.clone(),
     );
     function.params = function_params(&eir_signature);
     function.flags.by_ref_return = signature.by_ref_return;
@@ -215,7 +222,7 @@ pub(crate) fn lower_user_function(
         &check_result.packed_classes,
         constants,
         None,
-        eir_signature.return_type.clone(),
+        body_return_type.clone(),
         &eir_signature.params,
         None,
         false,
@@ -245,10 +252,13 @@ pub(crate) fn lower_class_method(
         .and_then(|class| method_signature(class, method_name, is_static))
         .unwrap_or(&fallback);
     let name = format!("{}::{}", class_name, method_name);
+    // Generator methods lower their body as a Mixed-returning coroutine; see
+    // `generator_body_return_type`.
+    let method_body_return_type = generator_body_return_type(body, &signature.return_type);
     let mut function = Function::new(
         name.clone(),
-        return_ir_type(&signature.return_type),
-        signature.return_type.clone(),
+        return_ir_type(&method_body_return_type),
+        method_body_return_type.clone(),
     );
     function.flags = FunctionFlags {
         is_method: true,
@@ -302,7 +312,7 @@ pub(crate) fn lower_class_method(
         &check_result.packed_classes,
         constants,
         Some(class_name.to_string()),
-        signature.return_type.clone(),
+        method_body_return_type.clone(),
         &body_params,
         None,
         false,
@@ -478,10 +488,13 @@ fn lower_closure_function_with_signature(
     captures: &[(String, PhpType, bool)],
     self_ref_callable_capture: Option<&str>,
 ) -> FunctionSig {
+    // Generator closures lower their body as a Mixed-returning coroutine; see
+    // `generator_body_return_type`.
+    let closure_body_return_type = generator_body_return_type(body, &signature.return_type);
     let mut function = Function::new(
         name.to_string(),
-        return_ir_type(&signature.return_type),
-        signature.return_type.clone(),
+        return_ir_type(&closure_body_return_type),
+        closure_body_return_type.clone(),
     );
     function.flags = FunctionFlags {
         is_closure: true,
@@ -522,7 +535,7 @@ fn lower_closure_function_with_signature(
         parent.packed_classes,
         &parent.constants,
         parent.current_class.clone(),
-        signature.return_type.clone(),
+        closure_body_return_type.clone(),
         &lowered_params,
         recursive_binding,
         false,
@@ -659,6 +672,22 @@ fn is_generator_return_type(ty: &PhpType) -> bool {
     matches!(ty, PhpType::Object(name) if name.trim_start_matches('\\') == "Generator")
 }
 
+/// Returns the EIR return type to lower a function body with.
+///
+/// For a generator (body contains `yield`, or the declared return type is
+/// `Generator`) the compiled body is a coroutine whose `return` produces the
+/// value later read by `Generator::getReturn()`, so the body return type is
+/// `Mixed`. For every other function it is the declared signature return type.
+fn generator_body_return_type(body: &[Stmt], signature_return: &PhpType) -> PhpType {
+    if crate::types::checker::yield_validation::body_contains_yield(body)
+        || is_generator_return_type(signature_return)
+    {
+        PhpType::Mixed
+    } else {
+        signature_return.clone()
+    }
+}
+
 /// Adds a default function terminator when the current block can still fall through.
 fn terminate_open_block(ctx: &mut LoweringContext<'_, '_>) {
     if ctx.builder.insertion_block_is_terminated() {
@@ -735,6 +764,34 @@ fn emit_default_return_value(ctx: &mut LoweringContext<'_, '_>) -> crate::ir::Va
                 None,
             )
             .expect("const_null produces a tagged scalar value"),
+        IrType::Heap(_) if ctx.return_php_type.codegen_repr() == PhpType::Mixed => {
+            // A Mixed-returning body that falls through yields PHP null. This is
+            // how a generator with no explicit `return` produces the value later
+            // read by `Generator::getReturn()`. Mirror the `return null;` path
+            // (`coerce_to_return_type`): a null scalar boxed into a Mixed cell.
+            let null_value = ctx
+                .builder
+                .emit_with_effects(
+                    Op::ConstNull,
+                    Vec::new(),
+                    None,
+                    IrType::I64,
+                    PhpType::Void,
+                    Ownership::NonHeap,
+                    Op::ConstNull.default_effects(),
+                    None,
+                )
+                .expect("const_null produces a value");
+            ctx.emit_value(
+                Op::MixedBox,
+                vec![null_value],
+                None,
+                ctx.return_php_type.clone(),
+                Op::MixedBox.default_effects(),
+                None,
+            )
+            .value
+        }
         IrType::Heap(_) => {
             let lowered = ctx.emit_value(
                 Op::RuntimeCall,
