@@ -121,7 +121,7 @@ fn emit_gen_next(emitter: &mut Emitter) {
     emitter.instruction(&format!("tbnz w1, #1, __rt_gen_next_done"));           // if TERMINATED bit set, skip the resume call
     emitter.instruction(&format!("ldr x9, [x0, #{}]", f::OFF_RESUME_FN));       // load the resume function pointer
     emitter.instruction("br x9");                                               // tail-call resume_fn(x0=frame)
-    emitter.label_global("__rt_gen_next_done");
+    emitter.label("__rt_gen_next_done");
     emitter.instruction("ret");                                                 // already terminated — return immediately
 }
 
@@ -149,9 +149,9 @@ fn emit_gen_send(emitter: &mut Emitter) {
     emitter.instruction(&format!("ldr x0, [x19, #{}]", f::OFF_LAST_VALUE));     // load the boxed Mixed pointer for the new current value
     emitter.instruction("bl __rt_incref");                                      // incref so send() returns an owned Mixed cell
     emitter.instruction("b __rt_gen_send_epilogue");                            // skip the null return path
-    emitter.label_global("__rt_gen_send_done");
+    emitter.label("__rt_gen_send_done");
     emitter.instruction("mov x0, #0");                                          // return null when terminated
-    emitter.label_global("__rt_gen_send_epilogue");
+    emitter.label("__rt_gen_send_epilogue");
     emitter.instruction("ldr x19, [sp, #0]");                                   // restore caller's x19
     emitter.instruction("ldp x29, x30, [sp, #16]");                             // restore frame pointer and return address
     emitter.instruction("add sp, sp, #32");                                     // release the helper frame
@@ -171,7 +171,7 @@ fn emit_gen_rewind(emitter: &mut Emitter) {
     emitter.instruction(&format!("str w1, [x0, #{}]", f::OFF_FLAGS));           // store updated flags
     emitter.instruction(&format!("ldr x9, [x0, #{}]", f::OFF_RESUME_FN));       // load resume_fn
     emitter.instruction("br x9");                                               // tail-call resume_fn(x0=frame)
-    emitter.label_global("__rt_gen_rewind_done");
+    emitter.label("__rt_gen_rewind_done");
     emitter.instruction("ret");                                                 // already rewound — return immediately
 }
 
