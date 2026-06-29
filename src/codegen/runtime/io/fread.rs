@@ -43,7 +43,9 @@ pub fn emit_fread(emitter: &mut Emitter) {
     emitter.instruction("mov w9, #0x4000");                                     // load the high half of USER_WRAPPER_FD_BASE = 0x40000000
     emitter.instruction("lsl w9, w9, #16");                                     // shift into bits 30..16 to form 0x40000000
     emitter.instruction("cmp x0, x9");                                          // is this a synthetic user-wrapper fd?
-    emitter.instruction("b.ge __rt_user_wrapper_fread");                        // dispatch into the wrapper's stream_read instead of issuing a read syscall
+    emitter.instruction("b.lt __rt_fread_real_fd");                             // not a wrapper fd → issue the real read syscall path
+    emitter.instruction("b __rt_user_wrapper_fread");                           // wrapper fd: tail-call stream_read (uncond → cross-atom safe)
+    emitter.label("__rt_fread_real_fd");
 
     // -- set up stack frame --
     emitter.instruction("sub sp, sp, #48");                                     // allocate 48 bytes on the stack

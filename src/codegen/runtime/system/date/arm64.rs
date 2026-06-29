@@ -44,7 +44,10 @@ pub(super) fn emit_date_arm64(emitter: &mut Emitter) {
     emitter.instruction("b __rt_date_entry");                                   // share the formatter body
     emitter.label_global("__rt_date");
     emitter.instruction("mov x3, #0");                                          // select local decomposition (localtime)
-    emitter.label("__rt_date_entry");
+    // `__rt_gmdate` branches here from its own atom; `.alt_entry` under macOS dead
+    // stripping keeps it a real symbol that keeps `__rt_date`'s atom alive, while
+    // staying in that atom so `__rt_date` still falls through into it.
+    emitter.label_shared("__rt_date_entry");
 
     // -- set up stack frame --
     // Stack layout:

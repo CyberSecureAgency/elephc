@@ -54,3 +54,4 @@ mod optimizer;
 mod iterators;
 mod spl;
 mod generators;
+mod dead_strip;

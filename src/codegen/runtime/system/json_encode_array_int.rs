@@ -37,7 +37,9 @@ pub(crate) fn emit_json_encode_array_int(emitter: &mut Emitter) {
     crate::codegen::abi::emit_symbol_address(emitter, "x9", "_json_active_flags");
     emitter.instruction("ldr x9, [x9]");                                        // load the active flag bitmask
     emitter.instruction("tst x9, #16");                                         // is JSON_FORCE_OBJECT (bit 16) set?
-    emitter.instruction("b.ne __rt_json_encode_array_dynamic");                 // tail-call the object-aware encoder when the flag is on
+    emitter.instruction("b.eq __rt_json_encode_array_int_static");              // flag clear: encode as a static JSON array
+    emitter.instruction("b __rt_json_encode_array_dynamic");                    // flag set: tail-call the object-aware encoder (uncond → cross-atom safe)
+    emitter.label("__rt_json_encode_array_int_static");
 
     // -- set up stack frame --
     emitter.instruction("sub sp, sp, #64");                                     // allocate 64 bytes

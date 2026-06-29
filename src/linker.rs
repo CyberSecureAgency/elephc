@@ -267,6 +267,11 @@ pub(crate) fn link(
             match emit {
                 Emit::Executable => {
                     cmd.args(["-e", "_main"]);
+                    // The runtime object is emitted with `.subsections_via_symbols`
+                    // and `L`-prefixed (assembler-local) internal labels, so
+                    // `-dead_strip` drops whole unreferenced `__rt_*` helpers (the
+                    // macOS analogue of the Linux `--gc-sections` path).
+                    cmd.arg("-dead_strip");
                 }
                 Emit::Cdylib => {
                     // `-dylib` selects shared-library output and drops the executable
@@ -298,12 +303,14 @@ pub(crate) fn link(
                     // output are mutually exclusive, so we never add `-static`
                     // here even when no extra libs are requested. User-code
                     // codegen routes cross-object data references through the
-                    // GOT (`@GOTPCREL` on x86_64, `:got:`/`:got_lo12:` on
-                    // AArch64) in PIC mode so the loader can fix them up at
+                    // GOT (`@GOTPCREL` on x86_64, `:got:`/`@got_lo12:` on AArch64)
+                    // in PIC mode so the loader can fix them up at
                     // dlopen time without text-segment relocations.
                     cmd.arg("-shared");
                 }
-                Emit::Executable => {}
+                Emit::Executable => {
+                    cmd.arg("-Wl,--gc-sections");
+                }
             }
             cmd.arg("-o").arg(bin_path).arg(obj_path).arg(runtime_object_path);
             if matches!(emit, Emit::Executable) && extra_link_libs.is_empty() {

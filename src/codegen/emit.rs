@@ -8,6 +8,7 @@
 //! Key details:
 //! - Instruction comments are emitted by callers; this module preserves target syntax and output ordering.
 
+use std::collections::HashSet;
 use std::fmt::Write;
 
 use super::platform::{Arch, Platform, Target};
@@ -23,6 +24,19 @@ pub struct Emitter {
     /// addressing. Required for shared-library output, where the loader cannot
     /// resolve cross-object `R_X86_64_PC32` relocations at dlopen time.
     pub pic_data_refs: bool,
+    /// When `true`, macOS runtime emission is prepared for per-symbol dead
+    /// stripping: `label()` records each internal label name in
+    /// `internal_labels` so the final assembly can rename them to Mach-O
+    /// assembler-local (`L`-prefixed) labels. Under the `.subsections_via_symbols`
+    /// footer that keeps each `__rt_*` helper a single atom (local labels never
+    /// start an atom) while remaining valid conditional-branch targets on every
+    /// toolchain, so the linker's `-dead_strip` drops whole unreferenced helpers.
+    /// Only set for the macOS executable runtime object; Linux uses per-section
+    /// `--gc-sections` and cdylibs never dead-strip.
+    pub dead_strip: bool,
+    /// Names of internal (`label()`) labels recorded while `dead_strip` is set,
+    /// used by `localize_internal_labels` to rewrite them `L`-prefixed.
+    internal_labels: HashSet<String>,
 }
 
 impl Emitter {
@@ -33,6 +47,8 @@ impl Emitter {
             target,
             platform: target.platform,
             pic_data_refs: false,
+            dead_strip: false,
+            internal_labels: HashSet::new(),
         }
     }
 
@@ -51,14 +67,60 @@ impl Emitter {
     }
 
     /// Emits a local label (name:).
+    /// Under macOS per-symbol dead stripping (`dead_strip`), a named identifier
+    /// label is recorded so the final assembly can rename it to a Mach-O
+    /// assembler-local (`L`-prefixed) label: those never start an atom under
+    /// `.subsections_via_symbols` (keeping each helper one strippable unit) yet
+    /// stay valid conditional-branch targets on every toolchain — unlike
+    /// `.alt_entry`, which older assemblers reject as "external" for conditional
+    /// branches. Numeric (`1:`/`2:`) and already-`L` labels are assembler-local
+    /// already, so they are left untouched.
     pub fn label(&mut self, name: &str) {
+        if self.dead_strip
+            && self.platform == Platform::MacOS
+            && !name.starts_with('L')
+            && !name.bytes().all(|b| b.is_ascii_digit())
+        {
+            self.internal_labels.insert(name.to_string());
+        }
+        let _ = writeln!(self.buf, "{}:", name);
+    }
+
+    /// Takes ownership of the recorded internal-label names, clearing the set.
+    /// Called once after runtime emission to drive `localize_internal_labels`.
+    pub fn take_internal_labels(&mut self) -> HashSet<String> {
+        std::mem::take(&mut self.internal_labels)
+    }
+
+    /// Emits a label for an internal helper that is reached from *another* helper
+    /// via an unconditional `b`/`bl` (never a conditional branch). Under macOS
+    /// dead stripping it is marked `.alt_entry`: it stays inside its defining
+    /// helper's atom (so that helper is not split and its own conditional
+    /// branches remain intra-atom) yet remains a real symbol, so the cross-helper
+    /// `b`/`bl` keeps the atom alive under `-dead_strip`. Unlike `label()` it is
+    /// NOT recorded for `L`-localization, so the bare name still resolves. Only
+    /// valid for `b`/`bl` targets — older assemblers reject conditional branches
+    /// to `.alt_entry` labels.
+    pub fn label_shared(&mut self, name: &str) {
+        if self.dead_strip && self.platform == Platform::MacOS {
+            let _ = writeln!(self.buf, ".alt_entry {}", name);
+        }
         let _ = writeln!(self.buf, "{}:", name);
     }
 
     /// Emit a label that is visible across object files (for two-object linking).
+    /// On Linux, places each global symbol in its own `.text.<name>` section so
+    /// that `--gc-sections` can eliminate unreachable helpers at link time.
     pub fn label_global(&mut self, name: &str) {
-        let _ = writeln!(self.buf, ".globl {}", name);
-        let _ = writeln!(self.buf, "{}:", name);
+        if self.platform == Platform::Linux {
+            let _ = writeln!(self.buf, ".section .text.{},\"ax\",@progbits", name);
+            let _ = writeln!(self.buf, ".globl {}", name);
+            let _ = writeln!(self.buf, ".type {}, %function", name);
+            let _ = writeln!(self.buf, "{}:", name);
+        } else {
+            let _ = writeln!(self.buf, ".globl {}", name);
+            let _ = writeln!(self.buf, "{}:", name);
+        }
     }
 
     /// Emits a line comment using the target's comment prefix.
@@ -196,6 +258,46 @@ impl Emitter {
             Arch::X86_64 => self.label_global("main"),
         }
     }
+}
+
+/// Rewrites every whole-token occurrence of an internal label name to its
+/// Mach-O assembler-local (`L`-prefixed) form, covering both the `name:`
+/// definition and every branch/reference to it. Used by the macOS dead-strip
+/// path: under `.subsections_via_symbols`, conditional branches may only target
+/// assembler-local labels, and `L`-prefixed labels also do not start a new atom,
+/// so each `__rt_*` helper stays a single dead-strippable unit. Matching is
+/// whole-token (identifier runs of `[A-Za-z0-9_$]`), so a name is never rewritten
+/// inside a longer identifier; non-identifier text (including UTF-8 in comments)
+/// is copied verbatim. Apply to the runtime text only — the runtime `.data` never
+/// references internal labels, and skipping it avoids touching string literals.
+pub fn localize_internal_labels(asm: &str, internal: &HashSet<String>) -> String {
+    if internal.is_empty() {
+        return asm.to_string();
+    }
+    let bytes = asm.as_bytes();
+    let is_ident = |b: u8| b.is_ascii_alphanumeric() || b == b'_' || b == b'$';
+    let mut out = String::with_capacity(asm.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if is_ident(bytes[i]) {
+            let start = i;
+            while i < bytes.len() && is_ident(bytes[i]) {
+                i += 1;
+            }
+            let token = &asm[start..i];
+            if internal.contains(token) {
+                out.push('L');
+            }
+            out.push_str(token);
+        } else {
+            let start = i;
+            while i < bytes.len() && !is_ident(bytes[i]) {
+                i += 1;
+            }
+            out.push_str(&asm[start..i]);
+        }
+    }
+    out
 }
 
 #[cfg(test)]
