@@ -178,12 +178,12 @@ fn emit_array_walk_recursive_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("cmp rax, -1");                                         // has iteration reached the end?
     emitter.instruction("je __rt_array_walk_recursive_done");                   // finish once every entry is visited
     emitter.instruction("mov QWORD PTR [rbp - 48], rax");                       // save the next iterator cursor
-    emitter.instruction("mov QWORD PTR [rbp - 24], rcx");                       // save the value low word across the dispatch
+    emitter.instruction("mov QWORD PTR [rbp - 40], rcx");                       // stash the value low word in the hash-path-unused length slot
     emitter.instruction("cmp r9, 4");                                           // is the value an indexed sub-array?
     emitter.instruction("je __rt_array_walk_recursive_hash_rec");               // recurse into indexed sub-array values
     emitter.instruction("cmp r9, 5");                                           // is the value an associative sub-array?
     emitter.instruction("je __rt_array_walk_recursive_hash_rec");               // recurse into associative sub-array values
-    emitter.instruction("mov rdi, QWORD PTR [rbp - 24]");                       // scalar leaf value goes in the first callback argument
+    emitter.instruction("mov rdi, QWORD PTR [rbp - 40]");                       // scalar leaf value goes in the first callback argument
     emitter.instruction("test r14, r14");                                       // is a callback environment present?
     emitter.instruction("jz __rt_array_walk_recursive_hash_call");              // no environment keeps the one-argument callback ABI
     emitter.instruction("mov rsi, r14");                                        // pass the callback environment as the second argument
@@ -192,7 +192,7 @@ fn emit_array_walk_recursive_linux_x86_64(emitter: &mut Emitter) {
     emitter.instruction("jmp __rt_array_walk_recursive_hash_loop");             // continue iterating the hash entries
     emitter.label("__rt_array_walk_recursive_hash_rec");
     emitter.instruction("mov rdi, r12");                                        // pass the callback address to the recursive call
-    emitter.instruction("mov rsi, QWORD PTR [rbp - 24]");                       // pass the sub-array value pointer to the recursive call
+    emitter.instruction("mov rsi, QWORD PTR [rbp - 40]");                       // pass the sub-array value pointer to the recursive call
     emitter.instruction("mov rdx, r14");                                        // pass the callback environment to the recursive call
     emitter.instruction("call __rt_array_walk_recursive");                      // recurse into the sub-array value
     emitter.instruction("jmp __rt_array_walk_recursive_hash_loop");             // continue iterating the hash entries
