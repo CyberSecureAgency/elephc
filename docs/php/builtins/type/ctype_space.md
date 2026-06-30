@@ -2,7 +2,7 @@
 title: "ctype_space()"
 description: "Lowers `ctype_space(string)` by checking every byte against PHP's ASCII whitespace set."
 sidebar:
-  order: 407
+  order: 409
 ---
 
 ## ctype_space()

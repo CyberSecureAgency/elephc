@@ -2,7 +2,7 @@
 title: "die()"
 description: "die() — process builtin supported by Elephc."
 sidebar:
-  order: 298
+  order: 300
 ---
 
 ## die()

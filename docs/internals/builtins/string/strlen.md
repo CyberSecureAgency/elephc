@@ -2,7 +2,7 @@
 title: "strlen() — internals"
 description: "Compiler internals for strlen(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 389
+  order: 391
 ---
 
 ## `strlen()` — internals
@@ -10,7 +10,7 @@ sidebar:
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins.rs`:986](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins.rs#L986) (`lower_strlen`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins.rs`:1013](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins.rs#L1013) (`lower_strlen`)
 - **Function symbol**: `lower_strlen()`
 
 

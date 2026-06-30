@@ -2,7 +2,7 @@
 title: "settype() — internals"
 description: "Compiler internals for settype(): lowering path, type checks, and runtime helpers."
 sidebar:
-  order: 428
+  order: 430
 ---
 
 ## `settype()` — internals

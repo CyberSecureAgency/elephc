@@ -2,7 +2,7 @@
 title: "preg_split()"
 description: "Lowers `preg_split(pattern, subject, limit?, flags?)` through the regex split helper."
 sidebar:
-  order: 313
+  order: 315
 ---
 
 ## preg_split()

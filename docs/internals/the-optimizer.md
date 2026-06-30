@@ -416,7 +416,6 @@ The current optimizer is still intentionally local. It does not yet implement:
 - broader guard reasoning for range facts and multi-variable relationships beyond the current boolean, scalar, loose-comparison, and safe relational-complement facts
 - broader control-flow normalization beyond the current local AST shell rewrites
 - backend-specific peephole cleanup
-- runtime dead stripping
 - elimination of the `adrp/add/stur` instruction triple at the FCC assignment site when the wrapper is stubbed (the stub address still gets loaded and stored even though both are dead)
 
 Those remain roadmap items for later optimization work.

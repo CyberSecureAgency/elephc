@@ -312,6 +312,7 @@ const SUPPORTED_BUILTIN_FUNCTIONS: &[&str] = &[
     "rsort",
     "rtrim",
     "scandir",
+    "serialize",
     "settype",
     "sha1",
     "shell_exec",
@@ -429,6 +430,7 @@ const SUPPORTED_BUILTIN_FUNCTIONS: &[&str] = &[
     "uksort",
     "umask",
     "unlink",
+    "unserialize",
     "unset",
     "urldecode",
     "urlencode",
@@ -442,8 +444,22 @@ const SUPPORTED_BUILTIN_FUNCTIONS: &[&str] = &[
 ];
 
 const INTERNAL_BUILTIN_FUNCTIONS: &[&str] = &[
+    "__elephc_phar_bzip2_archive",
+    "__elephc_phar_decompress_archive",
+    "__elephc_phar_get_file_metadata",
+    "__elephc_phar_get_metadata",
+    "__elephc_phar_get_signature_hash",
+    "__elephc_phar_get_signature_type",
+    "__elephc_phar_get_stub",
+    "__elephc_phar_gzip_archive",
     "__elephc_phar_list_entries",
     "__elephc_phar_set_compression",
+    "__elephc_phar_set_file_metadata",
+    "__elephc_phar_set_metadata",
+    "__elephc_phar_set_stub",
+    "__elephc_phar_set_zip_password",
+    "__elephc_phar_sign_hash",
+    "__elephc_phar_sign_openssl",
 ];
 
 /// Checks if the exact (lowercase) name is in the PHP-visible or internal builtin lists.

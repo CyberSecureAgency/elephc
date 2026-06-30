@@ -2,7 +2,7 @@
 title: "stripslashes()"
 description: "Lowers a one-argument string builtin that directly delegates to a runtime helper."
 sidebar:
-  order: 385
+  order: 387
 ---
 
 ## stripslashes()

@@ -231,7 +231,11 @@ fn emit_match_literal_aarch64(emitter: &mut Emitter, suffix: &str, lit: &[char])
 /// sets `_json_last_error` to JSON_ERROR_SYNTAX (4) or JSON_ERROR_UTF16 (10),
 /// and returns 0.
 fn emit_string_parser_aarch64(emitter: &mut Emitter) {
-    emitter.label("__rt_json_validate_string");
+    // `bl`-called from both `__rt_json_validate` and `__rt_json_decode_mixed`:
+    // `.alt_entry` under macOS dead stripping keeps it a real symbol (so a
+    // cross-helper `bl` keeps the validator atom alive) without splitting the
+    // atom — which would orphan `__rt_json_validate`'s own internal branches.
+    emitter.label_shared("__rt_json_validate_string");
     emitter.instruction("stp x29, x30, [sp, #-16]!");                           // store updated JSON validator state
     emitter.instruction("mov x29, sp");                                         // load or prepare JSON validator state
     crate::codegen::abi::emit_symbol_address(emitter, "x9", "_json_validate_idx");
@@ -508,7 +512,11 @@ fn emit_uhex_loop_aarch64(emitter: &mut Emitter, suffix: &str, error_label: &str
 /// advances `_json_validate_idx` past the last digit and returns 1. On invalid
 /// syntax returns 0 and calls `__rt_json_throw_error`.
 fn emit_number_parser_aarch64(emitter: &mut Emitter) {
-    emitter.label("__rt_json_validate_number");
+    // `bl`-called from both `__rt_json_validate` and `__rt_json_decode_mixed`:
+    // `.alt_entry` under macOS dead stripping keeps it a real symbol (so a
+    // cross-helper `bl` keeps the validator atom alive) without splitting the
+    // atom — which would orphan `__rt_json_validate`'s own internal branches.
+    emitter.label_shared("__rt_json_validate_number");
     emitter.instruction("stp x29, x30, [sp, #-16]!");                           // store updated JSON validator state
     emitter.instruction("mov x29, sp");                                         // load or prepare JSON validator state
     crate::codegen::abi::emit_symbol_address(emitter, "x9", "_json_validate_idx");

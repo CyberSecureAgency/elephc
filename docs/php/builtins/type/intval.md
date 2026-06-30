@@ -2,7 +2,7 @@
 title: "intval()"
 description: "Lowers `intval()` for concrete scalar operands."
 sidebar:
-  order: 412
+  order: 414
 ---
 
 ## intval()

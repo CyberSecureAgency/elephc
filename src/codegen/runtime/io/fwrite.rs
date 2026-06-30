@@ -38,14 +38,17 @@ pub fn emit_fwrite(emitter: &mut Emitter) {
     emitter.instruction("b.lt __rt_fwrite_not_phar");                           // below the range: use normal stream dispatch
     emitter.instruction("add x11, x10, #32");                                   // upper bound for the 32 buffered PHAR write descriptors
     emitter.instruction("cmp x0, x11");                                         // is this inside the phar-write descriptor range?
-    emitter.instruction("b.lt __rt_phar_write_append");                         // append the payload to the selected phar buffer
+    emitter.instruction("b.ge __rt_fwrite_not_phar");                           // above the phar-write range: use normal stream dispatch
+    emitter.instruction("b __rt_phar_write_append");                            // in range: append to the phar buffer (uncond → cross-atom safe)
     emitter.label("__rt_fwrite_not_phar");
 
     // -- user-wrapper synthetic fd path (Phase 10 step 4) --
     emitter.instruction("mov w9, #0x4000");                                     // load the high half of USER_WRAPPER_FD_BASE = 0x40000000
     emitter.instruction("lsl w9, w9, #16");                                     // shift into bits 30..16 to form 0x40000000
     emitter.instruction("cmp x0, x9");                                          // is this a synthetic user-wrapper fd?
-    emitter.instruction("b.ge __rt_user_wrapper_fwrite");                       // dispatch into the wrapper's stream_write instead of issuing a write syscall
+    emitter.instruction("b.lt __rt_fwrite_real_fd");                            // not a wrapper fd → issue the real write syscall path
+    emitter.instruction("b __rt_user_wrapper_fwrite");                          // wrapper fd: tail-call stream_write (uncond → cross-atom safe)
+    emitter.label("__rt_fwrite_real_fd");
 
     // Frame (48 bytes): [0]=fd [8]=pointer [16]=length [32]=x29 [40]=x30.
     emitter.instruction("sub sp, sp, #48");                                     // frame for the saved write state

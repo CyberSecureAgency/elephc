@@ -61,6 +61,25 @@ elephc --heap-size=16777216 heavy.php   # 16 MB
 If a program exhausts its heap it aborts with a fatal "heap memory exhausted"
 error; raising `--heap-size` is the fix. See [Memory Model](../internals/memory-model.md).
 
+## Runtime dead stripping
+
+The compiler ships a single runtime with helpers for every supported builtin, but
+a given program only uses a few of them. When linking an **executable**, the
+linker keeps only the runtime helpers reachable from the program and drops the
+rest, so a small program does not carry the whole runtime. This is automatic —
+there is no flag — and never changes behavior, only binary size.
+
+It works the same on every supported target, using each platform's native
+mechanism:
+
+- **Linux** emits each runtime helper into its own section and links with
+  `--gc-sections`.
+- **macOS** emits the runtime object with `.subsections_via_symbols` so each
+  helper is a separately collectable atom, and links with `-dead_strip`.
+
+Shared libraries (`--emit cdylib`) keep the full runtime, since any exported
+symbol may be reached by a host the linker cannot see.
+
 ## Conditional compilation
 
 elephc supports compile-time feature branches with `ifdef`. Symbols are defined

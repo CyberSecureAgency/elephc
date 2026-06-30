@@ -2,7 +2,7 @@
 title: "sprintf()"
 description: "Lowers `sprintf(format, values...)` by packing variadic records for `__rt_sprintf`."
 sidebar:
-  order: 373
+  order: 375
 ---
 
 ## sprintf()

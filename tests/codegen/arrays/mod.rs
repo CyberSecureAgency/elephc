@@ -12,5 +12,6 @@ mod indexed;
 mod assoc_helpers;
 mod nested;
 mod callbacks;
+mod foreach_key_write;
 mod list_and_keys;
 mod assoc_set_ops;

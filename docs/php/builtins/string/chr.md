@@ -2,7 +2,7 @@
 title: "chr()"
 description: "Lowers `chr()` by converting an integer code point into a one-byte string."
 sidebar:
-  order: 337
+  order: 339
 ---
 
 ## chr()

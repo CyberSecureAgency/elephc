@@ -147,6 +147,8 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter, features: RuntimeFeatures) {
     system::emit_json_decode_mixed(emitter);
     system::emit_json_last_error_msg(emitter);
     system::emit_json_validate(emitter);
+    system::emit_serialize(emitter);
+    system::emit_unserialize(emitter);
     if features.regex {
         system::emit_preg_strip(emitter);
         system::emit_pcre_to_posix(emitter);
@@ -187,6 +189,7 @@ pub(crate) fn emit_runtime(emitter: &mut Emitter, features: RuntimeFeatures) {
     arrays::emit_array_push_str(emitter);
     arrays::emit_array_set_int(emitter);
     arrays::emit_array_set_mixed(emitter);
+    arrays::emit_array_set_mixed_key(emitter);
     arrays::emit_array_set_refcounted(emitter);
     arrays::emit_array_set_str(emitter);
     arrays::emit_array_union(emitter);
@@ -589,5 +592,143 @@ mod tests {
                 sym
             );
         }
+    }
+
+    /// Verifies the full macOS AArch64 runtime still assembles once per-symbol
+    /// dead stripping is enabled. The real codegen path renames internal labels
+    /// to `L`-locals and appends a `.subsections_via_symbols` footer; under that
+    /// mode the Mach-O assembler rejects any conditional branch whose target is
+    /// another atom (another helper) or a non-local label. Assembling the
+    /// all-features runtime catches every such cross-helper conditional branch
+    /// at build time rather than letting it slip into a miscompiled binary.
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_macos_dead_strip_runtime_assembles() {
+        // Use the real runtime generation path (pic = false → macOS executable),
+        // so the assembly is exactly what is linked, including label localization.
+        let asm = crate::codegen::generate_runtime_with_features_pic(
+            8 * 1024 * 1024,
+            Target::new(Platform::MacOS, Arch::AArch64),
+            RuntimeFeatures::all(),
+            false,
+        );
+
+        let dir = std::env::temp_dir().join(format!(
+            "elephc_deadstrip_asm_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let asm_path = dir.join("runtime.s");
+        let obj_path = dir.join("runtime.o");
+        std::fs::write(&asm_path, &asm).expect("write asm");
+
+        let output = std::process::Command::new("as")
+            .args(["-arch", "arm64", "-o"])
+            .arg(&obj_path)
+            .arg(&asm_path)
+            .output()
+            .expect("run as");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert!(
+            output.status.success(),
+            "macOS dead-strip runtime failed to assemble:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    /// Guards the atom invariant the assemble-only test cannot see: under macOS
+    /// `-dead_strip` an internal helper label is renamed to an `L`-local, which
+    /// is not a symbol, so a reference to it from *another* atom (helper) is not
+    /// a relocation the linker can follow. The target atom is then stripped even
+    /// though a live atom still branches into it, miscompiling silently — this is
+    /// the bug that made `foreach` over an associative array crash in
+    /// `__rt_mixed_unbox`. A cross-helper helper must instead use `label_shared`
+    /// (`.alt_entry`) so it stays a real symbol inside its atom.
+    ///
+    /// This parses the real dead-strip runtime and asserts every `L__rt_*`
+    /// reference resolves within its defining atom. `.alt_entry` labels stay bare
+    /// (not `L`-localized) so they are correctly excluded; numeric local labels
+    /// never start an atom and are ignored.
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_macos_dead_strip_no_cross_atom_internal_refs() {
+        let asm = crate::codegen::generate_runtime_with_features_pic(
+            8 * 1024 * 1024,
+            Target::new(Platform::MacOS, Arch::AArch64),
+            RuntimeFeatures::all(),
+            false,
+        );
+
+        // A token is an internal helper label iff it is an `L`-localized `__rt_*`
+        // name (what `label()` produces under dead stripping). `.alt_entry`
+        // helpers stay bare `__rt_*`, so they never match here.
+        fn is_internal(tok: &str) -> bool {
+            tok.starts_with("L__rt_")
+        }
+        // True when `s` is a bare label definition body (no whitespace, label
+        // characters only, not purely numeric → not an assembler-local `N:`).
+        fn is_label_name(s: &str) -> bool {
+            !s.is_empty()
+                && !s.bytes().all(|b| b.is_ascii_digit())
+                && s.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'$' | b'.'))
+        }
+
+        let mut current_atom: &str = "<root>";
+        let mut prev_alt_entry: Option<&str> = None;
+        let mut owner: std::collections::HashMap<&str, &str> = std::collections::HashMap::new();
+        let mut refs: Vec<(&str, &str)> = Vec::new();
+
+        for raw in asm.lines() {
+            let line = raw.trim();
+            if line.is_empty() || line.starts_with("//") {
+                continue;
+            }
+            if let Some(rest) = line.strip_prefix(".alt_entry ") {
+                prev_alt_entry = Some(rest.trim());
+                continue;
+            }
+            // Label definition: a single `name:` token on the line.
+            if let Some(name) = line.strip_suffix(':') {
+                if is_label_name(name) {
+                    if is_internal(name) {
+                        owner.insert(name, current_atom);
+                    } else if prev_alt_entry != Some(name) {
+                        // A real global symbol starts a new atom; an `.alt_entry`
+                        // label stays inside the current atom (not a boundary).
+                        current_atom = name;
+                    }
+                }
+                prev_alt_entry = None;
+                continue;
+            }
+            prev_alt_entry = None;
+            // Reference scan: collect `L__rt_*` tokens used as operands.
+            for tok in line.split(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '_' | '$' | '.'))) {
+                if is_internal(tok) {
+                    refs.push((current_atom, tok));
+                }
+            }
+        }
+
+        let mut violations: Vec<String> = refs
+            .iter()
+            .filter_map(|(atom, tok)| match owner.get(tok) {
+                Some(def_atom) if def_atom != atom => Some(format!(
+                    "{tok} defined in {def_atom} but referenced from {atom}"
+                )),
+                _ => None,
+            })
+            .collect();
+        violations.sort();
+        violations.dedup();
+        assert!(
+            violations.is_empty(),
+            "cross-atom references to internal `__rt_*` labels would be stripped \
+             under -dead_strip (use label_shared/.alt_entry for cross-helper \
+             targets):\n{}",
+            violations.join("\n")
+        );
     }
 }

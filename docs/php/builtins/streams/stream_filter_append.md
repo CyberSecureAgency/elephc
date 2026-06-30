@@ -2,7 +2,7 @@
 title: "stream_filter_append()"
 description: "stream_filter_append() — streams builtin supported by Elephc."
 sidebar:
-  order: 330
+  order: 332
 ---
 
 ## stream_filter_append()

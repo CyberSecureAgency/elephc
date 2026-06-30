@@ -10,7 +10,7 @@ sidebar:
 ## Where it lives
 
 - **Signature**: [`src/types/signatures.rs`](https://github.com/illegalstudio/elephc/blob/main/src/types/signatures.rs)
-- **Lowering**: [`src/codegen_ir/lower_inst/builtins.rs`:749](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins.rs#L749) (`lower_phpversion`)
+- **Lowering**: [`src/codegen_ir/lower_inst/builtins.rs`:776](https://github.com/illegalstudio/elephc/blob/main/src/codegen_ir/lower_inst/builtins.rs#L776) (`lower_phpversion`)
 - **Function symbol**: `lower_phpversion()`
 
 

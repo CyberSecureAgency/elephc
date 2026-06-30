@@ -2,7 +2,7 @@
 title: "strlen()"
 description: "Lowers `strlen()` by coercing string-like values and returning the byte length."
 sidebar:
-  order: 386
+  order: 388
 ---
 
 ## strlen()

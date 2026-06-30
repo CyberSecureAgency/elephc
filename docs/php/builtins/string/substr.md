@@ -2,7 +2,7 @@
 title: "substr()"
 description: "Lowers `substr(string, offset, length?)` with target-local pointer arithmetic."
 sidebar:
-  order: 393
+  order: 395
 ---
 
 ## substr()

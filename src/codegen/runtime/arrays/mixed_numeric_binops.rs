@@ -35,7 +35,10 @@ pub fn emit_mixed_numeric_binops(emitter: &mut Emitter) {
     emit_aarch64_entry(emitter, "__rt_mixed_numeric_sub", 1);
     emit_aarch64_entry(emitter, "__rt_mixed_numeric_mul", 2);
 
-    emitter.label("__rt_mixed_numeric_common");
+    // Shared body reached via `b` from `add`/`sub`/`mul`: `.alt_entry` under macOS
+    // dead stripping keeps it a real symbol (so a cross-helper `b` from a live
+    // entry keeps it alive) without splitting the atom or being `L`-localized.
+    emitter.label_shared("__rt_mixed_numeric_common");
     emitter.instruction("str x0, [sp, #0]");                                    // save the boxed left operand pointer for unboxing and casts
     emitter.instruction("str x1, [sp, #8]");                                    // save the boxed right operand pointer for unboxing and casts
     emitter.instruction("str x9, [sp, #16]");                                   // save the selected arithmetic opcode across helper calls

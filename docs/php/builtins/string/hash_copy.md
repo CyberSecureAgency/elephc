@@ -2,7 +2,7 @@
 title: "hash_copy()"
 description: "Lowers `hash_copy(context)` through the incremental hash clone helper."
 sidebar:
-  order: 347
+  order: 349
 ---
 
 ## hash_copy()
